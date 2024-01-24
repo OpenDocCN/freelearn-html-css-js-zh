@@ -1,4 +1,3 @@
-+   [JavaScript 编程精解 中文第三版](docs/eloquent-js-3e-zh/README.md)
 +   [JavaScript 高级编程](docs/adv-js/README.md)
 +   [TypeScript 高级编程项目](docs/adv-ts-prog-proj/README.md)
 +   [JavaScript 代码整洁指南](docs/clean-code-js/README.md)
