@@ -8,7 +8,7 @@
 
 您可以使用以下方式转到本书的 GitHub 存储库：
 
-```js
+```
 git clone https://github.com/PacktPublishing/ReasonML-Quick-Start-Guide.git
 cd ReasonML-Quick-Start-Guide
 cd Chapter05/app-start
@@ -27,7 +27,7 @@ npm install
 
 模块签名约束模块的方式类似于接口约束面向对象编程中的类。模块签名可以要求模块实现特定类型和绑定，还可以用于隐藏实现细节。假设我们有一个名为`Foo`的模块，在`Foo.re`中定义。它的签名可以在`Foo.rei`中定义。如果模块签名存在并且该类型或绑定不在模块签名中，则模块中列出的任何类型或绑定都将被隐藏。在`Foo.re`中有一个绑定`let foo = "foo";`，该绑定可以通过其模块签名要求和暴露，方法是在`Foo.rei`中包括`let foo: string;`：
 
-```js
+```
 /* Foo.re */
 let foo = "foo";
 
@@ -42,7 +42,7 @@ Js.log(Foo.foo);
 
 如果模块的`.rei`文件存在且为空，则模块中的所有内容都被隐藏，如下面的代码所示：
 
-```js
+```
 /* Foo.rei */
 /* this is intentionally empty */
 
@@ -52,7 +52,7 @@ Js.log(Foo.foo); /* Compilation error: The value foo can't be found in Foo */
 
 模块的签名要求模块包括签名中列出的任何类型和/或绑定，如下面的代码所示：
 
-```js
+```
 /* Foo.re */
 let foo = "foo";
 
@@ -63,7 +63,7 @@ let bar: string;
 
 这导致以下编译错误，因为模块签名要求`bar`绑定为`string`类型，而模块中未定义：
 
-```js
+```
 The implementation src/Foo.re does not match the interface src/Foo.rei:
 The value `bar' is required but not provided
 ```
@@ -72,7 +72,7 @@ The value `bar' is required but not provided
 
 模块签名也可以使用`module type`关键字来定义，而不是使用单独的`.rei`文件。模块类型必须以大写字母开头。一旦定义，模块可以使用`module <Name> : <Type>`语法来受模块类型的约束，如下所示：
 
-```js
+```
 module type FooT {
   let foo: (~a: int, ~b: int) => int;
 };
@@ -84,7 +84,7 @@ module Foo: FooT {
 
 相同的模块类型可以用于多个模块，如下所示：
 
-```js
+```
 module Bar: FooT {
   let bar = (~a, ~b) => a - b;
 };
@@ -96,7 +96,7 @@ module Bar: FooT {
 
 抽象类型是没有定义的类型声明。让我们探讨一下为什么这会有用。除了绑定，模块签名还可以包括类型。在下面的代码中，您会注意到`Foo`的模块签名包括一个`person`类型，现在`Foo`必须包括这个`type`声明：
 
-```js
+```
 /* Foo.re */
 type person = {
   firstName: string,
@@ -112,7 +112,7 @@ type person = {
 
 `person`类型的暴露方式与没有定义模块签名时的方式相同。正如你所期望的，如果定义了签名并且类型未列出，那么该类型不会暴露给其他模块。还有将类型保持抽象的选项。我们只保留等号后面的部分。让我们看看下面的代码：
 
-```js
+```
 /* Foo.rei */
 type person;
 ```
@@ -125,7 +125,7 @@ type person;
 
 假设我们正在构建一个发票管理系统，我们有一个`Invoice`模块，定义了一个`invoice`类型以及其他模块可以使用的函数来创建该类型的值。这种安排如下所示：
 
-```js
+```
 /* Invoice.re */
 type t = {
   name: string,
@@ -144,7 +144,7 @@ let make = (~name, ~email, ~date, ~total) => {
 
 假设我们还有另一个模块负责向客户发送电子邮件，如下面的代码所示：
 
-```js
+```
 /* Email.re */
 let send = invoice: Invoice.t => ...
 let invoice =
@@ -159,7 +159,7 @@ send(invoice);
 
 由于`Invoice.t`类型是公开的，所以发票可以被`Email`操纵，如下面的代码所示：
 
-```js
+```
 /* Email.re */
 let invoice =
   Invoice.make(
@@ -174,7 +174,7 @@ Js.log(invoice);
 
 尽管`Invoice.t`类型是不可变的，但没有阻止`Email`用一些改变的字段来遮蔽发票绑定。然而，如果我们将`Invoice.t`类型设为抽象，这将是不可能的，因为`Email`将无法操纵抽象类型。`Email`模块可以访问的任何函数都无法与`Invoice.t`类型一起使用。
 
-```js
+```
 /* Invoice.rei */
 type t;
 let make:
@@ -183,7 +183,7 @@ let make:
 
 现在，编译给我们带来了以下错误：
 
-```js
+```
 8 │ let invoice = {...invoice, total: invoice.total *. 0.8};
 9 │ Js.log(invoice);
 
@@ -192,7 +192,7 @@ The record field total can't be found.
 
 如果我们决定允许其他模块向发票添加折扣，我们需要创建一个函数并将其包含在`Invoice`的模块签名中。假设我们只想允许每张发票只有一个折扣，并且还限制折扣金额为十、十五或二十个百分比。我们可以以以下方式实现这一点：
 
-```js
+```
 /* Invoice.re */
 type t = {
  name: string,
@@ -260,7 +260,7 @@ Js.log(invoice);
 
 现在，只要`Invoice`模块的公共 API（或模块签名）不改变，我们就可以自由地重构`Invoice`模块，而不需要担心在其他模块中破坏代码。为了证明这一点，让我们将`Invoice.t`重构为元组而不是记录，如下面的代码所示。只要我们不改变模块签名，`Email`模块就不需要做任何改变：
 
-```js
+```
 /* Invoice.re */
 type t = (string, string, Js.Date.t, float, bool);
 
@@ -332,7 +332,7 @@ Js.log(invoice);
 
 幻影类型是具有类型变量的类型，但这个类型变量在其定义中没有被使用。为了更好地理解，让我们再次看看`option`类型，如下面的代码所示：
 
-```js
+```
 type option('a) =
   | None
   | Some('a);
@@ -342,7 +342,7 @@ type option('a) =
 
 让我们将`Invoice`模块的签名更改为使用幻影类型，如下所示：
 
-```js
+```
 /* Invoice.rei */
 type t('a);
 
@@ -364,7 +364,7 @@ let discount:
 
 抽象类型`t`现在是`type t('a)`。我们还有两个更多的抽象类型，如下面的代码所示：
 
-```js
+```
 type discounted;
 type undiscounted;
 ```
@@ -373,7 +373,7 @@ type undiscounted;
 
 在实现中，我们现在可以摆脱之前的运行时检查，如下面的代码所示：
 
-```js
+```
 if (isDiscounted) {
   ...
 } else {
@@ -383,7 +383,7 @@ if (isDiscounted) {
 
 现在，这个检查是在编译时进行的，因为`discount`函数只接受`undiscounted`发票，如下面的代码所示：
 
-```js
+```
 /* Invoice.re */
 type t('a) = {
   name: string,
@@ -415,7 +415,7 @@ let discount = (~invoice, ~discount) => {
 
 这只是类型系统可以帮助我们更多地关注逻辑而不是错误处理的另一种方式。以前，尝试两次打折发票只会返回原始发票。现在，让我们尝试在`Email.re`中两次打折发票，使用以下代码：
 
-```js
+```
 /* Email.re */
 let invoice =
   Invoice.make(
@@ -431,7 +431,7 @@ Js.log(invoice);
 
 现在，尝试两次打折发票将导致一个可爱的编译时错误，如下所示：
 
-```js
+```
 We've found a bug for you!
 
    7 │ );
@@ -447,7 +447,7 @@ We've found a bug for you!
 
 这绝对美丽。然而，假设你想能够给任何发票发送电子邮件，无论是否打折。我们使用幻影类型会导致问题吗？我们如何编写一个接受任何发票类型的函数？我们的发票类型是`Invoice.t('a)`，如果我们想接受任何发票，我们保留类型参数，如下面的代码所示：
 
-```js
+```
 /* Email.re */
 let invoice =
   Invoice.make(
@@ -471,7 +471,7 @@ send(invoice);
 
 我们已经在上一章简要地看过多态变体。简而言之，我们在使用`[@bs.unwrap]`装饰器绑定到一些现有的 JavaScript 时学到了它们。这个想法是`[@bs.unwrap]`可以用于绑定到现有的 JavaScript 函数，其中它的参数可以是不同的类型。例如，假设我们想绑定到以下函数：
 
-```js
+```
 function dynamic(a) {
   switch (typeof a) {
     case "string":
@@ -484,13 +484,13 @@ function dynamic(a) {
 
 假设这个函数只接受`string`类型或`int`类型的参数，不接受其他类型。我们可以这样绑定这个示例函数：
 
-```js
+```
 [@bs.val] external dynamic : 'a => string = "";
 ```
 
 然而，我们的绑定将允许无效的参数类型（如`bool`）。如果我们的编译器能够通过阻止无效的参数类型来帮助我们，那将更好。其中一种方法是使用多态变体与`[@bs.unwrap]`。我们的绑定将如下所示：
 
-```js
+```
 [@bs.val] external dynamic : ([@bs.unwrap] [
   | `Str(string)
   | `Int(int)
@@ -499,14 +499,14 @@ function dynamic(a) {
 
 我们会这样使用绑定：
 
-```js
+```
 dynamic(`Int(42));
 dynamic(`Str("foo"));
 ```
 
 现在，如果我们尝试传递无效的参数类型，编译器会让我们知道，如下面的代码所示：
 
-```js
+```
 dynamic(42);
 
 /*
@@ -525,7 +525,7 @@ But somewhere wanted:
 
 1.  我们不需要显式声明多态变体的类型
 
-1.  多态变体以反引号字符（```js)
+1.  多态变体以反引号字符（`` ` ``）
 
 Whenever you see a constructor prefixed with a backtick character, you know it's a polymorphic variant constructor. There may or may not be a type declaration associated with a polymorphic variant constructor.
 
