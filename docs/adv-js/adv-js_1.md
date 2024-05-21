@@ -50,7 +50,16 @@ JavaScript 中的**函数作用域**是在函数内部创建的。当声明一�
 
 以下代码段提供了函数作用域的示例：
 
-[PRE0]
+```
+var example = 5;
+function test() {
+  var testVariable = 10;
+  console.log( example ); // Expect output: 5
+  console.log( testVariable ); // Expect output: 10
+}
+test();
+console.log( testVariable ); // Expect reference error
+```
 
 ###### 代码段 1.1：函数作用域
 
@@ -64,7 +73,11 @@ JavaScript 中的**函数作用域**是在函数内部创建的。当声明一�
 
 当使用函数作用域创建变量时，其声明会自动提升到作用域的顶部。**提升**意味着解释器将实体的实例化移动到其声明的作用域顶部，而不管它在作用域块中的定义位置。在 JavaScript 中，使用`var`声明的函数和变量会被提升；也就是说，函数或变量可以在其声明之前使用。以下代码演示了这一点：
 
-[PRE1]
+```
+example = 5; // Assign value
+console.log( example ); // Expect output: 5
+var example; // Declare variable
+```
 
 ###### 片段 1.2：函数作用域提升
 
@@ -76,13 +89,30 @@ JavaScript 中的**函数作用域**是在函数内部创建的。当声明一�
 
 在 JavaScript 中，使用花括号（`{}`）创建一个新的块作用域。一对**花括号**可以放置在代码的任何位置以定义一个新的作用域块。if 语句、循环、函数和任何其他花括号对都将有自己的块作用域。这包括与关键字（if、for 等）无关的浮动花括号对。以下片段中的代码是块作用域规则的示例：
 
-[PRE2]
+```
+// Top level scope
+function scopeExample() {
+  // Scope block 1
+  for ( let i = 0; i < 10; i++ ){ /* Scope block 2 */ }
+  if ( true ) { /* Scope block 3 */ } else {  /* Scope block 4 */ }
+  // Braces without keywords create scope blocks
+  { /* Scope block 5 */ } 
+  // Scope block 1
+}
+// Top level scope
+```
 
 ###### 片段 1.3：块作用域
 
 使用关键字`let`和`const`声明的变量具有**块作用域**。当使用块作用域声明变量时，它不具有与在函数作用域中创建的变量相同的变量提升。块作用域变量不会被提升到作用域的顶部，因此在声明之前无法访问。这意味着使用块作用域创建的变量受到**暂时性死区**（**TDZ**）的影响。TDZ 是指进入作用域和声明变量之间的时间段。它在变量被声明而不是赋值时结束。以下示例演示了 TDZ：
 
-[PRE3]
+```
+// console.log( example ); // Would throw ReferenceError
+let example;
+console.log( example ); // Expected output: undefined
+example = 5;
+console.log( example ); // Expected output: 5
+```
 
 ###### 片段 1.4：暂时性死区
 
@@ -132,7 +162,24 @@ JavaScript 中的**函数作用域**是在函数内部创建的。当声明一�
 
 index.js：
 
-[PRE4]
+```
+function fn1(){
+ console.log('Scope 1');
+ let scope = 5;
+ console.log(scope);
+ {
+   console.log('Scope 2');
+   let scope = 'different scope';
+   console.log(scope);
+ }
+  {
+   console.log('Scope 3');
+   let scope = 'a third scope';
+   console.log(scope);
+ }
+}
+fn1();
+```
 
 [`bit.ly/2RoOotW`](https://bit.ly/2RoOotW)
 
@@ -162,13 +209,25 @@ index.js：
 
 `var` 关键字是在 JavaScript 中用于声明变量的较旧的关键字。所有使用 `var` 创建的变量都可以重新分配，具有函数作用域，并且具有变量提升。这意味着使用 `var` 创建的变量被提升到作用域块的顶部，在那里它们被定义并且可以在声明之前访问。以下代码片段演示了这一点，如下所示：
 
-[PRE5]
+```
+// Referenced before declaration
+console.log( example ); // Expect output: undefined
+var example = 'example';
+```
 
 ###### 代码片段 1.6：使用 var 创建的变量被提升
 
 由关键字 `var` 创建的变量不是常量，因此可以随意创建、分配和重新分配值。以下代码演示了 `var` 功能的这一方面：
 
-[PRE6]
+```
+// Declared and assigned
+var example = { prop1: 'test' };
+console.log( 'example:', example );
+// Expect output: example: {prop1: "test"}
+// Value reassigned
+example = 5;
+console.log( example ); // Expect output: 5
+```
 
 ###### 代码片段 1.7：使用 var 创建的变量不是常量
 
@@ -176,7 +235,15 @@ index.js：
 
 `let` 关键字与关键字 `var` 类似。如预期的那样，关键字 `let` 允许我们声明一个可以在任何时候重新分配的变量。以下代码中展示了这一点：
 
-[PRE7]
+```
+// Declared and initialized
+let example = { prop1: 'test' };
+console.log( 'example:', example );
+// Expect output: example: {prop1: 'test"}
+// Value reassigned
+example = 5;
+console.log( example ); // Expect output: 5
+```
 
 ###### 代码片段 1.8：使用 let 创建的变量不是常量
 
@@ -184,13 +251,23 @@ index.js：
 
 使用 `let` 声明的变量不受变量提升的影响。这意味着在赋值之前访问使用 `let` 声明的变量将引发运行时错误。正如前面讨论的那样，这就是暂时性死区。以下代码示例说明了这一点：
 
-[PRE8]
+```
+// Referenced before declaration
+console.log( example );
+// Expect ReferenceError because example is not defined
+let example = 'example';
+```
 
 ###### 代码片段 1.9：使用 let 创建的变量不会被提升
 
 最后一个变量声明关键字是`const`。`const`关键字具有与`let`关键字相同的作用域和变量提升规则；使用`const`声明的变量具有块作用域，并且不会被提升到作用域的顶部。这在以下代码中显示：
 
-[PRE9]
+```
+// Referenced before declaration
+console.log( example );
+// Expect ReferenceError because example is not defined
+const example = 'example';
+```
 
 ###### 片段 1.10：使用 const 创建的变量不会被提升
 
@@ -198,7 +275,16 @@ index.js：
 
 即使使用`const`创建的变量不能被重新分配，这并不意味着它们是不可变的。如果数组或对象存储在使用`const`声明的变量中，则无法覆盖变量的值。但是，数组内容或对象属性可以更改。可以使用`push()`、`pop()`或`map()`等函数修改数组的内容，并且可以添加、删除或更新对象属性。这在以下代码中显示：
 
-[PRE10]
+```
+// Declared and initialized
+const example = { prop1: 'test' };
+// Variable reassigned
+example = 5;
+// Expect TypeError error because variable was declared with const
+// Object property updated
+example.prop1 = 5;
+// Expect no error because subproperty was modified
+```
 
 ###### 片段 1.11：使用 const 创建的变量是常量但不是不可变的
 
@@ -256,7 +342,21 @@ index.js：
 
 ##### index.js:
 
-[PRE11]
+```
+var hoisted = 'this got hoisted';
+try{
+ console.log(notHoisted1);
+} catch(err){}
+let notHoisted1 = 5;
+try{
+ console.log(notHoisted2);
+} catch(err){}
+const notHoisted2 = [1,2,3];
+try{
+ notHoisted2 = 'new value';
+} catch(err){}
+notHoisted2.push(5);
+```
 
 ###### 片段 1.12：更新对象的内容
 
@@ -280,7 +380,9 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 创建箭头函数时，我们只需要删除函数关键字，并在函数参数和函数体之间放置一个箭头。箭头函数用以下语法表示：
 
-[PRE12]
+```
+( arg1, arg2, ..., argn ) => { /* Do function stuff here */ }
+```
 
 ###### 片段 1.13：箭头函数语法
 
@@ -314,7 +416,11 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 ##### index.js:
 
-[PRE13]
+```
+const fn1 = function( a, b ) { return a + b; };
+const fn2 = ( a, b ) => { return a + b; };
+console.log( fn1( 3 ,5 ), fn2( 3, 5 ) );
+```
 
 ###### 片段 1.14：调用函数
 
@@ -334,37 +440,75 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 这个规则有一个例外，那就是参数不是简单的标识符。如果我们在函数参数中包含默认值或执行操作，那么我们必须包含括号。例如，如果我们包含默认参数，那么我们将需要在参数周围加上括号。这两条规则如下面的代码所示：
 
-[PRE14]
+```
+// Single argument arrow function
+arg1 => { /* Do function stuff here */ }
+// Non simple identifier function argument
+( arg1 = 10 ) => { /* Do function stuff here */ }
+```
 
 ###### 片段 1.15：单参数箭头函数
 
 如果我们创建一个没有参数的箭头函数，那么我们需要包括括号，但括号将是空的。如下面的代码所示：
 
-[PRE15]
+```
+// No arguments passed into the function
+( ) => { /* Do function stuff here */ }
+```
 
 ###### 片段 1.16：无参数
 
 箭头函数的语法也可以有所不同，取决于函数的主体。如预期的那样，如果函数的主体是多行的，那么我们必须用花括号括起来。但是，如果函数的主体是单行的，那么我们不需要在函数的主体周围包含花括号。这如下面的代码所示：
 
-[PRE16]
+```
+// Multiple line body arrow function
+( arg1, arg2 ) => { 
+  console.log( `This is arg1: ${arg1}` );
+  console.log( `This is arg2: ${arg2}` );
+  /* Many more lines of code can go here */
+}
+// Single line body arrow function
+( arg1, arg2 ) => console.log( `This is arg1: ${arg1}` )
+```
 
 ###### 片段 1.17：单行体
 
 在使用箭头函数时，如果函数是单行的，我们也可以省略 return 关键字。箭头函数会自动返回该行表达式的解析值。这种语法如下面的代码所示：
 
-[PRE17]
+```
+// With return keyword - not necessary
+( num1, num2 ) => { return ( num1 + num2 ) }
+// If called with arguments num1 = 5 and num2 = 5, expected output is 10
+// Without return keyword or braces
+( num1, num2 ) => num1 + num2
+// If called with arguments num1 = 5 and num2 = 5, expected output is 10
+```
 
 ###### 片段 1.18：返回值为单行体
 
 由于单行表达式体的箭头函数可以在没有花括号的情况下定义，我们需要特殊的语法来允许我们将单个表达式分成多行。为此，我们可以将多行表达式放在括号中。JavaScript 解释器会看到括号中的行，并将其视为单行代码。这如下面的代码所示：
 
-[PRE18]
+```
+// Arrow function with a single line body
+// Assume numArray is an array of numbers
+( numArray ) => numArray.filter( n => n > 5).map( n => n - 1 ).every( n => n < 10 )
+// Arrow function with a single line body broken into multiple lines
+// Assume numArray is an array of numbers
+( numArray ) => (
+  numArray.filter( n => n > 5)
+          .map( n => n - 1 )
+          .every( n => n < 10 )
+) 
+```
 
 ###### 片段 1.19：将单行表达式分成多行
 
 如果我们有一个返回对象字面量的单行箭头函数，我们将需要特殊的语法。在 ES6 中，作用域块、函数主体和对象字面量都是用花括号定义的。由于单行箭头函数不需要花括号，我们必须使用特殊的语法来防止对象字面量的花括号被解释为函数主体花括号或作用域块花括号。为此，我们用括号括起返回的对象字面量。这指示 JavaScript 引擎将括号内的花括号解释为表达式，而不是函数主体或作用域块声明。这如下面的代码所示：
 
-[PRE19]
+```
+// Arrow function with an object literal in the body
+( num1, num2 ) => ( { prop1: num1, prop2: num2 } ) // Returns an object
+```
 
 ###### 片段 1.20：对象字面量返回值
 
@@ -414,7 +558,13 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 ##### index.js：
 
-[PRE20]
+```
+let fn1 = ( a, b ) => { … };
+let fn2 = ( a, b ) => a * b;
+let fn3 = a => { … };
+let fn4 = () => { … };
+let fn5 = ( a ) => ( …  );
+```
 
 ###### 代码段 1.21：箭头函数转换
 
@@ -444,7 +594,11 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 **模板文字**是 ECMAScript 6 中引入的一种新形式的字符串。它们由**反引号**符号（`` ` ``），而不是通常的单引号或双引号。模板文字允许您在运行时计算的字符串中嵌入表达式。因此，我们可以很容易地从变量和变量表达式创建动态字符串。这些表达式用美元符号和花括号（`${ expression }`）表示。模板文本语法如以下代码所示:
 
-[PRE21]
+```
+const example = "pretty";
+console.log( `Template literals are ${ example } useful!!!` ); 
+// Expected output: Template literals are pretty useful!!!
+```
 
 ###### 代码段 1.22：模板字面量基本语法
 
@@ -452,7 +606,17 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 模板字面量允许多行字符串。插入源代码的任何换行符都属于模板字面量，并将在输出中导致换行。简单来说，在模板字面量内，我们可以按下键盘上的**Enter**键并将其拆分成两行。源代码中的换行符将被解析为模板字面量的一部分，并将导致输出中的换行。要使用普通字符串复制这一点，我们必须使用`\n`字符生成新行。使用模板字面量，我们可以在模板字面量源中换行并实现相同的预期输出。示例代码如下所示：
 
-[PRE22]
+```
+// Using normal strings
+console.log( 'This is line 1\nThis is line 2' );
+// Expected output: This is line 1
+// This is line 2
+// Using template literals
+console.log( `This is line 1
+This is line 2` );
+// Expected output: This is line 1
+// This is line 2
+```
 
 ###### 代码段 1.23：模板字面量多行语法
 
@@ -470,7 +634,11 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 ##### index.js:
 
-[PRE23]
+```
+let a = 5, b = 10;
+console.log( a + ' + ' + b + ' is equal to ' + ( a + b ) );
+console.log( `${a} + ${b} is equal to ${a + b}` );
+```
 
 ###### 代码段 1.24：模板字面量和字符串比较
 
@@ -486,19 +654,39 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 模板字面量允许表达式嵌套，即，新的模板字面量可以放置在模板字面量的表达式中。由于嵌套的模板字面量是表达式的一部分，它将被解析为新的模板字面量，并且不会干扰外部模板字面量。在某些情况下，嵌套模板字面量是创建字符串的最简单和最可读的方式。模板字面量嵌套的示例代码如下所示：
 
-[PRE24]
+```
+function javascriptOrCPlusPlus() { return 'JavaScript'; }
+const outputLiteral = `We are learning about ${ `Professional ${ javascriptOrCPlusPlus() }` }`
+```
 
 ###### 代码段 1.25：模板字面量嵌套
 
 **带标记的模板文字**是模板文字的更高级形式。带标记的模板文字可以使用称为**标记函数**的特殊函数进行解析，可以返回一个操作后的字符串或任何其他值。标记函数的第一个输入参数是一个包含字符串值的数组。字符串值表示输入字符串的部分，在每个模板表达式处进行拆分。其余的参数是字符串中模板表达式的值。标记函数不像普通函数那样调用。要调用标记函数，我们忽略模板文字参数周围的括号和空格。以下是此语法的示例：
 
-[PRE25]
+```
+// Define the tag function
+function tagFunction( strings, numExp, fruitExp ) { 
+  const str0 = strings[0]; // "We have"
+  const str1 = strings[1]; // " of "
+  const quantity = numExp < 10 ? 'very few' : 'a lot';
+  return str0 + quantity + str1 + fruitExp + str2;
+}
+const fruit = 'apple', num = 8;
+// Note: lack of parenthesis or whitespace when calling tag function
+const output = tagFunction`We have ${num} of ${fruit}. Exciting!`
+console.log( output )
+// Expected output: We have very few of apples. Exciting!!
+```
 
 ###### Snippet 1.26: 带标记的模板文字示例
 
 一个名为`raw`的特殊属性可用于标记模板的第一个参数。此属性返回一个包含每个拆分模板文字的原始、未转义版本的数组。以下是示例代码：
 
-[PRE26]
+```
+function tagFunction( strings ){ console.log( strings.raw[0] ); }
+tagFunction`This is line 1\. \n This is line 2.`
+// Expected output: "This is line 1\. \n This is line 2." The characters //'\' and 'n' are not parsed into a newline character
+```
 
 ###### Snippet 1.27: 带标记的模板原始属性
 
@@ -508,7 +696,14 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 您正在为一家房地产公司建立网站。您必须构建一个函数，该函数接受包含属性信息的对象，并返回一个格式化的字符串，说明物业所有者、物业所在地（`address`）以及他们出售的价格。考虑以下对象作为输入：
 
-[PRE27]
+```
+{
+  address: '123 Main St, San Francisco CA, USA',
+  floors: 2,
+  price: 5000000,
+  owner: 'John Doe'
+}
+```
 
 ###### Snippet 1.28: 对象输入
 
@@ -528,7 +723,18 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 ##### index.js:
 
-[PRE28]
+```
+function parseHouse( property ) {
+ return `${property.owner} is selling the property at ${property.address} for ${property.price} USD`
+}
+const house = {
+ address: "123 Main St, San Francisco CA, USA",
+ floors: 2,
+ price: 5000000,
+ owner: "John Doe"
+};
+console.log( parseHouse( house ) );
+```
 
 ###### Snippet 1.29: 使用表达式的模板文字
 
@@ -556,13 +762,33 @@ ECMAScript 6 作为**ES6 语法糖**的一部分，增加了对象字面量的�
 
 初始化对象属性的简写允许您创建更简洁的对象。在 ES5 中，我们需要使用键名和值来定义对象属性，如下代码所示：
 
-[PRE29]
+```
+function getPersionES5( name, age, height ) {
+  return {
+    name: name,
+    age: age,
+    height: height
+  };
+}
+getPersionES5( 'Zachary', 23, 195 )
+// Expected output: { name: 'Zachary', age: 23, height: 195 }
+```
 
 ###### 代码片段 1.30：ES5 对象属性
 
 注意函数返回的对象字面量中的重复。我们在对象中将属性命名为变量名导致了重复（`<code>name: name</code>`）。在 ES6 中，我们可以简写每个属性并消除重复。在 ES6 中，我们可以简单地在对象字面量中声明变量，它将创建一个键名匹配变量名和值匹配变量值的属性。以下代码示例：
 
-[PRE30]
+```
+function getPersionES6( name, age, height ) {
+  return {
+    name,
+    age,
+    height
+  };
+}
+getPersionES6( 'Zachary', 23, 195 )
+// Expected output: { name: 'Zachary', age: 23, height: 195 }
+```
 
 ###### 代码片段 1.31：ES6 对象属性
 
@@ -572,13 +798,33 @@ ECMAScript 6 作为**ES6 语法糖**的一部分，增加了对象字面量的�
 
 ES6 还为在对象内部声明函数方法添加了一个简写。在 ES5 中，我们必须声明属性名称，然后将其定义为函数。以下示例中有所展示：
 
-[PRE31]
+```
+function getPersonES5( name, age, height ) {
+  return {
+    name: name,
+    height: height,
+    getAge: function(){ return age; }
+  };
+}
+getPersonES5( 'Zachary', 23, 195 ).getAge()
+// Expected output: 23
+```
 
 ###### 代码片段 1.32：ES5 函数属性
 
 在 ES6 中，我们可以定义一个函数，但工作量要少得多。与属性声明一样，我们并不需要键值对来创建函数。函数名称变为键名。以下代码示例中有所展示：
 
-[PRE32]
+```
+function getPersionES6( name, age, height ) {
+  return {
+    name,
+    height,
+    getAge(){ return age; }
+  };
+}
+getPersionES6( 'Zachary', 23, 195 ).getAge()
+// Expected output: 23
+```
 
 ###### 代码片段 1.33：ES6 函数属性
 
@@ -588,13 +834,31 @@ ES6 还为在对象内部声明函数方法添加了一个简写。在 ES5 中�
 
 ES6 还增加了一种有效的方式来创建属性名称，即通过计算属性表示法。正如我们已经知道的，在 ES5 中，只有一种方式可以使用变量创建属性名称；这是通过方括号表示法，即，`: obj[ expression ] = 'value'`。在 ES6 中，我们可以在对象字面量的声明期间使用相同类型的表示法。这在以下示例中显示：
 
-[PRE33]
+```
+const varName = 'firstName';
+const person = {
+  [ varName ] = 'John',
+  lastName: 'Smith'
+};
+console.log( person.firstName ); // Expected output: John
+```
 
 ###### 代码片段 1.34：ES6 计算属性
 
 如前面代码片段所示，`varName` 的属性名称计算为 `firstName`。在访问属性时，我们只需要引用`person.firstName`。在对象字面量中创建计算属性时，不需要在方括号中计算的值是变量；它几乎可以是任何表达式，甚至是函数。下面的代码示例中提供了一个例子：
 
-[PRE34]
+```
+const varName = 'first';
+function computeNameType( type ) {
+  return type + 'Name';
+}
+const person = {
+  [ varName + 'Name' ] = 'John',
+  [ computeNameType( 'last' ) ]: 'Smith'
+};
+console.log( person.firstName ); // Expected output: John
+console.log( person.lastName ); // Expected output: Smith
+```
 
 ###### 代码片段 1.35：从函数计算属性
 
@@ -626,7 +890,21 @@ ES6 还增加了一种有效的方式来创建属性名称，即通过计算属�
 
 ##### index.js:
 
-[PRE35]
+```
+const PI = 3.1415;
+const INCHES_TO_FEET = 0.083333;
+const exportObject = {
+ PI,
+ INCHES_TO_FEET,
+ sum( n1, n2 ) {
+   return n1 + n2;
+ },
+ subtract( n1, n2 ) {
+   return n1 - n2;
+ }
+};
+console.log( exportObject );
+```
 
 ###### 代码段 1.36：增强的对象属性
 
@@ -652,7 +930,12 @@ ES6 还增加了一种有效的方式来创建属性名称，即通过计算属�
 
 在 ES6 中，为了解构数组，我们简单地创建一个包含要分配数据的变量的数组，并将其设置为被解构的数据数组。数组中的值被解开并从左到右分配给左侧数组中的变量，一个数组值对应一个变量。基本数组解构的示例如下代码所示：
 
-[PRE36]
+```
+let names = [ 'John', 'Michael' ];
+let [ name1, name2 ] = names;
+console.log( name1 ); // Expected output: 'John'
+console.log( name2 ); // Expected output: 'Michael'
+```
 
 ###### 代码段 1.37：基本数组解构
 
@@ -662,7 +945,15 @@ ES6 还增加了一种有效的方式来创建属性名称，即通过计算属�
 
 如果变量数多于数组项怎么办？如果我们尝试将一个数组解构为一个包含比数据数组中数组元素总数更多变量的数组，那么其中一些变量将被设置为 undefined。数组从左到右进行解构。在 JavaScript 数组中访问不存在的元素将导致返回 undefined 值。这个 undefined 值将保存在变量数组中剩余的变量中。下面的代码展示了这一点：
 
-[PRE37]
+```
+let names = [ 'John', 'Michael' ];
+let [ name1 ] = names
+let [ name2, name3, name4 ] = names;
+console.log( name1 ); // Expected output: 'John'
+console.log( name2 ); // Expected output: 'John'
+console.log( name3 ); // Expected output: 'Michael'
+console.log( name4 ); // Expected output: undefined
+```
 
 ###### 代码段 1.38：具有不匹配变量和数组项的数组解构
 
@@ -672,19 +963,37 @@ ES6 还增加了一种有效的方式来创建属性名称，即通过计算属�
 
 ES6 数组解构允许跳过数组元素。如果我们有一个值的数组，并且只关心第一个和第三个值，我们仍然可以解构数组。要忽略一个值，只需要在表达式的左侧省略该数组索引的变量标识符。这种语法可以用来忽略单个项目、多个项目，甚至是数组中的所有项目。以下代码段中展示了两个示例：
 
-[PRE38]
+```
+let names = [ 'John', 'Michael', 'Jessica', 'Susan' ];
+let [ name1,, name3 ] = names;
+// Note the missing variable name for the second array item
+let [ ,,, ] = names; // Ignores all items in the array
+console.log( name1 ); // Expected output: 'John'
+console.log( name3 ); // Expected output: 'Jessica'
+```
 
 ###### 代码段 1.39：具有跳过值的数组解构
 
 数组解构的另一个非常有用的特性是为使用解构创建的变量设置默认值的能力。当我们想要添加默认值时，我们只需在解构表达式的左侧将变量设置为所需的默认值。如果我们在解构的内容中没有包含一个可分配给变量的索引，那么默认值将被使用。下面的代码展示了这一点：
 
-[PRE39]
+```
+let [ a = 1, b = 2, c = 3 ] = [ 'cat', null ]; 
+console.log( a ); // Expected output: 'cat'
+console.log( b ); // Expected output: null
+console.log( c ); // Expected output: 3
+```
 
 ###### 代码段 1.40：具有跳过值的数组解构
 
 最后，数组解构也可以用于轻松交换变量的值。如果我们希望交换两个变量的值，我们可以简单地将一个数组解构为反向数组。我们可以创建一个包含要反转的变量的数组，并将其设置为相同的数组，但变量顺序改变。这将导致引用被交换。下面的代码展示了这一点：
 
-[PRE40]
+```
+let a = 10;
+let b = 5;
+[ a, b ] = [ b, a ];
+console.log( a ); // Expected output: 5
+console.log( b ); // Expected output: 10
+```
 
 ###### 代码段 1.41：具有跳过值的数组解构
 
@@ -706,7 +1015,11 @@ ES6 数组解构允许跳过数组元素。如果我们有一个值的数组，�
 
 ##### index.js:
 
-[PRE41]
+```
+const data = [ 1, 2, 3 ];
+const [ a, , b, c = 4 ] = data;
+console.log( a, b, c );
+```
 
 ###### 代码片段 1.42：数组解构
 
@@ -732,7 +1045,20 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 **rest 运算符**用于表示作为数组的无限个参数。将函数的最后一个参数加上三个省略号时，它将成为一个数组。数组元素由传递到函数中的实际参数提供，其中不包括已在函数的正式声明中分配了单独名称的参数。下面的代码示例展示了 rest 解构的示例：
 
-[PRE42]
+```
+function fn( num1, num2, ...args ) {
+  // Destructures an indefinite number of function parameters into the
+//array args, excluding the first two arguments passed in.
+  console.log( num1 );
+  console.log( num2 );
+  console.log( args );
+}
+fn( 1, 2, 3, 4, 5, 6 );
+// Expected output
+// 1
+// 2
+// [ 3, 4, 5, 6 ]
+```
 
 ###### 代码片段 1.43：带有跳过值的数组解构
 
@@ -744,13 +1070,26 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 剩余参数可以类似于我们解构数组的方式进行解构。在省略号之前放置单个变量名的替代方法是，我们可以用要填充的变量数组替换它。传递给函数的参数将按预期解构为数组。这在下面的代码中显示：
 
-[PRE43]
+```
+function fn( ...[ n1, n2, n3 ] ) {
+  // Destructures an indefinite number of function parameters into the
+// array args, which is destructured into 3 variables
+  console.log( n1, n2, n3 );
+}
+fn( 1, 2 ); // Expected output: 1, 2, undefined
+```
 
 ###### 代码片段 1.44：解构剩余运算符
 
 展开运算符允许可迭代对象（如数组或字符串）扩展为多个参数（用于函数调用）、数组元素（用于数组文字）或键值对（用于对象表达式）。这基本上意味着我们可以将数组扩展为创建另一个数组、对象或调用函数的参数。展开语法的示例如下代码所示：
 
-[PRE44]
+```
+function fn( n1, n2, n3 ) {
+  console.log( n1, n2, n3 );
+}
+const values = [ 1, 2, 3 ];
+fn( ...values ); // Expected output: 1, 2, 3
+```
 
 ###### 代码片段 1.45：展开运算符
 
@@ -758,7 +1097,13 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 剩余运算符可以用于解构对象和数组。在解构数组时，如果数组元素多于变量，我们可以使用剩余运算符在解构过程中捕获所有额外的数组元素。在使用剩余运算符时，它必须是数组解构或函数参数列表中的最后一个参数。下面的代码展示了这一点：
 
-[PRE45]
+```
+const [ n1, n2, n3, ...remaining ] = [ 1, 2, 3, 4, 5, 6 ];
+console.log( n1 ); // Expected output: 1
+console.log( n2 ); // Expected output: 2
+console.log( n3 ); // Expected output: 3
+console.log( remaining ); // Expected output: [ 4, 5, 6 ]
+```
 
 ###### 代码片段 1.46：展开运算符
 
@@ -770,7 +1115,12 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 **对象解构**的用法与数组解构非常相似。对象解构用于从对象中提取数据并将数值赋给新变量。在 ES6 中，我们可以在单个 JavaScript 表达式中实现这一点。要解构对象，我们用大括号（`{}`）括起要解构的变量，并将该表达式赋值给要解构的对象。对象解构的基本示例如下所示：
 
-[PRE46]
+```
+const obj = { firstName: 'Bob', lastName: 'Smith' };
+const { firstName, lastName } = obj;
+console.log( firstName ); // Expected output: 'Bob'
+console.log( lastName ); // Expected output: 'Smith'
+```
 
 ###### 代码片段 1.47：对象解构
 
@@ -780,7 +1130,12 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 在进行基本对象解构时，对象中的参数名称和我们要分配的变量名称必须匹配。如果变量我们尝试解构的变量没有匹配的参数，那么该变量将被设置为 undefined。
 
-[PRE47]
+```
+const obj = { firstName: 'Bob', lastName: 'Smith' };
+const { firstName, middleName } = obj;
+console.log( firstName ); // Expected output: 'Bob'
+console.log( middleName ); // Expected output: undefined
+```
 
 ###### 代码片段 1.48：没有定义键的对象解构
 
@@ -788,7 +1143,12 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 通过高级对象解构语法，我们可以将被提取的键保存到另一个名称的变量中。这是通过在解构符号后面添加冒号和新变量名称来实现的。这在以下代码中显示：
 
-[PRE48]
+```
+const obj = { firstName: 'Bob', lastName: 'Smith' };
+const { firstName: first, lastName } = obj;
+console.log( first ); // Expected output: 'Bob'
+console.log( lastName ); // Expected output: 'Smith'
+```
 
 ###### 代码片段 1.49：将对象解构为新变量
 
@@ -796,7 +1156,12 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 与数组解构一样，我们可以解构一个对象并提供默认值。如果提供了默认值，并且我们尝试解构的键不存在于对象中，那么变量将被设置为默认值，而不是 undefined。如下代码所示：
 
-[PRE49]
+```
+const obj = { firstName: 'Bob', lastName: 'Smith' };
+const { firstName = 'Samantha', middleName = 'Chris' } = obj;
+console.log( firstName ); // Expected output: 'Bob'
+console.log( middleName ); // Expected output: 'Chris'
+```
 
 ###### 代码片段 1.50：带默认值的对象解构
 
@@ -804,7 +1169,12 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 当我们提供默认值并将键赋值给新变量名时，我们必须在新变量名后放置默认值赋值。下面的示例展示了这一点：
 
-[PRE50]
+```
+const obj = { firstName: 'Bob', lastName: 'Smith' };
+const { firstName: first = 'Samantha', middleName: middle = 'Chris' } = obj;
+console.log( first ); // Expected output: 'Bob'
+console.log( middle); // Expected output: 'Chris'
+```
 
 ###### 代码片段 1.51：对象解构为具有默认值的新变量
 
@@ -826,7 +1196,11 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 ##### index.js：
 
-[PRE51]
+```
+const data = { f1: 'v1', f2: '2', f3: 'v3' };
+const { f1, f2: field2, f4 = 'v4' } = data;
+console.log( f1, field2, f4 );
+```
 
 ###### 代码片段 1.52：对象解构
 
@@ -842,7 +1216,14 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 如果我们在对象解构表达式之前声明变量，JavaScript 需要特殊的语法。我们必须用括号括起整个对象解构表达式。数组解构不需要这样的语法。下面的代码展示了这一点：
 
-[PRE52]
+```
+const obj = { firstName: 'Bob', lastName: 'Smith' };
+let firstName, lastName;
+( { firstName: first, lastName } = obj );
+// Note parentheses around expression
+console.log( firstName ); // Expected output: 'Bob'
+console.log( lastName ); // Expected output: 'Smith'
+```
 
 ###### 代码片段 1.53：对象解构为预定义变量
 
@@ -852,7 +1233,13 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 **剩余运算符**也可以用于解构对象。由于对象键是可迭代的，我们可以使用剩余运算符来捕获原始解构表达式中未捕获的剩余键。这与数组类似。我们解构要捕获的键，然后我们可以将剩余运算符添加到一个变量中，并捕获未从对象中解构出来的剩余键/值对。这在下面的示例中显示：
 
-[PRE53]
+```
+const obj = { firstName: 'Bob', middleName: 'Chris', lastName: 'Smith' };
+const { firstName, ...otherNames } = obj;
+console.log( firstName ); // Expected output: 'Bob'
+console.log( otherNames );
+// Expected output: { middleName: 'Chris', lastName: 'Smith' }
+```
 
 ###### 代码片段 1.54: 带有剩余运算符的对象解构
 
@@ -878,7 +1265,11 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 ##### index.js:
 
-[PRE54]
+```
+const data = { arr: [ 1, 2, 3 ] };
+const { arr: [ , v2 ] } = data;
+console.log( v2 ); 
+```
 
 ###### 代码片段 1.55: 嵌套数组和对象解构
 
@@ -898,7 +1289,21 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 您已经注册了大学课程，并需要购买课程所需的教材。 您正在构建一个程序，以从书单中抓取数据，并获取每本所需教材的 ISBN 号码。 使用对象和数组嵌套解构来获取课程数组中第一本书的第一本书的 ISBN 值。 课程数组遵循以下格式：
 
-[PRE55]
+```
+[
+ {
+   title: 'Linear Algebra II',
+   description: 'Advanced linear algebra.',
+   texts: [ {
+     author: 'James Smith',
+     price: 120,
+     ISBN: '912-6-44-578441-0'
+   } ]
+ },
+ { ... },
+ { ... }
+]
+```
 
 ###### Snippet 1.56: 课程数组格式
 
@@ -908,19 +1313,27 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 1.  将第一个数组元素解构为名为`course`的变量：
 
-[PRE56]
+```
+    [ course ] = [ … ]
+    ```
 
 1.  用对象解构替换`course`变量以将文本字段保存到名为`textbooks`的变量中：
 
-[PRE57]
+```
+    [ { texts: textbooks} ] = [ … ]
+    ```
 
 1.  用数组解构替换`textbooks`变量以获取文本数组的第一个元素并将其保存到名为`textbook`的变量中：
 
-[PRE58]
+```
+    [ { texts: [ textbook ] } ] = [ … ]
+    ```
 
 1.  用对象解构替换`textbook`变量以获取`ISBN`字段并将其保存到`ISBN`变量中：
 
-[PRE59]
+```
+    [ { texts: [ { ISBN } ] } ] = [ … ]
+    ```
 
 1.  记录`ISBN`的值。
 
@@ -928,7 +1341,27 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 ##### index.js：
 
-[PRE60]
+```
+const courseCatalogMetadata = [
+ {
+   title: 'Linear Algebra II',
+   description: 'Advanced linear algebra.',
+   texts: [ {
+     author: 'James Smith',
+     price: 120,
+     ISBN: '912-6-44-578441-0'
+   } ]
+ }
+];
+const [ course ] = courseCatalogMetadata;
+const [ { texts: textbooks } ] = courseCatalogMetadata;
+const [ { texts: [ textbook ] } ] = courseCatalogMetadata;
+const [ { texts: [ { ISBN } ] } ] = courseCatalogMetadata;
+console.log( course );
+console.log( textbooks );
+console.log( textbook );
+console.log( ISBN );
+```
 
 ###### Snippet 1.57: 实现解构到代码中
 
@@ -954,13 +1387,23 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 在 JavaScript 中，可以使用关键字 class 来定义一个类。 使用关键字 class，后跟类名和大括号来创建一个类。 在大括号内，我们定义类的所有函数和逻辑。 语法如下：
 
-[PRE61]
+```
+class name { /* class stuff goes here */ }
+```
 
 ###### Snippet 1.58: 类的语法
 
 一个类可以用**可选函数构造函数**来创建。构造函数如果对 JavaScript 类不是必需的，但是一个类中只能有一个名为构造函数的方法。当实例化类时，会调用构造函数，并可用于设置所有默认的内部值。以下代码显示了一个类声明的示例：
 
-[PRE62]
+```
+class House{
+  constructor(address, floors = 1, garage = false) {
+    this.address = address;
+    this.floors = floors;
+    this.garage = garage;
+  }
+}
+```
 
 ###### 代码段 1.59：基本类创建
 
@@ -986,7 +1429,16 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 ##### index.js:
 
-[PRE63]
+```
+class Vehicle {
+  constructor( wheels, topSpeed ) {
+    this.wheels = wheels;
+    this.topSpeed = topSpeed;
+  }
+}
+const tricycle = new Vehicle( 3, 20 );
+console.log( tricycle.wheels, tricycle.topSpeed );
+```
 
 ###### 代码段 1.60：创建一个类
 
@@ -1002,7 +1454,16 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 我们使用 new 关键字实例化了一个新类的实例。要创建一个新的类，只需声明一个变量并将其设置为表达式`new className()`。当我们实例化一个新类时，传递给类调用的参数将传递到构造函数中，如果存在的话。以下代码显示了一个类实例化的示例：
 
-[PRE64]
+```
+class House{
+  constructor(address, floors = 1) {
+    this.address = address;
+    this.floors = floors;
+  }
+}
+// Instantiate the class
+let myHouse = new House( '1100 Fake St., San Francisco CA, USA', 2, false );
+```
 
 ###### 代码段 1.61：类实例化
 
@@ -1010,7 +1471,19 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 要向类中添加函数，我们使用新的 ES6 对象函数声明。快速提醒，当使用新的 ES6 对象函数声明时，可以省略函数关键字和对象键名。当函数添加到对象中时，它会自动附加到`this`范围内。此外，添加到类的所有函数都可以访问`this`范围，并能够调用附加到`this`范围的任何函数和访问任何变量。下面是一个示例：
 
-[PRE65]
+```
+class House{
+  constructor( address, floors = 1) {
+    this.address = address;
+    this.floors = floors;
+  }
+  getFloors() {
+    return this.floors;
+  }
+}
+let myHouse = new House( '1100 Fake St., San Francisco CA, USA', 2 );
+console.log( myHouse.getFloors() ); // Expected output: 2
+```
 
 ###### 代码片段 1.62：创建带有函数的类
 
@@ -1018,7 +1491,10 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 在 ES6 中，我们还可以使用`extends`关键字创建子类。**子类**继承自父类的属性和方法。子类的定义方式是在类名后面加上关键字`extends`和父类的名称。下面是一个子类声明的示例：
 
-[PRE66]
+```
+class House {}
+class Mansion extends House {}
+```
 
 ###### 代码片段 1.63：扩展类
 
@@ -1026,7 +1502,21 @@ ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。r
 
 在这个例子中，我们将创建一个名为`House`的类，然后创建一个名为`Mansion`的子类，它扩展了类`House`。当我们创建一个子类时，我们需要注意构造方法的行为。如果我们提供了构造方法，那么我们必须调用`super()`函数。`super`是一个调用父对象的构造函数的函数。如果我们试图在不调用`super`的情况下访问`this`范围，那么我们将得到一个运行时错误，我们的代码将崩溃。可以将父构造函数所需的任何参数通过`super`方法传递进去。如果我们没有为子类指定构造函数，则默认的构造函数行为将自动调用 super 构造函数。下面是一个示例：
 
-[PRE67]
+```
+class House {
+  constructor( address = 'somewhere' ) {
+    this.address = address;
+  }
+}
+class Mansion extends House {
+  constructor( address, floors ) {
+    super( address );
+    this.floors = floors;
+  }
+}
+let mansion = new Mansion( 'Hollywood CA, USA', 6, 'Brad Pitt' );
+console.log( mansion.floors ); // Expected output: 6
+```
 
 ###### 代码片段 1.64：带有和不带有构造函数的类的扩展
 
@@ -1052,7 +1542,21 @@ JavaScript 模块在所有平台上都没有完全支持。在编写本书时，
 
 使用`export`关键字公开模块的具名内容有两种方式。我们可以通过在变量或函数声明之前加上`export`关键字来逐个导出每个项目，或者我们可以导出一个包含键值对的对象，引用我们想要导出的每个变量和函数。这两种导出方法在以下示例中显示：
 
-[PRE68]
+```
+// math-module-1.js
+export const PI = 3.1415;
+export const DEGREES_IN_CIRCLE = 360;
+export function convertDegToRad( degrees ) {
+  return degrees * PI / ( DEGREES_IN_CIRCLE /2 );
+}
+// math-module-2.js
+const PI = 3.1415;
+const DEGREES_IN_CIRCLE = 360;
+function convertDegToRad( degrees ) {
+  return degrees * PI / ( DEGREES_IN_CIRCLE /2 );
+}
+export { PI, DEGREES_IN_CIRCLE, convertDegToRad };
+```
 
 ###### 代码片段 1.65：命名导出
 
@@ -1060,7 +1564,12 @@ JavaScript 模块在所有平台上都没有完全支持。在编写本书时，
 
 要将模块的内容作为默认导出，我们必须使用**default** **关键字**。`default`关键字在`export`关键字之后。当我们默认导出一个模块时，我们也可以省略正在导出的类、函数或变量的标识符名称。下面的代码示例中演示了这个例子：
 
-[PRE69]
+```
+// HouseClass.js
+export default class() { /* Class body goes here */ }
+// myFunction.js
+export default function() { /* Function body goes here */ }
+```
 
 ###### 代码片段 1.66：默认导出
 
@@ -1076,7 +1585,19 @@ ES6 模块可能在所有浏览器版本或 Node.js 版本中都不受全面支�
 
 我们可以使用`import`关键字的四种方式，所有这些方式都在以下代码中展示：
 
-[PRE70]
+```
+// math-module.js
+export const PI = 3.1415;
+export const DEGREES_IN_CIRCLE = 360;
+// index1.js
+import { PI } from 'math-module.js'
+// index2.js
+import { PI, DEGREES_IN_CIRCLE } from 'math-module.js'
+// index3.js
+import { PI as pi, DEGREES_IN_CIRCLE as degInCircle } from 'math-module.js'
+// index4.js
+import * as MathModule from 'math-module.js'
+```
 
 ###### 代码片段 1.67：导入模块的不同方式
 
@@ -1084,13 +1605,26 @@ ES6 模块可能在所有浏览器版本或 Node.js 版本中都不受全面支�
 
 导入和使用模块的过程通过以下代码片段更好地进行解释：
 
-[PRE71]
+```
+// email-callback-api.js
+export function authenticate( … ){ … }
+export function sendEmail( … ){ … }
+export function listEmails( … ){ … }
+// app.js
+import * as EmailAPI from 'email-callback-api.js';
+const credentials = { password: '****', user: 'Zach' };
+EmailAPI.authenticate( credentials, () => {
+  EmailAPI.send( { to: 'ceo@google.com', subject: 'promotion', body: 'Please promote me' }, () => {} );'
+} );
+```
 
 ###### 代码片段 1.68：导入模块
 
 要在浏览器中使用导入，我们必须使用`script`标记。模块导入可以内联完成，也可以通过源文件完成。要导入一个模块，我们需要创建一个`script`标记并将 type 属性设置为`module`。如果我们通过源文件进行导入，我们必须将`src`属性设置为文件路径。下面的语法展示了这一点：
 
-[PRE72]
+```
+<script type="module" src="img/module.js"></script>
+```
 
 ###### 代码片段 1.69：内联浏览器导入
 
@@ -1100,7 +1634,11 @@ ES6 模块可能在所有浏览器版本或 Node.js 版本中都不受全面支�
 
 我们还可以内联导入模块。要做到这一点，我们必须省略`src`属性，并直接在脚本标记的主体中编写导入。下面的代码展示了这一点：
 
-[PRE73]
+```
+<script type="module">
+  import * as ModuleExample from './path/to/module.js';
+</script>
+```
 
 ###### 代码片段 1.70：在脚本主体中导入浏览器
 
@@ -1110,7 +1648,10 @@ ES6 模块可能在所有浏览器版本或 Node.js 版本中都不受全面支�
 
 如果浏览器不支持 ES6 模块，我们可以使用`nomodule`属性提供一个回退选项。模块兼容的浏览器会忽略带有`nomodule`属性的脚本标记，因此我们可以使用它来提供回退支持。下面的代码展示了这一点：
 
-[PRE74]
+```
+<script type="module" src="img/es6-module-supported.js"></script>
+<script nomodule src="img/es6-module-NOT-supported.js"></script>
+```
 
 ###### 代码片段 1.71：兼容选项的浏览器导入
 
@@ -1142,7 +1683,21 @@ ES6 模块可能在所有浏览器版本或 Node.js 版本中都不受全面支�
 
 ##### index.js:
 
-[PRE75]
+```
+class Car {
+ constructor( make, model, year, color ) {
+   this.make = make;
+   this.model = model;
+   this.year = year;
+   this.color = color;
+ }
+ setColor( color ) {
+   this.color = color;
+ }
+}
+let subaru = new Car( 'Subaru', 'Outback', 2005, 'Grey' );
+subaru.setColor( 'Red' );
+```
 
 ###### 代码片段 1.72：完整的类实现
 
@@ -1176,19 +1731,34 @@ JavaScript 最流行的转译器之一是**Babel**。Babel 是一个旨在协助
 
 要安装 Babel 命令行界面，使用以下命令：`npm install --save-dev babel-cli`。完成后，`package.json`文件的`devDependencies`对象中将会添加`babel-cli`字段：
 
-[PRE76]
+```
+{
+ "devDependencies": {
+   "babel-cli": "^6.26.0"
+ }
+}
+```
 
 ###### 片段 1.73：添加第一个依赖
 
 这个命令只安装了基本的 Babel，没有用于在不同版本的 JavaScript 之间进行转译的插件。要安装插件以转译到 ECMAScript 2015，使用命令`npm install --save-dev babel-preset-es2015`。一旦命令运行完毕，我们的`package.json`文件将包含另一个依赖：
 
-[PRE77]
+```
+"devDependencies": {
+ "babel-cli": "^6.26.0",
+ "babel-preset-es2015": "^6.24.1"
+}
+```
 
 ###### 片段 1.74：添加第二个依赖
 
 这安装了 ES6 预设。要使用这些预设，我们必须告诉 Babel 使用这些预设进行配置。创建一个名为`.babelrc`的文件。注意文件名中的前导句号。`.babelrc`文件是 Babel 的配置文件。这是我们告诉 Babel 我们将使用哪些预设、插件等的地方。创建完成后，在文件中添加以下内容：
 
-[PRE78]
+```
+{
+  "presets": ["es2015"]
+}
+```
 
 ###### 片段 1.75：安装 ES6 预设
 
@@ -1196,13 +1766,20 @@ JavaScript 最流行的转译器之一是**Babel**。Babel 是一个旨在协助
 
 现在 Babel 已经配置好了，我们必须创建要转译的代码文件。在项目的根目录中，创建一个名为`app.js`的文件。在这个文件中，粘贴以下 ES6 代码：
 
-[PRE79]
+```
+const sum5 = inputNumber  => inputNumber + 5;
+console.log( `The sum of 5 and 5 is ${sum5(5)}!`);
+```
 
 ###### 片段 1.76：粘贴代码
 
 现在 Babel 已经配置好了，我们有了一个要转译的文件，我们需要更新我们的`package.json`文件，为 npm 添加一个转译脚本。在`package.json`文件中添加以下行：
 
-[PRE80]
+```
+"scripts": {
+ "transpile": "babel app.js --out-file app.transpiled.js --source-maps"
+}
+```
 
 ###### 片段 1.77：更新 package.json 文件
 
@@ -1246,7 +1823,18 @@ Babel 有许多插件和不同模块和 JavaScript 发布的预设。有足够�
 
 ##### package.json:
 
-[PRE81]
+```
+// File 1: package.json
+{
+ "scripts": {
+   "transpile": "babel ./app.js --out-file app.transpiled.js --source-maps"
+ },
+ "devDependencies": {
+   "babel-cli": "^6.26.0",
+   "babel-preset-es2015": "^6.24.1"
+ }
+}
+```
 
 ###### Snippet 1.78: Package.json 配置文件
 
@@ -1254,7 +1842,10 @@ Babel 有许多插件和不同模块和 JavaScript 发布的预设。有足够�
 
 ##### .babelrc:
 
-[PRE82]
+```
+// File 2: .babelrc
+{ "presets": ["es2015"] }
+```
 
 ###### Snippet 1.79: Babel 配置文件
 
@@ -1262,7 +1853,14 @@ Babel 有许多插件和不同模块和 JavaScript 发布的预设。有足够�
 
 ##### app.transpiled.js:
 
-[PRE83]
+```
+// File 3: app.transpiled.js
+var fn1 = function fn1(a, b) { … };
+var fn2 = function fn2(a, b) { … };
+var fn3 = function fn3(a) { … };
+var fn4 = function fn4() { … };
+var fn5 = function fn5(a) { … };
+```
 
 ###### Snippet 1.80: 完全转译的代码
 
@@ -1288,13 +1886,33 @@ Babel 有许多插件和不同模块和 JavaScript 发布的预设。有足够�
 
 要创建一个迭代器，我们必须定义一个以集合为参数的函数，并返回一个对象。返回的对象必须具有一个名为`next`的函数属性。当调用`next`时，迭代器将跳到集合中的下一个值，并返回一个具有值和迭代状态的对象。以下是示例迭代器的代码：
 
-[PRE84]
+```
+function createIterator( array ){
+  let currentIndex = 0;
+  return {
+    next(){
+      return currentIndex < array.length ?
+        { value: array[ currentIndex++ ], done: false} :
+        { done: true };
+    }
+  };
+}
+```
 
 ###### 代码段 1.81：迭代器声明
 
 此迭代器接受一个数组，并返回一个具有单个函数属性`next`的对象。在内部，迭代器跟踪数组和我们当前正在查看的索引。要使用迭代器，我们只需调用`next`函数。调用`next`将导致迭代器返回一个对象，并将内部索引增加一。迭代器返回的对象必须至少具有`value`和`done`两个属性。`value`将包含我们当前查看索引处的值。`Done`将包含一个布尔值。如果布尔值为 true，则我们已经**在**输入集合上完成了遍历。如果为**假**，那么我们可以继续调用`next`函数：
 
-[PRE85]
+```
+// Using an iterator 
+let it = createIterator( [ 'Hello', 'World' ] );
+console.log( it.next() );
+// Expected output: { value: 'Hello', done: false }
+console.log( it.next() );
+// Expected output: { value: 'World' , done: false }
+console.log( it.next() );
+// Expected output: { value: undefined, done: true }
+```
 
 ###### 代码段 1.82：迭代器使用
 
@@ -1310,11 +1928,20 @@ Babel 有许多插件和不同模块和 JavaScript 发布的预设。有足够�
 
 要创建一个`生成器`，我们必须在函数名前面加上星号，并在函数体中使用`yield`关键字。例如，要创建名为`testGenerator`的生成器，我们可以按如下方式初始化它：
 
-[PRE86]
+```
+function *testGen( data ) { yield 0; }.
+```
 
 星号表示这是一个`生成器函数`。`yield`关键字表示正常函数流程的中断，直到生成器函数再次被调用。下面是一个生成器的示例：
 
-[PRE87]
+```
+function *gen() {
+ let i = 0;
+ while (true){
+   yield i++;
+ }
+}
+```
 
 ###### 代码段 1.83：生成器创建
 
@@ -1342,7 +1969,17 @@ Babel 有许多插件和不同模块和 JavaScript 发布的预设。有足够�
 
 ##### index.js：
 
-[PRE88]
+```
+function *gen() {
+ let i = 1;
+ while (true){
+   yield i;
+   i = i * 2;
+ }
+}
+const generator = gen();
+console.log( generator.next(), generator.next(), generator.next() );
+```
 
 ###### 代码段 1.84：简单生成器
 
@@ -1358,13 +1995,38 @@ Babel 有许多插件和不同模块和 JavaScript 发布的预设。有足够�
 
 与迭代器类似，`done`值包含生成器的完成状态。如果`done`值设置为`true`，那么生成器已经执行完毕，不会再返回新的值。值参数包含了`yield`关键字所在行的表达式的结果。在这种情况下，它将返回`i`的当前值，然后再递增。下面的代码中展示了这一点：
 
-[PRE89]
+```
+let sequence = gen();
+console.log(sequence.next());
+//Expected output: { value: 0, done: false }
+console.log(sequence.next());
+//Expected output: { value: 1, done: false }
+console.log(sequence.next());
+//Expected output: { value: 2, done: false }
+```
 
 ###### 代码段 1.85：生成器使用
 
 当生成器遇到`yield`关键字时，执行会暂停。这意味着循环会暂停执行。生成器的另一个强大工具是可以通过 next 函数和`yield`关键字传入数据。当将一个值传递给 next 函数时，`yield`表达式的返回值将被设置为传递给 next 的值。下面的代码展示了一个例子：
 
-[PRE90]
+```
+function *gen() {
+ let i = 0;
+ while (true){
+   let inData = yield i++;
+   console.log( inData );
+ }
+}
+let sequence = gen();
+sequence.next()
+sequence.next( 'test1' )
+sequence.next()
+sequence.next( 'test2' )
+// Expected output:
+// 'test1'
+// undefined
+// 'test2'
+```
 
 ###### 代码段 1.86 Yield 关键字
 
