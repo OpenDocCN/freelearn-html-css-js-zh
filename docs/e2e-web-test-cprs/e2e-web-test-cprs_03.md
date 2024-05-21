@@ -1,4 +1,4 @@
-# 第二章：*第二章*：Selenium WebDriver 和 Cypress 之间的差异
+# 第二章：：Selenium WebDriver 和 Cypress 之间的差异
 
 Cypress 和 Selenium WebDriver 都是支持端到端测试的测试自动化框架，当有人提到 Cypress 时，很快就需要比较或找出哪个比另一个更好。在我们开始了解 Selenium WebDriver 和 Cypress 之间的差异之前，我们首先需要了解两个测试框架开发的不同动机以及它们的预期用户是谁。
 

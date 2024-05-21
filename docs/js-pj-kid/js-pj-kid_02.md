@@ -1,4 +1,4 @@
-# 第二章。使用 JavaScript 解决问题
+# 第二章：使用 JavaScript 解决问题
 
 在上一章中，你已经学会了如何使用 JavaScript 在控制台上打印东西。现在，让我们看看 JavaScript 语法、变量、算术运算符和注释背后的基本原理。
 

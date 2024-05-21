@@ -1,6 +1,4 @@
-# 第四章：*第三章*
-
-# Node.js API 和 Web 抓取
+# 第四章：Node.js API 和 Web 抓取
 
 ## 学习目标
 

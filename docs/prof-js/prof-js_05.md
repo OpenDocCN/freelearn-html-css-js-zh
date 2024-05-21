@@ -1,6 +1,4 @@
-# 第六章：*第五章*
-
-# 模块化 JavaScript
+# 第六章：模块化 JavaScript
 
 ## 学习目标
 

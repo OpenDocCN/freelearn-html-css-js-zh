@@ -1,4 +1,4 @@
-# 第一章。JavaScript 基础知识
+# 第一章：JavaScript 基础知识
 
 JavaScript 最初由 Netscape Communications Corp 作为 LiveScript 引入，近年来取得了长足的发展。JavaScript 最初是为了使网页更具交互性，并控制页面的行为而开发的。JavaScript 程序通常嵌入在 HTML 文件中。HTML 是一种标记语言，一旦加载，就不会操纵页面的行为。使用 JavaScript，Web 开发人员可以设置规则并验证是否遵循了规则，避免任何远程服务器资源进行输入验证或复杂的数字计算。今天，JavaScript 不仅用于基本的输入验证；它还用于访问浏览器的`Document`对象，对 Web 服务器进行异步调用，并使用诸如`Node.JS`等软件平台开发端到端的 Web 应用程序，该平台由 Google 的 v8 JavaScript 引擎提供支持。
 

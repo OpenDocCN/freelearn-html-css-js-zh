@@ -1,6 +1,4 @@
-# 第八章：*第七章*
-
-# 高级 JavaScript
+# 第八章：高级 JavaScript
 
 ## 学习目标
 

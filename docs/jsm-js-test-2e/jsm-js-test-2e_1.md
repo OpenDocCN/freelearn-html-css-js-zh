@@ -1,4 +1,4 @@
-# 第一章. 使用 Jasmine 入门
+# 第一章：使用 Jasmine 入门
 
 成为 JavaScript 开发人员是一个令人兴奋的时刻；技术已经成熟，Web 浏览器更加标准化，每天都有新的东西可以玩。JavaScript 已经成为一种成熟的语言，而 Web 是当今真正开放的平台。我们已经看到单页 Web 应用的兴起，**模型视图控制器**（**MVC**）框架的大量使用，如 Backbone.js 和 AngularJS，使用 Node.js 在服务器上使用 JavaScript，甚至使用诸如 PhoneGap 等技术完全使用 HTML、JavaScript 和 CSS 创建的移动应用程序。
 

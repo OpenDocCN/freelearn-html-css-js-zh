@@ -1,6 +1,4 @@
-# 第二章：*第一章*
-
-# JavaScript，HTML 和 DOM
+# 第二章：JavaScript，HTML 和 DOM
 
 ## 学习目标
 

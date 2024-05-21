@@ -1,4 +1,4 @@
-# 第二章. JSON 入门
+# 第二章：JSON 入门
 
 JSON 或 JavaScript 对象表示法是一种非常流行的数据交换格式。它是由 Douglas Crockford 开发的。JSON 是基于文本的，轻量级的，用于客户端和服务器之间的数据交换的人类可读格式。JSON 源自 JavaScript，并与 JavaScript 对象非常相似，但不依赖于 JavaScript。JSON 是与语言无关的，并且所有流行语言都支持 JSON 数据格式，其中一些是 C＃，PHP，Java，C ++，Python 和 Ruby。
 

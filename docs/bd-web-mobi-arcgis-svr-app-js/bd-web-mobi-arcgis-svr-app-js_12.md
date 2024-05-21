@@ -1,4 +1,4 @@
-# 第十二章。创建移动应用程序
+# 第十二章：创建移动应用程序
 
 JavaScript 的 ArcGIS Server API 提供对移动平台的支持。目前支持 iOS、Android 和 BlackBerry 操作系统。API 与`dojox/mobile`集成。在本章中，您将了解使 Web 映射应用程序通过 WebKit 浏览器以及内置手势支持成为可能的 API 的紧凑版。请记住，这与 ArcGIS API for iOS 或 Android 不同，后者用于构建可以通过应用商店提供的本机应用程序。JavaScript API 应用程序通过移动设备的 WebKit 浏览器呈现。
 

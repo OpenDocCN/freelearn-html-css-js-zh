@@ -1,6 +1,4 @@
-# 第二章：*第一章*
-
-# 介绍 ECMAScript 6
+# 第二章：介绍 ECMAScript 6
 
 ## 学习目标
 

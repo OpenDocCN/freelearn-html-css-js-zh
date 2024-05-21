@@ -1,4 +1,4 @@
-# 第七章。识别和查找要素
+# 第七章：识别和查找要素
 
 在本章中，我们将介绍与返回要素属性相关的两个 ArcGIS Server 任务：IdentifyTask 和 FindTask。识别要素是 GIS 应用程序中的另一个常见操作。此任务返回在地图上单击的要素的属性。属性信息通常显示在弹出窗口中。通过 ArcGIS API for JavaScript 的 IdentifyTask 类实现此功能。与我们所见的其他任务过程一样，IdentifyTask 对象使用输入参数对象，本例中称为 IdentifyParameters。IdentifyParameters 对象包含各种参数，用于控制识别操作的结果。这些参数使您能够对单个图层、服务中的最顶层图层、服务中的所有可见图层或服务中的所有图层以及搜索容差执行识别。IdentifyResult 的实例用于保存任务的结果。
 

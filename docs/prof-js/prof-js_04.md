@@ -1,6 +1,4 @@
-# 第五章：*第四章*
-
-# 使用 Node.js 创建 RESTful API
+# 第五章：使用 Node.js 创建 RESTful API
 
 ## 学习目标
 

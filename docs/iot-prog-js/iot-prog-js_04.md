@@ -1,4 +1,4 @@
-# 第四章。控制连接的设备
+# 第四章：控制连接的设备
 
 在本章中，我们将看看如何使用我们的 Raspberry Pi Zero 和 Arduino UNO 从远程站点控制设备，使用以下模块在网络中进行通信：Wi-Fi shield 和 Ethernet shield。我们将在本章中涵盖以下主题：
 

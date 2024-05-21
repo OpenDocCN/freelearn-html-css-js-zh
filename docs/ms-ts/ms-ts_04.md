@@ -1,4 +1,4 @@
-# 第四章。编写和使用声明文件
+# 第四章：编写和使用声明文件
 
 JavaScript 开发最吸引人的一个方面是已经发布的大量外部 JavaScript 库，比如 jQuery、Knockout 和 Underscore。TypeScript 的设计者知道，向 TypeScript 语言引入“语法糖”将为开发人员带来一系列好处。这些好处包括 IDE 功能，如智能感知，以及详细的编译时错误消息。我们已经看到了如何将这种语法应用于大多数 TypeScript 语言特性，比如类、接口和泛型，但是我们如何将这种“糖”应用于现有的 JavaScript 库呢？答案相对简单——声明文件。
 

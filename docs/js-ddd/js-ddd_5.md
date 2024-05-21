@@ -1,4 +1,4 @@
-# 第五章。分类和实施
+# 第五章：分类和实施
 
 根据 IBM 的一项研究（[`www-935.ibm.com/services/us/gbs/bus/pdf/gbe03100-usen-03-making-change-work.pdf`](http://www-935.ibm.com/services/us/gbs/bus/pdf/gbe03100-usen-03-making-change-work.pdf)），只有 41%的项目能够达到其进度、预算和质量目标。项目的成功或失败在很大程度上并不取决于技术，而是取决于参与其中的人。
 

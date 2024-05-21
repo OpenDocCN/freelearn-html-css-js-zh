@@ -1,4 +1,4 @@
-# 第六章。JavaScript 中的高级主题和陷阱
+# 第六章：JavaScript 中的高级主题和陷阱
 
 JavaScript 被称为 Web 的"汇编语言"。这个类比（它并不完美，但哪个类比是完美的？）源自于 JavaScipt 经常是编译的目标，主要来自**Clojure**和**CoffeeScript**，但也来自许多其他来源，比如**pyjamas**（python 到 JS）和 Google Web Kit（Java 到 JS）。
 

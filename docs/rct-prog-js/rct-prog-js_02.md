@@ -1,4 +1,4 @@
-# 第二章。核心 JavaScript
+# 第二章：核心 JavaScript
 
 JavaScript 是一个好坏参半的语言。JavaScript 有一些真正糟糕的部分和一些优秀的部分。总的来说，JavaScript 是一种动态的、弱类型的、解释性的脚本语言。对整个语言的处理是重点探索*好的部分*，正如 Douglas Crockford 所描述的那样，因为 JavaScript 的坏部分有多糟糕：它们确实是雷区。Crockford 对 JavaScript 的现在的使用产生了深远的影响；足以让题为*AngularJS：坏部分*的博客文章立即、清楚、完全地传达了将会被痛苦细致地剖析的事物。
 
