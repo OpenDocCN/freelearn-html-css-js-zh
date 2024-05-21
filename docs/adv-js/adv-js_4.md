@@ -1,4 +1,4 @@
-# 第五章：测试 JavaScript
+# 第四章：测试 JavaScript
 
 ## 学习目标
 

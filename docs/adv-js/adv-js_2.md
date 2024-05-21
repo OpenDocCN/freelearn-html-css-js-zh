@@ -1,4 +1,4 @@
-# 第三章：异步 JavaScript
+# 第二章：异步 JavaScript
 
 ## 学习目标
 

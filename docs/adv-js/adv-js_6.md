@@ -1,4 +1,4 @@
-# 第七章：JavaScript 生态系统
+# 第六章：JavaScript 生态系统
 
 ## 学习目标
 
