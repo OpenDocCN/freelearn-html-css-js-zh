@@ -1,3 +1,4 @@
++   [JavaScript 数据结构和算法实用手册](README.md)
 +   [前言](hsn-dsal-js_00.md)
 +   [第一章：构建应用程序状态管理的堆栈](hsn-dsal-js_01.md)
 +   [第二章：为顺序执行创建队列](hsn-dsal-js_02.md)

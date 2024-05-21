@@ -1,3 +1,4 @@
++   [JavaScript 函数式编程](README.md)
 +   [前言](fp-js_0.md)
 +   [第一章：JavaScript 函数式编程的力量-演示](fp-js_1.md)
 +   [第二章：函数式编程基础](fp-js_2.md)

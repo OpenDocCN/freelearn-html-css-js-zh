@@ -1,3 +1,4 @@
++   [JavaScript 高性能实用指南](README.md)
 +   [前言](hsn-js-hiperf_00.md)
 +   [第一章：网络高性能工具](hsn-js-hiperf_01.md)
 +   [第二章：不可变性与可变性-安全与速度之间的平衡](hsn-js-hiperf_02.md)

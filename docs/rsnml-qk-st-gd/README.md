@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# ReasonML 快速启动指南
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/EBC7126C5733D51726286A656704EE51`](https://zh.annas-archive.org/md5/EBC7126C5733D51726286A656704EE51)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
