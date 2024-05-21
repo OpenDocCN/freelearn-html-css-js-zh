@@ -70,24 +70,17 @@ JavaScript 通常用作函数式语言，但您也可以将其用于**面向对�
 
 要创建一个 JavaScript 数组，请使用以下命令：
 
-```
-const jsArray = [];
-```
+[PRE0]
 
 请注意，在 JavaScript 中，不需要定义数组中的大小或类型。
 
 要创建一个具有预定义元素的数组，请使用以下命令：
 
-```
-const foodList = ['sushi', 'fried chicken', 21];
-```
+[PRE1]
 
 要访问和修改数组中的项目，请使用以下命令：
 
-```
-const sushi = foodList[0];
-foodList[2] = 'steak';
-```
+[PRE2]
 
 这与访问数组时其他编程语言非常相似。
 
@@ -97,73 +90,33 @@ foodList[2] = 'steak';
 
 1.  使用数组文字方法创建一个空数组并测试它是否成功创建后：
 
-```
-> let exampleArray1 = [];
-=> undefined
-> Array.isArray(exampleArray1);
-=> true
-```
+[PRE3]
 
 1.  现在，我们将使用`Array`构造函数来做同样的事情。虽然它们产生相同的结果，但构造函数允许更多的灵活性：
 
-```
-> let exampleArray2 = new Array();
-=> undefined
-> Array.isArray(exampleArray2);
-=> true
-```
+[PRE4]
 
 请注意，我们没有使用`typeof`来检查数组的类型，因为在 JavaScript 中，数组是对象的一种类型。如果我们在刚刚创建的数组上使用`typeof`，我们会得到一个意外的结果：
 
-```
-> let exampleArray3 = [];
-=> undefined
-> typeof exampleArray3
-=> 'object'
-```
+[PRE5]
 
 1.  创建具有预定义大小和项目的数组。请注意，随着向数组添加项目，JavaScript 数组将自动调整大小：
 
-```
-> let exampleArray4 = new Array(6)
-=> undefined
-> exampleArray4
-=> [ <6 empty items> ]
-or
-> let singers = new Array(6).fill('miku')
-=> undefined
-> singers
-=> [ 'miku', 'miku', 'miku', 'miku', 'miku', 'miku' ]
-```
+[PRE6]
 
 正如你所看到的，我们初始化了一个具有初始大小为`6`的数组。我们还使用了`fill`方法来预定义数组中的所有项目。当我们想要使用数组来跟踪应用程序中的标志时，这是非常有用的。
 
 1.  为索引`0`分配一个值：
 
-```
-> singers[0] = 'miku'
-=> 'miku'
-> singers
-=> [ 'miku' ]
-```
+[PRE7]
 
 1.  为 JavaScript 数组分配任意索引。未分配的索引将简单地是`undefined`：
 
-```
-> singers[3] = 'luka'
-=> 'luka'
-> singers[1]
-=> undefined
-```
+[PRE8]
 
 1.  使用数组的长度修改数组末尾的项目：
 
-```
-> singers[singers.length - 1] = 'rin'
-=> 'rin'
-> singers
-=> [ 'miku', 'miku', 'miku', 'miku', 'miku', 'rin' ]
-```
+[PRE9]
 
 因此，我们已经学会了如何在 JavaScript 中定义数组。这些数组的行为类似于其他语言，它们也会自动扩展，因此你不必担心手动调整数组的大小。在下一个练习中，我们将讨论如何向数组中添加项目。
 
@@ -173,63 +126,29 @@ or
 
 1.  从一个空数组开始：
 
-```
-> let singers = [];
-=> undefined
-```
+[PRE10]
 
 1.  使用`push`在数组末尾添加一个新项目：
 
-```
-> singers.push('miku')
-=> 1
-> singers
-=> [ 'miku' ]
-```
+[PRE11]
 
 `push`方法将始终将项目添加到数组的末尾，即使数组中有`undefined`的项目：
 
-```
-> let food = new Array(3)
-=> undefined
-> food.push('burger')
-=> 4
-> food
-=> [ <3 empty items>, 'burger' ]
-```
+[PRE12]
 
 如你在上面的代码中所看到的，如果你有一个预定义大小的数组，使用`push`将会扩展数组并将其添加到数组的末尾，而不是只将其添加到开头
 
 1.  从数组末尾删除一个项目：
 
-```
-> singers.push('me')
-=> 2
-> singers
-=> [ 'miku', 'me' ]
-> singers.pop()
-=> 'me'
-> singers
-=> [ 'miku' ]
-```
+[PRE13]
 
 1.  在数组开头添加一个项目：
 
-```
-> singers.unshift('rin')
-=> 2
-> singers
-=> [ 'rin', 'miku' ]
-```
+[PRE14]
 
 1.  从数组的开头移除项目：
 
-```
-> singers.shift()
-=> 'rin'
-> singers
-=> [ 'miku' ]
-```
+[PRE15]
 
 在更大规模的应用程序中，这些非常有用，比如如果您正在构建一个处理图像的简单 Web 应用程序。当请求到来时，您可以将图像数据、作业 ID 甚至客户端连接推送到数组中，这意味着 JavaScript 数组可以是任何类型。您可以有另一个工作人员在数组上调用`pop`来检索作业，然后处理它们。
 
@@ -239,41 +158,19 @@ or
 
 1.  创建一个空数组并向其中推送项目：
 
-```
-> let foods = []
-=> undefined
-> foods.push('burger')
-=> 1
-> foods.push('fries')
-=> 2
-> foods.push('wings')
-=> 3
-```
+[PRE16]
 
 1.  查找项目的索引：
 
-```
-> foods.indexOf('burger')
-=> 0
-```
+[PRE17]
 
 1.  查找数组中项目的数量：
 
-```
-> foods.length
-=> 3
-```
+[PRE18]
 
 1.  从数组中的特定索引中移除一个项目。我们将通过将要移除的项目的位置存储到一个变量中来实现这一点。知道我们要移除项目的位置后，我们可以调用`array.splice`来移除它：
 
-```
-> let position = foods.indexOf('burger')
-=> undefined
-> foods.splice(position, 1) // splice(startIndex, deleteCount)
-=> [ 'burger' ]
-> foods
-=> [ 'fries', 'wings' ]
-```
+[PRE19]
 
 #### 注意
 
@@ -313,67 +210,39 @@ or
 
 要在 JavaScript 中创建一个对象，请使用以下命令：
 
-```
-const myObj = {};
-```
+[PRE20]
 
 通过使用`{}`符号，我们正在定义一个空对象并将其分配给我们的变量名。
 
 我们可以使用对象在我们的应用程序中存储许多键值对的数字：
 
-```
-myObj.item1 = 'item1';
-myObj.item2 = 12;
-```
+[PRE21]
 
 如果我们想要访问值，这也很容易：
 
-```
-const item = myObj.item1;
-```
+[PRE22]
 
 在 JavaScript 中，创建对象并不意味着必须遵循特定的模式。您可以在对象中放入任意数量的属性。只需确保对象键没有重复：
 
-```
-> dancers = []
-=> undefined
-> dancers.push({ name: 'joey', age: 30 })
-=> undefined
-```
+[PRE23]
 
 请注意，新对象的语法与 JSON 表示法非常相似。有时我们需要确切知道对象中有什么样的信息。
 
 您可以创建一个具有一些属性的用户对象：
 
-```
-> let myConsole = { name: 'PS4', color: 'black', price: 499, library: []}
-=> undefined
-```
+[PRE24]
 
 要获取所有属性名称，您需要使用`keys`方法，如下所示：
 
-```
-> Object.keys(myConsole)
-=> [ 'name', 'color', 'price', 'library' ]
-```
+[PRE25]
 
 我们还可以测试属性是否存在。让我们检查尚未定义的属性：
 
-```
-> if (myConsole.ramSize) {
-... console.log('ram size is defined.');
-... }
-> undefined
-```
+[PRE26]
 
 现在，让我们检查我们之前定义的属性：
 
-```
-> if (myConsole.price) {
-... console.log('price is defined.');
-... }
-> price is defined.
-```
+[PRE27]
 
 这是测试属性是否存在于对象中的一种非常简单的方法。在许多应用程序中，这经常用于检查字段的存在性，如果不存在，则将设置默认值。只需记住，在 JavaScript 中，空字符串、空数组、数字零和其他虚假值将被`if`语句评估为`false`。在下一个练习中，我们将尝试创建一个包含大量信息并从中输出非常有用信息的对象。
 
@@ -383,51 +252,27 @@ const item = myObj.item1;
 
 1.  将`singers`数组设置为空数组：
 
-```
-> singers = []
-=> undefined
-```
+[PRE28]
 
 1.  将对象推送到数组中：
 
-```
-> singers.push({ name: 'miku', age: 16 })
-=> undefined
-```
+[PRE29]
 
 1.  修改数组中第一个对象的`name`属性：
 
-```
-> singers[0].name = 'Hatsune Miku'
-=> 'Hatsune Miku'
-> singers
-=> [ { name: 'Hatsune Miku', age: 16 } ]
-```
+[PRE30]
 
 修改对象中的值非常简单；例如，您可以将任何值分配给属性，但不仅如此。您还可以添加原本不是对象一部分的属性，以扩展其信息。
 
 1.  向对象添加一个名为`birthday`的属性：
 
-```
-> singers[0].birthday = 'August 31'
-=> 'August 31'
-> singers
-=> [ { name: 'Hatsune Miku', age: 16, birthday: 'August 31' } ]
-```
+[PRE31]
 
 要向现有对象添加属性，只需将值分配给属性名称。如果该属性不存在，将创建该属性。您可以将任何值分配给属性，函数、数组或其他对象。
 
 1.  通过执行以下代码读取对象中的属性：
 
-```
-> singers[0].name
-=> 'Hatsune Miku'
-or
-> const propertyName = 'name'
-=> undefined
-> singers[0][propertyName]
-=> 'Hatsune Miku'
-```
+[PRE32]
 
 正如您所看到的，访问 JavaScript 对象的属性值非常简单。如果您已经知道值的名称，只需使用点表示法。在某些情况下，属性名称是动态的或来自变量，您可以使用括号表示法来访问该属性名称的属性值。
 
@@ -439,22 +284,11 @@ or
 
 例如，假设我们有一个`user`对象，我们想将其转换为字符串：
 
-```
-const user = {
-   name: 'r1cebank',
-   favoriteFood: [
-      'ramen',
-      'sushi',
-      'fried chicken'
-   ]
-};
-```
+[PRE33]
 
 如果我们想要将对象转换为字符串，我们需要使用`JSON.stringify`调用此对象，如下面的代码所示：
 
-```
-JSON.stringify(user);
-```
+[PRE34]
 
 我们将得到这样的结果：
 
@@ -472,54 +306,27 @@ JSON.stringify(user);
 
 1.  创建`betterStringify`函数：
 
-```
-function betterStringify(item, propertyMap) {
-}
-```
+[PRE35]
 
 1.  现在，我们将创建一个临时输出。我们将存储我们想要包含在`propertyMap`中的属性：
 
-```
-let output = {};
-```
+[PRE36]
 
 1.  遍历我们的`propertyMap`参数以挑选我们想要包含的属性：
 
-```
-propertyMap.forEach((key) => {
-});
-```
+[PRE37]
 
 因为我们的`propertyMap`参数是一个数组，我们希望使用`forEach`来对其进行迭代。
 
 1.  将值从我们的项目分配给临时输出：
 
-```
-propertyMap.forEach((key) => {
-if (item[key]) {
-   output[key] = item[key];
-}
-});
-```
+[PRE38]
 
 在这里，我们正在检查我们的`propertyMap`参数中的键是否已设置。如果已设置，我们将把值存储在我们的`output`属性中。
 
 1.  在测试对象上使用一个函数：
 
-```
-const singer = {
- name: 'Hatsune Miku',
- age: 16,
- birthday: 'August 31',
- birthplace: 'Sapporo, Japan',
- songList: [
-  'World is mine',
-  'Tell your world',
-  'Melt'
- ]
-}
-console.log(betterStringify(singer, ['name', 'birthday']))
-```
+[PRE39]
 
 完成函数后，运行文件将产生以下输出：
 
@@ -543,23 +350,15 @@ console.log(betterStringify(singer, ['name', 'birthday']))
 
 假设你已经得到了一个需要分配给变量的参数列表：
 
-```
-const param = ['My Name', 12, 'Developer'];
-```
+[PRE40]
 
 一种分配它们的方法是访问数组中的每个项目：
 
-```
-const name = param[0];
-const age = param[1];
-const job = param[2];
-```
+[PRE41]
 
 我们还可以使用解构赋值将其简化为一行：
 
-```
-[name, age, job] = param;
-```
+[PRE42]
 
 ### 练习 42：使用数组的解构赋值
 
@@ -567,42 +366,23 @@ const job = param[2];
 
 1.  创建`userInfo`数组：
 
-```
-> const userInfo = ['John', 'chef', 34]
-=> undefined
-```
+[PRE43]
 
 1.  创建用于存储`name`、`age`和`job`的变量：
 
-```
-> let name, age, job
-=> undefined
-```
+[PRE44]
 
 1.  使用解构赋值语法将值分配给我们的变量：
 
-```
-> [name, job, age] = userInfo
-=> [ 'John', 'chef', 34 ]
-```
+[PRE45]
 
 检查我们的值：
 
-```
-> name
-=> 'John'
-> job
-=> 'chef'
-> age
-=> 34
-```
+[PRE46]
 
 1.  你还可以使用以下代码忽略数组中的值：
 
-```
-> [name, ,age] = userInfo
-=> [ 'John', 'chef', 34 ] // we ignored the second element 'chef'
-```
+[PRE47]
 
 解构赋值在处理数据时非常有用，因为数据的格式通常不是你所期望的。它还可以用来挑选数组中你想要的项目。
 
@@ -612,59 +392,29 @@ const job = param[2];
 
 1.  创建一个名为`userInfo`的对象：
 
-```
-> const userInfo = { name: 'John', job: 'chef', age: 34 }
-=> undefined
-```
+[PRE48]
 
 1.  创建我们将用来存储信息的变量：
 
-```
-> let name, job
-=> undefined
-```
+[PRE49]
 
 1.  使用解构赋值语法来分配值：
 
-```
-> ({ name, job } = userInfo)
-=> { name: 'John', job: 'chef', age: 34 }
-```
+[PRE50]
 
 1.  检查这些值：
 
-```
-> name
-=> 'John'
-> job
-=> 'chef'
-```
+[PRE51]
 
 请注意，在对象上使用解构赋值时，它的作用类似于一个过滤器，其中变量名必须匹配，并且您可以有选择地选择要选择的数组中的属性。还有一种不需要预先声明变量的对象使用方式。
 
 1.  使用数组进行解构赋值：
 
-```
-> userInfo = ['John', 'chef', 34]
-=> undefined
-> [ name, , age] = userInfo
-=> undefined
-> name
-=> 'John'
-> age
-=> 34
-```
+[PRE52]
 
 1.  使用解构运算符从对象值创建变量：
 
-```
-> const userInfoObj = { name: 'John', job: 'chef', age: 34 }
-=> undefined
-> let { job } = userInfoObj
-=> undefined
-> job
-=> 'chef'
-```
+[PRE53]
 
 以下是前面代码的输出：
 
@@ -680,9 +430,7 @@ const job = param[2];
 
 要使用展开运算符，我们在任何可迭代对象之前使用三个点（`…`），就像这样：
 
-```
-printUser(...userInfo)
-```
+[PRE54]
 
 ### 练习 44：使用展开运算符
 
@@ -692,71 +440,39 @@ printUser(...userInfo)
 
 1.  创建`userInfo`数组：
 
-```
-> const userInfo = ['John', 'chef', 34]
-=> undefined
-```
+[PRE55]
 
 1.  创建一个打印用户信息的函数：
 
-```
-> function printUser(name, job, age) {
-... console.log(name + ' is working as ' + job + ' and is ' + age + ' years old');
-... }
-=> undefined
-```
+[PRE56]
 
 1.  将数组展开为参数列表：
 
-```
-> printUser(...userInfo)
-John is working as chef and is 34 years old
-```
+[PRE57]
 
 正如你所看到的，调用这个函数的原始方式，没有使用展开运算符，是使用数组访问运算符，并为每个参数重复这样做。由于数组的排序与相应的参数匹配，我们可以只使用展开运算符。
 
 1.  当你想要合并数组时使用展开运算符：
 
-```
-> const detailedInfo = ['male', ...userInfo, 'July 5']
-=> [ 'male', 'John', 'chef', 34, 'July 5' ]
-```
+[PRE58]
 
 1.  使用展开运算符作为复制数组的一种方式：
 
-```
-> let detailedInfoCopy = [ ...detailedInfo ];
-=> undefined
-> detailedInfoCopy
-=> [ 'male', 'John', 'chef', 34, 'July 5' ]
-```
+[PRE59]
 
 在对象上使用展开运算符要强大得多且实用。
 
 1.  创建一个名为`userRequest`的新对象：
 
-```
-> const userRequest = { name: 'username', type: 'update', data: 'newname'}
-=> undefined
-```
+[PRE60]
 
 1.  使用`object`展开克隆对象：
 
-```
-> const newObj = { ...userRequest }
-=> undefined
-> newObj
-=> { name: 'username', type: 'update', data: 'newname' }
-```
+[PRE61]
 
 1.  创建一个包含此对象的每个属性的对象：
 
-```
-> const detailedRequestObj = { data: new Date(), new: true, ...userRequest}
-=> undefined
-> detailedRequestObj
-=> { data: 'newname', new: true, name: 'username', type: 'update' }
-```
+[PRE62]
 
 您可以看到，当您想要复制所有属性到一个新对象时，展开运算符非常有用。您可以在许多应用程序中看到它的使用，其中您希望用一些通用属性包装用户请求以进行进一步处理。
 
@@ -766,12 +482,7 @@ John is working as chef and is 34 years old
 
 剩余运算符主要用于表示无限数量的参数。然后，参数将被放入一个数组中：
 
-```
-function sum(...numbers) {
-   console.log(numbers);
-}
-sum(1, 2, 3, 4, 5, 6, 7, 8, 9);
-```
+[PRE63]
 
 正如你所看到的，我们在名称前使用了相同的三个点。这告诉我们的代码，我们期望这个函数有无限数量的参数。当我们使用参数列表调用函数时，它们将被放入一个 JavaScript 数组中：
 
@@ -781,17 +492,11 @@ sum(1, 2, 3, 4, 5, 6, 7, 8, 9);
 
 这并不意味着你对参数的数量没有任何控制。您可以像这样编写函数声明，让 JavaScript 将多个参数映射到您喜欢的方式，并将其余参数放入数组中：
 
-```
-function sum(initial, ...numbers) {
-   console.log(initial, numbers);
-}
-```
+[PRE64]
 
 这将第一个参数映射到名为 initial 的变量，其余参数映射到名为`numbers`的数组：
 
-```
-sum(0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
-```
+[PRE65]
 
 以下是前面代码的输出：
 
@@ -803,13 +508,7 @@ sum(0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
 
 由于 JavaScript 在 Web 开发中的流行，它主要以一种功能性的方式使用。这导致许多开发人员认为在 JavaScript 中没有办法进行面向对象编程。甚至在 ES6 标准发布之前，已经有一种定义类的方式：使用函数。您可能在旧版前端代码中看到过这种定义类的方式。例如，如果您想创建一个名为`Food`的类，您将不得不写类似于这样的代码：
 
-```
-function Food(name) {
-   this.name = name;
-}
-var leek = new Food("leek");
-console.log(leek.name); // Outputs "leek"
-```
+[PRE66]
 
 在 ES6 发布后，越来越多的开发人员采用了使用`class`关键字编写现代 JavaScript 类的方式。在本章中，我们将介绍使用 ES6 标准声明类的方法。
 
@@ -819,26 +518,13 @@ console.log(leek.name); // Outputs "leek"
 
 在 ES6 之前用于定义类的语法如下：
 
-```
-function ClassName(param1, param2) {
-   // Constructor Logic
-}
-```
+[PRE67]
 
 本质上，我们正在定义`constructor`类。函数的名称将是类的名称。
 
 使用 ES6 定义类的语法如下：
 
-```
-class ClassName {
-   constructor(param1, param2) {
-      // Constructor logic
-   }
-   method1(param) {
-      // Method logic
-   }
-}
-```
+[PRE68]
 
 这通常是我们在其他语言中对类定义所做的事情。在这里，我们可以定义一个构造函数和一个方法。
 
@@ -848,33 +534,19 @@ class ClassName {
 
 1.  定义`Food`构造函数：
 
-```
-function Food(name, calories, cost) {
-   this.name = name;
-   this.calories = calories;
-   this.cost = cost;
-}
-```
+[PRE69]
 
 1.  将方法添加到构造函数中：
 
-```
-Food.prototype.description = function () {
-   return this.name + ' calories: ' + this.calories;
-}
-```
+[PRE70]
 
 1.  使用`Food`构造函数创建一个新对象：
 
-```
-let burger = new Food('burger', 1000, 9);
-```
+[PRE71]
 
 1.  调用我们声明的方法：
 
-```
-console.log(burger.description());
-```
+[PRE72]
 
 以下是前面代码的输出：
 
@@ -890,16 +562,11 @@ console.log(burger.description());
 
 1.  声明一个`Food`类：
 
-```
-class Food {
-}
-```
+[PRE73]
 
 1.  对类名运行`typeof`以查看它的类型：
 
-```
-console.log(typeof Food) // should print out 'function'
-```
+[PRE74]
 
 以下是前面代码的输出：
 
@@ -911,39 +578,17 @@ console.log(typeof Food) // should print out 'function'
 
 1.  让我们添加我们的`constructor`：
 
-```
-class Food {
-   constructor(name, calories, cost) {
-      this.name = name;
-      this.calories = calories;
-      this.cost = cost;
-   }
-}
-```
+[PRE75]
 
 就像任何其他语言一样，类定义将包括一个构造函数，使用`new`关键字调用它来创建这个类的实例。
 
 1.  在类定义中编写`description`方法：
 
-```
-class Food {
-   constructor(name, calories, cost) {
-      this.name = name;
-      this.calories = calories;
-      this.cost = cost;
-   }
-   description() {
-      return this.name + ' calories: ' + this.calories;
-   }
-}
-```
+[PRE76]
 
 1.  如果您尝试像调用函数一样调用`Food`类构造函数，它将抛出以下错误：
 
-```
-Food('burger', 1000, 9);
-// TypeError: Class constructor Food2 cannot be invoked without 'new'
-```
+[PRE77]
 
 以下是前面代码的输出：
 
@@ -955,39 +600,19 @@ Food('burger', 1000, 9);
 
 1.  使用类构造函数创建一个新的食物对象：
 
-```
-let friedChicken = new Food('fried chicken', 520, 5);
-```
+[PRE78]
 
 1.  调用我们声明的方法：
 
-```
-console.log(friedChicken.description());
-```
+[PRE79]
 
 1.  声明`static`方法，它返回卡路里数：
 
-```
-class Food {
-   constructor(name, calories, cost) {
-      this.name = name;
-      this.calories = calories;
-      this.cost = cost;
-   }
-   static getCalories(food) {
-      return food.calories
-   }
-   description() {
-      return this.name + ' calories: ' + this.calories;
-   }
-}
-```
+[PRE80]
 
 1.  使用我们刚刚创建的对象调用`static`方法：
 
-```
-console.log(Food.getCalories(friedChicken)); /// 520
-```
+[PRE81]
 
 以下是前面代码的输出：
 
@@ -1017,60 +642,25 @@ console.log(Food.getCalories(friedChicken)); /// 520
 
 1.  创建`MySimpleCache`类：
 
-```
-class MySimpleCache {
-constructor() {
-   // Declare your cache internal properties here
-   this.cacheItems = {};
-}
-}
-```
+[PRE82]
 
 在构造函数中，我们还将初始化缓存的内部状态。 这将是一个简单的对象。
 
 1.  定义`addItem`，它将为键设置缓存项：
 
-```
-addItem(key, value) {
-// Add an item with the key
-this.cacheItems[key] = value;
-  }
-```
+[PRE83]
 
 1.  定义`updateItem`，它将使用我们已经定义的`addItem`：
 
-```
-updateItem(key, value) {
-// Update a value use the key
-this.addItem(key, value);
-}
-```
+[PRE84]
 
 1.  定义`removeItem`。 这将删除我们存储在缓存中的对象，并调用我们之前创建的`updateItem`方法：
 
-```
-removeItem(key) {
-this.updateItem(key, undefined);
-}
-```
+[PRE85]
 
 1.  使用`assert()`测试我们的缓存，通过更新和删除一些用户来测试`testMycache`：
 
-```
-function testMyCache() {
-   const cache = new MySimpleCache ();
-   cache.addItem('user1', { name: 'user1', dob: 'Jan 1' });
-   cache.addItem('user2', { name: 'user2', dob: 'Jul 21' });
-   cache.updateItem('user1', { name: 'user1', dob: 'Jan 2' });
-   cache.addItem('user3', { name: 'user3', dob: 'Feb 1' });
-   cache.removeItem('user3');
-   assert(cache.getItem('user1').dob === 'Jan 2');
-   assert(cache.getItem('user2').dob === 'Jul 21');
-   assert(cache.getItem('user3') === undefined);
-   console.log ('=====TEST PASSED=====')
-}
-testMyCache();
-```
+[PRE86]
 
 #### 注意
 
@@ -1100,10 +690,7 @@ testMyCache();
 
 在 JavaScript 中，很容易创建一个从另一个类继承的子类。 为此，使用`extends`关键字：
 
-```
-class MySubClass extends ParentClass {
-}
-```
+[PRE87]
 
 ### 练习 48：实现子类
 
@@ -1117,29 +704,11 @@ class MySubClass extends ParentClass {
 
 1.  定义`Vehicle`类：
 
-```
-class Vehicle {
-   constructor(name, speed, cost) {
-      this.name = name;
-      this.speed = speed;
-      this.cost = cost;
-   }
-   start() {
-      console.log('Starting vehicle, ' + this.name + ' at ' + this.speed + 'km/h');
-   }
-   buy() {
-      console.log('Buying for ' + this.cost);
-   }
-}
-```
+[PRE88]
 
 1.  创建一个`vehicle`实例并测试其方法：
 
-```
-const vehicle = new Vehicle('bicycle', 15, 100);
-vehicle.start();
-vehicle.buy();
-```
+[PRE89]
 
 您应该看到以下输出：
 
@@ -1149,47 +718,19 @@ vehicle.buy();
 
 1.  创建`Car`，`Plane`和`Rocket`子类：
 
-```
-class Car extends Vehicle {}
-class Plane extends Vehicle {}
-class Rocket extends Vehicle {}
-```
+[PRE90]
 
 1.  在`Car`，`Plane`和`Rocket`中，重写`start`方法：
 
-```
-class Car extends Vehicle {
-   start() {
-      console.log('Driving car, at ' + this.speed + 'km/h');
-   }
-}
-class Plane extends Vehicle {
-   start() {
-      console.log('Flying plane, at ' + this.speed + 'km/h');
-   }
-}
-class Rocket extends Vehicle {
-   start() {
-      console.log('Flying rocket to the moon, at ' + this.speed + 'km/h');
-   }
-}
-```
+[PRE91]
 
 1.  为`Plane`，`Rocket`和`Car`创建一个实例：
 
-```
-const car = new Car('Toyota Corolla', 120, 5000);
-const plane = new Plane('Boeing 737', 1000, 26000000);
-const rocket = new Rocket('Saturn V', 9920, 6000000000);
-```
+[PRE92]
 
 1.  在所有三个对象上调用`start`方法：
 
-```
-car.start();
-plane.start();
-rocket.start();
-```
+[PRE93]
 
 以下是前述代码的输出：
 
@@ -1203,24 +744,11 @@ rocket.start();
 
 1.  对我们之前创建的子类，我们将修改`Car`子类，以便在构造函数中包含额外的参数：
 
-```
-class Car extends Vehicle {
-   constructor(name, speed, cost, tankSize) {
-      super(name, speed, cost);
-      this.tankSize = tankSize;
-   }
-   start() {
-      console.log('Driving car, at ' + this.speed + 'km/h');
-   }
-}
-```
+[PRE94]
 
 1.  检查额外的属性是否已设置：
 
-```
-const car2 = new Car('Toyota Corolla 2', 120, 5000, 2000);
-console.log(car2.tankSize); // 2000
-```
+[PRE95]
 
 以下是前述代码的输出：
 
@@ -1240,35 +768,17 @@ console.log(car2.tankSize); // 2000
 
 1.  创建一个名为`printStat`的函数：
 
-```
-function printStat() {
-   console.log('The car has a tanksize of ', this.tankSize);
-}
-```
+[PRE96]
 
 1.  修改`public`方法以使用我们刚刚声明的函数：
 
-```
-class Car extends Vehicle {
-   constructor(name, speed, cost, tankSize) {
-      super(name, speed, cost);
-      this.tankSize = tankSize;
-   }
-   start() {
-      console.log('Driving car, at ' + this.speed + 'km/h');
-      printStat();
-   }
-}
-```
+[PRE97]
 
 我们直接从`start`方法调用了`printStat`，但是没有真正的方法可以直接访问，而是使用我们类中的一个方法。通过在外部声明方法，我们使方法成为`private`。
 
 1.  创建另一个`car`实例并调用`start`方法：
 
-```
-const car = new Car('Toyota Corolla', 120, 5000, 2000);
-car.start();
-```
+[PRE98]
 
 当您运行此代码时，您将意识到这会导致异常：
 
@@ -1278,12 +788,7 @@ car.start();
 
 1.  修改`start`方法，以便函数了解我们从中调用它的对象实例：
 
-```
-start() {
-      console.log('Driving car, at ' + this.speed + 'km/h');
-      printStat.bind(this)();
-   }
-```
+[PRE99]
 
 请注意我们使用了`.bind()`。通过使用绑定，我们将当前实例绑定到此函数内部的`this`变量。这使我们的代码能够按预期工作：
 
@@ -1301,15 +806,11 @@ start() {
 
 数组映射将遍历数组中的每个项目，并返回一个新数组作为结果。传递给方法的函数将以当前项目作为参数，并且函数的返回值将包含在最终数组的结果中；例如：
 
-```
-const singers = [{ name: 'Miku', age: 16}, { name: 'Kaito', age: 20 }];
-```
+[PRE100]
 
 如果我们想要创建一个新数组，并且只包括列表中对象的名称属性，我们可以使用`array.map`来实现：
 
-```
-const names = singers.map((singer) => singer.name);
-```
+[PRE101]
 
 以下是上述代码的输出：
 
@@ -1321,12 +822,7 @@ const names = singers.map((singer) => singer.name);
 
 `.forEach`是一种迭代数组项的方法。与`.map`不同，它不会返回新值。我们传递的函数只是重复调用数组中的值；例如：
 
-```
-const singers = [{ name: 'Miku', age: 16}, { name: 'Kaito', age: 20 }];
-singers.forEach((singer) => {
-   console.log(singer.name);
-})
-```
+[PRE102]
 
 这将打印出数组中每个歌手的名字。
 
@@ -1334,28 +830,17 @@ singers.forEach((singer) => {
 
 `.find`方法的工作原理与`.map`和`.forEach`方法相同；它接受一个函数作为参数。此函数将用于确定当前对象是否符合搜索的要求。如果找到匹配项，它将用作方法的返回结果。如果数组中找到多个匹配项，则此方法将不返回任何结果。例如，如果我们想要找到名称等于某个字符串的对象，我们可以这样做：
 
-```
-const singers = [{ name: 'Miku', age: 16}, { name: 'Kaito', age: 20 }];
-const miku = singers.find((singer) => singer.name === 'Miku');
-```
+[PRE103]
 
 **array.filter(function)**
 
 `.filter`的工作原理与`.find`相同，但它允许返回多个项目。如果我们想要在列表中匹配多个项目，我们需要使用`.filter`。如果要查找年龄小于 30 岁的歌手列表，请使用以下代码：
 
-```
-const singers = [{ name: 'Miku', age: 16}, { name: 'Kaito', age: 20 }];
-const youngSingers = singers.filter((singer) => singer.age < 30);
-```
+[PRE104]
 
 数组的`map`方法在迭代数组中的每个项目时创建一个新数组。`map`方法接受一个函数，就像`forEach`方法一样。当执行时，它将使用当前项目调用函数的第一个参数和当前索引的第二个参数。`map`方法还期望返回提供给它的函数。返回的值将放入新数组中，并由该方法返回，如下所示：
 
-```
-const programmingLanguages = ['C', 'Java', 'Python'];
-const myMappedArray = programmingLanguages.map((language) => {
-   return 'I know ' + language;
-});
-```
+[PRE105]
 
 `.map`方法将遍历数组，我们的`map`函数将返回`"I know,"`加上当前语言。因此，`myMappedArray`的结果将如下所示：
 
@@ -1367,9 +852,7 @@ const myMappedArray = programmingLanguages.map((language) => {
 
 我们将在接下来的练习中使用的另一种方法是`forEach`方法。`forEach`方法更加简洁，因为不需要管理当前索引并编写实际调用函数的代码。`forEach`方法是一个内置的数组方法，它接受一个函数作为参数。以下是`forEach`方法的示例：
 
-```
-foods.forEach(eat_food);
-```
+[PRE106]
 
 在接下来的练习中，我们将在数组上使用迭代方法。
 
@@ -1379,15 +862,11 @@ foods.forEach(eat_food);
 
 1.  创建一个食物列表作为数组：
 
-```
-const foods = ['sushi', 'tofu', 'fried chicken'];
-```
+[PRE107]
 
 1.  使用`join`连接数组中的每个项目：
 
-```
-foods.join(', ');
-```
+[PRE108]
 
 以下是上述代码的输出：
 
@@ -1399,23 +878,11 @@ foods.join(', ');
 
 1.  创建一个名为`eat_food`的函数：
 
-```
-function eat_food(food) {
-   console.log('I am eating ' + food);
-}
-```
+[PRE109]
 
 1.  使用`for`循环来遍历数组并调用函数：
 
-```
-const foods = ['sushi', 'tofu', 'fried chicken'];
-function eat_food(food) {
-   console.log('I am eating ' + food);
-}
-for(let i = 0; i < foods.length; i++) {
-   eat_food(foods[i]);
-}
-```
+[PRE110]
 
 以下是上述代码的输出：
 
@@ -1425,9 +892,7 @@ for(let i = 0; i < foods.length; i++) {
 
 1.  使用`forEach`方法来实现相同的效果：
 
-```
-foods.forEach(eat_food);
-```
+[PRE111]
 
 以下是上述代码的输出：
 
@@ -1439,28 +904,17 @@ foods.forEach(eat_food);
 
 1.  创建一个新的卡路里数字数组：
 
-```
-const nutrition = [100, 50, 400]
-```
+[PRE112]
 
 这个数组包括我们`food`数组中每个项目的卡路里。接下来，我们将使用不同的迭代函数来创建一个包含这些信息的新对象列表。
 
 1.  创建新的对象数组：
 
-```
-const foodInfo = foods.map((food, index) => {
-   return {
-      name: food,
-      calories: nutrition[index]
-   };
-});
-```
+[PRE113]
 
 1.  将`foodInfo`打印到控制台上：
 
-```
-console.log(foodInfo);
-```
+[PRE114]
 
 以下是上述代码的输出：
 
@@ -1478,23 +932,11 @@ console.log(foodInfo);
 
 1.  创建一个名为`profiles`的名称列表：
 
-```
-let profiles = [
-   'Michael Scott',
-   'Jim Halpert',
-   'Dwight Shrute',
-   'Random User',
-   'Hatsune Miku',
-   'Rin Kagamine'
-];
-```
+[PRE115]
 
 1.  尝试找出`profiles`列表中是否包含名为`Jim Halpert`的人：
 
-```
-let hasJim = profiles.includes('Jim Halpert');
-console.log(hasJim);
-```
+[PRE116]
 
 以下是上述代码的输出：
 
@@ -1504,25 +946,13 @@ console.log(hasJim);
 
 1.  修改`profiles`数组以包含额外的信息：
 
-```
-const profiles = [
-   { name: 'Michael Scott', age: 42 },
-   { name: 'Jim Halpert', age: 27},
-   { name: 'Dwight Shrute', age: 37 },
-   { name: 'Random User', age: 10 },
-   { name: 'Hatsune Miku', age: 16 },
-   { name: 'Rin Kagamine', age: 14 }
-]
-```
+[PRE117]
 
 现在，数组不再是简单的字符串列表-它是一个对象列表，当我们处理对象时，事情会有点不同。
 
 1.  尝试再次使用`includes`查找`Jim Halpert`个人资料：
 
-```
-hasJim = profiles.includes({ name: 'Jim Halpert', age: 27});
-console.log(hasJim);
-```
+[PRE118]
 
 以下是上述代码的输出：
 
@@ -1532,21 +962,11 @@ console.log(hasJim);
 
 1.  找到名为`Jim Halpert`的个人资料：
 
-```
-hasJim = !!profiles.find((profile) => {
-   return profile.name === 'Jim Halpert';
-}).length;
-console.log(hasJim);
-```
+[PRE119]
 
 1.  找到所有年龄大于`18`的用户：
 
-```
-const adults = profiles.filter((profile) => {
-   return profile.age > 18;
-});
-console.log(adults);
-```
+[PRE120]
 
 当你运行上述代码时，它应该输出所有年龄超过 18 岁的用户。`filter`和`find`之间的区别在于`filter`返回一个数组：
 
@@ -1566,19 +986,11 @@ console.log(adults);
 
 `compareNumber`函数只计算`a`和`b`之间的差异。在`sort`方法中，我们可以声明自己的自定义比较函数进行比较：
 
-```
-function compareNumber(a, b) {
-   return a - b;
-}
-```
+[PRE121]
 
 `compareAge`函数与`compareNumber`函数非常相似。唯一的区别在于我们比较的是 JavaScript 对象而不是数字：
 
-```
-function compareAge(a, b) {
-   return a.age - b.age;
-}
-```
+[PRE122]
 
 ### 练习 52：JavaScript 中的数组排序
 
@@ -1588,16 +1000,11 @@ function compareAge(a, b) {
 
 1.  创建一个`numbers`数组：
 
-```
-const numbers = [ 20, 1, 3, 55, 100, 2];
-```
+[PRE123]
 
 1.  调用`array.sort()`对这个数组进行排序：
 
-```
-numbers.sort();
-console.log(numbers);
-```
+[PRE124]
 
 当您运行上述代码时，您将获得以下输出：
 
@@ -1609,20 +1016,13 @@ console.log(numbers);
 
 1.  定义`compareNumber`函数：
 
-```
-function compareNumber(a, b) {
-   return a - b;
-}
-```
+[PRE125]
 
 该函数期望接受两个要进行比较的值，并返回一个必须匹配以下内容的值：如果`a`小于`b`，则返回小于 0 的数字；如果`a`等于`b`，则返回 0；如果`a`大于`b`，则返回大于 0 的数字。
 
 1.  运行`sort`函数，并将`compareNumber`函数作为参数传递：
 
-```
-numbers.sort(compareNumber);
-console.log(numbers);
-```
+[PRE126]
 
 当您运行上述代码时，您将看到该函数已将我们的数组按照我们想要的顺序排序：
 
@@ -1634,23 +1034,11 @@ console.log(numbers);
 
 1.  如果您的工作空间中未定义`profiles`数组，请创建它：
 
-```
-const profiles = [
-   { name: 'Michael Scott', age: 42 },
-   { name: 'Jim Halpert', age: 27},
-   { name: 'Dwight Shrute', age: 37 },
-   { name: 'Random User', age: 10 },
-   { name: 'Hatsune Miku', age: 16 },
-   { name: 'Rin Kagamine', age: 14 }
-]
-```
+[PRE127]
 
 1.  调用`profiles.sort()`：
 
-```
-profiles.sort();
-console.log(profiles);
-```
+[PRE128]
 
 以下是前面代码的输出：
 
@@ -1662,20 +1050,13 @@ console.log(profiles);
 
 1.  定义`compareAge`：
 
-```
-function compareAge(a, b) {
-   return a.age - b.age;
-}
-```
+[PRE129]
 
 提供给`compareAge`的两个参数`a`和`b`是数组中的对象。因此，为了正确排序它们，我们需要访问这些对象的`age`属性并进行比较。
 
 1.  使用我们刚刚定义的`compare`函数调用`sort`函数：
 
-```
-profiles.sort(compareAge);
-console.log(profiles);
-```
+[PRE130]
 
 以下是前面代码的输出：
 
@@ -1691,11 +1072,7 @@ console.log(profiles);
 
 如果我们想要减少一个数组，我们可以调用内置的`array.reduce()`方法：
 
-```
-Array.reduce((previousValue, currentValue) => {
-   // reducer
-}, initialValue);
-```
+[PRE131]
 
 当我们调用`array.reduce()`时，我们需要传入一个函数和初始值。该函数将以前一个值和当前一个值作为参数，并将返回值用作最终值。
 
@@ -1705,30 +1082,15 @@ Array.reduce((previousValue, currentValue) => {
 
 1.  创建购物车变量：
 
-```
-const cart = [];
-```
+[PRE132]
 
 1.  将项目推入数组：
 
-```
-cart.push({ name: 'CD', price: 12.00, amount: 2 });
-cart.push({ name: 'Book', price: 45.90, amount: 1 });
-cart.push({ name: 'Headphones', price: 5.99, amount: 3 });
-cart.push({ name: 'Coffee', price: 12.00, amount: 2 });
-cart.push({ name: 'Mug', price: 15.45, amount: 1 });
-cart.push({ name: 'Sugar', price: 5.00, amount: 1 });
-```
+[PRE133]
 
 1.  使用循环方法计算购物车的总成本：
 
-```
-let total = 0;
-cart.forEach((item) => {
-   total += item.price * item.amount;
-});
-console.log('Total amount: ' + total);
-```
+[PRE134]
 
 以下是前面代码的输出：
 
@@ -1738,18 +1100,11 @@ console.log('Total amount: ' + total);
 
 1.  我们编写了名为`priceReducer`的 reducer：
 
-```
-function priceReducer (accumulator, currentValue) {
-   return accumulator += currentValue.price * currentValue.amount;
-}
-```
+[PRE135]
 
 1.  使用我们的 reducer 调用`cart.reduce`：
 
-```
-total = cart.reduce(priceReducer, 0);
-console.log('Total amount: ' + total);
-```
+[PRE136]
 
 以下是前面代码的输出：
 
@@ -1819,25 +1174,15 @@ Map 和 Set 在 JavaScript 中是非常被低估的类型，但在某些应用�
 
 1.  创建一个名为`map`的新 Map：
 
-```
-const map = new Map()
-```
+[PRE137]
 
 1.  创建我们想要用作键的对象列表：
 
-```
-const key1 = 'key1';
-const key2 = { name: 'John', age: 18 };
-const key3 = Map;
-```
+[PRE138]
 
 1.  使用`map.set`为我们之前定义的所有键设置一个值：
 
-```
-map.set(key1, 'value for key1');
-map.set(key2, 'value for key2');
-map.set(key3, 'value for key3');
-```
+[PRE139]
 
 以下是前面代码的输出：
 
@@ -1847,11 +1192,7 @@ map.set(key3, 'value for key3');
 
 1.  获取键的值：
 
-```
-console.log(map.get(key1));
-console.log(map.get(key2));
-console.log(map.get(key3));
-```
+[PRE140]
 
 以下是前面代码的输出：
 
@@ -1861,9 +1202,7 @@ console.log(map.get(key3));
 
 1.  在不使用引用的情况下检索`key2`的值：
 
-```
-console.log(map.get({ name: 'John', age: 18 }));
-```
+[PRE141]
 
 以下是前面代码的输出：
 
@@ -1875,20 +1214,13 @@ console.log(map.get({ name: 'John', age: 18 }));
 
 1.  使用`forEach`迭代地图：
 
-```
-map.forEach((value, key) => {
-   console.log('the value for key: ' + key + ' is ' + value);
-});
-```
+[PRE142]
 
 地图可以像数组一样进行迭代。使用`forEach`方法时，传入的函数将被调用两个参数：第一个参数是值，第二个参数是键。
 
 1.  获取键和值的数组列表：
 
-```
-console.log(map.keys());
-console.log(map.values());
-```
+[PRE143]
 
 以下是前面代码的输出：
 
@@ -1900,9 +1232,7 @@ console.log(map.values());
 
 1.  检查地图是否包含一个键：
 
-```
-console.log(map.has('non exist')); // false
-```
+[PRE144]
 
 以下是前面代码的输出：
 
@@ -1926,32 +1256,15 @@ console.log(map.has('non exist')); // false
 
 1.  声明一个名为`planets`的字符串数组：
 
-```
-const planets = [
-   'Mercury',
-   'Uranus',
-   'Mars',
-   'Venus',
-   'Neptune',
-   'Saturn',
-   'Mars',
-   'Jupiter',
-   'Earth',
-   'Saturn'
-]
-```
+[PRE145]
 
 1.  使用数组创建一个新的集合：
 
-```
-const planetSet = new Set(planets);
-```
+[PRE146]
 
 1.  检索`planets`数组中的唯一值：
 
-```
-console.log(planetSet.values());
-```
+[PRE147]
 
 以下是前面代码的输出：
 
@@ -1961,10 +1274,7 @@ console.log(planetSet.values());
 
 1.  使用`add`方法向集合添加更多值：
 
-```
-planetSet.add('Venus');
-planetSet.add('Kepler-440b');
-```
+[PRE148]
 
 我们可以使用`add`方法向我们的集合添加一个新值，但是因为集合始终保持其成员的唯一性，如果您添加任何已经存在的内容，它将被忽略：
 
@@ -1974,16 +1284,11 @@ planetSet.add('Kepler-440b');
 
 1.  使用`.size`属性获取 Set 的大小：
 
-```
-console.log(planetSet.size);
-```
+[PRE149]
 
 1.  清除集合中的所有值：
 
-```
-planetSet.clear();
-console.log(planetSet);
-```
+[PRE150]
 
 以下是前面代码的输出：
 
@@ -2001,23 +1306,17 @@ console.log(planetSet);
 
 要创建`new Date`对象，请使用以下命令：
 
-```
-const currentDate = new Date();
-```
+[PRE151]
 
 这将指向当前日期。
 
 要创建一个新字符串，请使用以下命令：
 
-```
-const myString = 'this is a string';
-```
+[PRE152]
 
 要使用`Math`模块，我们可以使用`Math`类：
 
-```
-const random = Math.random();
-```
+[PRE153]
 
 ### 练习 56：使用字符串方法
 
@@ -2027,25 +1326,17 @@ const random = Math.random();
 
 1.  创建一个名为`planet`的变量：
 
-```
-let planet = 'Earth';
-```
+[PRE154]
 
 1.  使用模板字符串创建`句子`：
 
-```
-let sentence = `We are on the planet ${planet}`;
-```
+[PRE155]
 
-模板字符串是 ES6 中引入的非常有用的功能。我们可以通过组合模板和变量来创建字符串，而无需创建字符串构建或使用字符串连接。字符串模板使用`` ` ``包装,
+模板字符串是 ES6 中引入的非常有用的功能。我们可以通过组合模板和变量来创建字符串，而无需创建字符串构建或使用字符串连接。字符串模板使用`` ` ``包装，而要插入到字符串中的变量用`${}`包装。
 
 3.  Separate our sentence into words:
 
-```
-
-console.log（sentence.split（' '））;
-
-```
+[PRE156]
 
 We can split strings into arrays by using the `split` method and a separator. In the preceding example, JavaScript will split our sentence into an array of words, like so:
 
@@ -2055,13 +1346,7 @@ We can split strings into arrays by using the `split` method and a separator. In
 
 4.  We can also use `replace` to replace any matched substring with another substring, as follows:
 
-```
-
-句子=句子.replace（'地球'，'金星'）;
-
-console.log（句子）;
-
-```
+[PRE157]
 
 The following is the output of the preceding code:
 
@@ -2073,11 +1358,7 @@ In the `replace` method, we will provide the first parameter as the substring to
 
 5.  Check whether our sentence includes the word `Mars`:
 
-```
-
-console.log（sentence.includes（'Mars'））;
-
-```
+[PRE158]
 
 The following is the output of the preceding code:
 
@@ -2087,31 +1368,17 @@ The following is the output of the preceding code:
 
 6.  You can also convert the entire string into uppercase or lowercase:
 
-```
-
-句子.toUpperCase（）;
-
-sentence.toLowerCase（）;
-
-```
+[PRE159]
 
 7.  Get a character at index in the string using `charAt`:
 
-```
-
-sentence.charAt（0）; //返回 W
-
-```
+[PRE160]
 
 Since sentences are not necessarily arrays, you cannot access a specific character at index such as an array. To do that, you need to call the `charAt` method.
 
 8.  Get the length of the string using the `length` property of the string:
 
-```
-
-句子长度;
-
-```
+[PRE161]
 
 The following is the output of the preceding code:
 
@@ -2131,59 +1398,23 @@ In this exercise, we will learn how to implement Math and Date types in JavaScri
 
 1.  Create a function called `generateRandomString`:
 
-```
-
-function generateRandomString（长度）{
-
-}
-
-```
+[PRE162]
 
 2.  Create a function that generates a random number within a certain range:
 
-```
-
-function generateRandomNumber（min，max）{
-
-返回 Math.floor（Math.random（）*（max-min + 1）+ min;
-
-}
-
-```
+[PRE163]
 
 In the preceding function, `Math.random` generates a random number between 0 inclusive and 1 exclusive. When we want a number between the two ranges, we can also use `Math.floor` to round the number down to make sure it doesn't include `max` in our output.
 
 3.  Use the random number generator function in `generateRandomString`:
 
-```
-
-function generateRandomString（长度）{
-
-const characters = [];
-
-const characterSet ='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-
-for（let i = 0; i <长度; i ++）{
-
-characters.push（characterSet.charAt（generateRandomNumber（0，characterSet.length）））;
-
-}
-
-返回 characters.join（'）;
-
-}
-
-```
+[PRE164]
 
 The method we need for our random number generation is very simple – we have a character set that we want to include in the random string. Later, we will run a loop to get a random character using the function we created, using `charAt` with a random index passed to it.
 
 4.  Test out our function:
 
-```
-
-console.log（generateRandomString（16））;
-
-```
+[PRE165]
 
 The following is the output of the preceding code:
 
@@ -2195,27 +1426,13 @@ Every time we run this function, it will give us a totally random string with th
 
 5.  Use `Math` constants to create a function that calculates circle areas, as follows:
 
-```
-
-function circleArea（半径）{
-
-返回 Math.pow（半径，2）* Math.PI;
-
-}
-
-```
+[PRE166]
 
 In this function, we used `Math.PI` from the `Math` object. It is assigned to an approximation of the actual `PI` value. We also used the `Math.pow` method to raise the radius from the argument to the power of 2\. Next, we will explore the `Date` type in JavaScript.
 
 6.  Create a new `Date` object:
 
-```
-
-现在的 const = new Date（）;
-
-console.log（现在）;
-
-```
+[PRE167]
 
 The following is the output of the preceding code:
 
@@ -2227,25 +1444,13 @@ When we create the new `Date` object with nothing, it will generate an object th
 
 7.  Create a new `Date` object at a specific date and time:
 
-```
-
-const past = new Date（'2007 年 8 月 31 日 00:00:00'）;
-
-```
+[PRE168]
 
 The `Date` constructor will take a string argument that can be parsed into a date. When we call the constructor using this string, it will create a `Date` object on that date and time.
 
 8.  Get the year, month, and date from our `past` Date object:
 
-```
-
-console.log（过去.getFullYear（））;
-
-console.log（过去.getMonth（））;
-
-console.log（过去.getDate（））;
-
-```
+[PRE169]
 
 The following is the output of the preceding code:
 
@@ -2257,11 +1462,7 @@ The returned month doesn't start from 1, where January is 1\. Instead, it starte
 
 9.  You can also generate a string represented version of the object by calling `toString`:
 
-```
-
-console.log（过去.toString（））;
-
-```
+[PRE170]
 
 The following is the output of the preceding code:
 
@@ -2273,11 +1474,7 @@ By using the `toString` method, we can simply use this to keep a record of a tim
 
 10.  If you want to get the Unix time, you can use `Date.now:`
 
-```
-
-console.log（Math.floor（Date.now（）/ 1000））;
-
-```
+[PRE171]
 
 The reason we are using `Math.floor` again is that we need to divide the output of `Date.now` by 1,000 because it is returned in milliseconds.
 
@@ -2303,55 +1500,25 @@ In this exercise we will use Symbols and their properties to identify object pro
 
 1.  Create two symbols:
 
-```
-
-let symbol1 = Symbol（）;
-
-let symbol2 = Symbol（'symbol'）;
-
-```
+[PRE172]
 
 2.  Test their equivalence:
 
-```
-
-console.log（symbol1 === symbol2）;
-
-console.log（symbol1 === Symbol（'symbol'））;
-
-```
+[PRE173]
 
 Both statements will be evaluated to false. This is because symbols are unique in JavaScript and even if they have the same name, they are still not equal.
 
 3.  Create a test object with some properties:
 
-```
-
-const testObj = {};
-
-testObj.name ='测试对象';
-
-testObj.included ='这将被包含';
-
-```
+[PRE174]
 
 4.  Create a property in the object using symbols as keys:
 
-```
-
-const symbolKey = Symbol（）;
-
-testObj [symbolKey] ='这将被隐藏';
-
-```
+[PRE175]
 
 5.  Print out the keys in the object:
 
-```
-
-console.log（Object.keys（testObj））;
-
-```
+[PRE176]
 
 The following is the output of the preceding code:
 
@@ -2363,35 +1530,17 @@ It appears that calling `Object.keys` didn't return our `Symbol` property. The r
 
 6.  Let's try to get the value of our `Symbol` property:
 
-```
-
-console.log（testObj [Symbol（）]）; //将返回未定义
-
-console.log（testObj [symbolKey]）; //将返回我们的隐藏属性
-
-```
+[PRE177]
 
 7.  Use the `Symbol` registry:
 
-```
-
-const anotherSymbolKey = Symbol.for（'key'）;
-
-const copyOfAnotherSymbol = Symbol.for（'key'）;
-
-```
+[PRE178]
 
 In this example, we can run a search on the `Symbol` key and store that reference in our new constant. The `Symbol` registry is a registry for all the symbols in our application. Here, you can store the symbols you created in a global registry so they can be retrieved later.
 
 8.  Retrieve the content of the `Symbol` property using its reference:
 
-```
-
-testObj [anotherSymbolKey] ='另一个键';
-
-console.log（testObj [copyOfAnotherSymbol]）;
-
-```
+[PRE179]
 
 The following is the output of the preceding code:
 
@@ -2411,35 +1560,11 @@ There is a very useful function called `range()` in Python that generates number
 
 1.  Create a function called `range` that returns an object with the `iterator` property:
 
-```
-
-function range（max）{
-
-返回{
-
-*[Symbol.iterator]（）{
-
-产量 1;
-
-}
-
-};
-
-}
-
-```
+[PRE180]
 
 2.  Use the `for..in` loop on our `range` function:
 
-```
-
-for（let value of range（10））{
-
-console.log（值）;
-
-}
-
-```
+[PRE181]
 
 The following is the output of the preceding code:
 
@@ -2451,27 +1576,7 @@ When we run this, it only yields one value. To modify it to yield multiple resul
 
 3.  Let's wrap the `yield` statement with a loop:
 
-```
-
-function range（max）{
-
-返回{
-
-*[Symbol.iterator]（）{
-
-for（let i = 0; i <max; i ++）{
-
-产量 i;
-
-}
-
-}
-
-};
-
-}
-
-```
+[PRE182]
 
 Normally, this wouldn't work with `returns` as it can only be returned once. This is because the generator function is expected to be consumed multiple times using `.next()`. We can delay its execution until it is called again:
 
@@ -2483,37 +1588,17 @@ To understand generator functions better, we can also define a simple generator 
 
 4.  Create a generator function called `gen`:
 
-```
-
-function* gen() {
-
-yield 1;
-
-}
-
-```
+[PRE183]
 
 This is a very simple definition of a generator function. When it is called, it will return a generator that can only be iterated through once. However, you can generate as many generators as you wish using the preceding function.
 
 5.  Generate a `generator` function:
 
-```
-
-const generator = gen();
-
-```
+[PRE184]
 
 6.  Call the generator's `next` method to get its values:
 
-```
-
-console.log(generator.next());
-
-console.log(generator.next());
-
-console.log(generator.next());
-
-```
+[PRE185]
 
     When we call `.next()` on a generator, it will execute our code until it reaches the `yield` keyword. Then, it will return the value yielded by that statement. It also includes a `done` property to indicate whether this generator has finished iterating through all the possible values. Once the generator has reached the `done` status, there is no way to restart the iteration unless you are modifying the internal states:
 
@@ -2535,23 +1620,7 @@ Creating proxies is very easy – all you need to do is call the `Proxy` constru
 
 The following is an example usage of a proxy:
 
-```
-
-const handlers = {
-
-set: (object, prop, value) => {
-
-console.log('setting ' + prop);
-
-}
-
-}
-
-const proxiesValue = new Proxy({}, handlers);
-
-proxiesValue.prop1 = 'hi';
-
-```
+[PRE186]
 
 We've created a `proxiesValue` and given it a set handler. When we try to set the `prop1` property, we will get the following output:
 
@@ -2565,59 +1634,25 @@ In this exercise, we will be using proxies to show you how to build an object th
 
 1.  Create a basic JavaScript object:
 
-```
-
-const simpleObject = {};
-
-```
+[PRE187]
 
 2.  Create a `handlers` object:
 
-```
-
-const handlers = {
-
-}
-
-```
+[PRE188]
 
 3.  Create a proxy wrapping for our basic object:
 
-```
-
-const proxiesValue = new Proxy(simpleObject, handlers);
-
-```
+[PRE189]
 
 4.  Now, add `handlers` to our proxy:
 
-```
-
-const handlers = {
-
-get: (object, prop) => {
-
-return 'values are private';
-
-}
-
-}
-
-```
+[PRE190]
 
 Here, we added a `get` handler for our object, where we ignore the key it is requesting and just return a fixed string. When we do this, no matter what we do, the object will only return the value we have defined.
 
 5.  Let's test our handler in the proxy:
 
-```
-
-proxiedValue.key1 = 'value1';
-
-console.log(proxiedValue.key1);
-
-console.log(proxiedValue.keyDoesntExist);
-
-```
+[PRE191]
 
 The following is the output of the preceding code:
 
@@ -2629,33 +1664,13 @@ When we run this code, we assigned a value to `key1` in the object, but because 
 
 6.  Let's add a `set` handler for validation:
 
-```
-
-set: (object, prop, value) => {
-
-if (prop === 'id') {
-
-if (!Number.isInteger(value)) {
-
-throw new TypeError('The id needs to be an integer');
-
-}
-
-}
-
-}
-
-```
+[PRE192]
 
 We added a `set` handler; this handler will be called every time we try to perform a set operation on our proxy integer.
 
 7.  Try to set the `id` to a string:
 
-```
-
-proxiedValue.id = 'not an id'
-
-```
+[PRE193]
 
 ![Figure 7.59: Screenshot showing TypeError when trying to set id to string](img/C14587_07_59.jpg)
 
@@ -2669,31 +1684,11 @@ In this exercise, we talked about some of the creative methods we can use to mak
 
 When using JavaScript in large-scale applications, we need to do refactoring from time to time. Refactoring means rewriting parts of the code while maintaining compatibility. Because JavaScript has gone through many phases and upgrades, refactoring also takes advantage of the new features that are offered and allows our application to run faster and be more reliable. An example of refactoring is as follows:
 
-```
-
-function appendPrefix(prefix, input) {
-
-const result = [];
-
-for (var i = 0; i < input.length; i++) {
-
-result.push(prefix + input[i]);
-
-}
-
-return result;
-
-}
-
-```
+[PRE194]
 
 This code simply appends a prefix to all the elements in the input array. Let's call it like this:
 
-```
-
-appendPrefix('Hi! ', ['Miku', 'Rin', 'Len']);
-
-```
+[PRE195]
 
 We will get the following output:
 
@@ -2703,27 +1698,11 @@ We will get the following output:
 
 During refactoring, we can write the preceding function with less code and still retain all the features:
 
-```
-
-function appendPrefix(prefix, input) {
-
-return input.map((inputItem) => {
-
-return prefix + inputItem;
-
-});
-
-}
-
-```
+[PRE196]
 
 What happens when we call it again? Let's take a look:
 
-```
-
-appendPrefix('Hi! ', ['Miku', 'Rin', 'Len']);
-
-```
+[PRE197]
 
 我们仍然会得到相同的输出：
 
