@@ -70,25 +70,3 @@ messages.map(function(s,i){
 ### 提示
 
 提示和技巧会以这种方式出现。
-
-# 读者反馈
-
-我们始终欢迎读者的反馈。让我们知道您对这本书的看法——您喜欢或不喜欢什么。读者的反馈对我们很重要，因为它帮助我们开发您真正能够从中受益的标题。
-
-要向我们发送一般反馈，只需发送电子邮件至`<feedback@packtpub.com>`，并在消息主题中提及书名。
-
-如果您在某个专题上有专业知识，并且有兴趣撰写或为一本书做出贡献，请参阅我们的作者指南，网址为[www.packtpub.com/authors](http://www.packtpub.com/authors)。
-
-# 客户支持
-
-现在您是 Packt 图书的自豪所有者，我们有一些事情可以帮助您充分利用您的购买。
-
-## 下载示例代码
-
-您可以从您在[`www.packtpub.com`](http://www.packtpub.com)的帐户中下载您购买的所有 Packt Publishing 图书的示例代码文件。如果您在其他地方购买了这本书，您可以访问[`www.packtpub.com/support`](http://www.packtpub.com/support)并注册，以便将文件直接通过电子邮件发送给您。
-
-## 勘误
-
-尽管我们已经尽一切努力确保内容的准确性，但错误确实会发生。如果您在我们的书中发现错误——也许是文本或代码中的错误——我们将不胜感激，如果您能向我们报告。通过这样做，您可以帮助其他读者避免挫折，并帮助我们改进本书的后续版本。如果您发现任何勘误，请访问[`www.packtpub.com/submit-errata`](http://www.packtpub.com/submit-errata)，选择您的书，单击**勘误提交表**链接，并输入您的勘误详情。一旦您的勘误经过验证，您的提交将被接受，并且勘误将被上传到我们的网站或添加到该标题的**勘误**部分下的任何现有勘误列表中。
-
-要查看先前提交的勘误，请转到[`www.packtpub.com/books/content/support`](https://www.packtpub.com/books/content/support)并在搜索字段中输入书名。所需信息将出现在**勘误**部分下。
