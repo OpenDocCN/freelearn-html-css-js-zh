@@ -1,3 +1,4 @@
++   [Three.js 学习手册](README.md)
 +   [前言](lrn-3js_00.md)
 +   [第一章：使用 Three.js 创建您的第一个 3D 场景](lrn-3js_01.md)
 +   [第二章：构成 Three.js 场景的基本组件](lrn-3js_02.md)

@@ -1,3 +1,4 @@
++   [写给 Python 开发者的 JavaScript 实用指南](README.md)
 +   [前言](hsn-js-py-dev_00.md)
 +   [第一部分 - JavaScript 是什么？它又不是什么？](hsn-js-py-dev_01.md)
 +   [第一章：JavaScript 进入主流编程](hsn-js-py-dev_02.md)

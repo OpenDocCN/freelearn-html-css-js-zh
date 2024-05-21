@@ -1,3 +1,4 @@
++   [面向孩子们的 JavaScript 项目](README.md)
 +   [前言](js-pj-kid_00.md)
 +   [第一章：在控制台中探索 JavaScript](js-pj-kid_01.md)
 +   [第二章：使用 JavaScript 解决问题](js-pj-kid_02.md)

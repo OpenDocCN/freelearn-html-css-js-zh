@@ -1,3 +1,4 @@
++   [Jasmine JavaScript 测试](README.md)
 +   [前言](jsm-js-test-2e_0.md)
 +   [第一章：使用 Jasmine 入门](jsm-js-test-2e_1.md)
 +   [第二章：你的第一个规范](jsm-js-test-2e_2.md)

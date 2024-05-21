@@ -1,3 +1,4 @@
++   [精通 JavaScript 函数式编程](README.md)
 +   [前言](ms-js-fp_00.md)
 +   [第一章：成为函数式编程者——几个问题](ms-js-fp_01.md)
 +   [第二章：功能性思维 - 第一个例子](ms-js-fp_02.md)

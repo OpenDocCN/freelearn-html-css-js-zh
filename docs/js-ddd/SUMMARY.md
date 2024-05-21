@@ -1,3 +1,4 @@
++   [JavaScript 领域驱动设计](README.md)
 +   [前言](js-ddd_0.md)
 +   [第一章：典型的 JavaScript 项目](js-ddd_1.md)
 +   [第二章：找到核心问题](js-ddd_2.md)

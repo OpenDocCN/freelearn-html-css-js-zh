@@ -1,3 +1,4 @@
++   [精通 JavaScript 设计模式](README.md)
 +   [前言](ms-js-dsn-ptn_0.md)
 +   [第一章：为了乐趣和利润而设计](ms-js-dsn-ptn_1.md)
 +   [第一部分：经典设计模式](ms-js-dsn-ptn_2_0.md)
@@ -14,4 +15,4 @@
 +   [第十一章：微服务](ms-js-dsn-ptn_3_06.md)
 +   [第十二章：测试模式](ms-js-dsn-ptn_3_07.md)
 +   [第十三章：高级模式](ms-js-dsn-ptn_3_08.md)
-+   [第十四章：ECMAScript-2015/2016 解决方案今天](ms-js-dsn-ptn_3_09.md)
++   [第十四章：ECMAScript-2015/2016 今天的解决方案](ms-js-dsn-ptn_3_09.md)

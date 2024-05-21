@@ -1,3 +1,4 @@
++   [JavaScript 专家级编程](README.md)
 +   [第一章：*前言*](prof-js_00.md)
 +   [第二章：JavaScript，HTML 和 DOM](prof-js_01.md)
 +   [第三章：Node.js 和 npm](prof-js_02.md)
@@ -6,6 +7,6 @@
 +   [第六章：模块化 JavaScript](prof-js_05.md)
 +   [第七章：代码质量](prof-js_06.md)
 +   [第八章：高级 JavaScript](prof-js_07.md)
-+   [第八章](prof-js_08.md)
++   [第九章：异步编程](prof-js_08.md)
 +   [第十章：事件驱动编程和内置模块](prof-js_09.md)
 +   [第十一章：使用 JavaScript 进行函数式编程](prof-js_10.md)

@@ -1,3 +1,4 @@
++   [JavaScript 和 JSON 基础知识](README.md)
 +   [前言](js-json-ess_0.md)
 +   [第一章：JavaScript 基础知识](js-json-ess_1.md)
 +   [第二章：JSON 入门](js-json-ess_2.md)

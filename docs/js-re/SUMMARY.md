@@ -1,3 +1,4 @@
++   [JavaScript 正则表达式教程](README.md)
 +   [前言](js-re_0.md)
 +   [第一章：正则表达式入门](js-re_1.md)
 +   [第二章：基础知识](js-re_2.md)
