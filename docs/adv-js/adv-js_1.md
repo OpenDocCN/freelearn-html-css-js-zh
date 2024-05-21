@@ -50,16 +50,7 @@ JavaScript 中的**函数作用域**是在函数内部创建的。当声明一�
 
 以下代码段提供了函数作用域的示例：
 
-```js
-var example = 5;
-function test() {
-  var testVariable = 10;
-  console.log( example ); // Expect output: 5
-  console.log( testVariable ); // Expect output: 10
-}
-test();
-console.log( testVariable ); // Expect reference error
-```
+[PRE0]
 
 ###### 代码段 1.1：函数作用域
 
@@ -73,11 +64,7 @@ console.log( testVariable ); // Expect reference error
 
 当使用函数作用域创建变量时，其声明会自动提升到作用域的顶部。**提升**意味着解释器将实体的实例化移动到其声明的作用域顶部，而不管它在作用域块中的定义位置。在 JavaScript 中，使用`var`声明的函数和变量会被提升；也就是说，函数或变量可以在其声明之前使用。以下代码演示了这一点：
 
-```js
-example = 5; // Assign value
-console.log( example ); // Expect output: 5
-var example; // Declare variable
-```
+[PRE1]
 
 ###### 片段 1.2：函数作用域提升
 
@@ -89,30 +76,13 @@ var example; // Declare variable
 
 在 JavaScript 中，使用花括号（`{}`）创建一个新的块作用域。一对**花括号**可以放置在代码的任何位置以定义一个新的作用域块。if 语句、循环、函数和任何其他花括号对都将有自己的块作用域。这包括与关键字（if、for 等）无关的浮动花括号对。以下片段中的代码是块作用域规则的示例：
 
-```js
-// Top level scope
-function scopeExample() {
-  // Scope block 1
-  for ( let i = 0; i < 10; i++ ){ /* Scope block 2 */ }
-  if ( true ) { /* Scope block 3 */ } else {  /* Scope block 4 */ }
-  // Braces without keywords create scope blocks
-  { /* Scope block 5 */ } 
-  // Scope block 1
-}
-// Top level scope
-```
+[PRE2]
 
 ###### 片段 1.3：块作用域
 
 使用关键字`let`和`const`声明的变量具有**块作用域**。当使用块作用域声明变量时，它不具有与在函数作用域中创建的变量相同的变量提升。块作用域变量不会被提升到作用域的顶部，因此在声明之前无法访问。这意味着使用块作用域创建的变量受到**暂时性死区**（**TDZ**）的影响。TDZ 是指进入作用域和声明变量之间的时间段。它在变量被声明而不是赋值时结束。以下示例演示了 TDZ：
 
-```js
-// console.log( example ); // Would throw ReferenceError
-let example;
-console.log( example ); // Expected output: undefined
-example = 5;
-console.log( example ); // Expected output: 5
-```
+[PRE3]
 
 ###### 片段 1.4：暂时性死区
 
@@ -162,24 +132,7 @@ console.log( example ); // Expected output: 5
 
 index.js：
 
-```js
-function fn1(){
- console.log('Scope 1');
- let scope = 5;
- console.log(scope);
- {
-   console.log('Scope 2');
-   let scope = 'different scope';
-   console.log(scope);
- }
-  {
-   console.log('Scope 3');
-   let scope = 'a third scope';
-   console.log(scope);
- }
-}
-fn1();
-```
+[PRE4]
 
 [`bit.ly/2RoOotW`](https://bit.ly/2RoOotW)
 
@@ -209,25 +162,13 @@ fn1();
 
 `var` 关键字是在 JavaScript 中用于声明变量的较旧的关键字。所有使用 `var` 创建的变量都可以重新分配，具有函数作用域，并且具有变量提升。这意味着使用 `var` 创建的变量被提升到作用域块的顶部，在那里它们被定义并且可以在声明之前访问。以下代码片段演示了这一点，如下所示：
 
-```js
-// Referenced before declaration
-console.log( example ); // Expect output: undefined
-var example = 'example';
-```
+[PRE5]
 
 ###### 代码片段 1.6：使用 var 创建的变量被提升
 
 由关键字 `var` 创建的变量不是常量，因此可以随意创建、分配和重新分配值。以下代码演示了 `var` 功能的这一方面：
 
-```js
-// Declared and assigned
-var example = { prop1: 'test' };
-console.log( 'example:', example );
-// Expect output: example: {prop1: "test"}
-// Value reassigned
-example = 5;
-console.log( example ); // Expect output: 5
-```
+[PRE6]
 
 ###### 代码片段 1.7：使用 var 创建的变量不是常量
 
@@ -235,15 +176,7 @@ console.log( example ); // Expect output: 5
 
 `let` 关键字与关键字 `var` 类似。如预期的那样，关键字 `let` 允许我们声明一个可以在任何时候重新分配的变量。以下代码中展示了这一点：
 
-```js
-// Declared and initialized
-let example = { prop1: 'test' };
-console.log( 'example:', example );
-// Expect output: example: {prop1: 'test"}
-// Value reassigned
-example = 5;
-console.log( example ); // Expect output: 5
-```
+[PRE7]
 
 ###### 代码片段 1.8：使用 let 创建的变量不是常量
 
@@ -251,23 +184,13 @@ console.log( example ); // Expect output: 5
 
 使用 `let` 声明的变量不受变量提升的影响。这意味着在赋值之前访问使用 `let` 声明的变量将引发运行时错误。正如前面讨论的那样，这就是暂时性死区。以下代码示例说明了这一点：
 
-```js
-// Referenced before declaration
-console.log( example );
-// Expect ReferenceError because example is not defined
-let example = 'example';
-```
+[PRE8]
 
 ###### 代码片段 1.9：使用 let 创建的变量不会被提升
 
 最后一个变量声明关键字是`const`。`const`关键字具有与`let`关键字相同的作用域和变量提升规则；使用`const`声明的变量具有块作用域，并且不会被提升到作用域的顶部。这在以下代码中显示：
 
-```js
-// Referenced before declaration
-console.log( example );
-// Expect ReferenceError because example is not defined
-const example = 'example';
-```
+[PRE9]
 
 ###### 片段 1.10：使用 const 创建的变量不会被提升
 
@@ -275,16 +198,7 @@ const example = 'example';
 
 即使使用`const`创建的变量不能被重新分配，这并不意味着它们是不可变的。如果数组或对象存储在使用`const`声明的变量中，则无法覆盖变量的值。但是，数组内容或对象属性可以更改。可以使用`push()`、`pop()`或`map()`等函数修改数组的内容，并且可以添加、删除或更新对象属性。这在以下代码中显示：
 
-```js
-// Declared and initialized
-const example = { prop1: 'test' };
-// Variable reassigned
-example = 5;
-// Expect TypeError error because variable was declared with const
-// Object property updated
-example.prop1 = 5;
-// Expect no error because subproperty was modified
-```
+[PRE10]
 
 ###### 片段 1.11：使用 const 创建的变量是常量但不是不可变的
 
@@ -342,21 +256,7 @@ example.prop1 = 5;
 
 ##### index.js:
 
-```js
-var hoisted = 'this got hoisted';
-try{
- console.log(notHoisted1);
-} catch(err){}
-let notHoisted1 = 5;
-try{
- console.log(notHoisted2);
-} catch(err){}
-const notHoisted2 = [1,2,3];
-try{
- notHoisted2 = 'new value';
-} catch(err){}
-notHoisted2.push(5);
-```
+[PRE11]
 
 ###### 片段 1.12：更新对象的内容
 
@@ -380,9 +280,7 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 创建箭头函数时，我们只需要删除函数关键字，并在函数参数和函数体之间放置一个箭头。箭头函数用以下语法表示：
 
-```js
-( arg1, arg2, ..., argn ) => { /* Do function stuff here */ }
-```
+[PRE12]
 
 ###### 片段 1.13：箭头函数语法
 
@@ -416,11 +314,7 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 ##### index.js:
 
-```js
-const fn1 = function( a, b ) { return a + b; };
-const fn2 = ( a, b ) => { return a + b; };
-console.log( fn1( 3 ,5 ), fn2( 3, 5 ) );
-```
+[PRE13]
 
 ###### 片段 1.14：调用函数
 
@@ -440,75 +334,37 @@ console.log( fn1( 3 ,5 ), fn2( 3, 5 ) );
 
 这个规则有一个例外，那就是参数不是简单的标识符。如果我们在函数参数中包含默认值或执行操作，那么我们必须包含括号。例如，如果我们包含默认参数，那么我们将需要在参数周围加上括号。这两条规则如下面的代码所示：
 
-```js
-// Single argument arrow function
-arg1 => { /* Do function stuff here */ }
-// Non simple identifier function argument
-( arg1 = 10 ) => { /* Do function stuff here */ }
-```
+[PRE14]
 
 ###### 片段 1.15：单参数箭头函数
 
 如果我们创建一个没有参数的箭头函数，那么我们需要包括括号，但括号将是空的。如下面的代码所示：
 
-```js
-// No arguments passed into the function
-( ) => { /* Do function stuff here */ }
-```
+[PRE15]
 
 ###### 片段 1.16：无参数
 
 箭头函数的语法也可以有所不同，取决于函数的主体。如预期的那样，如果函数的主体是多行的，那么我们必须用花括号括起来。但是，如果函数的主体是单行的，那么我们不需要在函数的主体周围包含花括号。这如下面的代码所示：
 
-```js
-// Multiple line body arrow function
-( arg1, arg2 ) => { 
-  console.log( `This is arg1: ${arg1}` );
-  console.log( `This is arg2: ${arg2}` );
-  /* Many more lines of code can go here */
-}
-// Single line body arrow function
-( arg1, arg2 ) => console.log( `This is arg1: ${arg1}` )
-```
+[PRE16]
 
 ###### 片段 1.17：单行体
 
 在使用箭头函数时，如果函数是单行的，我们也可以省略 return 关键字。箭头函数会自动返回该行表达式的解析值。这种语法如下面的代码所示：
 
-```js
-// With return keyword - not necessary
-( num1, num2 ) => { return ( num1 + num2 ) }
-// If called with arguments num1 = 5 and num2 = 5, expected output is 10
-// Without return keyword or braces
-( num1, num2 ) => num1 + num2
-// If called with arguments num1 = 5 and num2 = 5, expected output is 10
-```
+[PRE17]
 
 ###### 片段 1.18：返回值为单行体
 
 由于单行表达式体的箭头函数可以在没有花括号的情况下定义，我们需要特殊的语法来允许我们将单个表达式分成多行。为此，我们可以将多行表达式放在括号中。JavaScript 解释器会看到括号中的行，并将其视为单行代码。这如下面的代码所示：
 
-```js
-// Arrow function with a single line body
-// Assume numArray is an array of numbers
-( numArray ) => numArray.filter( n => n > 5).map( n => n - 1 ).every( n => n < 10 )
-// Arrow function with a single line body broken into multiple lines
-// Assume numArray is an array of numbers
-( numArray ) => (
-  numArray.filter( n => n > 5)
-          .map( n => n - 1 )
-          .every( n => n < 10 )
-) 
-```
+[PRE18]
 
 ###### 片段 1.19：将单行表达式分成多行
 
 如果我们有一个返回对象字面量的单行箭头函数，我们将需要特殊的语法。在 ES6 中，作用域块、函数主体和对象字面量都是用花括号定义的。由于单行箭头函数不需要花括号，我们必须使用特殊的语法来防止对象字面量的花括号被解释为函数主体花括号或作用域块花括号。为此，我们用括号括起返回的对象字面量。这指示 JavaScript 引擎将括号内的花括号解释为表达式，而不是函数主体或作用域块声明。这如下面的代码所示：
 
-```js
-// Arrow function with an object literal in the body
-( num1, num2 ) => ( { prop1: num1, prop2: num2 } ) // Returns an object
-```
+[PRE19]
 
 ###### 片段 1.20：对象字面量返回值
 
@@ -558,13 +414,7 @@ arg1 => { /* Do function stuff here */ }
 
 ##### index.js：
 
-```js
-let fn1 = ( a, b ) => { … };
-let fn2 = ( a, b ) => a * b;
-let fn3 = a => { … };
-let fn4 = () => { … };
-let fn5 = ( a ) => ( …  );
-```
+[PRE20]
 
 ###### 代码段 1.21：箭头函数转换
 
@@ -592,17 +442,9 @@ let fn5 = ( a ) => ( …  );
 
 ## 学习模板文字
 
-**模板文字**是 ECMAScript 6 中引入的一种新形式的字符串。它们由**反引号**符号(```js`) instead of the usual single or double quotes. Template literals allow you to embed expressions in the string that are evaluated at runtime. Thus, we can easily create dynamic strings from variables and variable expressions. These expressions are denoted with the dollar sign and curly braces (`${ expression }`). The template literal syntax is shown in the following code:
+**模板文字**是 ECMAScript 6 中引入的一种新形式的字符串。它们由**反引号**符号（`` ` ``），而不是通常的单引号或双引号。模板文字允许您在运行时计算的字符串中嵌入表达式。因此，我们可以很容易地从变量和变量表达式创建动态字符串。这些表达式用美元符号和花括号（`${ expression }`）表示。模板文本语法如以下代码所示:
 
-```
-
-const example = "pretty";
-
-console.log( `模板文字非常 ${ example } 有用！！！` );
-
-// 期望输出：模板文字非常有用！！！
-
-```js
+[PRE21]js
 
 ###### Snippet 1.22: Template literal basic syntax
 
@@ -610,27 +452,7 @@ Template literals are escaped like other strings in JavaScript. To escape a temp
 
 Template literals allow for multiline strings. Any newline characters that are inserted into the source are part of the template literal and will result in a line break in the output. In simpler terms, inside a template literal, we can press the **Enter** key on the keyboard and split it on to two lines. This newline character in the source code will be parsed as part of the template literal and will result in a newline in the output. To replicate this with normal strings, we would have to use the `\n` character to generate a new line. With template literals, we can break the line in the template literal source and achieve the same expected output. An example of this is shown in the following code:
 
-```
-
-// 使用普通字符串
-
-console.log( 'This is line 1\nThis is line 2' );
-
-// 期望输出：这是第 1 行
-
-// 这是第 2 行
-
-// 使用模板文字
-
-console.log( `This is line 1
-
-这是第 2 行` );
-
-// 期望输出：这是第 1 行
-
-// 这是第 2 行
-
-```js
+[PRE22]js
 
 ###### Snippet 1.23: Template literal multi-line syntax
 
@@ -646,15 +468,7 @@ To convert standard string objects to template literals to demonstrate the power
 
 ##### index.js:
 
-```
-
-let a = 5, b = 10;
-
-console.log( a + ' + ' + b + ' is equal to ' + ( a + b ) );
-
-console.log( `${a} + ${b} is equal to ${a + b}` );
-
-```js
+[PRE23]js
 
 ###### Snippet 1.24: Template literal and string comparison
 
@@ -670,59 +484,19 @@ You have successfully converted standard string objects to template literals.
 
 Template literals allow for expression nesting, that is, new template literals can be put inside the expression of a template literal. Since the nested template literal is part of the expression, it will be parsed as a new template literal and will not interfere with the external template literal. In some cases, nesting a template literal is the easiest and most readable way to create a string. An example of template literal nesting is shown in the following code:
 
-```
-
-function javascriptOrCPlusPlus() { return 'JavaScript'; }
-
-const outputLiteral = `我们正在学习关于 ${ `专业 ${ javascriptOrCPlusPlus() }` }`
-
-```js
+[PRE24]js
 
 ###### Snippet 1.25: Template literal nesting
 
 A more advanced form of template literals are **tagged template literals**. Tagged template literals can be parsed with a special function called **tag functions**, and can return a manipulated string or any other value. The first input argument of a tag function is an array containing string values. The string values represent the parts of the input string, broken at each template expression. The remaining arguments are the values of the template expressions in the string. Tag functions are not called like normal functions. To call a tag function, we omit the parentheses and any whitespace around the template literal argument. This syntax is shown in the following code:
 
-```
-
-// 定义标签函数
-
-function tagFunction( strings, numExp, fruitExp ) {
-
-const str0 = strings[0]; // "We have"
-
-const str1 = strings[1]; // " of "
-
-const quantity = numExp < 10 ? 'very few' : 'a lot';
-
-return str0 + quantity + str1 + fruitExp + str2;
-
-}
-
-定义水果为'apple'，数字为 8。
-
-// 注意：调用标签函数时缺少括号或空格
-
-const output = tagFunction`We have ${num} of ${fruit}. Exciting!`
-
-console.log( output )
-
-// 期望输出：We have very few of apples. Exciting!!
-
-```js
+[PRE25]js
 
 ###### Snippet 1.26: Tagged template literal example
 
 A special property named `raw` is available for the first argument of a tagged template. This property returns an array that contains the raw, unescaped, versions of each part of the split template literal. This is shown in the following code:
 
-```
-
-function tagFunction( strings ){ console.log( strings.raw[0] ); }
-
-tagFunction`This is line 1\. \n This is line 2.`
-
-//预期输出：“这是第 1 行。 \n 这是第 2 行。”字符//'\'和'n'不会解析为换行符
-
-```js
+[PRE26]js
 
 ###### Snippet 1.27: Tagged template raw property
 
@@ -732,21 +506,7 @@ In summary, template literals allow for the simplification of complicated string
 
 You are building a website for a real estate company. You must build a function that takes in an object with property information and returns a formatted string that states the property owner, where the property is located (`address`), and how much they are selling it for (`price`). Consider the following object as input:
 
-```
-
-{
-
-地址：'123 Main St，San Francisco CA，USA'，
-
-楼层：2，
-
-价格：5000000，
-
-owner：“John Doe”
-
-}
-
-```js
+[PRE27]js
 
 ###### Snippet 1.28: Object Input
 
@@ -762,29 +522,7 @@ To utilize a template literal to pretty-print an object, perform the following s
 
 ##### index.js:
 
-```
-
-function parseHouse（property）{
-
-return `${property.owner}正在以${property.address}的价格出售该物业${property.price}美元`
-
-}
-
-const house = {
-
-地址：“123 Main St，San Francisco CA，USA”，
-
-floors：2，
-
-price：5000000，
-
-owner：“John Doe”
-
-};
-
-console.log（parseHouse（house））;
-
-```js
+[PRE28]js
 
 ###### Snippet 1.29: Template literal using expressions
 
@@ -812,53 +550,13 @@ Syntactic sugar is a syntax that is designed to make expressions easier to read�
 
 The shorthand for initializing object properties allows you to make more concise objects. In ES5, we needed to define the object properties with a key name and a value, as shown in the following code:
 
-```
-
-function getPersionES5（name，age，height）{
-
-return {
-
-name：name，
-
-年龄：年龄，
-
-height：height
-
-};
-
-}
-
-getPersionES5（'Zachary'，23，195）
-
-//预期输出：{name：'Zachary'，age：23，height：195}
-
-```js
+[PRE29]js
 
 ###### Snippet 1.30: ES5 object properties
 
 Notice the repetition in the object literal returned by the function. We name the property in the object after variable name causing duplication (`<code>name: name</code>`). In ES6, we can shorthand each property and remove the repetition. In ES6, we can simply state the variable in the object literal declaration and it will create a property with a key that matches the variable name and a value that matches the variable value. This is shown in the following code:
 
-```
-
-function getPersionES6（name，age，height）{
-
-return {
-
-name，
-
-age，
-
-height
-
-};
-
-}
-
-getPersionES6（'Zachary'，23，195）
-
-//预期输出：{name：'Zachary'，age：23，height：195}
-
-```js
+[PRE30]js
 
 ###### Snippet 1.31: ES6 object properties
 
@@ -868,53 +566,13 @@ As you can see, both the ES5 and ES6 examples output the exact same object. Howe
 
 ES6 also added a shorthand for declaring function methods inside objects. In ES5, we had to state the property name, then define it as a function. This is shown in the following example:
 
-```
-
-function getPersonES5（name，age，height）{
-
-return {
-
-name：name，
-
-height：height，
-
-getAge：function（）{ return age; }
-
-};
-
-}
-
-getPersonES5（'Zachary'，23，195）.getAge（）
-
-//预期输出：23
-
-```js
+[PRE31]js
 
 ###### Snippet 1.32: ES5 function properties
 
 In ES6, we can define a function but with much less work. As with the property declaration, we don't need a key and value pair to create the function. The function name becomes the key name. This is shown in the following code:
 
-```
-
-function getPersionES6（name，age，height）{
-
-return {
-
-name，
-
-height，
-
-getAge（）{ return age; }
-
-};
-
-}
-
-getPersionES6（'Zachary'，23，195）.getAge（）
-
-//预期输出：23
-
-```js
+[PRE32]js
 
 ###### Snippet 1.33: ES6 function properties
 
@@ -924,49 +582,13 @@ Notice the difference in the function declaration. We omit the function keyword 
 
 ES6 also added a new, efficient way to create property names from variables. This is through computed property notation. As we already know, in ES5, there is only one way to create a dynamic property whose name is specified by a variable; this is through bracket notation, that is, `: obj[ expression ] = 'value'` . In ES6, we can use this same type of notation during the object literal's declaration. This is shown in the following example:
 
-```
-
-const varName = 'firstName';
-
-const person = {
-
-[varName] = 'John'，
-
-lastName：'Smith'
-
-};
-
-console.log（person.firstName）; //预期输出：John
-
-```js
+[PRE33]js
 
 ###### Snippet 1.34: ES6 Computed property
 
 As we can see from the preceding snippet, the property name of `varName` was computed to be `firstName`. When accessing the property, we simply reference it as `person.firstName`. When creating computed properties in object literals, the value that's computed in the brackets does not need to be a variable; it can be almost any expression, even a function. An example of this is shown in the following code:
 
-```
-
-const varName = 'first';
-
-function computeNameType（type）{
-
-return type + 'Name';
-
-}
-
-const person = {
-
-[ varName + 'Name' ] = 'John'，
-
-[ computeNameType（'last'）]：'Smith'
-
-};
-
-console.log（person.firstName）; //预期输出：John
-
-console.log（person.lastName）; //预期输出：Smith
-
-```js
+[PRE34]js
 
 ###### Snippet 1.35: Computed property from function
 
@@ -996,35 +618,7 @@ To create objects using ES6 enhanced object properties and demonstrate the simpl
 
 ##### index.js:
 
-```
-
-const PI = 3.1415;
-
-const INCHES_TO_FEET = 0.083333;
-
-const exportObject = {
-
-PI，
-
-INCHES_TO_FEET，
-
-sum（n1，n2）{
-
-return n1 + n2;
-
-}，
-
-subtract（n1，n2）{
-
-return n1 - n2;
-
-}
-
-};
-
-console.log（exportObject）;
-
-```js
+[PRE35]js
 
 ###### Snippet 1.36: Enhanced object properties
 
@@ -1050,17 +644,7 @@ In this section, we showed you enhanced object properties, a syntactic sugar to 
 
 In ES6, to destructure an array, we simply create an array containing the variable to assign data into, and set it equal to the data array being destructured. The values in the array are unpacked and assigned to the variables in the left-hand side array from left to right, one variable per array value. An example of basic array destructuring is shown in the following code:
 
-```
-
-let names = ['John'，'Michael'];
-
-let [ name1，name2 ] = names;
-
-console.log（name1）; //预期输出：'John'
-
-console.log（name2）; //预期输出：'Michael'
-
-```js
+[PRE36]js
 
 ###### Snippet 1.37: Basic array destructuring
 
@@ -1070,23 +654,7 @@ The data is destructured from the input array into the variables from left to ri
 
 What about if there are more variables than array items? If we attempt to destructure an array into an array that contains more variables than the total number of array elements in the data array, some of the variables will be set to undefined. The array is destructured from left to right. Accessing a non-existent element in a JavaScript array results in an undefined value to be returned. This undefined value is saved to the leftover variables in the variable array. An example of this is shown in the following code:
 
-```
-
-let names = ['John'，'Michael'];
-
-let [ name1 ] = names
-
-let [name2，name3，name4] = names;
-
-console.log（name1）; //预期输出：'John'
-
-console.log（name2）; //预期输出：'John'
-
-console.log（name3）; //预期输出：'Michael'
-
-console.log（name4）; //预期输出：未定义
-
-```js
+[PRE37]js
 
 ###### Snippet 1.38: Array destructuring with mismatched variable and array items
 
@@ -1096,55 +664,19 @@ We must be careful when destructuring arrays to make sure that we don't unintent
 
 ES6 array destructuring allows for skipping array elements. If we have an array of values and we only care about the first and third values, we can still destructure the array. To ignore a value, simply omit the variable identifier for that array index in the left-hand side of the expression. This syntax can be used to ignore a single item, multiple items, or even all the items in an array. Two examples of this are shown in the following snippet:
 
-```
-
-let names = ['John'，'Michael'，'Jessica'，'Susan'];
-
-let [name1，，name3] = names;
-
-//注意第二个数组项的缺少变量名
-
-let [ ,,, ] = names; //忽略数组中的所有项目
-
-console.log（name1）; //预期输出：'John'
-
-console.log（name3）; //预期输出：'Jessica'
-
-```js
+[PRE38]js
 
 ###### Snippet 1.39: Array destructuring with skipped values
 
 Another very useful feature of array destructuring is the ability to set default values for variables that are created with destructuring. When we want to add a default value, we simply need to set the variable equal to the desired default value in the left-hand side of the destructuring expression. If what we are destructuring does not contain an index to assign to the variable, then the default value will be used instead. An example of this is shown in the following code:
 
-```
-
-let [a = 1，b = 2，c = 3] = ['cat'，null];
-
-console.log（a）; //预期输出：'cat'
-
-console.log（b）; //预期输出：null
-
-console.log（c）; //预期输出：3
-
-```js
+[PRE39]js
 
 ###### Snippet 1.40: Array destructuring with skipped values
 
 Finally, array destructuring can be used to easily swap values of variables. If we wish to swap the value of two variables, we can simply destructure an array into the reversed array. We can create an array containing the variables we want to reverse and set it equal to the same array, but with the variable order changed. This will cause the references to be swapped. This is shown in the following code:
 
-```
-
-let a = 10;
-
-let b = 5;
-
-[a，b] = [b，a];
-
-console.log（a）; //预期输出：5
-
-console.log（b）; //预期输出：10
-
-```js
+[PRE40]js
 
 ###### Snippet 1.41: Array destructuring with skipped values
 
@@ -1165,15 +697,7 @@ To extract values from an array using array destructuring assignment, perform th
 
 ##### index.js:
 
-```
-
-const data = [1, 2, 3];
-
-const [ a，，b，c = 4 ] = data;
-
-console.log（a，b，c）;
-
-```js
+[PRE41]js
 
 ###### Snippet 1.42: Array destructuring
 
@@ -1199,33 +723,7 @@ In JavaScript, something considered iterable if something (generally values or k
 
 The **rest operator** is used to represent an indefinite number of arguments as an array. When the last parameter of a function is prefixed with the three ellipses, it becomes an array. The array elements are supplied by the actual arguments that are passed into the function, excluding the arguments that already have been given a separate name in the formal declaration of the function. An example of rest destructuring is shown in the following code:
 
-```
-
-function fn（num1，num2，...args）{
-
-//将不确定数量的函数参数解构为
-
-//数组 args，不包括传入的前两个参数。
-
-console.log（num1）;
-
-console.log（num2）;
-
-console.log（args）;
-
-}
-
-fn（1, 2, 3, 4, 5, 6）;
-
-//预期输出
-
-// 1
-
-// 2
-
-// [3, 4, 5, 6]
-
-```js
+[PRE42]js
 
 ###### Snippet 1.43: Array destructuring with skipped values
 
@@ -1237,39 +735,13 @@ Lastly, the arguments object has special functionality that the rest parameter d
 
 The rest parameter can be destructured similar to how we destructure an array. Instead of putting a single variable name inside before the ellipses, we can replace it with an array of variables we want to fill. The arguments passed into the function will be destructured as expected for an array. This is shown in the following code:
 
-```
-
-function fn（...[n1，n2，n3]）{
-
-//将不确定数量的函数参数解构为
-
-//数组 args，解构为 3 个变量
-
-console.log（n1，n2，n3）;
-
-}
-
-fn（1, 2）; //预期输出：1, 2, 未定义
-
-```js
+[PRE43]js
 
 ###### Snippet 1.44: Destructured rest operator
 
 The spread operator allows an iterable object such as an array or string to be expanded into multiple arguments (for function calls), array elements (for array literals), or key-value pairs (for object expressions). This essentially means that we can expand an array into arguments for creating another array, object, or calling a function. An example of spread syntax is shown in the following code:
 
-```
-
-function fn（n1，n2，n3）{
-
-console.log（n1，n2，n3）;
-
-}
-
-const values = [1, 2, 3];
-
-fn（...values）; //预期输出：1, 2, 3
-
-```js
+[PRE44]js
 
 ###### Snippet 1.45: Spread operator
 
@@ -1277,19 +749,7 @@ In the preceding example, we created a simple function that takes in three input
 
 The rest operator can be used in destructuring objects and arrays. When destructuring an array, if we have more array elements than variables, we can use the rest operator to capture, or catch, all of the additional array elements during destructuring. When using the rest operator, it must be the last parameter in the array destructuring or function arguments list. This is shown in the following code:
 
-```
-
-const [n1，n2，n3，...remaining] = [1, 2, 3, 4, 5, 6];
-
-console.log（n1）; //预期输出：1
-
-console.log（n2）; //预期输出：2
-
-console.log（n3）; //预期输出：3
-
-console.log（remaining）; //预期输出：[4, 5, 6]
-
-```js
+[PRE45]js
 
 ###### Snippet 1.46: Spread operator
 
@@ -1301,17 +761,7 @@ In summary, the rest and spread operators allow iterable entities to be expanded
 
 **Object destructuring** is used in a very similar way to array destructuring. Object destructuring is used to extract data from an object and assign the values to new variables. In ES6, we can do this in a single JavaScript expression. To destructure an object, we surround the variables we want to destructure with curly braces (`{}`), and set that expression equal to the object we are destructuring. A basic example of object destructuring is shown in the following code:
 
-```
-
-const obj = {firstName：'Bob'，lastName：'Smith'};
-
-const { firstName, lastName } = obj;
-
-console.log( firstName ); // 期望输出：'Bob'
-
-console.log( lastName ); // 期望输出：'Smith'
-
-```js
+[PRE46]js
 
 ###### Snippet 1.47: Object destructuring
 
@@ -1321,17 +771,7 @@ In the preceding example, we created an object with the keys `firstName` and `la
 
 When doing basic object destructuring, the name of the parameter in the object and the name of the variable we are assigning it to must match. If there is no matching parameter for a variable we are trying to destructure, then the variable will be set to undefined.
 
-```
-
-const obj = { firstName: 'Bob', lastName: 'Smith' };
-
-const { firstName, middleName } = obj;
-
-console.log( firstName ); // 期望输出：'Bob'
-
-console.log( middleName ); // 期望输出：未定义
-
-```js
+[PRE47]js
 
 ###### Snippet 1.48: Object destructuring with no defined key
 
@@ -1339,17 +779,7 @@ As we saw, the `middleName` key does not exist in the object. When we try to des
 
 With advanced object destructuring syntax, we can save the key that's extracted into a variable with a different name. This is done by adding a colon and the new variable name after the key name in the destructuring notation. This is shown in the following code:
 
-```
-
-const obj = { firstName: 'Bob', lastName: 'Smith' };
-
-const { firstName: first, lastName } = obj;
-
-console.log( first ); // 期望输出：'Bob'
-
-console.log( lastName ); // 期望输出：'Smith'
-
-```js
+[PRE48]js
 
 ###### Snippet 1.49: Object destructuring into new variable
 
@@ -1357,17 +787,7 @@ In the preceding example, we could clearly see that we are destructuring the `fi
 
 Much like with array destructuring, we can destructure an object and provide a default value. If a default value is provided and the key we are attempting to destructure does not exist in the object, then the variable will be set to the default value instead of undefined. This is shown in the following code:
 
-```
-
-const obj = { firstName: 'Bob', lastName: 'Smith' };
-
-const { firstName = 'Samantha', middleName = 'Chris' } = obj;
-
-console.log( firstName ); // 期望输出：'Bob'
-
-console.log( middleName ); // 期望输出：'Chris'
-
-```js
+[PRE49]js
 
 ###### Snippet 1.50: Object destructuring with default values
 
@@ -1375,17 +795,7 @@ In the preceding example, we set the default values for both of the variables we
 
 When we are providing a default value and assigning the key to a new variable name, we must put the default value assignment after the new variable name. This is shown in the following example:
 
-```
-
-const obj = { firstName: 'Bob', lastName: 'Smith' };
-
-const { firstName: first = 'Samantha', middleName: middle = 'Chris' } = obj;
-
-console.log( first ); // 期望输出：'Bob'
-
-console.log( middle); // 期望输出：'Chris'
-
-```js
+[PRE50]js
 
 ###### Snippet 1.51: Object destructuring into new variables with default values
 
@@ -1406,15 +816,7 @@ To extract data from an object by using object destructuring concepts, perform t
 
 ##### index.js:
 
-```
-
-const data = { f1: 'v1', f2: '2', f3: 'v3' };
-
-const { f1, f2: field2, f4 = 'v4' } = data;
-
-console.log( f1, field2, f4 );
-
-```js
+[PRE51]js
 
 ###### Snippet 1.52: Object destructuring
 
@@ -1430,21 +832,7 @@ You have successfully applied object destructuring concepts to extract data from
 
 JavaScript requires special syntax if we declare the variables before the object destructuring expression. We must surround the entire object destructuring expression with parentheses. This syntax is not required for array destructuring. This is shown in the following code:
 
-```
-
-const obj = { firstName: 'Bob', lastName: 'Smith' };
-
-let firstName, lastName;
-
-（{ firstName: first, lastName } = obj）;
-
-// 注意表达式周围的括号
-
-console.log( firstName ); // 期望输出：'Bob'
-
-console.log( lastName ); // 期望输出：'Smith'
-
-```js
+[PRE52]js
 
 ###### Snippet 1.53: Object destructuring into predefined variables
 
@@ -1454,19 +842,7 @@ Make sure that object destructuring done in this way is preceded by a semicolon 
 
 The **rest operator** can also be used to destructure objects. Since object keys are iterable, we can use the rest operator to catch the remaining keys that were uncaught in the original destructuring expression. This is done similar to arrays. We destructure the keys that we want to capture, and then we can add the rest operator to a variable and catch the remaining key/value pairs that have not been destructured out of the object. This is shown in the following example:
 
-```
-
-const obj = { firstName: 'Bob', middleName: 'Chris', lastName: 'Smith' };
-
-const { firstName, ...otherNames } = obj;
-
-console.log( firstName ); // 期望输出：'Bob'
-
-console.log( otherNames );
-
-// 期望输出：{ middleName: 'Chris', lastName: 'Smith' }
-
-```js
+[PRE53]js
 
 ###### Snippet 1.54: Object destructuring with the rest operator
 
@@ -1491,15 +867,7 @@ To destructure values from an array that's nested inside an object using the con
 
 ##### index.js:
 
-```
-
-const data = { arr: [ 1, 2, 3 ] };
-
-const { arr: [ , v2 ] } = data;
-
-console.log( v2 );
-
-```js
+[PRE54]js
 
 ###### Snippet 1.55: Nested array and object destructuring
 
@@ -1519,35 +887,7 @@ In summary, object and array destructuring was introduced into ES6 to cut down c
 
 You have registered for university courses and need to buy the texts required for the classes. You are building a program to scrape data from the book list and obtain the ISBN numbers for each text book that's required. Use object and array nested destructuring to obtain the ISBN value of the first text of the first book in the courses array. The courses array follows the following format:
 
-```
-
-[
-
-{
-
-title: 'Linear Algebra II',
-
-description: 'Advanced linear algebra.',
-
-texts: [ {
-
-author: 'James Smith',
-
-price: 120,
-
-ISBN: '912-6-44-578441-0'
-
-} ]
-
-},
-
-{ ... },
-
-{ ... }
-
-]
-
-```js
+[PRE55]js
 
 ###### Snippet 1.56: Course array format
 
@@ -1556,35 +896,19 @@ To obtain data from complicated array and object nesting by using nested destruc
 1.  Save the provided data structure into the `courseCatalogMetadata` variable.
 2.  Destructure the first array element into a variable called `course`:
 
-```
-
-[ course ] = [ … ]
-
-```js
+[PRE56]js
 
 3.  Replace the `course` variable with object destructuring to save the texts field into a variable called `textbooks`:
 
-```
-
-[ { texts: textbooks} ] = [ … ]
-
-```js
+[PRE57]js
 
 4.  Replace the `textbooks` variable with array destructuring to get the first element of the texts array and save it into the variable called `textbook`:
 
-```
-
-[ { texts: [ textbook ] } ] = [ … ]
-
-```js
+[PRE58]js
 
 5.  Replace the `textbook` variable with object destructuring to get the `ISBN` field and save it into the `ISBN` variable:
 
-```
-
-[ { texts: [ { ISBN } ] } ] = [ … ]
-
-```js
+[PRE59]js
 
 6.  Log the value of the `ISBN`.
 
@@ -1592,47 +916,7 @@ To obtain data from complicated array and object nesting by using nested destruc
 
 ##### index.js:
 
-```
-
-const courseCatalogMetadata = [
-
-{
-
-title: 'Linear Algebra II',
-
-description: 'Advanced linear algebra.',
-
-texts: [ {
-
-author: 'James Smith',
-
-price: 120,
-
-ISBN: '912-6-44-578441-0'
-
-} ]
-
-}
-
-];
-
-const [ course ] = courseCatalogMetadata;
-
-const [ { texts: textbooks } ] = courseCatalogMetadata;
-
-const [ { texts: [ textbook ] } ] = courseCatalogMetadata;
-
-const [ { texts: [ { ISBN } ] } ] = courseCatalogMetadata;
-
-console.log( course );
-
-console.log( textbooks );
-
-console.log( textbook );
-
-console.log( ISBN );
-
-```js
+[PRE60]js
 
 ###### Snippet 1.57: Implementing destructuring into code
 
@@ -1658,33 +942,13 @@ Classes and Modules were added to ES6\. Classes were introduced as a way to expa
 
 In JavaScript, a class can be defined with the keyword class. A class is created by calling the keyword class, followed by the class name and curly braces. Inside the curly braces, we define all of the functions and logic for the class. The syntax is as follows:
 
-```
-
-class name { /* class stuff goes here */ }
-
-```js
+[PRE61]js
 
 ###### Snippet 1.58: Class syntax
 
 A class can be created with the **optional function constructor**. The constructor, if not necessary for a JavaScript class, but there can only be one method with the name constructor in a class. The constructor is called when an instance of the class in initialized and can be used to set up all of the default internal values. An example of a class declaration is shown in the following code:
 
-```
-
-class House{
-
-constructor(address, floors = 1, garage = false) {
-
-this.address = address;
-
-this.floors = floors;
-
-this.garage = garage;
-
-}
-
-}
-
-```js
+[PRE62]js
 
 ###### Snippet 1.59: Basic class creation
 
@@ -1706,25 +970,7 @@ To create a simple class and demonstrate internal class variables, perform the f
 
 ##### index.js:
 
-```
-
-class Vehicle {
-
-constructor( wheels, topSpeed ) {
-
-this.wheels = wheels;
-
-this.topSpeed = topSpeed;
-
-}
-
-}
-
-const tricycle = new Vehicle( 3, 20 );
-
-console.log( tricycle.wheels, tricycle.topSpeed );
-
-```js
+[PRE63]js
 
 ###### Snippet 1.60: Creating a class
 
@@ -1740,25 +986,7 @@ You have successfully created a simple class with values.
 
 We instantiated a new instance of a class with the new keyword. To create a new class, simply declare a variable and set it equal to the expression `new className()`. When we instantiate a new class, the parameters that are passed into the class call are passed into the constructor function, if one exists. An example of a class instantiation is shown in the following code:
 
-```
-
-class House{
-
-constructor(address, floors = 1) {
-
-this.address = address;
-
-this.floors = floors;
-
-}
-
-}
-
-// 实例化类
-
-let myHouse = new House( '1100 Fake St., San Francisco CA, USA', 2, false );
-
-```js
+[PRE64]js
 
 ###### Snippet 1.61: Class instantiation
 
@@ -1766,31 +994,7 @@ In this example, the class instantiation happens on the line with the new keywor
 
 To add functions to a class, we declare them with the new ES6 object function declaration. As a quick reminder, when using the new ES6 object function declaration, we can omit the function keyword and object key name. When a function is added to an object, it is automatically attached to the `this` scope. Additionally, all functions that are added to the class have access to the `this` scope and will be able to call any function and access any variable attached to the `this` scope. An example of this is shown in the following code:
 
-```
-
-class House{
-
-constructor( address, floors = 1) {
-
-this.address = address;
-
-this.floors = floors;
-
-}
-
-getFloors() {
-
-return this.floors;
-
-}
-
-}
-
-let myHouse = new House( '1100 Fake St., San Francisco CA, USA', 2 );
-
-console.log( myHouse.getFloors() ); // 期望输出：2
-
-```js
+[PRE65]js
 
 ###### Snippet 1.62: Creating a class with functions
 
@@ -1798,13 +1002,7 @@ As we can see from this example, the two functions `getFloors` and `setFloors` w
 
 In ES6, we can also create subclasses using the `extends` keyword. **Subclasses** inherit properties and methods from the parent class. A subclass is defined by following the class name with the keyword `extends` and the name of the parent class. An example of a subclass declaration is shown in the following code:
 
-```
-
-class House {}
-
-class Mansion extends House {}
-
-```js
+[PRE66]js
 
 ###### Snippet 1.63: Extending a class
 
@@ -1812,35 +1010,7 @@ class Mansion extends House {}
 
 In this example, we will create a class called `House`, and then we will create a subclass called `Mansion` that extends the class `House`. When we create a subclass, we need to take note of the behavior of the constructor method. If we provide a constructor method, then we must call the `super()` function. `super` is a function that calls the constructor of the parent object. If we try to access the `this` scope without a call to call `super`, then we will get a runtime error and our code will crash. Any parameters that are required by the parent constructor can be passed in through the `super` method. If we do not specify a constructor for the subclass, the default constructor behavior will automatically call the super constructor. An example of this is shown in the following code:
 
-```
-
-class House {
-
-constructor( address = 'somewhere' ) {
-
-this.address = address;
-
-}
-
-}
-
-class Mansion extends House {
-
-constructor( address, floors ) {
-
-super( address );
-
-this.floors = floors;
-
-}
-
-}
-
-let mansion = new Mansion( 'Hollywood CA, USA', 6, 'Brad Pitt' );
-
-console.log( mansion.floors ); // 期望输出：6
-
-```js
+[PRE67]js
 
 ###### Snippet 1.64: Extending a class with and without a constructor
 
@@ -1866,35 +1036,7 @@ Modules use the `export` keyword to expose variables and functions contained in 
 
 There are two ways to expose the named contents of a module with the `export` keyword. We can export each item individually by preceding the variable or function declaration with the `export` keyword, or we can export an object containing the key value pairs that reference each variable and function we want exported. These two export methods are shown in the following example:
 
-```
-
-// math-module-1.js
-
-export const PI = 3.1415;
-
-export const DEGREES_IN_CIRCLE = 360;
-
-export function convertDegToRad( degrees ) {
-
-return degrees * PI / ( DEGREES_IN_CIRCLE /2 );
-
-}
-
-// math-module-2.js
-
-const PI = 3.1415;
-
-const DEGREES_IN_CIRCLE = 360;
-
-function convertDegToRad( degrees ) {
-
-return degrees * PI / ( DEGREES_IN_CIRCLE /2 );
-
-}
-
-export { PI, DEGREES_IN_CIRCLE, convertDegToRad };
-
-```js
+[PRE68]js
 
 ###### Snippet 1.65: Named Exports
 
@@ -1902,17 +1044,7 @@ Both of the modules outlined in the preceding example export three constant vari
 
 To export the contents of a module as a default export, we must use the **default** **keyword**. The `default` keyword comes after the `export` keyword. When we default export a module, we can also omit the identifier name of the class, function, or variable we are exporting. An example of this is shown in the following code:
 
-```
-
-// HouseClass.js
-
-export default class() { /* Class body goes here */ }
-
-// myFunction.js
-
-export default function() { /* Function body goes here */ }
-
-```js
+[PRE69]js
 
 ###### Snippet 1.66: Default exports
 
@@ -1928,31 +1060,7 @@ ES6 modules may not have full support from all browsers versions or versions of 
 
 There are four ways we can use the `import` keyword, all of which are shown in the following code:
 
-```
-
-// math-module.js
-
-export const PI = 3.1415;
-
-export const DEGREES_IN_CIRCLE = 360;
-
-// index1.js
-
-import { PI } from 'math-module.js'
-
-// index2.js
-
-import { PI, DEGREES_IN_CIRCLE } from 'math-module.js'
-
-// index3.js
-
-import { PI as pi, DEGREES_IN_CIRCLE as degInCircle } from 'math-module.js'
-
-// index4.js
-
-import * as MathModule from 'math-module.js'
-
-```js
+[PRE70]js
 
 ###### Snippet 1.67: Different ways to import a module
 
@@ -1960,39 +1068,13 @@ In the code shown in preceding snippet, we have created a simple module that exp
 
 The process of importing and using modules is better explained through the following snippet:
 
-```
-
-// email-callback-api.js
-
-export function authenticate( … ){ … }
-
-export function sendEmail( … ){ … }
-
-export function listEmails( … ){ … }
-
-// app.js
-
-import * as EmailAPI from 'email-callback-api.js';
-
-const credentials = { password: '****', user: 'Zach' };
-
-EmailAPI.authenticate( credentials, () => {
-
-EmailAPI.send( { to: 'ceo@google.com', subject: 'promotion', body: 'Please promote me' }, () => {} );'
-
-} );
-
-```js
+[PRE71]js
 
 ###### Snippet 1.68: Importing a module
 
 To use an import in the browser, we must use the `script` tag. The module import can be done inline or via a source file. To import a module, we need to create a `script` tag and set the type property to `module`. If we are importing via a source file, we must set the `src` property to the file path. This is shown in the following syntax:
 
-```
-
-<script type="module" src="./path/to/module.js"></script>
-
-```js
+[PRE72]js
 
 ###### Snippet 1.69: Browser import inline
 
@@ -2002,15 +1084,7 @@ The script tag is an HTML tag that allows us to run JavaScript code in the brows
 
 We can also import modules inline. To do this, we must omit the `src` property and code the import directly in the body of the script tag. This is shown in the following code:
 
-```
-
-<script type="module">
-
-import * as ModuleExample from './path/to/module.js';
-
-</script>
-
-```js
+[PRE73]js
 
 ###### Snippet 1.70: Browser import in script body
 
@@ -2020,13 +1094,7 @@ When importing modules in browsers, browser versions that do not support ES6 mod
 
 If the browser does not support ES6 modules, we can provide a fallback option with the `nomodule` attribute. Module compatible browsers will ignore script tags with the `nomodule` attribute so that we can use it to provide fallback support. This is shown in the following code:
 
-```
-
-<script type="module" src="es6-module-supported.js"></script>
-
-<script nomodule src="es6-module-NOT-supported.js"></script>
-
-```js
+[PRE74]js
 
 ###### Snippet 1.71: Browser import with compatibility option
 
@@ -2055,35 +1123,7 @@ To build a functional class to demonstrate the capabilities of a class, perform 
 
 ##### index.js:
 
-```
-
-class Car {
-
-constructor( make, model, year, color ) {
-
-this.make = make;
-
-this.model = model;
-
-this.year = year;
-
-this.color = color;
-
-}
-
-setColor( color ) {
-
-this.color = color;
-
-}
-
-}
-
-let subaru = new Car( 'Subaru', 'Outback', 2005, 'Grey' );
-
-subaru.setColor( 'Red' );
-
-```js
+[PRE75]js
 
 ###### Snippet 1.72: Full class implementation
 
@@ -2117,49 +1157,19 @@ If there is no `package.json` file in this directory, we must create it. This ca
 
 To install the Babel command-line interface, use the following command: `npm install --save-dev babel-cli`. After that has concluded, the `babel-cli` field will have been added to the `devDependencies` object in the `package.json` file:
 
-```
-
-{
-
-"devDependencies": {
-
-"babel-cli": "⁶.26.0"
-
-}
-
-}
-
-```js
+[PRE76]js
 
 ###### Snippet 1.73: Adding the first dependency
 
 This command only installed the base Babel with no plugins for transpiling between versions of JavaScript. To install the plugin to transpile to ECMAScript 2015, use the `npm install --save-dev babel-preset-es2015` command. Once the command finishes running, our `package.json` file will contain another dependency:
 
-```
-
-"devDependencies": {
-
-"babel-cli": "⁶.26.0",
-
-"babel-preset-es2015": "⁶.24.1"
-
-}
-
-```js
+[PRE77]js
 
 ###### Snippet 1.74: Adding the second dependency
 
 This installs the ES6 presets. To use these presets, we must tell Babel to configure itself with these presets. Create a file called `.babelrc`. Note the leading period in the name. The `.babelrc` file is Babel's configuration file. This is where we tell Babel what presets, plugins, and so on, we are going to use. Once created, add the following contents to the file:
 
-```
-
-{
-
-"presets": ["es2015"]
-
-}
-
-```js
+[PRE78]js
 
 ###### Snippet 1.75: Installing the ES6 presets
 
@@ -2167,27 +1177,13 @@ This installs the ES6 presets. To use these presets, we must tell Babel to confi
 
 Now that Babel has been configured, we must create the code file to transpile. In the root folder of your project, create a file called `app.js`. In this file, paste the following ES6 code:
 
-```
-
-const sum5 = inputNumber  => inputNumber + 5;
-
-console.log( `The sum of 5 and 5 is ${sum5(5)}!`);
-
-```js
+[PRE79]js
 
 ###### Snippet 1.76: Pasting the code
 
 Now that Babel has been configured and we have a file that we wish to transpile, we need to update our `package.json` file to add a transpile script for npm. Add the following lines to your `package.json` file:
 
-```
-
-"scripts": {
-
-"transpile": "babel app.js --out-file app.transpiled.js --source-maps"
-
-}
-
-```js
+[PRE80]js
 
 ###### Snippet 1.77: Update the package.json file
 
@@ -2224,29 +1220,7 @@ Ensure that Node.js is already installed before you start.
 
 ##### package.json:
 
-```
-
-// File 1: package.json
-
-{
-
-"scripts": {
-
-"transpile": "babel ./app.js --out-file app.transpiled.js --source-maps"
-
-},
-
-"devDependencies": {
-
-"babel-cli": "⁶.26.0",
-
-"babel-preset-es2015": "⁶.24.1"
-
-}
-
-}
-
-```js
+[PRE81]js
 
 ###### Snippet 1.78: Package.json config file
 
@@ -2254,13 +1228,7 @@ Ensure that Node.js is already installed before you start.
 
 ##### .babelrc:
 
-```
-
-// File 2: .babelrc
-
-{ "presets": ["es2015"] }
-
-```js
+[PRE82]js
 
 ###### Snippet 1.79: Babel config file
 
@@ -2268,21 +1236,7 @@ Ensure that Node.js is already installed before you start.
 
 ##### app.transpiled.js:
 
-```
-
-// File 3: app.transpiled.js
-
-var fn1 = function fn1(a, b) { … };
-
-var fn2 = function fn2(a, b) { … };
-
-var fn3 = function fn3(a) { … };
-
-var fn4 = function fn4() { … };
-
-var fn5 = function fn5(a) { … };
-
-```js
+[PRE83]js
 
 ###### Snippet 1.80: Fully transpiled code
 
@@ -2308,53 +1262,13 @@ An **iterator** is a way to traverse through data in a collection. To iterate ov
 
 To create an iterator, we must define a function that takes a collection in as the parameter and returns an object. The return object must have a function property called next. When next is called, the iterator steps to the next value in the collection and returns an object with the value and the done status of the iteration. An example iterator is shown in the following code:
 
-```
-
-function createIterator( array ){
-
-let currentIndex = 0;
-
-return {
-
-next(){
-
-return currentIndex < array.length ?
-
-{ value: array[ currentIndex++ ], done: false} :
-
-{ done: true };
-
-}
-
-};
-
-}
-
-```js
+[PRE84]js
 
 ###### Snippet 1.81: Iterator declaration
 
 This iterator takes in an array and returns an object with the single function property next. Internally, the iterator keeps track of the array and the index we are currently looking at. To use the iterator, we simply call the next function. Calling next will cause the iterator to return an object and increment the internal index by one. The object returned by the iterator must have, at a minimum, the properties value and done. Value will contain the value at the index we are currently viewing. `Done` will contain a Boolean. If the Boolean equals true, then we have finished the **traversion on** the input collection. If it is **falsy**, then we can keep calling the next function:
 
-```
-
-// Using an iterator
-
-let it = createIterator( [ 'Hello', 'World' ] );
-
-console.log( it.next() );
-
-// Expected output: { value: 'Hello', done: false }
-
-console.log( it.next() );
-
-// Expected output: { value: 'World' , done: false }
-
-console.log( it.next() );
-
-// Expected output: { value: undefined, done: true }
-
-```js
+[PRE85]js
 
 ###### Snippet 1.82: Iterator use
 
@@ -2370,29 +1284,11 @@ In summary, iterators provide us with a way to traverse potentially complex coll
 
 To create a `generator`, we must define a function with an asterisk in front of the function name and the `yield` keyword in the body. For example, to create a generator called `testGenerator`, we would initialize it as follows:
 
-```
-
-function *testGen( data ) { yield 0; }.
-
-```js
+[PRE86]js
 
 The asterisk designates that this is a `generator function`. The `yield` keyword designates a break in the normal function flow until the generator function is called again. An example of a generator is shown in the following snippet:
 
-```
-
-function *gen() {
-
-let i = 0;
-
-while (true){
-
-yield i++;
-
-}
-
-}
-
-```js
+[PRE87]js
 
 ###### Snippet 1.83: Generator creation
 
@@ -2419,27 +1315,7 @@ To create a generator function that generates the values of the sequence of 2n t
 
 ##### index.js:
 
-```
-
-function *gen() {
-
-let i = 1;
-
-while (true){
-
-yield i;
-
-i = i * 2;
-
-}
-
-}
-
-const generator = gen();
-
-console.log( generator.next(), generator.next(), generator.next() );
-
-```js
+[PRE88]js
 
 ###### Snippet 1.84: Simple generator
 
@@ -2455,63 +1331,13 @@ You have successfully created a generator function.
 
 Similar to iterators, the `done` value contains the completion status of the generator. If the `done` value is set to `true`, then the generator has finished execution and will no longer return new values. The value parameter contains the result of the expression contained on the line with the `yield` keyword. In this case, it will return the current value of `i`, before the increment. This is shown in the following code:
 
-```
-
-let sequence = gen();
-
-console.log(sequence.next());
-
-//Expected output: { value: 0, done: false }
-
-console.log(sequence.next());
-
-//Expected output: { value: 1, done: false }
-
-console.log(sequence.next());
-
-//Expected output: { value: 2, done: false }
-
-```js
+[PRE89]js
 
 ###### Snippet 1.85: Generator use
 
 Generators pause execution when they reach the `yield` keyword. This means that loops will pause execution. Another powerful tool of a generator is the ability to pass in data via the next function and `yield` keyword. When a value is passed into the next function, the return value of the `yield` expression will be set to the value that's passed into next. An example of this is shown in the following code:
 
-```
-
-function *gen() {
-
-let i = 0;
-
-while (true){
-
-let inData = yield i++;
-
-console.log( inData );
-
-}
-
-}
-
-let sequence = gen();
-
-sequence.next()
-
-sequence.next( 'test1' )
-
-sequence.next()
-
-sequence.next( 'test2' )
-
-// Expected output:
-
-// 'test1'
-
-// undefined
-
-// 'test2'
-
-```
+[PRE90]
 
 ###### Snippet 1.86 Yield keyword
 
