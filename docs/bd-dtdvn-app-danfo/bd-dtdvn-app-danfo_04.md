@@ -1,4 +1,4 @@
-# 第三章：：Dnotebook - 用于 JavaScript 的交互式计算环境
+# 第三章：Dnotebook - 用于 JavaScript 的交互式计算环境
 
 使我们的代码足够表达人类可读，而不仅仅是供机器消费的想法是由 Donald Knuth 开创的，他还写了一本名为《文学编程》的书([`www.amazon.com/Literate-Programming-byKnuth-Knuth/dp/B004WKFC4S`](https://www.amazon.com/Literate-Programming-byKnuth-Knuth/dp/B004WKFC4S))。诸如 Jupyter Notebook 之类的工具同样重视散文和代码，因此程序员和研究人员可以通过代码和文本（包括图像和工作流程）进行广泛表达。
 

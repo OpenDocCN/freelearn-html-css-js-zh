@@ -1,4 +1,4 @@
-# 第二章：：现代 JavaScript 概述
+# 第二章：现代 JavaScript 概述
 
 在这一章中，我们将讨论一些核心的 JavaScript 概念。如果你是 JavaScript 的新手，需要介绍的话，请查看*第十三章*，*附录*：*基本 JavaScript 概念*。
 
