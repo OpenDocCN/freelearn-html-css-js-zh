@@ -17,7 +17,6 @@
 +   [JavaScript 正则表达式教程](docs/js-re/README.md)
 +   [Jasmine JavaScript 测试](docs/jsm-js-test-2e/README.md)
 +   [Three.js 学习手册](docs/lrn-3js/README.md)
-+   [Python 卖空算法教程](docs/mdn-js-app/README.md)
 +   [精通 JavaScript 设计模式](docs/ms-js-dsn-ptn/README.md)
 +   [精通 JavaScript 函数式编程](docs/ms-js-fp/README.md)
 +   [精通 TypeScript](docs/ms-ts/README.md)
