@@ -444,902 +444,929 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 **模板文字**是 ECMAScript 6 中引入的一种新形式的字符串。它们由**反引号**符号（`` ` ``），而不是通常的单引号或双引号。模板文字允许您在运行时计算的字符串中嵌入表达式。因此，我们可以很容易地从变量和变量表达式创建动态字符串。这些表达式用美元符号和花括号（`${ expression }`）表示。模板文本语法如以下代码所示:
 
-[PRE21]js
+[PRE21]
 
-###### Snippet 1.22: Template literal basic syntax
+###### 代码段 1.22：模板字面量基本语法
 
-Template literals are escaped like other strings in JavaScript. To escape a template literal, simply use a backslash (`\`) character. For example, the following equalities evaluate to true: ``\`` === "`",`\t` === "\t"`, and ``\n\r` === "\n\r".`
+在 JavaScript 中，模板字面量像其他字符串一样被转义。要转义模板字面量，只需使用反斜杠（`\`）字符。例如，以下相等性计算结果为真：``\`` === "`",`\t` === "\t"`, and ``\n\r` === "\n\r".
 
-Template literals allow for multiline strings. Any newline characters that are inserted into the source are part of the template literal and will result in a line break in the output. In simpler terms, inside a template literal, we can press the **Enter** key on the keyboard and split it on to two lines. This newline character in the source code will be parsed as part of the template literal and will result in a newline in the output. To replicate this with normal strings, we would have to use the `\n` character to generate a new line. With template literals, we can break the line in the template literal source and achieve the same expected output. An example of this is shown in the following code:
+模板字面量允许多行字符串。插入源代码的任何换行符都属于模板字面量，并将在输出中导致换行。简单来说，在模板字面量内，我们可以按下键盘上的**Enter**键并将其拆分成两行。源代码中的换行符将被解析为模板字面量的一部分，并将导致输出中的换行。要使用普通字符串复制这一点，我们必须使用`\n`字符生成新行。使用模板字面量，我们可以在模板字面量源中换行并实现相同的预期输出。示例代码如下所示：
 
-[PRE22]js
+[PRE22]
 
-###### Snippet 1.23: Template literal multi-line syntax
+###### 代码段 1.23：模板字面量多行语法
 
-### Exercise 5: Converting to Template Literals
+### 练习 5：转换为模板字面量
 
-To convert standard string objects to template literals to demonstrate the power of template literal expressions, perform the following steps:
+为了演示模板字面量表达式的强大功能，将标准字符串对象转换为模板字面量，执行以下步骤：
 
-1.  Create two variables, `a` and `b`, and save numbers into them.
-2.  Log the sum of `a` and `b` in the format `a + b` is equal to `<result>` using normal strings.
-3.  Log the sum of `a` and `b` in the format `a + b` is equal to `<result>` using a single template literal.
+1.  创建两个变量，`a` 和 `b`，并将数字保存其中。
 
-**Code**
+1.  用普通字符串记录 `a` 和 `b` 的总和为 `a + b` 等于 `<result>`。
+
+1.  以单个模板字面量的格式记录 `a` 和 `b` 的总和为 `a + b` 等于 `<result>`。
+
+**代码**
 
 ##### index.js:
 
-[PRE23]js
+[PRE23]
 
-###### Snippet 1.24: Template literal and string comparison
+###### 代码段 1.24：模板字面量和字符串比较
 
 [`bit.ly/2RD5jbC`](https://bit.ly/2RD5jbC)
 
-**Outcome**
+**结果**
 
-![Figure 1.7: Logging the sum of the variable's output](img/Figure_1.7.jpg)
+![图 1.7：记录变量输出的总和](img/Figure_1.7.jpg)
 
-###### Figure 1.7: Logging the sum of the variable's output
+###### 图 1.7：记录变量输出的总和
 
-You have successfully converted standard string objects to template literals.
+您已成功将标准字符串对象转换为模板字面量。
 
-Template literals allow for expression nesting, that is, new template literals can be put inside the expression of a template literal. Since the nested template literal is part of the expression, it will be parsed as a new template literal and will not interfere with the external template literal. In some cases, nesting a template literal is the easiest and most readable way to create a string. An example of template literal nesting is shown in the following code:
+模板字面量允许表达式嵌套，即，新的模板字面量可以放置在模板字面量的表达式中。由于嵌套的模板字面量是表达式的一部分，它将被解析为新的模板字面量，并且不会干扰外部模板字面量。在某些情况下，嵌套模板字面量是创建字符串的最简单和最可读的方式。模板字面量嵌套的示例代码如下所示：
 
-[PRE24]js
+[PRE24]
 
-###### Snippet 1.25: Template literal nesting
+###### 代码段 1.25：模板字面量嵌套
 
-A more advanced form of template literals are **tagged template literals**. Tagged template literals can be parsed with a special function called **tag functions**, and can return a manipulated string or any other value. The first input argument of a tag function is an array containing string values. The string values represent the parts of the input string, broken at each template expression. The remaining arguments are the values of the template expressions in the string. Tag functions are not called like normal functions. To call a tag function, we omit the parentheses and any whitespace around the template literal argument. This syntax is shown in the following code:
+**带标记的模板文字**是模板文字的更高级形式。带标记的模板文字可以使用称为**标记函数**的特殊函数进行解析，可以返回一个操作后的字符串或任何其他值。标记函数的第一个输入参数是一个包含字符串值的数组。字符串值表示输入字符串的部分，在每个模板表达式处进行拆分。其余的参数是字符串中模板表达式的值。标记函数不像普通函数那样调用。要调用标记函数，我们忽略模板文字参数周围的括号和空格。以下是此语法的示例：
 
-[PRE25]js
+[PRE25]
 
-###### Snippet 1.26: Tagged template literal example
+###### Snippet 1.26: 带标记的模板文字示例
 
-A special property named `raw` is available for the first argument of a tagged template. This property returns an array that contains the raw, unescaped, versions of each part of the split template literal. This is shown in the following code:
+一个名为`raw`的特殊属性可用于标记模板的第一个参数。此属性返回一个包含每个拆分模板文字的原始、未转义版本的数组。以下是示例代码：
 
-[PRE26]js
+[PRE26]
 
-###### Snippet 1.27: Tagged template raw property
+###### Snippet 1.27: 带标记的模板原始属性
 
-In summary, template literals allow for the simplification of complicated string expressions. Template literals allow you to embed variables and complicated expressions into strings. Template literals can even be nested into the expression fields of other template literals. If a template literal is broken into multiple lines in the source code, the interpreter will interpret that as a new line in the string and insert one accordingly. Template literals also provide a new way to parse and manipulate strings with the tagged template function. These functions give you a way to perform complex string manipulation via a special function. The tagged template functions also give access to the raw strings as they were entered, ignoring any escape sequences.
+总而言之，模板文字允许简化复杂的字符串表达式。模板文字允许将变量和复杂表达式嵌入字符串中。模板文字甚至可以嵌套到其他模板文字的表达式字段中。如果模板文字在源代码中分为多行，则解释器将将其解释为字符串中的换行并相应地插入一个换行。模板文字还提供了一种使用带标记模板函数解析和操作字符串的新方式。这些函数为您提供了一种通过特殊函数执行复杂的字符串操作的方法。通过带标记的模板函数，可以访问原始字符串，如其输入一样，忽略任何转义序列。
 
-### Exercise 6: Template Literal Conversion
+### 练习 6：模板文字转换
 
-You are building a website for a real estate company. You must build a function that takes in an object with property information and returns a formatted string that states the property owner, where the property is located (`address`), and how much they are selling it for (`price`). Consider the following object as input:
+您正在为一家房地产公司建立网站。您必须构建一个函数，该函数接受包含属性信息的对象，并返回一个格式化的字符串，说明物业所有者、物业所在地（`address`）以及他们出售的价格。考虑以下对象作为输入：
 
-[PRE27]js
+[PRE27]
 
-###### Snippet 1.28: Object Input
+###### Snippet 1.28: 对象输入
 
-To utilize a template literal to pretty-print an object, perform the following steps:
+要利用模板文本对对象进行漂亮的打印，执行以下步骤：
 
-1.  Create a function called `parseHouse` that takes in an object.
-2.  Return a template literal from the function. Using expressions, embed the owner, address, and price in the format `<Owner> is selling the property at <address> for <price>`.
-3.  Create a variable called `house` and save the following object into it: `{ address: "123 Main St, San Francisco CA, USA", floors: 2, price: 5000000, owner: "John Doe" }`
-4.  Call the `parseHouse` function and pass in the `house` variable.
-5.  Log the output.
+1.  创建一个名为`parseHouse`的函数，该函数接受一个对象。
 
-**Code**
+1.  从函数返回一个模板文本。使用表达式，将所有者、地址和价格嵌入到格式为`<所有者>在<地址>出售价格为<价格>`的字符串中。
+
+1.  创建一个名为`house`的变量，并将以下对象保存到其中：`{ address: "123 Main St, San Francisco CA, USA", floors: 2, price: 5000000, owner: "John Doe" }`
+
+1.  调用`parseHouse`函数并传入`house`变量。
+
+1.  记录输出。
+
+**代码**
 
 ##### index.js:
 
-[PRE28]js
+[PRE28]
 
-###### Snippet 1.29: Template literal using expressions
+###### Snippet 1.29: 使用表达式的模板文字
 
 [`bit.ly/2RklKKH`](https://bit.ly/2RklKKH)
 
-**Outcome**
+**结果**
 
-![Figure 1.8: Template literal output](img/Figure_1.8.jpg)
+![图 1.8：模板文字输出](img/Figure_1.8.jpg)
 
-###### Figure 1.8: Template literal output
+###### 图 1.8：模板文字输出
 
-You have successfully utilized a template literal to pretty-print an object.
+你已成功利用模板字符串来美化打印输出一个对象。
 
-In this section, we covered template literals. Template literals upgrade strings by allowing us to nest expressions inside them that are parsed at runtime. Expressions are inserted with the following syntax: ``${ expression }``. We then showed you how to escape special characters in template literals and discussed how in-editor newline characters in template literals are parsed as newline characters in the output. Finally, we covered template literal tagging and tagging functions, which allow us to perform more complex template literal parsing and creation.
+在这一部分，我们介绍了模板字符串。模板字符串通过允许我们在其中嵌入在运行时被解析的表达式来升级字符串。表达式使用以下语法插入：``${ expression }``。然后，我们向您展示了如何在模板字符串中转义特殊字符，并讨论了编辑器内的模板字符串换行符在输出中作为换行符的解析方式。最后，我们介绍了模板字符串标记和标记函数，这允许我们执行更复杂的模板字符串解析和创建。
 
-## Enhanced Object Properties
+## 增强对象属性
 
-ECMAScript 6 added several enhancements to object literals as part of the **ES6 syntactic sugar**. ES6 added three ways to simplify the creation of object literals. These simplifications include a more concise syntax for initializing object properties from variables, a more concise syntax for defining function methods, and computed object property names.
+ECMAScript 6 作为**ES6 语法糖**的一部分，增加了对象字面量的几个增强功能。ES6 添加了三种简化对象字面量创建的方法。这些简化包括更简洁的语法来从变量初始化对象属性，更简洁的语法定义函数方法，以及计算对象属性名称。
 
-#### Note
+#### 注意
 
-Syntactic sugar is a syntax that is designed to make expressions easier to read and express. It makes the syntax "sweeter" because code can be expressed concisely.
+语法糖是一种旨在使表达式更易于阅读和表达的语法。它使语法变得"更甜美"，因为代码可以被简洁地表达。
 
-### Object Properties
+### 对象属性
 
-The shorthand for initializing object properties allows you to make more concise objects. In ES5, we needed to define the object properties with a key name and a value, as shown in the following code:
+初始化对象属性的简写允许您创建更简洁的对象。在 ES5 中，我们需要使用键名和值来定义对象属性，如下代码所示：
 
-[PRE29]js
+[PRE29]
 
-###### Snippet 1.30: ES5 object properties
+###### 代码片段 1.30：ES5 对象属性
 
-Notice the repetition in the object literal returned by the function. We name the property in the object after variable name causing duplication (`<code>name: name</code>`). In ES6, we can shorthand each property and remove the repetition. In ES6, we can simply state the variable in the object literal declaration and it will create a property with a key that matches the variable name and a value that matches the variable value. This is shown in the following code:
+注意函数返回的对象字面量中的重复。我们在对象中将属性命名为变量名导致了重复（`<code>name: name</code>`）。在 ES6 中，我们可以简写每个属性并消除重复。在 ES6 中，我们可以简单地在对象字面量中声明变量，它将创建一个键名匹配变量名和值匹配变量值的属性。以下代码示例：
 
-[PRE30]js
+[PRE30]
 
-###### Snippet 1.31: ES6 object properties
+###### 代码片段 1.31：ES6 对象属性
 
-As you can see, both the ES5 and ES6 examples output the exact same object. However, in a large object literal declaration, we can save a lot of space and repetition by using this new shorthand.
+正如你所看到的，无论是 ES5 还是 ES6 的示例，都输出了完全相同的对象。但是，在大型对象字面量声明中，使用这种新的简写可以节省大量空间和重复。
 
-### Function Declarations
+### 函数声明
 
-ES6 also added a shorthand for declaring function methods inside objects. In ES5, we had to state the property name, then define it as a function. This is shown in the following example:
+ES6 还为在对象内部声明函数方法添加了一个简写。在 ES5 中，我们必须声明属性名称，然后将其定义为函数。以下示例中有所展示：
 
-[PRE31]js
+[PRE31]
 
-###### Snippet 1.32: ES5 function properties
+###### 代码片段 1.32：ES5 函数属性
 
-In ES6, we can define a function but with much less work. As with the property declaration, we don't need a key and value pair to create the function. The function name becomes the key name. This is shown in the following code:
+在 ES6 中，我们可以定义一个函数，但工作量要少得多。与属性声明一样，我们并不需要键值对来创建函数。函数名称变为键名。以下代码示例中有所展示：
 
-[PRE32]js
+[PRE32]
 
-###### Snippet 1.33: ES6 function properties
+###### 代码片段 1.33：ES6 函数属性
 
-Notice the difference in the function declaration. We omit the function keyword and the colon after the property key name. Once again, this saves us a bit of space and simplifies things a little.
+注意函数声明中的差异。我们省略了函数关键字和属性键名后的冒号。再次，这为我们节省了一些空间并简化了事情。
 
-### Computed Properties
+### 计算属性
 
-ES6 also added a new, efficient way to create property names from variables. This is through computed property notation. As we already know, in ES5, there is only one way to create a dynamic property whose name is specified by a variable; this is through bracket notation, that is, `: obj[ expression ] = 'value'` . In ES6, we can use this same type of notation during the object literal's declaration. This is shown in the following example:
+ES6 还增加了一种有效的方式来创建属性名称，即通过计算属性表示法。正如我们已经知道的，在 ES5 中，只有一种方式可以使用变量创建属性名称；这是通过方括号表示法，即，`: obj[ expression ] = 'value'`。在 ES6 中，我们可以在对象字面量的声明期间使用相同类型的表示法。这在以下示例中显示：
 
-[PRE33]js
+[PRE33]
 
-###### Snippet 1.34: ES6 Computed property
+###### 代码片段 1.34：ES6 计算属性
 
-As we can see from the preceding snippet, the property name of `varName` was computed to be `firstName`. When accessing the property, we simply reference it as `person.firstName`. When creating computed properties in object literals, the value that's computed in the brackets does not need to be a variable; it can be almost any expression, even a function. An example of this is shown in the following code:
+如前面代码片段所示，`varName` 的属性名称计算为 `firstName`。在访问属性时，我们只需要引用`person.firstName`。在对象字面量中创建计算属性时，不需要在方括号中计算的值是变量；它几乎可以是任何表达式，甚至是函数。下面的代码示例中提供了一个例子：
 
-[PRE34]js
+[PRE34]
 
-###### Snippet 1.35: Computed property from function
+###### 代码片段 1.35：从函数计算属性
 
-In the example shown in the preceding snippet, we created two variables. The first contains the string `first` and the second contains a function that returns a string. We then created an object and used computed property notation to create dynamic object key names. The first key name is equal to `firstName`. When `person.firstName` is accessed, the value that was saved will be returned. The second key name is equal to `lastName`. When `person.lastName` is accessed, the value that was saved will be returned.
+在前面代码片段中的示例中，我们创建了两个变量。第一个包含字符串`first`，第二个包含返回字符串的函数。然后，我们创建了一个对象，并使用计算属性表示法来创建动态对象键名。第一个键名等于`firstName`。访问`person.firstName`时，将返回保存的值。第二个键名等于`lastName`。当访问`person.lastName`时，也将返回保存的值。
 
-In summary, ES6 added three ways to simplify the declaration of object literals, that is, property notation, function notation, and computed properties. To simplify property creation in objects, when properties are created from variables, we can omit the key name and the colon. The name property that's created is set to the variable name and the value is set to the value of the variable. To add a function as a property to an object, we can omit the colon and function keyword. The name of the property that's created is set to the function name and the value of the property is the function itself. Finally, we can create property names from computed expressions during the declaration of the object literal. We simply replace the key name with the expression in brackets. These three simplifications can save us space in our code and make object literal creation easier to read.
+总之，ES6 增加了三种简化对象字面量声明的方法，即属性表示法，函数表示法和计算属性。为了简化对象中的属性创建，在属性是从变量创建时，我们可以省略键名和冒号。被创建的属性的名称设置为变量名称，值设置为变量的值。要将函数作为对象的属性添加，我们可以省略冒号和函数关键字。被创建的属性名称设置为函数名称，属性的值为函数本身。最后，在对象字面量的声明过程中，我们可以使用计算表达式创建属性名称。我们只需用方括号中的表达式替换键名。这三种简化可以节省我们代码中的空间，并使对象字面量的创建更易于阅读。
 
-### Exercise 7: Implementing Enhanced Object Properties
+### 练习 7：实现增强的对象属性
 
-You are building a simple JavaScript math package to publish to **Node Package Manager (NPM)**. Your module will export an object that contains several constants and functions. Using ES6 syntax, create the export object with the following functions and values: the value of pi, the ratio to convert inches to feet, a function that sums two arguments, and a function that subtracts two arguments. Log the object after it has been created.
+您正在构建一个简单的 JavaScript 数学包，以发布到**Node Package Manager (NPM)**。您的模块将导出一个包含多个常量和函数的对象。使用 ES6 语法，创建导出对象，并包含以下函数和值：圆周率的值，将英寸转换为英尺的比率，求两个参数的和的函数，以及求两个参数的差的函数。创建对象后，记录该对象的内容。
 
-To create objects using ES6 enhanced object properties and demonstrate the simplified syntax, perform the following steps:
+要使用 ES6 增强的对象属性创建对象，并演示简化的语法，执行以下步骤：
 
-1.  Create an object and save it into the `exportObject` variable.
-2.  Create a variable called `PI` that contains the value of pi (3.1415).
-3.  Create a variable called `INCHES_TO_FEET` and save the value of the inches to feet conversion ratio (0.083333).
+1.  创建一个对象并将其保存到`exportObject`变量中。
 
-    Using ES6 enhanced property notation, add a property called `PI` from the variable PI. Add a property called `INCHES_TO_FEET` from the `INCHES_TO_FEET` variable, which contains the inches to feet conversion ratio.
+1.  创建一个名为`PI`的变量，其中包含圆周率的值（3.1415）。
 
-    Add a function property called `sum` that takes in two input arguments and returns the sum of the two input arguments.
+1.  创建一个名为`INCHES_TO_FEET`的变量，并将英寸到英尺的转换比值保存到其中（0.083333）。
 
-    Add a function property called `subtract` that takes in two input arguments and returns the subtraction of the two input arguments.
+    使用 ES6 增强的属性表示法，从变量`PI`添加一个名为`PI`的属性。从包含英寸到英尺转换比的`INCHES_TO_FEET`变量中添加一个名为`INCHES_TO_FEET`的属性。
 
-4.  Log the object `exportObject`.
+    添加一个名为`sum`的函数属性，接受两个输入参数并返回这两个输入参数的和。
 
-**Code**
+    添加一个名为`subtract`的函数属性，接受两个输入参数并返回这两个输入参数的差值。
+
+1.  记录对象`exportObject`。
+
+**代码**
 
 ##### index.js:
 
-[PRE35]js
+[PRE35]
 
-###### Snippet 1.36: Enhanced object properties
+###### 代码段 1.36：增强的对象属性
 
 [`bit.ly/2RLdHWk`](https://bit.ly/2RLdHWk)
 
-**Outcome**
+**结果**
 
-![Figure 1.9: Enhanced object properties output](img/Figure_1.9.jpg)
+![图 1.9：增强的对象属性输出](img/Figure_1.9.jpg)
 
-###### Figure 1.9: Enhanced object properties output
+###### 图 1.9：增强的对象属性输出
 
-You have successfully created objects using ES6 enhanced object properties.
+您已成功使用 ES6 增强的对象属性创建对象。
 
-In this section, we showed you enhanced object properties, a syntactic sugar to help condense object property creation into fewer characters. We covered the shorthand for initializing object properties from variables and functions, and we covered the advanced features of computed object properties, that is, a way to create an object property name from a computed value, inline, while defining the object.
+在本节中，我们向您展示了增强的对象属性，这是一种语法糖，可以帮助将对象属性的创建压缩为更少的字符。我们介绍了使用变量和函数初始化对象属性的简写方式，以及计算对象属性的高级特性，即一种在定义对象时内联从计算值创建对象属性名称的方法。
 
-## Destructuring Assignment
+## 解构赋值
 
-**Destructuring assignment** is syntax in JavaScript that allows you to unpack values from arrays or properties from objects, and save them into variables. It is a very handy feature because we can extract data directly from arrays and objects to save into variables, all on a single line of code. It is powerful because it enables us to extract multiple array elements or object properties in the same expression.
+**解构赋值**是 JavaScript 中的一种语法，允许您从数组中解压值或从对象的属性中保存值到变量中。这是一个非常方便的特性，因为我们可以直接从数组和对象中提取数据保存到变量中，所有这些都可以在一行代码中完成。它非常强大，因为它使我们能够在同一个表达式中提取多个数组元素或对象属性。
 
-### Array Destructuring
+### 数组解构
 
-**Array destructuring** allows us to extract multiple array elements and save them into variables. In ES5, we do this by defining each variable with its array value, one variable at a time. This makes the code lengthy and increases the time required to write it.
+**数组解构**允许我们提取多个数组元素并将它们保存到变量中。在 ES5 中，我们通过逐个定义每个变量及其数组值来实现这一点。这使得代码冗长并增加编写所需的时间。
 
-In ES6, to destructure an array, we simply create an array containing the variable to assign data into, and set it equal to the data array being destructured. The values in the array are unpacked and assigned to the variables in the left-hand side array from left to right, one variable per array value. An example of basic array destructuring is shown in the following code:
+在 ES6 中，为了解构数组，我们简单地创建一个包含要分配数据的变量的数组，并将其设置为被解构的数据数组。数组中的值被解开并从左到右分配给左侧数组中的变量，一个数组值对应一个变量。基本数组解构的示例如下代码所示：
 
-[PRE36]js
+[PRE36]
 
-###### Snippet 1.37: Basic array destructuring
+###### 代码段 1.37：基本数组解构
 
-As can be seen in this example, we have an array of names and we want to destructure it into two variables, `name1` and `name2`. We simply surround the variables `name1` and `name2` with brackets and set that expression equal to the data array names, and then JavaScript will destructure the `names` array, saving data into each of the variables.
+如本例所示，我们有一个姓名数组，并且我们想要将其解构为`name1`和`name2`两个变量。我们只需用括号括起变量`name1`和`name2`，并将该表达式设置为数据数组`names`，然后 JavaScript 将解构`names`数组，并将数据保存到各个变量中。
 
-The data is destructured from the input array into the variables from left to right, in the order of array items. The first index variable will always be assigned the first index array item. This leads to the question, what do we do if we have more array items than variables? If there are more array items than variables, then the remaining array items will be discarded and will not be destructured into variables. The destructuring is a one to one mapping in array order.
+数据从输入数组中解构为变量，从左到右，按照数组项的顺序。第一个索引变量将始终被分配第一个索引数组项。这引出了一个问题，如果数组项比变量更多怎么办？如果数组项比变量多，那么剩余的数组项将被丢弃，不会被解构为变量。解构是按照数组顺序进行一对一的映射。
 
-What about if there are more variables than array items? If we attempt to destructure an array into an array that contains more variables than the total number of array elements in the data array, some of the variables will be set to undefined. The array is destructured from left to right. Accessing a non-existent element in a JavaScript array results in an undefined value to be returned. This undefined value is saved to the leftover variables in the variable array. An example of this is shown in the following code:
+如果变量数多于数组项怎么办？如果我们尝试将一个数组解构为一个包含比数据数组中数组元素总数更多变量的数组，那么其中一些变量将被设置为 undefined。数组从左到右进行解构。在 JavaScript 数组中访问不存在的元素将导致返回 undefined 值。这个 undefined 值将保存在变量数组中剩余的变量中。下面的代码展示了这一点：
 
-[PRE37]js
+[PRE37]
 
-###### Snippet 1.38: Array destructuring with mismatched variable and array items
+###### 代码段 1.38：具有不匹配变量和数组项的数组解构
 
-#### Note
+#### 注意
 
-We must be careful when destructuring arrays to make sure that we don't unintentionally assume that a variable will contain a value. The value of the variable could be set to undefined if the array is not long enough.
+我们在解构数组时必须小心，确保我们不会无意中假设变量将包含一个值。如果数组不够长，变量的值可能被设置为 undefined。
 
-ES6 array destructuring allows for skipping array elements. If we have an array of values and we only care about the first and third values, we can still destructure the array. To ignore a value, simply omit the variable identifier for that array index in the left-hand side of the expression. This syntax can be used to ignore a single item, multiple items, or even all the items in an array. Two examples of this are shown in the following snippet:
+ES6 数组解构允许跳过数组元素。如果我们有一个值的数组，并且只关心第一个和第三个值，我们仍然可以解构数组。要忽略一个值，只需要在表达式的左侧省略该数组索引的变量标识符。这种语法可以用来忽略单个项目、多个项目，甚至是数组中的所有项目。以下代码段中展示了两个示例：
 
-[PRE38]js
+[PRE38]
 
-###### Snippet 1.39: Array destructuring with skipped values
+###### 代码段 1.39：具有跳过值的数组解构
 
-Another very useful feature of array destructuring is the ability to set default values for variables that are created with destructuring. When we want to add a default value, we simply need to set the variable equal to the desired default value in the left-hand side of the destructuring expression. If what we are destructuring does not contain an index to assign to the variable, then the default value will be used instead. An example of this is shown in the following code:
+数组解构的另一个非常有用的特性是为使用解构创建的变量设置默认值的能力。当我们想要添加默认值时，我们只需在解构表达式的左侧将变量设置为所需的默认值。如果我们在解构的内容中没有包含一个可分配给变量的索引，那么默认值将被使用。下面的代码展示了这一点：
 
-[PRE39]js
+[PRE39]
 
-###### Snippet 1.40: Array destructuring with skipped values
+###### 代码段 1.40：具有跳过值的数组解构
 
-Finally, array destructuring can be used to easily swap values of variables. If we wish to swap the value of two variables, we can simply destructure an array into the reversed array. We can create an array containing the variables we want to reverse and set it equal to the same array, but with the variable order changed. This will cause the references to be swapped. This is shown in the following code:
+最后，数组解构也可以用于轻松交换变量的值。如果我们希望交换两个变量的值，我们可以简单地将一个数组解构为反向数组。我们可以创建一个包含要反转的变量的数组，并将其设置为相同的数组，但变量顺序改变。这将导致引用被交换。下面的代码展示了这一点：
 
-[PRE40]js
+[PRE40]
 
-###### Snippet 1.41: Array destructuring with skipped values
+###### 代码段 1.41：具有跳过值的数组解构
 
-### Exercise 8: Array Destructuring
+### 练习 8：数组解构
 
-To extract values from an array using array destructuring assignment, perform the following steps:
+要使用数组解构赋值从数组中提取值，请执行以下步骤：
 
-1.  Create an array with three values, `1`, `2`, and `3`, and save it into a variable called `data`.
-2.  Destructure the array created with a single expression.
+1.  创建一个包含三个值`1`，`2`和`3`的数组，并将其保存到名为`data`的变量中。
 
-    Destructure the first array value into a variable called `a`. Skip the second value of the array.
+1.  对使用单个表达式创建的数组进行解构。
 
-    Destructure the third value into a variable called `b`. Attempt to destructure a fourth value into a variable called `c` and provide a default value of `4`.
+    将第一个数组值解构为名为`a`的变量。跳过数组的第二个值。
 
-3.  Log the value of all of the variables.
+    将第三个值解构为名为`b`的变量。尝试将第四个值解构为名为`c`的变量，如果失败则提供默认值`4`。
 
-**Code**
+1.  记录所有变量的值。
+
+**代码**
 
 ##### index.js:
 
-[PRE41]js
+[PRE41]
 
-###### Snippet 1.42: Array destructuring
+###### 代码片段 1.42：数组解构
 
 [`bit.ly/2D2Hm5g`](https://bit.ly/2D2Hm5g)
 
-**Outcome**
+**结果**
 
-![Figure 1.10: Destructured variable's output](img/Figure_1.51.jpg)
+![图 1.10：解构变量的输出](img/Figure_1.51.jpg)
 
-###### Figure 1.10: Destructured variable's output
+###### 图 1.10：解构变量的输出
 
-You have successfully applied an array destructuring assignment to extract values from an array.
+您已成功应用了数组解构赋值从数组中提取值并保存到变量中。
 
-In summary, array destructuring allows us to quickly extract values from arrays and save them into variables. Variables are assigned to array values, item by item, from left to right. If the number of variables exceeds the number of array items, then the variables are set to undefined, or the default value if specified. We can skip an array index in the destructuring by leaving a hole in the variables array. Finally, we can use destructuring assignment to quickly swap the values of two or more variables in a single line of code.
+总之，数组解构允许我们快速从数组中提取值并将其保存到变量中。变量按从左到右的顺序逐个分配给数组值。如果变量的数量超过数组项的数量，则变量将被设置为未定义，或者如果指定了默认值，则将设置为默认值。我们可以通过在变量数组中留下一个空位来跳过解构中的数组索引。最后，我们可以使用解构赋值来快速交换单行代码中两个或多个变量的值。
 
-### Rest and Spread Operators
+### Rest 和 Spread 运算符
 
-ES6 also introduces two new operators for arrays called **rest**and **spread**. The rest and spread operators are both denoted with three ellipses or periods before an identifier ( `...array1` ). The rest operator is used to represent an infinite number of arguments as an array. The spread operator is used to allow an iterable object to be expanded into multiple arguments. To identify which is being used, we must look at the item that the argument is being applied to. If the operator is applied to an iterable object (array, object, and so on), then it is the spread operator. If the operator is applied to function arguments, then it is the rest operator.
+ES6 还为数组引入了两个新的运算符，称为**rest**和**spread**。rest 和 spread 运算符都用三个省略号或句点表示（`...array1`）。rest 运算符用于表示作为数组的无限个参数。spread 运算符用于允许可迭代的对象扩展为多个参数。要确定使用的是哪个运算符，我们必须查看应用参数的项。如果该运算符应用于可迭代的对象（数组，对象等），则是 spread 运算符。如果该运算符应用于函数参数，则是 rest 运算符。
 
-#### Note
+#### 注意
 
-In JavaScript, something considered iterable if something (generally values or key/value pairs) can be stepped through one at a time. For example, an array is iterable because the items in the array can be stepped through one at a time. Objects are considered iterable because the key/value pairs can be stepped through one at a time.
+在 JavaScript 中，如果可以逐个遍历某些内容（通常是值或键/值对），则将其视为可迭代的。例如，数组是可迭代的，因为可以逐个遍历数组中的项。对象也被认为是可迭代的，因为可以逐个遍历键/值对。
 
-The **rest operator** is used to represent an indefinite number of arguments as an array. When the last parameter of a function is prefixed with the three ellipses, it becomes an array. The array elements are supplied by the actual arguments that are passed into the function, excluding the arguments that already have been given a separate name in the formal declaration of the function. An example of rest destructuring is shown in the following code:
+**rest 运算符**用于表示作为数组的无限个参数。将函数的最后一个参数加上三个省略号时，它将成为一个数组。数组元素由传递到函数中的实际参数提供，其中不包括已在函数的正式声明中分配了单独名称的参数。下面的代码示例展示了 rest 解构的示例：
 
-[PRE42]js
+[PRE42]
 
-###### Snippet 1.43: Array destructuring with skipped values
+###### 代码片段 1.43：带有跳过值的数组解构
 
-Similar to the **arguments object** of a JavaScript function, the rest operator contains a list of function arguments. However, the rest operator has three distinct differences from the arguments object. As we already know, the arguments object is an array-like object that contains each argument that's passed into the function. The differences are as follows. First, the rest operator contains only the input parameters that have not been given a separate formal declaration in the function expression.
+类似于 JavaScript 函数的**参数对象**，剩余运算符包含函数参数的列表。但是，剩余运算符与参数对象有三个明显的不同之处。正如我们已经知道的那样，参数对象是类似数组的对象，其中包含传递给函数的每个参数。不同之处如下。首先，剩余运算符仅包含在函数表达式中没有单独形式声明的输入参数。
 
-Second, the arguments object is not an instance of an **Array** object. The rest parameter is an instance of an array, which means that array functions like `sort()`, `map()`, and `forEach()` can be applied to them directly.
+第二，arguments 对象不是**Array**对象的实例。剩余参数是数组的一个实例，这意味着数组函数如`sort()`、`map()`和`forEach()`可以直接应用于它们。
 
-Lastly, the arguments object has special functionality that the rest parameter does not have. For example, the caller property exists on the arguments object.
+最后，参数对象具有特殊功能，而剩余参数没有。例如，调用者属性存在于参数对象上。
 
-The rest parameter can be destructured similar to how we destructure an array. Instead of putting a single variable name inside before the ellipses, we can replace it with an array of variables we want to fill. The arguments passed into the function will be destructured as expected for an array. This is shown in the following code:
+剩余参数可以类似于我们解构数组的方式进行解构。在省略号之前放置单个变量名的替代方法是，我们可以用要填充的变量数组替换它。传递给函数的参数将按预期解构为数组。这在下面的代码中显示：
 
-[PRE43]js
+[PRE43]
 
-###### Snippet 1.44: Destructured rest operator
+###### 代码片段 1.44：解构剩余运算符
 
-The spread operator allows an iterable object such as an array or string to be expanded into multiple arguments (for function calls), array elements (for array literals), or key-value pairs (for object expressions). This essentially means that we can expand an array into arguments for creating another array, object, or calling a function. An example of spread syntax is shown in the following code:
+展开运算符允许可迭代对象（如数组或字符串）扩展为多个参数（用于函数调用）、数组元素（用于数组文字）或键值对（用于对象表达式）。这基本上意味着我们可以将数组扩展为创建另一个数组、对象或调用函数的参数。展开语法的示例如下代码所示：
 
-[PRE44]js
+[PRE44]
 
-###### Snippet 1.45: Spread operator
+###### 代码片段 1.45：展开运算符
 
-In the preceding example, we created a simple function that takes in three inputs and logs them to the console. We created an array with three values, then called the function using the `spread` operator to destructure the array of values into three input parameters for the function.
+在前面的示例中，我们创建了一个简单的函数，它接受三个输入并将它们记录到控制台。我们创建了一个包含三个值的数组，然后使用`spread`运算符调用函数，将值数组解构为函数的三个输入参数。
 
-The rest operator can be used in destructuring objects and arrays. When destructuring an array, if we have more array elements than variables, we can use the rest operator to capture, or catch, all of the additional array elements during destructuring. When using the rest operator, it must be the last parameter in the array destructuring or function arguments list. This is shown in the following code:
+剩余运算符可以用于解构对象和数组。在解构数组时，如果数组元素多于变量，我们可以使用剩余运算符在解构过程中捕获所有额外的数组元素。在使用剩余运算符时，它必须是数组解构或函数参数列表中的最后一个参数。下面的代码展示了这一点：
 
-[PRE45]js
+[PRE45]
 
-###### Snippet 1.46: Spread operator
+###### 代码片段 1.46：展开运算符
 
-In the preceding snippet, we destructured the first three array elements into three variables, `n1`, `n2`, and `n3`. We then captured the remaining array elements with the rest operator and destructured them into the variable that remained.
+在前面的代码片段中，我们将前三个数组元素解构为`n1`、`n2`和`n3`三个变量。然后，我们使用剩余运算符捕获了剩余的数组元素，并将它们解构为剩下的变量。
 
-In summary, the rest and spread operators allow iterable entities to be expanded into many arguments. They are denoted with three ellipses before the identifier name. This allows us to capture arrays of arguments in functions or unused items when destructuring entities. When we use the rest and spread operators, they must be the last arguments that are passed into the expression they are being used in.
+总之，rest 和 spread 操作符允许可迭代实体扩展为多个参数。它们在标识符名称之前用三个省略号表示。这使我们可以在函数中捕获参数数组或在解构实体时捕获未使用的项目。当我们使用 rest 和 spread 操作符时，它们必须是传入它们所使用的表达式的最后的参数。
 
-### Object Destructuring
+### 对象解构
 
-**Object destructuring** is used in a very similar way to array destructuring. Object destructuring is used to extract data from an object and assign the values to new variables. In ES6, we can do this in a single JavaScript expression. To destructure an object, we surround the variables we want to destructure with curly braces (`{}`), and set that expression equal to the object we are destructuring. A basic example of object destructuring is shown in the following code:
+**对象解构**的用法与数组解构非常相似。对象解构用于从对象中提取数据并将数值赋给新变量。在 ES6 中，我们可以在单个 JavaScript 表达式中实现这一点。要解构对象，我们用大括号（`{}`）括起要解构的变量，并将该表达式赋值给要解构的对象。对象解构的基本示例如下所示：
 
-[PRE46]js
+[PRE46]
 
-###### Snippet 1.47: Object destructuring
+###### 代码片段 1.47：对象解构
 
-In the preceding example, we created an object with the keys `firstName` and `lastName`. We then destructured this object into the variables `firstName` and `lastName`. Notice that the names of the variables and the object parameters match. This is shown in the following example:
+在上面的例子中，我们创建了一个带有`firstName`和`lastName`键的对象。然后将这个对象解构为变量`firstName`和`lastName`。注意变量的名称和对象参数的名称匹配。如下例所示：
 
-#### Note
+#### 注意
 
-When doing basic object destructuring, the name of the parameter in the object and the name of the variable we are assigning it to must match. If there is no matching parameter for a variable we are trying to destructure, then the variable will be set to undefined.
+在进行基本对象解构时，对象中的参数名称和我们要分配的变量名称必须匹配。如果变量我们尝试解构的变量没有匹配的参数，那么该变量将被设置为 undefined。
 
-[PRE47]js
+[PRE47]
 
-###### Snippet 1.48: Object destructuring with no defined key
+###### 代码片段 1.48：没有定义键的对象解构
 
-As we saw, the `middleName` key does not exist in the object. When we try to destructure the key and save it into the variable, it is unable to find a value and the variable is set to undefined.
+如我们所见，`middleName`键不存在于对象中。当我们尝试解构该键并将其保存到变量中时，它无法找到数值，变量将被设置为 undefined。
 
-With advanced object destructuring syntax, we can save the key that's extracted into a variable with a different name. This is done by adding a colon and the new variable name after the key name in the destructuring notation. This is shown in the following code:
+通过高级对象解构语法，我们可以将被提取的键保存到另一个名称的变量中。这是通过在解构符号后面添加冒号和新变量名称来实现的。这在以下代码中显示：
 
-[PRE48]js
+[PRE48]
 
-###### Snippet 1.49: Object destructuring into new variable
+###### 代码片段 1.49：将对象解构为新变量
 
-In the preceding example, we could clearly see that we are destructuring the `firstname` key from the object and saving it into the new variable, called first. The `lastName` key is being destructured normally and is saved into a variable called `lastName`.
+在上面的例子中，我们可以清楚地看到，我们正在从对象中解构`firstname`键，并将其保存到新变量 first 中。`lastName`键正常解构并保存到一个名为`lastName`的变量中。
 
-Much like with array destructuring, we can destructure an object and provide a default value. If a default value is provided and the key we are attempting to destructure does not exist in the object, then the variable will be set to the default value instead of undefined. This is shown in the following code:
+与数组解构一样，我们可以解构一个对象并提供默认值。如果提供了默认值，并且我们尝试解构的键不存在于对象中，那么变量将被设置为默认值，而不是 undefined。如下代码所示：
 
-[PRE49]js
+[PRE49]
 
-###### Snippet 1.50: Object destructuring with default values
+###### 代码片段 1.50：带默认值的对象解构
 
-In the preceding example, we set the default values for both of the variables we are trying to destructure from the object. The default value for `firstName` is specified, but the `firstName` key exists in the object. This means that the value stored in the `firstName` key is destructured and the default value is ignored. The `middleName` key does not exist in the object and we have specified a default value to use when destructuring. Instead of using the undefined value of the `firstName` key, the destructuring assignment sets the destructured variable to the default value of `Chris`.
+在上面的示例中，我们对尝试从对象解构的变量设置了默认值。指定了 `firstName` 的默认值，但对象中存在 `firstName` 键。这意味着解构并忽略了默认值中存储的 `firstName` 键的值。对象中不存在 `middleName` 键，并且我们指定了在解构时使用的默认值。解构赋值将解构变量设置为默认值 `Chris`，而不是使用 `firstName` 键的未定义值。
 
-When we are providing a default value and assigning the key to a new variable name, we must put the default value assignment after the new variable name. This is shown in the following example:
+当我们提供默认值并将键赋值给新变量名时，我们必须在新变量名后放置默认值赋值。下面的示例展示了这一点：
 
-[PRE50]js
+[PRE50]
 
-###### Snippet 1.51: Object destructuring into new variables with default values
+###### 代码片段 1.51：对象解构为具有默认值的新变量
 
-The `firstName` key exists. The value of `obj.firstName` is saved into the new variable named `first`. The `middleName` key does not exist. This means that the new variable middle is created and set to the default value of `Chris`.
+`firstName` 键存在。`obj.firstName` 的值保存到名为 `first` 的新变量中。`middleName` 键不存在。这意味着新变量 `middle` 被创建并设置为默认值 `Chris`。
 
-### Exercise 9: Object Destructuring
+### 练习 9：对象解构
 
-To extract data from an object by using object destructuring concepts, perform the following steps:
+使用对象解构的概念从对象中提取数据，执行以下步骤：
 
-1.  Create an object with the fields `f1`, `f2`, and `f3`. Set the values to `v1`, `v2`, and `v3`, respectively. Save the object into the `data` variable.
-2.  Destructure this object into variables with a single statement, as follows:
+1.  创建一个具有字段 `f1`，`f2` 和 `f3` 的对象。将值分别设置为 `v1`，`v2` 和 `v3`。将对象保存到变量 `data` 中。
 
-    Destructure the `f1` property into a variable named `f1.` Destructure the `f2` property into a variable named `field2.` Destructure the property `f4` into a variable named `f4` and provide a default value of `v4`.
+1.  使用单个语句将此对象解构为变量，如下所示：
 
-3.  Log the variables that are created.
+    将 `f1` 属性解构为名为 `f1` 的变量。将 `f2` 属性解构为名为 `field2` 的变量。将属性 `f4` 解构为名为 `f4` 的变量，并提供默认值 `v4`。
 
-**Code**
+1.  记录创建的变量。
 
-##### index.js:
+**代码**
 
-[PRE51]js
+##### index.js：
 
-###### Snippet 1.52: Object destructuring
+[PRE51]
+
+###### 代码片段 1.52：对象解构
 
 [`bit.ly/2SJUba9`](https://bit.ly/2SJUba9)
 
-**Outcome**
+**结果**
 
-![Figure 1.11: Created variable's output](img/Figure_1.11.jpg)
+![图 1.11：创建变量的输出](img/Figure_1.11.jpg)
 
-###### Figure 1.11: Created variable's output
+###### 图 1.11：创建变量的输出
 
-You have successfully applied object destructuring concepts to extract data from an object.
+您已成功应用了对象解构的概念，从对象中提取数据。
 
-JavaScript requires special syntax if we declare the variables before the object destructuring expression. We must surround the entire object destructuring expression with parentheses. This syntax is not required for array destructuring. This is shown in the following code:
+如果我们在对象解构表达式之前声明变量，JavaScript 需要特殊的语法。我们必须用括号括起整个对象解构表达式。数组解构不需要这样的语法。下面的代码展示了这一点：
 
-[PRE52]js
+[PRE52]
 
-###### Snippet 1.53: Object destructuring into predefined variables
+###### 代码片段 1.53：对象解构为预定义变量
 
-#### Note
+#### 提示
 
-Make sure that object destructuring done in this way is preceded by a semicolon on the same or previous line. This prevents the JavaScript interpreter from interpreting the parentheses as a function call.
+确保以这种方式完成的对象解构在相同或前一行的分号之前。这可以防止 JavaScript 解释器将括号解释为函数调用。
 
-The **rest operator** can also be used to destructure objects. Since object keys are iterable, we can use the rest operator to catch the remaining keys that were uncaught in the original destructuring expression. This is done similar to arrays. We destructure the keys that we want to capture, and then we can add the rest operator to a variable and catch the remaining key/value pairs that have not been destructured out of the object. This is shown in the following example:
+**剩余运算符**也可以用于解构对象。由于对象键是可迭代的，我们可以使用剩余运算符来捕获原始解构表达式中未捕获的剩余键。这与数组类似。我们解构要捕获的键，然后我们可以将剩余运算符添加到一个变量中，并捕获未从对象中解构出来的剩余键/值对。这在下面的示例中显示：
 
-[PRE53]js
+[PRE53]
 
-###### Snippet 1.54: Object destructuring with the rest operator
+###### 代码片段 1.54: 带有剩余运算符的对象解构
 
-In summary, object destructuring allows us to quickly extract values from objects and save them into variables. The key name must match the variable name in simple object destructuring, however we can use more advanced syntax to save the key's value into a new object. If a key is not defined in the object, then the variable will be set to `false`, that is, unless we provide it with a default value. We can save this into predefined variables, but we must surround the destructuring expression with parentheses. Finally, the rest operator can be used to capture the remaining key value pairs and save them in a new object.
+总之，对象解构允许我们快速从对象中提取值并将其保存到变量中。关键名称必须与简单对象解构中的变量名称匹配，然而，我们可以使用更高级的语法将键的值保存到一个新对象中。如果在对象中未定义键，则变量将设置为`false`，除非我们为其提供默认值。我们可以将此保存到预定义的变量中，但是我们必须用括号将解构表达式括起来。最后，剩余运算符可以用于捕获剩余的键值对，并将它们保存在一个新对象中。
 
-Object and array destructuring support nesting. Nesting destructuring can be a little confusing, but it is a powerful tool because it allows us to condense several lines of destructuring code into a single line.
+对象和数组的解构支持嵌套。嵌套解构可能有点令人困惑，但它是一个强大的工具，因为它允许我们将几行解构代码压缩成一行。
 
-### Exercise 10: Nested Destructuring
+### 练习 10：嵌套解构
 
-To destructure values from an array that's nested inside an object using the concept of nested destructuring, perform the following steps:
+要使用嵌套解构概念从嵌套在对象内的数组中解构值，执行以下步骤:
 
-1.  Create an object with a property, `arr`, that is, set to an array containing the values `1`, `2`, and `3`. Save the object into the `data` variable.
-2.  Destructure the second value of the array into a variable by doing the following:
+1.  创建一个带有属性`arr`的对象，即设置为包含值`1`、`2`和`3`的数组。将对象保存到变量`data`中。
 
-    Destructure the `arr` property from the object and save it into a new variable called `v2`, which is the array. Replace `v2` with array destructuring.
+1.  将数组的第二个值解构为一个变量, 执行以下操作:
 
-    In the array destructuring, skip the first element. Save the second element into a variable called `v2`.
+    从对象中解构`arr`属性，并将其保存到一个名为`v2`的新变量中，该变量为数组。用数组解构替换`v2`。
 
-3.  Log the variable.
+    在数组解构中，跳过第一个元素。将第二个元素保存到一个名为`v2`的变量中。
 
-**Code**
+1.  记录变量。
+
+**代码**
 
 ##### index.js:
 
-[PRE54]js
+[PRE54]
 
-###### Snippet 1.55: Nested array and object destructuring
+###### 代码片段 1.55: 嵌套数组和对象解构
 
 [`bit.ly/2SJUba9`](https://bit.ly/2SJUba9)
 
-**Outcome**
+**结果**
 
-![Figure 1.12: Nested destructuring output](img/Figure_1.12.jpg)
+![图 1.12：嵌套解构输出](img/Figure_1.12.jpg)
 
-###### Figure 1.12: Nested destructuring output
+###### 图 1.12：嵌套解构输出
 
-You have successfully destructured values from an array inside an object.
+您已成功地从对象内的数组中解构了值。
 
-In summary, object and array destructuring was introduced into ES6 to cut down code and allow for the quick creation of variables from objects and arrays. Array destructuring is denoted by setting an array of variables equal to an array of items. Object destructuring is denoted by setting an object of variables equal to an object of key value pairs. Destructuring statements can be nested for even greater effect.
+总之，对象和数组的解构是为了缩减代码，允许快速从对象和数组创建变量而引入到 ES6 中的。数组解构通过将一组变量设置为一组项目来表示。对象解构通过将一组变量设置为一组键值对的对象来表示。解构语句可以嵌套以获得更大的效果。 
 
-### Exercise 11: Implementing Destructuring
+### 练习 11：实现解构
 
-You have registered for university courses and need to buy the texts required for the classes. You are building a program to scrape data from the book list and obtain the ISBN numbers for each text book that's required. Use object and array nested destructuring to obtain the ISBN value of the first text of the first book in the courses array. The courses array follows the following format:
+您已经注册了大学课程，并需要购买课程所需的教材。 您正在构建一个程序，以从书单中抓取数据，并获取每本所需教材的 ISBN 号码。 使用对象和数组嵌套解构来获取课程数组中第一本书的第一本书的 ISBN 值。 课程数组遵循以下格式：
 
-[PRE55]js
+[PRE55]
 
-###### Snippet 1.56: Course array format
+###### Snippet 1.56: 课程数组格式
 
-To obtain data from complicated array and object nesting by using nested destructuring, perform the following steps:
+通过使用嵌套解构来从复杂的数组和对象嵌套中获取数据，执行以下步骤：
 
-1.  Save the provided data structure into the `courseCatalogMetadata` variable.
-2.  Destructure the first array element into a variable called `course`:
+1.  将提供的数据结构保存到`courseCatalogMetadata`变量中。
 
-[PRE56]js
+1.  将第一个数组元素解构为名为`course`的变量：
 
-3.  Replace the `course` variable with object destructuring to save the texts field into a variable called `textbooks`:
+[PRE56]
 
-[PRE57]js
+1.  用对象解构替换`course`变量以将文本字段保存到名为`textbooks`的变量中：
 
-4.  Replace the `textbooks` variable with array destructuring to get the first element of the texts array and save it into the variable called `textbook`:
+[PRE57]
 
-[PRE58]js
+1.  用数组解构替换`textbooks`变量以获取文本数组的第一个元素并将其保存到名为`textbook`的变量中：
 
-5.  Replace the `textbook` variable with object destructuring to get the `ISBN` field and save it into the `ISBN` variable:
+[PRE58]
 
-[PRE59]js
+1.  用对象解构替换`textbook`变量以获取`ISBN`字段并将其保存到`ISBN`变量中：
 
-6.  Log the value of the `ISBN`.
+[PRE59]
 
-**Code**
+1.  记录`ISBN`的值。
 
-##### index.js:
+**代码**
 
-[PRE60]js
+##### index.js：
 
-###### Snippet 1.57: Implementing destructuring into code
+[PRE60]
+
+###### Snippet 1.57: 实现解构到代码中
 
 [`bit.ly/2TMlgtz`](https://bit.ly/2TMlgtz)
 
-**Outcome**
+**结果**
 
-![Figure 1.13: Array destructuring output](img/Figure_1.13.jpg)
+![图 1.13：数组解构输出](img/Figure_1.13.jpg)
 
-###### Figure 1.13: Array destructuring output
+###### 图 1.13：数组解构输出
 
-You have successfully obtained data from arrays and objects using destructuring and nested destructuring.
+您已成功使用解构和嵌套解构从数组和对象中获取了数据。
 
-In this section, we discussed destructuring assignment for arrays and objects. We demonstrated how array and object destructuring simplifies code and allows us to quickly extract values from objects and arrays. Destructuring assignment allows us to unpack values from objects and arrays, provide default values, and rename object properties as variables when destructuring. We also introduced two new operators— the rest and spread operators. The rest operator was used to represent an indefinite number of arguments as an array. The spread operator was used to break an iterable object into multiple arguments.
+在本节中，我们讨论了数组和对象的解构赋值。 我们演示了如何使用数组和对象的解构赋值简化代码，并允许我们快速从对象和数组中提取值。 解构赋值允许我们从对象和数组中解包值，提供默认值，并在解构时将对象属性重命名为变量。 我们还介绍了两个新操作符——剩余和展开操作符。 剩余运算符用于表示数组的不定数量的参数。 展开运算符用于将可迭代对象分解为多个参数。
 
-## Classes and Modules
+## 类和模块
 
-Classes and Modules were added to ES6\. Classes were introduced as a way to expand on prototype-based inheritance by adding some object oriented concepts. Modules were introduced as a way to organize multiple code files in JavaScript and expand on code reusability and scoping among files.
+在 ES6 中添加了类和模块。 类作为一种扩展基于原型的继承的方式，并添加了一些面向对象的概念。 模块作为一种组织 JavaScript 中多个代码文件的方式，并扩展了代码的可重用性和文件之间的作用域。
 
-### Classes
+### 类
 
-**Classes** were added to ECMAScript 6 primarily as syntactic sugar to expand on the existing prototype-based inheritance structure. Class syntax does not introduce object oriented inheritance to JavaScript. Class inheritance in JavaScript do not work like classes in object oriented languages.
+**类**主要作为语法糖添加到 ECMAScript 6 中，以扩展现有基于原型的继承结构。 类语法不会向 JavaScript 引入面向对象的继承。 JavaScript 中的类继承不像面向对象语言中的类那样工作。
 
-In JavaScript, a class can be defined with the keyword class. A class is created by calling the keyword class, followed by the class name and curly braces. Inside the curly braces, we define all of the functions and logic for the class. The syntax is as follows:
+在 JavaScript 中，可以使用关键字 class 来定义一个类。 使用关键字 class，后跟类名和大括号来创建一个类。 在大括号内，我们定义类的所有函数和逻辑。 语法如下：
 
-[PRE61]js
+[PRE61]
 
-###### Snippet 1.58: Class syntax
+###### Snippet 1.58: 类的语法
 
-A class can be created with the **optional function constructor**. The constructor, if not necessary for a JavaScript class, but there can only be one method with the name constructor in a class. The constructor is called when an instance of the class in initialized and can be used to set up all of the default internal values. An example of a class declaration is shown in the following code:
+一个类可以用**可选函数构造函数**来创建。构造函数如果对 JavaScript 类不是必需的，但是一个类中只能有一个名为构造函数的方法。当实例化类时，会调用构造函数，并可用于设置所有默认的内部值。以下代码显示了一个类声明的示例：
 
-[PRE62]js
+[PRE62]
 
-###### Snippet 1.59: Basic class creation
+###### 代码段 1.59：基本类创建
 
-In the example, we create a class called `House`. Our `House` class has a `constructor` method. When we instantiate the class, it calls the constructor. Our `constructor` method takes in three parameters, two of them with default values. The constructor saves these values to variables in the `this` scope.
+在这个示例中，我们创建了一个名为`House`的类。我们的`House`类有一个`constructor`方法。当我们实例化类时，它调用构造函数。我们的构造函数方法接受三个参数，其中两个具有默认值。构造函数将这些值保存到`this`作用域中的变量中。
 
-The keyword this is mapped to each class instantiation. It is a global scope class object. It is used to scope all functions and variables globally inside a class. Every function that is added at the root of the class will be added to the `this` scope. All the variables that is added to the `this` scope will be accessible inside any function inside the class. Additionally, anything added to the `this` scope is accessible publicly outside of the class.
+关键字 this 映射到每个类实例化。它是一个全局作用域的类对象。它用于在类内全局作用域中为所有函数和变量划定范围。在类的根部添加的每个函数都将添加到`this`作用域中。添加到`this`作用域的所有变量在类内任何函数中都可访问。此外，添加到`this`作用域的任何内容对于类外部是公开可访问的。
 
-### Exercise 12: Creating Your Own Class
+### 练习 12：创建自己的类
 
-To create a simple class and demonstrate internal class variables, perform the following steps:
+要创建一个简单的类并演示内部类变量，执行以下步骤：
 
-1.  Declare a class called `Vehicle`.
-2.  Add a constructor function to the class. Have the constructor take in two variables, `wheels` and `topSpeed`.
-3.  In the constructor, save the input variables to two variables in the `this` scope, that is, `this.wheels` and `this.topSpeed`.
-4.  Instantiate the class with `wheels = 3` and `topSpeed = 20` and save it into the `tricycle` variable.
-5.  Log the value for wheels and `topSpeed` from the class that was saved in `tricycle`.
+1.  声明一个名为`Vehicle`的类。
 
-**Code**
+1.  向类添加一个构造函数。使构造函数接收两个变量，`wheels`和`topSpeed`。
+
+1.  在构造函数中，将输入变量保存到`this`作用域中的两个变量中，即`this.wheels`和`this.topSpeed`。
+
+1.  用`wheels = 3`和`topSpeed = 20`实例化该类，并将其保存到`tricycle`变量中。
+
+1.  从保存在`tricycle`中的类中记录`wheels`和`topSpeed`的值。
+
+**代码**
 
 ##### index.js:
 
-[PRE63]js
+[PRE63]
 
-###### Snippet 1.60: Creating a class
+###### 代码段 1.60：创建一个类
 
 [`bit.ly/2FrpL8X`](https://bit.ly/2FrpL8X)
 
-**Outcome**
+**结果**
 
-![Figure 1.14: Creating classes output](img/Figure_1.14.jpg)
+![图 1.14：创建类的输出](img/Figure_1.14.jpg)
 
-###### Figure 1.14: Creating classes output
+###### 图 1.14：创建类的输出
 
-You have successfully created a simple class with values.
+您已成功创建了一个具有数值的简单类。
 
-We instantiated a new instance of a class with the new keyword. To create a new class, simply declare a variable and set it equal to the expression `new className()`. When we instantiate a new class, the parameters that are passed into the class call are passed into the constructor function, if one exists. An example of a class instantiation is shown in the following code:
+我们使用 new 关键字实例化了一个新类的实例。要创建一个新的类，只需声明一个变量并将其设置为表达式`new className()`。当我们实例化一个新类时，传递给类调用的参数将传递到构造函数中，如果存在的话。以下代码显示了一个类实例化的示例：
 
-[PRE64]js
+[PRE64]
 
-###### Snippet 1.61: Class instantiation
+###### 代码段 1.61：类实例化
 
-In this example, the class instantiation happens on the line with the new keyword. This line of code creates a new instance of the `House` class and saves it into the `myHouse` variable. When we instantiate the class, we are providing the parameters for `address`, `floors`, and `garage`. These value are passed into the constructor and then saved into the instantiated class object.
+在此示例中，类的实例化发生在带有新关键字的行上。此行代码会创建`House`类的新实例并将其保存到`myHouse`变量中。当我们实例化类时，我们提供了`address`、`floors`和`garage`的参数。这些值被传递到构造函数中，然后保存到实例化的类对象中。
 
-To add functions to a class, we declare them with the new ES6 object function declaration. As a quick reminder, when using the new ES6 object function declaration, we can omit the function keyword and object key name. When a function is added to an object, it is automatically attached to the `this` scope. Additionally, all functions that are added to the class have access to the `this` scope and will be able to call any function and access any variable attached to the `this` scope. An example of this is shown in the following code:
+要向类中添加函数，我们使用新的 ES6 对象函数声明。快速提醒，当使用新的 ES6 对象函数声明时，可以省略函数关键字和对象键名。当函数添加到对象中时，它会自动附加到`this`范围内。此外，添加到类的所有函数都可以访问`this`范围，并能够调用附加到`this`范围的任何函数和访问任何变量。下面是一个示例：
 
-[PRE65]js
+[PRE65]
 
-###### Snippet 1.62: Creating a class with functions
+###### 代码片段 1.62：创建带有函数的类
 
-As we can see from this example, the two functions `getFloors` and `setFloors` were added with the new ES6 enhanced object property syntax for function declarations. Both functions have access to the `this` scope. They can get and set variables in that scope, as well as call functions that have been attached to the `this` scope.
+从这个例子中，我们可以看到两个函数`getFloors`和`setFloors`是使用 ES6 增强的对象属性语法添加的。这两个函数都可以访问`this`范围内的变量。它们可以获取和设置该范围内的变量，以及调用附加到`this`范围内的函数。
 
-In ES6, we can also create subclasses using the `extends` keyword. **Subclasses** inherit properties and methods from the parent class. A subclass is defined by following the class name with the keyword `extends` and the name of the parent class. An example of a subclass declaration is shown in the following code:
+在 ES6 中，我们还可以使用`extends`关键字创建子类。**子类**继承自父类的属性和方法。子类的定义方式是在类名后面加上关键字`extends`和父类的名称。下面是一个子类声明的示例：
 
-[PRE66]js
+[PRE66]
 
-###### Snippet 1.63: Extending a class
+###### 代码片段 1.63：扩展类
 
-### Classes – Subclasses
+### 类 - 子类
 
-In this example, we will create a class called `House`, and then we will create a subclass called `Mansion` that extends the class `House`. When we create a subclass, we need to take note of the behavior of the constructor method. If we provide a constructor method, then we must call the `super()` function. `super` is a function that calls the constructor of the parent object. If we try to access the `this` scope without a call to call `super`, then we will get a runtime error and our code will crash. Any parameters that are required by the parent constructor can be passed in through the `super` method. If we do not specify a constructor for the subclass, the default constructor behavior will automatically call the super constructor. An example of this is shown in the following code:
+在这个例子中，我们将创建一个名为`House`的类，然后创建一个名为`Mansion`的子类，它扩展了类`House`。当我们创建一个子类时，我们需要注意构造方法的行为。如果我们提供了构造方法，那么我们必须调用`super()`函数。`super`是一个调用父对象的构造函数的函数。如果我们试图在不调用`super`的情况下访问`this`范围，那么我们将得到一个运行时错误，我们的代码将崩溃。可以将父构造函数所需的任何参数通过`super`方法传递进去。如果我们没有为子类指定构造函数，则默认的构造函数行为将自动调用 super 构造函数。下面是一个示例：
 
-[PRE67]js
+[PRE67]
 
-###### Snippet 1.64: Extending a class with and without a constructor
+###### 代码片段 1.64：带有和不带有构造函数的类的扩展
 
-In this example, we created a subclass that extended our `House` class. The `Mansion` subclass has a defined constructor, so we must call super before we can access the `this` scope. When we call `super`, we pass the address parameter to the parent constructor, which adds it to the `this` scope. The constructor for `Mansion` then continues execution and adds the floors variable to the `this` scope. As we can see from the output logging at the end of this example, the subclass's `this` scope also includes all variables and functions that were created in the parent class. If a variable or function is redefined in the subclass, it will overwrite the inherited value or function from the parent class.
+在这个例子中，我们创建了一个扩展了我们的`House`类的子类。`Mansion`子类有一个已定义的构造函数，所以我们必须在访问`this`范围之前调用 super。当我们调用`super`时，我们将地址参数传递给父构造函数，父构造函数会将其添加到`this`范围内。然后`Mansion`的构造函数继续执行并将楼层变量添加到`this`范围内。正如我们从此示例末尾的输出日志中看到的那样，子类的`this`范围还包括父类中创建的所有变量和函数。如果在子类中重新定义变量或函数，它将覆盖父类继承的值或函数。
 
-In summary, classes allow us to expand on the prototype-based inheritance of JavaScript by introducing some object oriented concepts. Classes are defined with the keyword `class` and initialized with the keyword `new`. When a class is defined, a special scope called `this` is created for it. All items in the `this` scope are publicly accessible outside the class. We can add functions and variables to the `this` scope to give our class functionality. When a class is instantiated, the constructor is called. We can also extend classes to create subclasses with the `extends` keyword. If an extended class has a constructor, we must call the super function to call its parent-class constructor. Subclasses have access to the parent class methods and variables.
+总之，类使我们能够通过引入一些面向对象的概念来扩展 JavaScript 的基于原型的继承。类使用关键字`class`定义，并使用关键字`new`初始化。类定义时，会创建一个特殊的作用域，称为`this`，用于公开访问类外部的所有项目。我们可以将函数和变量添加到`this`作用域中，以赋予我们的类功能。当实例化类时，会调用构造函数。我们还可以扩展类以创建子类，使用关键字`extends`。如果扩展的类有一个构造函数，则必须调用 super 函数来调用其父类构造函数。子类可以访问父类的方法和变量。
 
-### Modules
+### 模块
 
-Almost every coding language has a concept of modules. **Modules** are features that allow the programmer to break code into smaller independent parts that can be imported and reused. Modules are critical for the design of programs and are used to prevent code duplication and reduce file size. Modules did not exist in vanilla JavaScript until ES6\. Moreover, not all JavaScript interpreters support this feature.
+几乎每种编程语言都有模块的概念。**模块**是一种允许程序员将代码分解为更小的独立部分、并能够导入和重用的功能。模块对程序的设计至关重要，用于防止代码重复并减小文件大小。在 ES6 之前，原始 JavaScript 中并不存在模块。而且，并非所有 JavaScript 解释器都支持这一特性。
 
-Modules are a way to reference other code files from the current file. Code can be broken into multiple parts, called **modules**. Modules allow us to keep unrelated code separate so that we can have smaller and simpler files in our large JavaScript projects.
+模块是从当前文件引用其他代码文件的一种方式。代码可以分成多个部分，称为**模块**。模块可以让我们将不相关的代码分开，这样我们在大型 JavaScript 项目中就可以拥有更小、更简单的文件。
 
-Modules also allow the contained code to be quickly and easily shared without any code duplication. Modules in ES6 introduced two new keywords, `export` and `import`. These keywords allow us to make certain classes and variables publicly available when a file is loaded.
+模块还允许包含的代码快速、轻松地共享，而不会出现任何代码重复。ES6 中的模块引入了两个新关键字，`export`和`import`。这些关键字允许我们在加载文件时公开特定的类和变量。
 
-#### Note
+#### 注意
 
-JavaScript modules do not have full support across all platforms. At the time of writing this book, not all JavaScript frameworks could support modules. Make sure that the platforms you are releasing your code on can support the code you have written.
+JavaScript 模块在所有平台上都没有完全支持。在编写本书时，并非所有 JavaScript 框架都能支持模块。确保您发布代码的平台能够支持您编写的代码。
 
-### Export Keyword
+### 导出关键字
 
-Modules use the `export` keyword to expose variables and functions contained in the file. Everything inside an ES6 module is private by default. The only way to make anything public is to use the export keyword. Modules can export properties in two ways, via **named exports** or **default exports**. Named exports allow for multiple exports per module. Multiple exports may be useful if you are building a math module that exports many functions and constants. Default exports allow for just a single export per model. A single export may be useful if you are building a module that contains a single class.
+模块使用`export`关键字来公开文件中包含的变量和函数。ES6 模块中的所有内容默认都是私有的。唯一使任何内容公开的方式是使用导出关键字。模块可以通过**具名导出**或**默认导出**方式导出属性。具名导出允许模块多次导出。如果正在构建一个导出许多函数和常量的数学模块，则多次导出可能会很有用。默认导出则允许每个模型只有一个单一的导出。如果正在构建一个包含一个单一类的模块，则单一的导出可能会很有用。
 
-There are two ways to expose the named contents of a module with the `export` keyword. We can export each item individually by preceding the variable or function declaration with the `export` keyword, or we can export an object containing the key value pairs that reference each variable and function we want exported. These two export methods are shown in the following example:
+使用`export`关键字公开模块的具名内容有两种方式。我们可以通过在变量或函数声明之前加上`export`关键字来逐个导出每个项目，或者我们可以导出一个包含键值对的对象，引用我们想要导出的每个变量和函数。这两种导出方法在以下示例中显示：
 
-[PRE68]js
+[PRE68]
 
-###### Snippet 1.65: Named Exports
+###### 代码片段 1.65：命名导出
 
-Both of the modules outlined in the preceding example export three constant variables and one function. The first module, `math-module-1.js`, exports each item, one at a time. The second module, `math-module-2.js`, exports all of the exports at once via an object.
+在前面的示例中概述的两个模块中，每个模块都导出三个常量变量和一个函数。第一个模块`math-module-1.js`逐个导出每个项目。第二个模块`math-module-2.js`通过对象一次性导出所有导出项。
 
-To export the contents of a module as a default export, we must use the **default** **keyword**. The `default` keyword comes after the `export` keyword. When we default export a module, we can also omit the identifier name of the class, function, or variable we are exporting. An example of this is shown in the following code:
+要将模块的内容作为默认导出，我们必须使用**default** **关键字**。`default`关键字在`export`关键字之后。当我们默认导出一个模块时，我们也可以省略正在导出的类、函数或变量的标识符名称。下面的代码示例中演示了这个例子：
 
-[PRE69]js
+[PRE69]
 
-###### Snippet 1.66: Default exports
+###### 代码片段 1.66：默认导出
 
-In the preceding example, we created two modules. One exports a class and the other exports a function. Notice how we include the `default` keyword after the `export` keyword, and how we omit the name of the class/function. When we export a default class, the `export` is not named. When we are importing default export modules, the name of the object we are importing is derived via the module's name. This will be shown in the next section, where we will talk about the `import` keyword.
+在前面的示例中，我们创建了两个模块。一个模块导出一个类，另一个导出一个函数。请注意在`export`关键字后加入`default`关键字，以及如何省略类/函数的名称。当我们导出一个默认类时，`export`是无名的。当我们导入默认导出模块时，我们导入的对象名称是通过模块的名称派生的。下一节将展示这一点，在那里我们将讨论`import`关键字。
 
-### Import Keyword
+### 导入关键字
 
-The `import` keyword allows you to import a JavaScript module. Importing a module allows you to pull any items from that module into the current code file. When we import a module, we start the expression with the `import` keyword. Then, we identify what parts of the module we are going to import. Then, we follow that with the `from` keyword, and finally we finish with the path to the module file. The `from` keyword and file path tell the interpreter where to find the module we are importing.
+`import`关键字允许您导入 JavaScript 模块。导入模块允许您将该模块中的任何项导入到当前的代码文件中。当我们导入一个模块时，我们以`import`关键字开始表达式。然后，我们确定要从模块中导入的部分。然后，我们跟着`from`关键字，最后完成模块文件的路径。`from`关键字和文件路径告诉解释器在哪里找到我们要导入的模块。
 
-#### Note
+#### 注意
 
-ES6 modules may not have full support from all browsers versions or versions of Node.js. You may have to make use of a transpiler such as Babel to run your code on certain platforms.
+ES6 模块可能在所有浏览器版本或 Node.js 版本中都不受全面支持。您可能需要使用诸如 Babel 之类的转译器来在某些平台上运行您的代码。
 
-There are four ways we can use the `import` keyword, all of which are shown in the following code:
+我们可以使用`import`关键字的四种方式，所有这些方式都在以下代码中展示：
 
-[PRE70]js
+[PRE70]
 
-###### Snippet 1.67: Different ways to import a module
+###### 代码片段 1.67：导入模块的不同方式
 
-In the code shown in preceding snippet, we have created a simple module that exports a few constants and four import example files. In the first `import` example, we are importing a single value from the module exports and making it accessible in the variable API. In the second `import` example, we are importing multiple properties from the module. In the third example, we are importing properties and renaming them to new variable names. The properties can then be accessed from the new variables. In the fourth example, we are using a slightly different syntax. The asterisk signifies that we want to import all exported properties from the module. When we use the asterisk, we must also use the `as` keyword to give the imported object a variable name.
+在上面代码中展示的代码中，我们创建了一个简单的模块，导出了几个常量和四个导入示例文件。在第一个`import`示例中，我们从模块导出中导入一个单个值，并使其在变量 API 中可以访问。在第二个`import`示例中，我们从模块中导入多个属性。在第三个示例中，我们导入属性并将它们重命名为新的变量名。然后可以从新变量中访问这些属性。在第四个示例中，我们使用了略有不同的语法。星号表示我们要从模块中导入所有导出的属性。当我们使用星号时，我们还必须使用`as`关键字给导入的对象赋予一个变量名。
 
-The process of importing and using modules is better explained through the following snippet:
+导入和使用模块的过程通过以下代码片段更好地进行解释：
 
-[PRE71]js
+[PRE71]
 
-###### Snippet 1.68: Importing a module
+###### 代码片段 1.68：导入模块
 
-To use an import in the browser, we must use the `script` tag. The module import can be done inline or via a source file. To import a module, we need to create a `script` tag and set the type property to `module`. If we are importing via a source file, we must set the `src` property to the file path. This is shown in the following syntax:
+要在浏览器中使用导入，我们必须使用`script`标记。模块导入可以内联完成，也可以通过源文件完成。要导入一个模块，我们需要创建一个`script`标记并将 type 属性设置为`module`。如果我们通过源文件进行导入，我们必须将`src`属性设置为文件路径。下面的语法展示了这一点：
 
-[PRE72]js
+[PRE72]
 
-###### Snippet 1.69: Browser import inline
+###### 代码片段 1.69：内联浏览器导入
 
-#### Note
+#### 注意
 
-The script tag is an HTML tag that allows us to run JavaScript code in the browser.
+脚本标记是一个 HTML 标记，允许我们在浏览器中运行 JavaScript 代码。
 
-We can also import modules inline. To do this, we must omit the `src` property and code the import directly in the body of the script tag. This is shown in the following code:
+我们还可以内联导入模块。要做到这一点，我们必须省略`src`属性，并直接在脚本标记的主体中编写导入。下面的代码展示了这一点：
 
-[PRE73]js
+[PRE73]
 
-###### Snippet 1.70: Browser import in script body
+###### 代码片段 1.70：在脚本主体中导入浏览器
 
-#### Note
+#### 注意
 
-When importing modules in browsers, browser versions that do not support ES6 modules will not run scripts with type="module".
+在浏览器中导入模块时，不支持 ES6 模块的浏览器版本不会运行 type="module"的脚本。
 
-If the browser does not support ES6 modules, we can provide a fallback option with the `nomodule` attribute. Module compatible browsers will ignore script tags with the `nomodule` attribute so that we can use it to provide fallback support. This is shown in the following code:
+如果浏览器不支持 ES6 模块，我们可以使用`nomodule`属性提供一个回退选项。模块兼容的浏览器会忽略带有`nomodule`属性的脚本标记，因此我们可以使用它来提供回退支持。下面的代码展示了这一点：
 
-[PRE74]js
+[PRE74]
 
-###### Snippet 1.71: Browser import with compatibility option
+###### 代码片段 1.71：兼容选项的浏览器导入
 
-In the preceding example, if the browser supports modules, then the first script tag will be run and the second will not. If the browser does not support modules, then the first script tag will be ignored, and the second will be run.
+在前面的例子中，如果浏览器支持模块，那么第一个脚本标记将被运行，第二个则不会。如果浏览器不支持模块，那么第一个脚本标记将被忽略，第二个将被运行。
 
-One final consideration for modules: be careful that any modules you build do not have circular dependencies. Because of the load order of modules, circular dependencies in JavaScript can cause lots of logic errors when ES6 is transpiled to ES5\. If there is a circular dependency in your modules, you should restructure your dependency tree so that all dependencies are linear. For example, consider the dependency chain: Module A depends on B, module B depends on C, and module C depends on A. This is a circular module chain because through the dependency chain, A depends on C, which depends on A. The code should be restructured so that the circular dependency chain is broken.
+模块的最后一个考虑: 要小心构建的任何模块不要有循环依赖。由于模块的加载顺序，JavaScript 中的循环依赖可能在 ES6 转译为 ES5 时导致许多逻辑错误。如果你的模块存在循环依赖，你应该重构你的依赖树，以便所有的依赖都是线性的。例如，考虑依赖链: 模块 A 依赖于 B，模块 B 依赖于 C，模块 C 依赖于 A。这是一个循环模块链，因为通过依赖链，A 依赖于 C，C 依赖于 A。代码应该重新构造，以打破循环依赖链。
 
-### Exercise 13: Implementing Classes
+### 练习 13：实现类
 
-You have been hired by a car sales company to design their sales website. You must create a vehicle class to store car information. The class must take in the car make, model, year, and color. The car should have a method to change the color. To test the class, create an instance that is a grey (color) 2005 (year) Subaru (make) Outback (model). Log the car's variables, change the car's color, and log the new color.
+你被一家汽车销售公司聘用，设计他们的销售网站。你必须创建一个车辆类来存储汽车信息。类必须接受汽车制造商、型号、年份和颜色。汽车应该有一个更改颜色的方法。为了测试这个类，创建一个灰色（颜色）2005（年份）斯巴鲁（制造商）Outback（型号）的实例。记录汽车的变量，更改汽车的颜色，并记录新的颜色。
 
-To build a functional class to demonstrate the capabilities of a class, perform the following steps:
+要构建一个功能类来展示一个类的能力，执行以下步骤：
 
-1.  Create a `car` class.
+1.  创建一个`car`类。
 
-    Add a constructor that takes in the `make`, `model`, `year`, and `color`. Save the `make`, `model`, `year`, and `color` in internal variables (`this` scope) in the constructor function.
+    添加一个构造函数，它接受`make`、`model`、`year`和`color`。在构造函数中的内部变量（`this`范围）中保存`make`、`model`、`year`和`color`。
 
-    Add a function called `setColor` that takes in a single parameter, color, and updates the internal variable `color` to the provided color.
+    添加一个名为`setColor`的函数，它接受一个参数 color，并更新内部变量`color`为提供的颜色。
 
-2.  Instantiate the class with the parameters `Subaru`, `Outback`, `2005`, and `Grey`. Save the class into the `Subaru` variable.
-3.  Log the internal variables, that is, `make`, `model`, `year`, and `color`, of the class stored in `Subaru.`
-4.  Change the color with the `setColor` of the class stored in `Subaru` class method. Set the color to `Red`.
-5.  Log the new color.
+1.  用参数`Subaru`、`Outback`、`2005`和`Grey`来实例化这个类。将这个类保存在`Subaru`变量中。
 
-**Code**
+1.  记录在`Subaru`中存储的类的内部变量，即`make`、`model`、`year`和`color`。
+
+1.  用`Subaru`类方法的`setColor`改变颜色。将颜色设置为`Red`。
+
+1.  记录新的颜色。
+
+**代码**
 
 ##### index.js:
 
-[PRE75]js
+[PRE75]
 
-###### Snippet 1.72: Full class implementation
+###### 代码片段 1.72：完整的类实现
 
 [`bit.ly/2FmaVRS`](https://bit.ly/2FmaVRS)
 
-**Outcome**
+**结果**
 
-![Figure 1.15: Implementing classes output](img/Figure_1.15.jpg)
+![图 1.15：实现类的输出](img/Figure_1.15.jpg)
 
-###### Figure 1.15: Implementing classes output
+###### 图 1.15：实现类的输出
 
-You have successfully built a functional class.
+你已经成功构建了一个功能性的类。
 
-In this section, we introduced JavaScript classes and ES6 modules. We discussed the prototype-based inheritance structure and demonstrated the basics of class creation and JavaScript class inheritance. When discussing modules, we first showed how to create a module and export the functions and variables stored within them. Then, we showed you how to load a module and import the data contained within. We ended this topic by discussing browser compatibility and providing HTML script tag options for supporting browsers that do not yet support ES6 modules.
+在这一部分，我们介绍了 JavaScript 类和 ES6 模块。我们讨论了基于原型的继承结构，并演示了类的基本创建和 JavaScript 类继承的基础知识。在讨论模块时，我们首先展示了如何创建一个模块并导出其中存储的函数和变量。然后，我们展示了如何加载一个模块并导入其中包含的数据。我们以讨论浏览器兼容性并提供支持尚不支持 ES6 模块的浏览器的 HTML 脚本标签选项来结束这个话题。
 
-## Transpilation
+## 转译
 
-**Transpilation** is defined as source-to-source compilation. Tools have been written to do this and they are called transpilers. **Transpilers** take the source code and convert it into another language. Transpilers are important for two reasons. First, not every browser supports every new syntax in ES6, and second, many developers use programming languages based off of JavaScript, such as CoffeeScript or TypeScript.
+**转译**被定义为源到源的编译。已经写了工具来做这件事，它们被称为转译器。**转译器**接受源代码并将其转换成另一种语言。转译器的重要性有两个原因。首先，不是每个浏览器都支持 ES6 中的每种新语法，其次，许多开发者使用基于 JavaScript 的编程语言，比如 CoffeeScript 或 TypeScript。
 
-#### Note
+#### 注释
 
-The ES6 compatibility table can be found at [`kangax.github.io/compat-table/es6/`](https://kangax.github.io/compat-table/es6/).
+ES6 兼容性表可以在[`kangax.github.io/compat-table/es6/`](https://kangax.github.io/compat-table/es6/)找到。
 
-Looking at the ES6 browser compatibility table clearly shows us that there are some holes in support. A transpiler allows us to write our code in ES6 and translate it into vanilla ES5, which works in every browser. It is critical to ensure that our code works on as many web platforms as possible. Transpilers can be an invaluable tool for ensuring compatibility.
+查看 ES6 浏览器兼容性表清楚地告诉我们在支持上存在一些漏洞。转译器允许我们用 ES6 编写我们的代码并将其转换成普通的 ES5，在每个浏览器中都可以运行。确保我们的代码在尽可能多的 Web 平台上正常工作至关重要。对于确保兼容性，转译器可以是一个非常有用的工具。
 
-Transpilers also allow us to develop web or server side applications in other programming languages. Languages such as TypeScript and CoffeeScript may not run natively in the browser; however, with a transpiler, we are able to build a full application in these languages and translate them into JavaScript for server or browser execution.
+转译器还允许我们用其他编程语言开发 Web 或服务器端应用程序。像 TypeScript 和 CoffeeScript 这样的语言可能无法在浏览器中原生运行；然而，通过转译器，我们可以用这些语言构建完整的应用程序，并将它们转换成 JavaScript 以便在服务器端或浏览器中执行。
 
-One of the most popular transpilers for JavaScript is **Babel**. Babel is a tool that was created to aid in the transpilation between different versions of JavaScript. Babel can be installed through the node package manager (npm). First, open your terminal and path to the folder containing your JavaScript project.
+JavaScript 最流行的转译器之一是**Babel**。Babel 是一个旨在协助不同版本 JavaScript 之间的转译的工具。Babel 可以通过 node 包管理器（npm）安装。首先，打开你的终端并进入包含 JavaScript 项目的文件夹。
 
-If there is no `package.json` file in this directory, we must create it. This can be done with the `npm init` command. The command-line interface will ask you for several entries so that you can fill out the defaults of the `package.json` file. You can enter the values or simply press the return key and accept the default values.
+如果在这个目录中没有`package.json`文件，那么我们必须创建它。可以使用`npm init`命令完成。命令行界面将询问您输入几个条目，以便您填写`package.json`文件的默认值。您可以输入这些值，也可以直接按回车键接受默认值。
 
-To install the Babel command-line interface, use the following command: `npm install --save-dev babel-cli`. After that has concluded, the `babel-cli` field will have been added to the `devDependencies` object in the `package.json` file:
+要安装 Babel 命令行界面，使用以下命令：`npm install --save-dev babel-cli`。完成后，`package.json`文件的`devDependencies`对象中将会添加`babel-cli`字段：
 
-[PRE76]js
+[PRE76]
 
-###### Snippet 1.73: Adding the first dependency
+###### 片段 1.73：添加第一个依赖
 
-This command only installed the base Babel with no plugins for transpiling between versions of JavaScript. To install the plugin to transpile to ECMAScript 2015, use the `npm install --save-dev babel-preset-es2015` command. Once the command finishes running, our `package.json` file will contain another dependency:
+这个命令只安装了基本的 Babel，没有用于在不同版本的 JavaScript 之间进行转译的插件。要安装插件以转译到 ECMAScript 2015，使用命令`npm install --save-dev babel-preset-es2015`。一旦命令运行完毕，我们的`package.json`文件将包含另一个依赖：
 
-[PRE77]js
+[PRE77]
 
-###### Snippet 1.74: Adding the second dependency
+###### 片段 1.74：添加第二个依赖
 
-This installs the ES6 presets. To use these presets, we must tell Babel to configure itself with these presets. Create a file called `.babelrc`. Note the leading period in the name. The `.babelrc` file is Babel's configuration file. This is where we tell Babel what presets, plugins, and so on, we are going to use. Once created, add the following contents to the file:
+这安装了 ES6 预设。要使用这些预设，我们必须告诉 Babel 使用这些预设进行配置。创建一个名为`.babelrc`的文件。注意文件名中的前导句号。`.babelrc`文件是 Babel 的配置文件。这是我们告诉 Babel 我们将使用哪些预设、插件等的地方。创建完成后，在文件中添加以下内容：
 
-[PRE78]js
+[PRE78]
 
-###### Snippet 1.75: Installing the ES6 presets
+###### 片段 1.75：安装 ES6 预设
 
-### Babel- Transpiling
+### Babel-转译
 
-Now that Babel has been configured, we must create the code file to transpile. In the root folder of your project, create a file called `app.js`. In this file, paste the following ES6 code:
+现在 Babel 已经配置好了，我们必须创建要转译的代码文件。在项目的根目录中，创建一个名为`app.js`的文件。在这个文件中，粘贴以下 ES6 代码：
 
-[PRE79]js
+[PRE79]
 
-###### Snippet 1.76: Pasting the code
+###### 片段 1.76：粘贴代码
 
-Now that Babel has been configured and we have a file that we wish to transpile, we need to update our `package.json` file to add a transpile script for npm. Add the following lines to your `package.json` file:
+现在 Babel 已经配置好了，我们有了一个要转译的文件，我们需要更新我们的`package.json`文件，为 npm 添加一个转译脚本。在`package.json`文件中添加以下行：
 
-[PRE80]js
+[PRE80]
 
-###### Snippet 1.77: Update the package.json file
+###### 片段 1.77：更新 package.json 文件
 
-The scripts object allows us to run these commands from npm. We are going to name the npm script `transpile` and it will run the command chain `babel app.js --out-file app.transpiled.js --source-maps`. `App.js` is our input file. The `--out-file` command specifies the output file for compilation. `App.transpiled.js` is our output file. Lastly, `--source-maps` creates a source map file. This file tells the browser which line of transpiled code corresponds to which lines of the original source. This allows us to debug directly in the original source file, that is, `app.js`.
+脚本对象允许我们从 npm 运行这些命令。我们将命名 npm 脚本为`transpile`，它将运行命令链`babel app.js --out-file app.transpiled.js --source-maps`。`App.js`是我们的输入文件。`--out-file`命令指定了编译的输出文件。`App.transpiled.js`是我们的输出文件。最后，`--source-maps`创建了一个源映射文件。这个文件告诉浏览器转译代码的哪一行对应原始源代码的哪几行。这让我们能够直接在原始源文件`app.js`中进行调试。
 
-Now that we have everything set up, we can run our transpile script by typing `npm run transpile` into the terminal window. This will transpile our code from `app.js` into `app.transpiled.js`, creating or updating the file as needed. Upon examination, we can see that the code in `app.transpiled.js` has been converted into ES5 format. You can run the code in both files and see that the output is the same.
+现在一切都设置好了，我们可以通过在终端窗口输入`npm run transpile`来运行我们的转译脚本。这将把我们的代码从`app.js`转译成`app.transpiled.js`，根据需要创建或更新文件。检查后，我们可以看到`app.transpiled.js`中的代码已转换为 ES5 格式。您可以在两个文件中运行代码，看到输出是一样的。
 
-Babel has many plugins and presets for different modules and JavaScript releases. There are enough ways to set up and run Babel that we could write an entire book about it. This was just a small preview for converting ES6 code to ES5\. For full documentation and information on Babel and the uses of each plugin, visit the documentation.
+Babel 有许多插件和不同模块和 JavaScript 发布的预设。有足够的方法设置和运行 Babel，我可以写一整本关于它的书。这只是将 ES6 代码转换为 ES5 的一个小预览。要获取有关 Babel 的完整文档和每个插件用途的信息，请访问文档。
 
-#### Note
+#### 注意
 
-Take a look at Babel's home page at [`babeljs.io`](https://babeljs.io).
+查看 Babel 的主页 [`babeljs.io`](https://babeljs.io)。
 
-In summary, transpilers allow you to do source to source compiling. This is very useful because it allows us to compile ES6 code to ES5 when we need to deploy on a platform that does not yet support ES6\. The most popular and most powerful JavaScript transpiler is Babel. Babel can be set up on the command line to allow us to build entire projects in different versions of JavaScript.
+总之，转译器允许你做源码到源码的编译。这非常有用，因为它让我们在需要部署在尚不支持 ES6 的平台上时将 ES6 代码编译为 ES5。最受欢迎和最强大的 JavaScript 转译器是 Babel。可以在命令行上设置 Babel 来允许我们使用不同版本的 JavaScript 构建整个项目。
 
-### Exercise 14: Transpiling ES6 Code
+### 练习 14: 转译 ES6 代码
 
-Your office team has written your website code in ES6, but some devices that users are using do not support ES6\. This means that you must either rewrite your entire code base in ES5 or use a transpiler to convert it to ES5\. Take the ES6 code written in the *Upgrading Arrow Functions* section and transpile it into ES5 with Babel. Run the original and transpiled code and compare the output.
+你的办公室团队用 ES6 编写了你的网站代码，但一些用户正在使用的设备不支持 ES6\. 这意味着你必须要么用 ES5 重写整个代码库，要么使用转译器将其转换为 ES5\. 将*升级箭头函数*部分中的 ES6 代码转换为 ES5 并通过 Babel 运行原始代码和转译后的代码并比较输出。
 
-To demonstrate Babel's ability to transpile code from ES6 to ES5, perform the following steps:
+为了演示 Babel 将 ES6 代码转换为 ES5 的能力，请执行以下步骤：
 
-Ensure that Node.js is already installed before you start.
+在开始之前，请确保 Node.js 已经安装。
 
-1.  Install Node.js if it is not already installed.
-2.  Set up a Node.js project with the command line command `npm init`.
-3.  Put the code from the *Upgrading Arrow Functions* section into the `app.js` file.
-4.  Install Babel and the Babel ES6 plugin with `npm install`.
-5.  Configure Babel by adding a `.babelrc` file with the es2015 preset.
-6.  Add a transpile script to `package.json` that calls Babel and transpiles from `app.js` to `app.transpiled.js`.
-7.  Run the transpile script.
-8.  Run the code in `app.transpiled.js`.
+1.  如果尚未安装 Node.js，请安装它。
+
+1.  使用命令行命令 `npm init` 设置一个 Node.js 项目。
+
+1.  将*升级箭头函数*部分的代码放入 `app.js` 文件。
+
+1.  用 `npm install` 安装 Babel 和 Babel ES6 插件。
+
+1.  通过添加一个带有 es2015 预设的 `.babelrc` 文件来配置 Babel。
+
+1.  在 `package.json` 中添加一个调用 Babel 并从 `app.js` 转译到 `app.transpiled.js` 的转译脚本。
+
+1.  运行转译脚本。
+
+1.  运行 `app.transpiled.js` 中的代码。
 
 **Code**
 
 ##### package.json:
 
-[PRE81]js
+[PRE81]
 
-###### Snippet 1.78: Package.json config file
+###### Snippet 1.78: Package.json 配置文件
 
 [`bit.ly/2FsjzgD`](https://bit.ly/2FsjzgD)
 
 ##### .babelrc:
 
-[PRE82]js
+[PRE82]
 
-###### Snippet 1.79: Babel config file
+###### Snippet 1.79: Babel 配置文件
 
 [`bit.ly/2RMYWSW`](https://bit.ly/2RMYWSW)
 
 ##### app.transpiled.js:
 
-[PRE83]js
+[PRE83]
 
-###### Snippet 1.80: Fully transpiled code
+###### Snippet 1.80: 完全转译的代码
 
 [`bit.ly/2TLhuR7`](https://bit.ly/2TLhuR7)
 
 **Outcome**
 
-![Figure 1.16: Transpiled script output](img/Figure_1.16.jpg)
+![图 1.16: 转译后的脚本输出](img/Figure_1.16.jpg)
 
-###### Figure 1.16: Transpiled script output
+###### 图 1.16: 转译后的脚本输出
 
-You have successfully implemented Babel's ability to transpile code from ES6 to ES5.
+你已成功实现了 Babel 将代码从 ES6 转换为 ES5 的能力。
 
-In this section, we discussed the concept of transpilation. We introduced the transpiler Babel and walked through how to install Babel. We discussed the basic steps to set up Babel to transpile ES6 into ES5 compatible code and, in the activity, built a simple Node.js project with ES6 code to test Babel.
+在本节中，我们讨论了转译的概念。我们介绍了转译器 Babel，并讨论了如何安装 Babel。我们讨论了设置 Babel 将 ES6 转译为 ES5 兼容代码的基本步骤，并在活动中构建了一个简单的 Node.js 项目，其中包含 ES6 代码来测试 Babel。
 
-## Iterators and Generators
+## 迭代器和生成器
 
-In their simplest forms, **iterators** and **generators** are two ways to process a collection of data incrementally. They gain efficiency over loops by keeping track of the state of the collection instead of all of the items in the collection.
+**迭代器** 和 **生成器** 的最简形式，都是处理集合数据的两种渐进式方式。它们通过跟踪集合的状态而不是集合中的所有项目来提高效率。
 
-### Iterators
+### 迭代器
 
-An **iterator** is a way to traverse through data in a collection. To iterate over a data structure means to step through each of its elements in order. For example, the `for/in` loop is a method that's used to iterate over the keys in a JavaScript object. An object is an iterator when it knows how to access its items from a collection one at a time, while tracking position and finality. An iterator can be used to traverse custom complicated data structure or for traversing chunks of large data that may not be practical to load all at once.
+**迭代器**是遍历集合中数据的一种方式。遍历数据结构意味着按顺序遍历每个元素。例如，`for/in`循环是用于遍历 JavaScript 对象中键的方法。当迭代器知道如何从集合中一次访问其项目时，它就是一个迭代器，同时跟踪位置和完成状态。迭代器可用于遍历自定义复杂数据结构或用于遍历可能一次加载不太实际的大数据块。
 
-To create an iterator, we must define a function that takes a collection in as the parameter and returns an object. The return object must have a function property called next. When next is called, the iterator steps to the next value in the collection and returns an object with the value and the done status of the iteration. An example iterator is shown in the following code:
+要创建一个迭代器，我们必须定义一个以集合为参数的函数，并返回一个对象。返回的对象必须具有一个名为`next`的函数属性。当调用`next`时，迭代器将跳到集合中的下一个值，并返回一个具有值和迭代状态的对象。以下是示例迭代器的代码：
 
-[PRE84]js
+[PRE84]
 
-###### Snippet 1.81: Iterator declaration
+###### 代码段 1.81：迭代器声明
 
-This iterator takes in an array and returns an object with the single function property next. Internally, the iterator keeps track of the array and the index we are currently looking at. To use the iterator, we simply call the next function. Calling next will cause the iterator to return an object and increment the internal index by one. The object returned by the iterator must have, at a minimum, the properties value and done. Value will contain the value at the index we are currently viewing. `Done` will contain a Boolean. If the Boolean equals true, then we have finished the **traversion on** the input collection. If it is **falsy**, then we can keep calling the next function:
+此迭代器接受一个数组，并返回一个具有单个函数属性`next`的对象。在内部，迭代器跟踪数组和我们当前正在查看的索引。要使用迭代器，我们只需调用`next`函数。调用`next`将导致迭代器返回一个对象，并将内部索引增加一。迭代器返回的对象必须至少具有`value`和`done`两个属性。`value`将包含我们当前查看索引处的值。`Done`将包含一个布尔值。如果布尔值为 true，则我们已经**在**输入集合上完成了遍历。如果为**假**，那么我们可以继续调用`next`函数：
 
-[PRE85]js
+[PRE85]
 
-###### Snippet 1.82: Iterator use
+###### 代码段 1.82：迭代器使用
 
-#### Note
+#### 注意
 
-When an iterator's finality property is truthy, it should not return any new data. To demonstrate the use of `iterator.next()`, you can provide the example shown in the preceding snippet.
+当迭代器的`finality`属性为真时，不应返回任何新数据。为了演示`iterator.next()`的使用，你可以提供前面代码段中的示例。
 
-In summary, iterators provide us with a way to traverse potentially complex collections of data. An iterator tracks its current state and each time the next function is called, it provides an object with a value and a finality Boolean. When the iterator reaches the end of the collection, calls to `iterator.next()` will return a truthy finality parameter and no new values will be received.
+总之，迭代器为我们提供了一种遍历可能复杂的数据集合的方法。迭代器跟踪其当前状态，每次调用`iterator.next()`函数时，它都会提供一个具有值和完成状态布尔值的对象。当迭代器到达集合的末尾时，调用`iterator.next()`将返回一个真值完成参数，并且将不再接收新值。
 
-### Generators
+### 生成器
 
-**A** **generator** provides an iterative way to build a collection of data. A generator can return values one at a time while pausing execution until the next value is requested. A generator keeps track of the internal state and each time it is requested, it returns a new number in the sequence.
+**生成器**提供了一种迭代构建数据集合的方法。生成器可以一次返回一个值，同时暂停执行，直到请求下一个值。生成器跟踪内部状态，每次请求时，它都会返回序列中的新数字。
 
-To create a `generator`, we must define a function with an asterisk in front of the function name and the `yield` keyword in the body. For example, to create a generator called `testGenerator`, we would initialize it as follows:
+要创建一个`生成器`，我们必须在函数名前面加上星号，并在函数体中使用`yield`关键字。例如，要创建名为`testGenerator`的生成器，我们可以按如下方式初始化它：
 
-[PRE86]js
+[PRE86]
 
-The asterisk designates that this is a `generator function`. The `yield` keyword designates a break in the normal function flow until the generator function is called again. An example of a generator is shown in the following snippet:
+星号表示这是一个`生成器函数`。`yield`关键字表示正常函数流程的中断，直到生成器函数再次被调用。下面是一个生成器的示例：
 
-[PRE87]js
+[PRE87]
 
-###### Snippet 1.83: Generator creation
+###### 代码段 1.83：生成器创建
 
-This `generator` function that we created in the preceding snippet, called `gen`, has an internal state variable called `i`. When the `generator` is created, it is automatically initialized with an internal next function. When the `next` function is called for the first time, the execution starts, the loop begins, and when the `yield` keyword is reached, the execution of the function is stopped until the next function is called again. When the `next` function is called, the program returns an object containing a value and `done`.
+我们在前面的代码段中创建的这个`生成器`函数，称为`gen`，有一个名为`i`的内部状态变量。当创建`生成器`时，它会自动初始化一个内部的 next 函数。当第一次调用`next`函数时，执行开始，循环开始，当执行到`yield`关键字时，函数的执行被停止，直到再次调用 next 函数。当调用`next`函数时，程序将返回一个包含值和`done`的对象。
 
-### Exercise 15: Creating a Generator
+### 练习 15：创建一个生成器
 
-To create a generator function that generates the values of the sequence of 2n to show how generators can build a set of sequential data, perform the following steps:
+创建一个生成器函数，生成 2n 序列的值，以展示生成器如何构建一组连续的数据，执行以下步骤：
 
-1.  Create a `generator` called `gen`.
+1.  创建一个名为`gen`的`生成器`。
 
-    Place an asterisk before the identifier name.
+    在标识符名称前面加上一个星号。
 
-2.  Inside the generator body, do the following:
+1.  在生成器主体内部，执行以下步骤：
 
-    Create a variable called `i` and set the initial value to 1\. Then, create an infinite while loop.
+    创建一个名为`i`的变量，将初始值设为 1。然后，创建一个无限循环。
 
-    In the body of the while loop, `yield` `i` and set `i` to `i * 2.`
+    在 while 循环体中，使用`yield` `i`，并将`i`设置为`i * 2`。
 
-3.  Initialize `gen` and save it into a variable called `generator`
-4.  Call your `generator` several times and log the output to see the values change.
+1.  初始化`gen`并将其保存到名为`generator`的变量中
 
-**Code**
+1.  多次调用你的`生成器`并记录输出，以查看值的变化。
 
-##### index.js:
+**代码**
 
-[PRE88]js
+##### index.js：
 
-###### Snippet 1.84: Simple generator
+[PRE88]
+
+###### 代码段 1.84：简单生成器
 
 [`bit.ly/2VK7M3d`](https://bit.ly/2VK7M3d)
 
-**Outcome**
+**结果**
 
-![Figure 1.17: Calling the generator output](img/Figure_1.17.jpg)
+![图 1.17：调用生成器输出](img/Figure_1.17.jpg)
 
-###### Figure 1.17: Calling the generator output
+###### 图 1.17：调用生成器输出
 
-You have successfully created a generator function.
+你已成功创建了一个生成器函数。
 
-Similar to iterators, the `done` value contains the completion status of the generator. If the `done` value is set to `true`, then the generator has finished execution and will no longer return new values. The value parameter contains the result of the expression contained on the line with the `yield` keyword. In this case, it will return the current value of `i`, before the increment. This is shown in the following code:
+与迭代器类似，`done`值包含生成器的完成状态。如果`done`值设置为`true`，那么生成器已经执行完毕，不会再返回新的值。值参数包含了`yield`关键字所在行的表达式的结果。在这种情况下，它将返回`i`的当前值，然后再递增。下面的代码中展示了这一点：
 
-[PRE89]js
+[PRE89]
 
-###### Snippet 1.85: Generator use
+###### 代码段 1.85：生成器使用
 
-Generators pause execution when they reach the `yield` keyword. This means that loops will pause execution. Another powerful tool of a generator is the ability to pass in data via the next function and `yield` keyword. When a value is passed into the next function, the return value of the `yield` expression will be set to the value that's passed into next. An example of this is shown in the following code:
+当生成器遇到`yield`关键字时，执行会暂停。这意味着循环会暂停执行。生成器的另一个强大工具是可以通过 next 函数和`yield`关键字传入数据。当将一个值传递给 next 函数时，`yield`表达式的返回值将被设置为传递给 next 的值。下面的代码展示了一个例子：
 
 [PRE90]
 
-###### Snippet 1.86 Yield keyword
+###### 代码段 1.86 Yield 关键字
 
 总之，生成器是构建数据集的迭代方式。它们一次返回一个值，同时跟踪内部状态。当达到`yield`关键字时，内部执行停止并返回一个值。当调用`next`函数时，执行恢复，直到达到`yield`。数据可以通过`next`函数传递给生成器。通过`yield`表达式返回传入的数据。当生成器发出一个值对象，并将`done`参数设置为 true 时，对`generator.next()`的调用不应产生任何新的值。
 
