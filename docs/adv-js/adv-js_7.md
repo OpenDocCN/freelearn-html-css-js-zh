@@ -32,7 +32,7 @@
 
 ##### **index.js**
 
-```php
+```js
 function* fibonacci () {
  let n2 = 0;x
  let n1 = 1;
@@ -142,7 +142,7 @@ https://bit.ly/2CV4KAi
 
 ##### **index.js**
 
-```php
+```js
 const db = require( './simple_db' );
 async function main() {
  const missingKeys = [];
@@ -194,7 +194,7 @@ https://bit.ly/2FvhPo2
 
 1.  添加一个带有`jQuery`文件源的`script`标签。
 
-```php
+```js
 <script src="./node_modules/jquery/dist/jquery.js"></script>
 ```
 
@@ -238,7 +238,7 @@ https://bit.ly/2FvhPo2
 
 以下是精简的代码。完整的解决方案可以在`activities/activity3/index.html`中找到。
 
-```php
+```js
 $( '.lightButton' ).on( 'click', e => {
   e.stopPropagation();
   const element = $( e.target ).prev();
@@ -314,7 +314,7 @@ https://bit.ly/2VV9DlB
 
 ##### **test.js**
 
-```php
+```js
 'use strict';
 const { fibonacci } = require( './index.js' );
 describe( 'fibonacci', () => {
@@ -377,7 +377,7 @@ https://bit.ly/2CcDpJE
 
 ##### **activity-solution.js**
 
-```php
+```js
 function immutable( data ) {
  if ( typeof data !== 'object' ) {
    return;
@@ -457,7 +457,7 @@ https://bit.ly/2H56ah1
 
 使用`setState`更新状态，将状态属性`value`设置为事件目标的值：
 
-```php
+```js
 this.setState( { value: e.target.value } );
 ```
 
@@ -525,7 +525,7 @@ this.setState( { value: e.target.value } );
 
 ##### Index.js
 
-```php
+```js
 class Editor extends React.Component {
  constructor( props ) { ... }
  handleChange( e ) { ... }

@@ -74,7 +74,7 @@ DOM 树中的元素与其周围元素有三种类型的关系：**父级**、**�
 
 ##### index.js
 
-```php
+```js
 <html>
   <head>
     <title>My title</title>
@@ -114,7 +114,7 @@ https://bit.ly/2FiLgcE
 
 通过`document.getElementById( id )`方法可以通过 ID 获取元素。该方法接受一个表示要查找的元素 ID 的参数 id，并返回一个元素对象。返回的对象将是描述指定 ID 的 DOM 节点的元素对象。如果没有匹配提供的 ID 的元素，则该函数将返回 null。以下是`getElementById`函数的示例：
 
-```php
+```js
 <div id="exampleDiv">Some text here</div>
 <script>
   const elem = document.getElementById( 'exampleDiv' );
@@ -125,7 +125,7 @@ https://bit.ly/2FiLgcE
 
 通过`document.getElementsByTagName( name )`方法可以通过标签名获取元素。该函数接受一个表示要搜索的 HTML 标签名的参数。`getElementsByTagName`返回一个匹配给定标签名的元素的实时`HTMLCollection`。返回的列表是实时的，这意味着它会自动更新与 DOM 树。不需要多次使用相同的元素和参数调用该函数。以下是`getElementsByTagName`的示例：
 
-```php
+```js
 <div id="exampleDiv1">Some text here</div>
 <div id="exampleDiv2">Some text here</div>
 <div id="exampleDiv3">Some text here</div>
@@ -142,7 +142,7 @@ https://bit.ly/2FiLgcE
 
 要通过类名获取元素，我们使用`document.getElementsByClassName( name )`方法。该函数接受一个表示要搜索的 HTML 类名的参数，并返回一个匹配给定类名的元素的实时`HTMLCollection`。以下是`getElementsByClassName`的示例：
 
-```php
+```js
 <div class="example">Some text here</div>
 <img class="example"></img>
 <style class="example"></style>
@@ -155,7 +155,7 @@ https://bit.ly/2FiLgcE
 
 `querySelector()`和`querySelectorAll()`这两个函数用于通过 CSS 查询选择器获取 HTML 元素。它们都接受一个表示 CSS 选择器字符串的单个字符串参数。`querySelector`将返回一个单个元素。`querySelectorAll`将返回与查询匹配的元素的静态（非实时）`NodeList`。可以通过创建包含每个选择器的逗号分隔字符串将多个查询选择器传递给函数。如果将多个选择器传递给查询选择器函数，函数将匹配并返回满足任何选择器要求的元素。`querySelector`和`querySelectorAll`的功能如下片段所示：
 
-```php
+```js
 <div id="id1">Some text here</div>
 <img class="class"></img>
 <script>
@@ -180,7 +180,7 @@ https://bit.ly/2FiLgcE
 
 **示例**：我们获取具有 id`div1`的 div 元素对象，并将其保存在`elem`变量中。然后我们使用`getElementsByTagName`来获取其他 div 元素。该函数在保存在`elem`中的元素对象上调用，因此搜索范围仅限于`div1`的子节点。`getElementsByTagName`将返回一个包含 divs`div2`和`div3`的`HTMLCollection`，因为它们是`div1`的后代：
 
-```php
+```js
 <div id="div1">
   <div id="div2">
     <div> id="div3"> Some text here </div>
@@ -199,7 +199,7 @@ https://bit.ly/2FiLgcE
 
 `parentNode`属性返回节点的父节点。父节点是 DOM 树中的一个节点，该节点是其后代。父节点始终存在，除非在文档节点上调用`parentNode`。由于文档节点位于 DOM 树的顶部，它没有父节点，调用`parentNode`将返回 null。可以使用`parentNode`属性遍历 DOM 树。以下示例显示了`parentNode`的用法：
 
-```php
+```js
 <div id="div1">
   <div id="div2">
     <div id="div3"> Some text here </div>
@@ -216,7 +216,7 @@ https://bit.ly/2FiLgcE
 
 `nextSibling`和`previousSibling`属性用于获取 DOM 树中节点的兄弟节点。`previousSibling`将返回 DOM 树中的前一个兄弟节点（添加到当前节点之前的父节点的兄弟节点），`nextSibling`将返回 DOM 树中的下一个兄弟节点（添加到当前节点之后的父节点的兄弟节点）。在绘制 DOM 树时，通常将节点的前一个兄弟节点显示在左侧，下一个兄弟节点显示在右侧。可以使用`nextSibling`和`previousSibling`函数横向遍历 DOM 树。以下示例显示了这些属性：
 
-```php
+```js
 <div id="div0">
   <div id="div1"> Some text here </div>
   <div id="div2"> Some text here </div>
@@ -233,7 +233,7 @@ https://bit.ly/2FiLgcE
 
 最后三个属性用于导航到节点的子节点；它们是`childNodes`，`firstChild`和`lastChild`。`childNodes`属性返回元素的子节点的实时`NodeList`。`firstChild`和`lastChild`属性分别返回子`NodeList`中的第一个或最后一个节点。以下片段显示了这些属性的使用：
 
-```php
+```js
 <div id="div0">
   <div id="div1"> Some text here </div>
   <div id="div2"> Some text here </div>
@@ -265,7 +265,7 @@ DOM 树导航属性总结如下表：
 
 要创建新元素或节点，我们可以使用`document.createElement()`、`Node.cloneNode()`和`document.createTextNode()`函数。`CreateElement`是在全局文档对象上调用的，并接受两个参数。第一个是`tagName`。**tagName**是一个字符串，指定要创建的元素类型。如果我们想要创建一个新的 div 元素，我们将通过`tagName`传递`div`字符串。第二个参数是一个可选参数，称为 options。Options 是一个包含单个属性的`ElementCreationObject`，名为'is'。此属性允许我们指定要添加的元素是否是自定义元素。我们将不使用此属性，但知道它的用途很重要。`CreateElement`返回一个新创建的 Element 对象。`document.createElement()`的语法和用法如下片段所示：
 
-```php
+```js
 <script>
   const newElem = document.createElement( 'div' );
 </script>
@@ -277,7 +277,7 @@ DOM 树导航属性总结如下表：
 
 以下是`cloneNode`的示例：
 
-```php
+```js
 <div id="div1">
   <div id="div2"> Text </div>
 </div>
@@ -300,7 +300,7 @@ DOM 的规范最近已经更新。在 DOM4 规范中，`cloneNode` 的 `deep` �
 
 `CreateTextNode` 用于创建仅包含文本的节点。当用文本填充页面时，会使用仅包含文本的 DOM 节点。我们使用 `createTextNode` 将新文本放入像 div 这样的元素中。`CreateTextNode` 接受一个参数，一个名为 `data` 的字符串，并返回一个文本节点。`createTextNode` 的示例如下所示：
 
-```php
+```js
 <script>
   const textNode = document.createTextNode( 'Text goes here' );
 </script>
@@ -312,7 +312,7 @@ DOM 的规范最近已经更新。在 DOM4 规范中，`cloneNode` 的 `deep` �
 
 `Node.appendChild` 将节点添加到其调用的节点的子节点列表的末尾。`Node.appendChild` 接受一个参数 `aChild`，并返回附加的子节点。`aChild` 参数是我们要附加到父节点的子节点列表的节点。如果 `appendChild` 传入的是已经存在于 DOM 树中的节点，该节点将从当前位置移动到 DOM 中的新位置，作为指定父节点的子节点。如果 `appendChild` 传入的是 `DocumentFragment`，则 `DocumentFragment` 的整个内容将移动到父节点的子节点列表中，并返回一个空的 Document Fragment。`appendChild` 的语法和用法如下所示：
 
-```php
+```js
 <div id="div1"></div>
 <script>
   const div1 = document.getElementById( 'div1' ); 
@@ -333,7 +333,7 @@ DOM 的规范最近已经更新。在 DOM4 规范中，`cloneNode` 的 `deep` �
 
 `appendChild` 的示例如下所示：
 
-```php
+```js
 <div id="div1">
   <div id="div2"></div>
 </div>
@@ -359,7 +359,7 @@ DOM 的规范最近已经更新。在 DOM4 规范中，`cloneNode` 的 `deep` �
 
 下面的片段展示了`removeChild`功能的示例：
 
-```php
+```js
 <div id="div1">
   <div id="div2"></div>
 </div>
@@ -392,7 +392,7 @@ DOM 的规范最近已经更新。在 DOM4 规范中，`cloneNode` 的 `deep` �
 
 下面的片段展示了这个示例：
 
-```php
+```js
 <div id="div1">
   <div id="div2"></div>
 </div>
@@ -411,7 +411,7 @@ DOM 的规范最近已经更新。在 DOM4 规范中，`cloneNode` 的 `deep` �
 
 操作 DOM 节点的第二种方法是通过更改节点的内部 HTML。节点的`innerHTML`属性可用于获取或设置元素中包含的 HTML 或 XML 标记。该属性可用于更改元素子元素中的当前 HTML 代码。它可以用于更新或覆盖 DOM 树中元素下方的任何内容。要将 HTML 插入节点，将`innerHTML`参数设置为包含要添加的 HTML 元素的字符串。传递到参数中的字符串将被解析为 HTML，并创建新的 DOM 节点；然后将它们作为子节点添加到引用该属性的父节点中。下面的片段展示了`innerHTML`属性的示例：
 
-```php
+```js
 <div id="div1"></div>
 <script>
   const div1 = document.getElementById( 'div1' );
@@ -439,7 +439,7 @@ DOM 的规范最近已经更新。在 DOM4 规范中，`cloneNode` 的 `deep` �
 
 `removeAttribute`函数从节点中移除指定的属性。它接受一个参数`attrName`，并不返回任何值。`attrName`参数是要移除的属性的名称。您可以使用`removeAttribute`来代替尝试使用`setAttribute`将属性的值设置为 null。下面的片段中展示了`getAttribute`、`setAttribute`和`removeAttribute`的示例：
 
-```php
+```js
 <div id="div1"></div>
 <script>
   const div1 = document.getElementById( 'div1' );
@@ -465,7 +465,7 @@ DOM 的规范最近已经更新。在 DOM4 规范中，`cloneNode` 的 `deep` �
 
 以下是这些辅助函数在下面的片段中使用：
 
-```php
+```js
 <div id="div1" class="testClass"></div>
 <script>
   const classes = document.getElementById( 'div1' ).classList;
@@ -482,7 +482,7 @@ DOM 的规范最近已经更新。在 DOM4 规范中，`cloneNode` 的 `deep` �
 
 我们通常修改节点的第五种和最后一种方式是通过样式对象。样式对象反映了节点的 CSS 样式，每个元素节点都有一个样式对象。样式对象可以通过`Element.style`获得。样式对象包含了可以分配给对象的每个 CSS 样式的属性。这个对象是只读的，所以不应该直接通过覆盖样式对象来设置元素样式。相反，我们应该改变样式对象的各个属性：
 
-```php
+```js
 <div id="div1" style="color:blue">Hello World!</div>
 <script>
   const style = document.getElementById( 'div1' ).style;
@@ -559,7 +559,7 @@ DOM 操作是网页的最重要部分之一。DOM 可以通过查找、添加、
 
 ##### solution.html
 
-```php
+```js
 const table = document.createElement( 'table' );
 const row = document.createElement( 'tr' );
 [ 'to', 'from', 'subject' ].forEach( h => { 
@@ -602,7 +602,7 @@ DOM 事件是功能性和响应式 Web 应用程序的基础。事件在任何�
 
 **事件侦听器**可以附加到任何 DOM 节点。要附加事件侦听器，我们必须选择需要监听事件的节点，然后我们可以在该节点上调用`addEventListener`函数。如下面的代码片段所示：
 
-```php
+```js
 <button id="button1">Click me!</button>
 <script>
   const button1 = document.getElementById( 'button1' );
@@ -622,7 +622,7 @@ DOM 事件是功能性和响应式 Web 应用程序的基础。事件在任何�
 
 在以后的时间，如果我们决定不再需要事件监听器，我们可以使用`removeEventListener`函数将其移除。`removeEventListener`函数从指定的事件类型中移除指定的处理程序函数。它接受与`addEventListener`相同的参数。要正确地移除事件监听器，`removeEventListener`必须与添加的监听器匹配。`removeEventListener`会查找具有相同类型、监听器函数和捕获选项的监听器。如果找到匹配项，则移除事件监听器。以下是`removeEventListener`的示例：
 
-```php
+```js
 <button id="button1">Click me!</button>
 <script>
   const button1 = document.getElementById( 'button1' );
@@ -640,7 +640,7 @@ DOM 事件是功能性和响应式 Web 应用程序的基础。事件在任何�
 
 每个事件处理程序函数都接受一个参数。这是事件对象。您经常会看到此参数被定义为`event`、`evt`或简单地`e`。它会自动传递给事件处理程序，以提供有关事件的信息。事件处理程序可以利用事件对象中的信息来操作 DOM，并允许用户与页面交互：
 
-```php
+```js
 <div id="div1">Click me!</div>
 <script>
   const div1 = document.getElementById( 'div1' );
@@ -668,7 +668,7 @@ DOM 事件是功能性和响应式 Web 应用程序的基础。事件在任何�
 
 在本章的前面部分，我们学到可以创建事件对象的新实例。如果我们不能触发事件并使 DOM 树知道发生了什么，单独的事件就不是很有用。DOM 节点有一个成员函数`dispatchEvent()`，允许我们触发或分发事件对象的实例。`DispatchEvent()`应该在您希望从事件节点触发的 DOM 节点上调用。它接受一个参数并返回一个布尔值。这个参数是将在目标 DOM 节点上触发的事件对象。如果事件是可取消的并且处理事件的一个事件处理程序被调用`Event.preventDefault()`，`DispatchEvent()`的布尔返回值将为 false。否则，`dispatchEvent()`将返回 true。以下是`dispatchEvent()`的示例：
 
-```php
+```js
 const event = new MouseEvent( 'click' , { 
   bubbles:true,
   cancelable: true
@@ -709,7 +709,7 @@ const canceled = element.dispatchEvent(event);
 
 ##### index.html
 
-```php
+```js
 <html>
 <body>
  <button id="button1">Click me!</button>
@@ -753,7 +753,7 @@ JavaScript 还允许创建自定义事件。自定义事件是一种触发事件
 
 当调用事件监听器回调时，回调中的事件参数将具有一个额外的字段`detail`。此字段将包含通过自定义事件选项对象的`detail`字段传递给自定义事件的信息。与自定义事件相关的任何信息都应通过`detail`对象传递。详细对象的示例如下所示：
 
-```php
+```js
 const element = document.getElementById( 'button' );
 element.addEventListener( 'myClick', e => {
   console.log( e.detail );
@@ -830,7 +830,7 @@ const canceled = element.dispatchEvent( event );
 
 ##### solution.html
 
-```php
+```js
 <body>
 <h1>Shopping List</h1>
 <div id="userInteractionHolder">
@@ -892,7 +892,7 @@ JQuery 对象不是数组。JQuery 对象上可能不存在内置数组属性和
 
 JQuery 的核心功能围绕选择和操作 DOM 元素展开。这是通过 jQuery 核心选择器来实现的。要选择 DOM 元素，我们调用 jQuery 选择器函数`jQuery( selector )`，或者简写为`$( selector )`。传递给 jQuery 函数的选择器几乎可以是任何有效的 CSS 选择器、回调函数或 HTML 字符串。如果传递给 JQuery 选择器的是 CSS 选择器，将返回一个匹配元素的集合，这些元素将在一个 JQuery 对象中返回。如果传递给选择器的是 HTML 字符串，将从提供的 HTML 字符串创建一个节点集合。如果传递给选择器函数的是回调函数，当 DOM 加载完成时将运行回调。jQuery 还可以接受一个 DOM 节点，并从中创建一个 JQuery 对象。如果将 DOM 节点传递给 jQuery 选择器函数，该节点将自动被选择并返回到一个 JQuery 集合中。下面的片段展示了 JQuery 选择器函数的一个示例：
 
-```php
+```js
 const divs = $( "div" ); // JQuery select all divs
 const div1 = document.getElementById( 'div1' ); // DOM select a div
 const jqueryDiv1 = $( div1 ); // Create a JQuery object from div
@@ -906,7 +906,7 @@ const jqueryDiv1 = $( div1 ); // Create a JQuery object from div
 
 在 JavaScript 中使用多个库时，命名空间冲突总是一个问题。jQuery 及其所有插件和功能都包含在`jQuery`命名空间中。因此，jQuery 和任何其他库之间不应该有冲突。然而，有一个例外，jQuery 默认使用`$`作为 jQuery 命名空间的快捷方式。如果你使用另一个使用`$`变量的库，可能会与 jQuery 发生冲突。为了避免这种情况，你可以将 jQuery 置于无冲突模式。要做到这一点，调用 jQuery 命名空间上的`noConflict()`函数（`jQuery.noConflict()`）。这将打开无冲突模式，并允许你为 jQuery 库分配一个新的快捷变量名。变量名可以是任何你喜欢的，从`$`到`mySuperAwesomeJQuery`。启用无冲突模式并更改 jQuery 快捷变量名的完整示例如下片段所示：
 
-```php
+```js
 <script src="jquery.js"></script>
 <script>
   // Set the jQuery alias to $j instead of $
@@ -960,7 +960,7 @@ DOM 操作的第一步始终是选择要处理的 DOM 节点。JQuery 最基本�
 
 大多数 jQuery 对象函数返回 jQuery 对象。这使我们能够链接调用，并且不需要用分号和换行符分隔每个函数调用。在链接 jQuery 函数时，jQuery 会跟踪对选择器和 JQuery 对象中的节点的更改。我们可以使用`end()`函数将当前选择恢复到其原始选择。以下是一个示例：
 
-```php
+```js
 $( "#myList" )
   .find( ".boosted" ) // Finds descendents with the .boosted class
   .eq( 3 ) // Select the third index of the <li> filtered list

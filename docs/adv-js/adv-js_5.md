@@ -58,7 +58,7 @@
 
 现在，让我们从比喻转到实际代码。考虑下面片段中显示的代码：
 
-```php
+```js
 function addImperative( arr ) {
  let result = 0;
  for ( let i = 0; i < arr.length; i++ ) {
@@ -115,7 +115,7 @@ function addDeclarative( arr ) {
 
 ##### index.js
 
-```php
+```js
 function imperative( arr ) {
  const filtered = [];
  for ( let i = 0; i < arr.length; i++ ) {
@@ -163,7 +163,7 @@ https://bit.ly/2skAnic
 
 给定一组输入值，纯函数在提供这些输入值时必须始终返回相同的值。这听起来比实际情况复杂得多。简而言之，纯函数的输出不能改变，除非更改输入值。这意味着函数的内部代码不能依赖于函数外部的任何程序状态。纯函数不能使用函数外部的任何变量来进行计算或代码路径决策。以下代码段显示了这一点的示例：
 
-```php
+```js
 const state = { prop1: 5 };
 function notPure () {
   return state.prop1 > 0 ? 'Valid': 'Invalid';
@@ -183,7 +183,7 @@ pure( state.prop ); // Expected output: 'Valid'
 
 纯函数不能有副作用。这简单地意味着纯函数不能修改通过引用传递的任何对象或值。副作用将在*副作用*主题中更详细地讨论。在 JavaScript 中，只有对象和数组可以通过引用传递给函数。纯函数不能以任何方式修改这些对象或数组。如果您的函数需要在内部更新或修改数组或对象，我们必须首先创建数组/对象的副本。重要的是要注意，在 JavaScript 中，复制对象或数组只会复制实体的第一层。这意味着如果一个数组或对象中嵌套了数组或对象，这些嵌套的引用将不会被复制。当复制的对象按引用传递时，嵌套的对象也将被传递。这意味着如果嵌套引用没有被显式复制，可能会导致副作用。要正确地复制一个对象，我们必须创建一个深拷贝。对象的深拷贝是一个复制所有嵌套引用的副本。这可以通过递归或通过 Node.js 的`deepcopy`模块来完成。副作用的一个示例在下面的片段中显示：
 
-```php
+```js
 function notPure( input ) {
   input.prop2 = 'test';
 }
@@ -240,7 +240,7 @@ function pure( input ) {
 
 ##### exercise-solution.js
 
-```php
+```js
 function addItem( cart, item, quantity ) {
  // Duplicate cart
  const newCart = JSON.parse( JSON.stringify( cart ) );
@@ -269,7 +269,7 @@ https://bit.ly/2H2TXJG
 
 高阶函数对于创建功能性实用程序非常有用。作为程序员，我们经常创建旨在对一组值执行操作的实用函数。通常，我们希望最大限度地提高灵活性，并创建可以在各种潜在输入值或格式上工作的函数。创建接受一些参数并返回新函数的高阶实用函数可以是一个很好的方法。这些函数在 JavaScript 中通常称为闭包。考虑以下片段中显示的函数：
 
-```php
+```js
 function sortObjField1( field ) {
  return function ( v1, v2 ) {
    return v1[ field ] > v2[ field ];
@@ -312,7 +312,7 @@ function sortObjField2( field, v1, v2 ) {
 
 ##### **index.js**
 
-```php
+```js
 const data = [ { f1: 6, f2: 3 }, { f1: 12, f2: 0 }, { f1: 9, f2: 1 }, { f1: 6, f2: 7 } ];
 function swap( key1, key2 ) {
  return obj => {
@@ -337,7 +337,7 @@ https://bit.ly/2D0t70K
 
 **共享状态**是存在于共享范围中的任何变量、对象或内存空间。任何被多个独立范围使用的非常量变量，包括全局范围和闭包范围，都被视为处于共享状态。在函数式编程中，应该避免共享状态。共享状态会阻止函数变得纯粹。当违反共享状态规则并且程序修改变量时，就会产生副作用。在面向对象编程中，共享状态通常作为对象传递。面向对象编程函数可能会修改共享状态。这与函数式编程规则背道而驰。下面的片段中展示了一个共享状态的示例：
 
-```php
+```js
 const state = { age: 15 }
 function doSomething( name ) {
   return state.age > 13 ? '${name} is old enough' : '${name} is not old enough';
@@ -378,7 +378,7 @@ function doSomething( name ) {
 
 ##### solution.js
 
-```php
+```js
 const person = { age: 10, firstName: 'Sandra', lastName: 'Jeffereys' };
 function getOlder( age ) {
  return ++age;
@@ -414,7 +414,7 @@ JavaScript 对不可变性的支持并不完整。JavaScript 没有内置的不�
 
 不可变对象可以使用 freeze 函数创建。`freeze`是全局`Object prototype ( Object.freeze()` )上的一个函数。它接受一个参数，即要冻结的对象，并返回相同的对象。freeze 防止向对象中添加、删除或修改任何内容。如果一个数组被冻结，它将锁定元素的值，并防止向数组中添加或删除元素。需要注意的是，freeze 函数只是浅冻结。作为属性（在对象中）或元素（在数组中）嵌套的对象和数组不会被`freeze`函数冻结。如果要完全冻结所有嵌套属性，必须编写一个辅助函数来遍历对象或数组树，冻结每个嵌套级别，或者找到一个第三方库。`Object.freeze()`的使用如下所示：
 
-```php
+```js
 const data  = {
   prop1: 'value1',
   objectProp: { p1: 'v1', p2: 'v2' },
@@ -487,7 +487,7 @@ Object.freeze( data.arrayProp[3] );
 
 根据定义，函数组合是将函数组合在一起创建新函数的行为。这到底意味着什么？在数学中，我们经常看到像这样组合的函数：f(g(x))。如果这对你来说不熟悉，在表达式 f(g(x))中，我们将变量 x 传递给函数 g，然后将 g(x)的结果传递给函数 f。表达式 f(g(x))从内到外，从右到左，按顺序 x，g，f 进行评估。在函数 g 中使用输入参数的每个实例，我们可以替换为 x 的值。在函数 f 中使用输入参数的每个实例，我们可以替换为 g(x)的值。现在，让我们用代码考虑这种函数组合的方法。考虑以下代码片段：
 
-```php
+```js
 function multiplyBy2( c ) {
  return 2 * c;
 }

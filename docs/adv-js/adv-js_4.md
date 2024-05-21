@@ -144,7 +144,7 @@ TDD 也可能会受到测试编写不当或懒散的影响。如果测试太粗�
 
 ##### index.js
 
-```php
+```js
 function fibonacci( i ) {
  if ( i <= 0 ) {
    return 0;
@@ -203,7 +203,7 @@ https://bit.ly/2H5CNv0
 
 单元测试只是测试尽可能小的代码单元的测试。代码的“单元”是一个与代码的其他部分逻辑上隔离的小片段。换句话说，它是一段不依赖于代码其他部分的逻辑的代码。代码单元可以更新而不影响其周围代码的功能。例如，考虑以下代码片段中显示的代码：
 
-```php
+```js
 function adjustValue( value ) {
  if ( value > 5 ) {
    value--;
@@ -250,7 +250,7 @@ function adjustValue( value ) {
 
 ##### **solution.js**
 
-```php
+```js
 test( fakeRounding( 0 ), 0 );
 test( fakeRounding( 0.4999 ), 1 );
 test( fakeRounding( 0.5 ), 1 );
@@ -392,7 +392,7 @@ https://bit.ly/2Fjulqw
 
 ##### solution.html
 
-```php
+```js
 <body>
  <input type="text" id="name" value="Name">
  <input type="text" id="email" value="Email">
@@ -473,7 +473,7 @@ Mocha 有许多好处。正如前面所述，Mocha 是 Node.js 最流行的测�
 
 在`package.json`文件中，将会有一个名为`scripts`的字段。要从 npm 运行我们的测试，我们必须向`scripts`对象添加一个字段。用以下片段中显示的代码替换`scripts`对象：
 
-```php
+```js
 "scripts": {
   "test": "mocha ./test.js"
 }
@@ -493,7 +493,7 @@ Mocha 使用`describe`和`it`关键字组织测试。两者都是以字符串作
 
 了解测试的基础知识后，我们可以查看 Mocha 入门文档，并查看以下代码片段中显示的代码：
 
-```php
+```js
 var assert = require('assert');describe('Array', function() {  describe('#indexOf()', function() {    it('should return -1 when the value is not present', function() {      assert.equal([1,2,3].indexOf(4), -1);    });  });});
 ```
 
@@ -523,7 +523,7 @@ var assert = require('assert');describe('Array', function() {  describe('#inde
 
 ##### **test.js**
 
-```php
+```js
 describe( 'My first test!', () => {
  it( 'Passing test!', ( done ) => done( false ) );
 } );
@@ -553,7 +553,7 @@ Mocha 以同步方式按照测试文件中定义的顺序同步执行异步测�
 
 describe( 'Array', () => {
 
-```php
+```js
   before( 'description', done => { ... } );
   after( 'description', done => { ... } );
   beforeEach( 'description', done => { ... } );

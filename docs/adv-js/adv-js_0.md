@@ -84,7 +84,7 @@ JavaScript 是 Web 技术的核心编程语言，可用于修改 HTML 和 CSS。
 
 代码块设置如下：
 
-```php
+```js
 var example; // Declare variable
 example = 5; // Assign value
 console.log( example ); // Expect output: 5
@@ -92,7 +92,7 @@ console.log( example ); // Expect output: 5
 
 任何命令行输入或输出都以以下方式编写：
 
-```php
+```js
 npm install babel --save-dev
 ```
 

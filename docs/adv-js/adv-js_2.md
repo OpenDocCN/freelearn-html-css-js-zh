@@ -78,7 +78,7 @@ JavaScript 引擎有一个单一的调用堆栈，事件循环堆栈。**事件�
 
 考虑以下代码片段：
 
-```php
+```js
 function foo( x ) { return 2 * x; }
 function bar( y ) { return foo( y + 5 ) - 10; }
 console.log( bar( 15 ) ); // Expected output: 30
@@ -108,7 +108,7 @@ console.log( bar( 15 ) ); // Expected output: 30
 
 让我们考虑一个网页中有两个按钮`button1`和`button2`，设置为使用`clickHandler`处理函数处理点击事件。用户快速点击`button1`和`button2`。事件队列将包含以下简化信息：
 
-```php
+```js
 Queue: { event: 'click', target: 'button1', handler: clickHandler }, { event: 'click', target: 'button2', handler: clickHandler }
 ```
 
@@ -132,7 +132,7 @@ Queue: { event: 'click', target: 'button1', handler: clickHandler }, { event: 'c
 
 确保由事件调用的回调函数很短是一个良好的实践。长回调函数可以使用`setTimeout`函数分成几条消息。延迟问题的示例如下所示：
 
-```php
+```js
 setTimeout( () => { 
   // WARNING: this may take a long time to run on a slow computer
   // Try with smaller numbers first
@@ -188,7 +188,7 @@ setTimeout( () => { console.log( 'done!' ) }, 0 );
 
 零延迟函数和事件循环状态的概念可以在以下片段中得到展示：
 
-```php
+```js
 setTimeout( () => { console.log( 'step1' ) }, 0 );
 setTimeout( () => { console.log( 'done!' ) }, 0 );
 console.log( 'step0' );
@@ -212,7 +212,7 @@ console.log( 'step0' );
 
 对于程序的前 10 个步骤，在每个步骤写出预期的堆栈、队列和堆。步骤是指事件触发时，事件循环出列一个事件，或 JS 引擎处理函数调用的任何时间：
 
-```php
+```js
 step 0
 stack: <global>
 queue: <empty>
@@ -223,7 +223,7 @@ heap: <empty>
 
 程序显示在以下片段中：
 
-```php
+```js
 function f1() { console.log( 'f1' ); }
 function f2() { console.log( 'f2' ); }
 function f3() {
@@ -286,7 +286,7 @@ https://bit.ly/2R5YGPA
 
 JavaScript 中的回调遵循一个简单的非官方约定。回调函数应至少接受两个参数：**error**和**result**。在构建回调 API 或编写回调函数时，我们建议您遵循这个约定，以便您的代码可以无缝地集成到其他库中。下面是一个回调函数的示例：
 
-```php
+```js
 TwitterAPI.listFollowers( { user_id: "example_user" }, (err, result) => {   
   console.log( err, result ); 
 } );
@@ -310,7 +310,7 @@ TwitterAPI.listFollowers( { user_id: "example_user" }, (err, result) => {
 
 在处理回调函数中的错误时，我们必须检查错误参数。如果错误参数不是 null 或 undefined，那么我们必须以某种方式处理错误。下面的示例中显示了一个错误处理程序：
 
-```php
+```js
 TwitterAPI.listFollowers( { user_id: "example_user" }, (err, result) => {   
   if ( err ) {
     // HANDLE ERROR
@@ -329,7 +329,7 @@ TwitterAPI.listFollowers( { user_id: "example_user" }, (err, result) => {
 
 最常见的回调陷阱是**回调地狱**。在异步工作完成并调用回调后，回调函数可以调用另一个异步函数来进行更多的异步工作。当它调用新的异步函数时，将提供另一个回调。新的回调将嵌套在旧的回调内。回调嵌套的示例在下面的片段中显示：
 
-```php
+```js
 TwitterAPI.listFollowers( { user_id: "example_user" }, (err, result) => { 
   if ( err ) { throw err; }
   TwitterAPI.unfollow( { user_id: result[ 0 ].id }, ( err, result ) => {
@@ -343,7 +343,7 @@ TwitterAPI.listFollowers( { user_id: "example_user" }, (err, result) => {
 
 在前面的片段中，我们有嵌套的回调。第一个异步操作的回调`listFollowers`调用了第二个异步操作。取消关注操作也有一个回调，只是处理错误或记录文本。由于回调可以嵌套，经过几层嵌套后，代码可能变得很难阅读。这就是回调地狱。回调地狱的示例在下面的片段中显示：
 
-```php
+```js
 TwitterAPI.listFollowers( { user_id: "example_user" }, (err, result) => { 
   const [ id1, id2, id3 ] = [ result[ 0 ].id, result[ 1 ].id, result[ 2 ].id ];
   TwitterAPI.unfollow( { user_id: id1 }, ( err, result ) => {
@@ -367,7 +367,7 @@ TwitterAPI.listFollowers( { user_id: "example_user" }, (err, result) => {
 
 回调地狱可以通过两种技巧轻松避免：**命名函数**和**模块**。命名函数非常简单；定义回调并将其分配给标识符（变量）。定义的回调函数可以保存在同一个文件中或放入一个模块并导入。在回调中使用命名函数将有助于防止回调嵌套使代码混乱。这在下面的示例中显示：
 
-```php
+```js
 function listHandler( err, result ) {
   TwitterAPI.unfollow( { user_id: result[ 0 ].id }, unfollowHandler );
 }
@@ -386,7 +386,7 @@ TwitterAPI.listFollowers( { user_id: "example_user" }, listHandler);
 
 另一个潜在的陷阱是回调函数的不存在。如果我们正在编写一个 API，我们必须考虑到 API 的用户可能不会将有效的回调函数传递给 API。如果预期的回调不是一个函数或不存在，那么尝试调用它将导致运行时错误。在尝试调用之前，验证回调存在且是一个函数是一个很好的做法。如果用户传入了无效的回调，那么我们可以优雅地失败。以下是一个示例：
 
-```php
+```js
 Function apiFunction( args, callback ){
   if ( !callback || !( typeof callback === "function" ) ){
     throw new Error( "Invalid callback. Provide a function." );
@@ -437,7 +437,7 @@ Function apiFunction( args, callback ){
 
 ##### Index.js
 
-```php
+```js
 function higherOrder( data, cb ) {
  if ( !cb || !( typeof cb === 'function' ) ) {
    throw new Error( 'Invalid callback. Please provide a function.' );
@@ -485,7 +485,7 @@ https://bit.ly/2VTGG9L
 
 通过实例化`Promise`类的新对象来创建一个 promise。promise 构造函数接受一个参数，一个函数。这个函数必须有两个参数：**resolve**和**reject**。下面的片段展示了 promise 的创建示例：
 
-```php
+```js
 const myPromise = new Promise( ( resolve, reject ) => {
   // Do asynchronous work here and call resolve or reject
 } );
@@ -495,7 +495,7 @@ const myPromise = new Promise( ( resolve, reject ) => {
 
 promise 的主要异步工作将在传递给构造函数的函数体中完成。`resolve`和`reject`是可以用来完成 promise 的函数。要完成带有错误的 promise，调用带有错误作为参数的 reject 函数。要标记 promise 为成功，调用`resolve`函数并将结果作为参数传递给 resolve。下面的两个片段展示了 promise 的拒绝和解决的例子：
 
-```php
+```js
 // Reject promise with an error
 const myPromise = new Promise( ( resolve, reject ) => {
   // Do asynchronous work here
@@ -505,7 +505,7 @@ const myPromise = new Promise( ( resolve, reject ) => {
 
 ###### 片段 2.15：拒绝一个 promise
 
-```php
+```js
 // Resolve the promise with a value
 const myPromise = new Promise( ( resolve, reject ) => {
   // Do asynchronous work here
@@ -517,7 +517,7 @@ const myPromise = new Promise( ( resolve, reject ) => {
 
 下面的片段展示了解决执行异步工作的 promise 的示例：
 
-```php
+```js
 const myPromise = new Promise( ( resolve, reject ) => {
   setTimeout( () => { resolve( 'Done!' ) }, 1000 )
 } );
@@ -531,7 +531,7 @@ promise 类有三个成员函数，可以用来处理 promise 的完成和拒绝
 
 `then()`成员函数旨在处理并获取 promise 的完成或拒绝结果。`then`函数接受两个函数参数，一个完成回调和一个拒绝回调。下面的例子展示了这一点：
 
-```php
+```js
 // Resolve the promise with a value or reject with an error
 myPromise.then( 
   ( result ) => { /* handle result */ }, // Promise fulfilled handler
@@ -543,7 +543,7 @@ myPromise.then(
 
 `then()`函数中的第一个参数是 promise 完成处理程序。如果 promise 以一个值完成，将调用 promise 完成处理程序回调。promise 完成处理程序接受一个参数。这个参数的值将是传递给 promise 函数体中完成回调的值。下面的片段展示了一个例子：
 
-```php
+```js
 // Resolve the promise with a value
 const myPromise = new Promise( ( resolve, reject ) => {
   // Do asynchronous work here
@@ -557,7 +557,7 @@ myPromse.then( value => console.log( value ) );
 
 `then()`函数中的第二个参数是 promise 拒绝处理程序。如果 promise 以一个错误被拒绝，将调用 promise 拒绝处理程序回调。promise 拒绝处理程序接受一个参数。这个参数的值是传递给 promise 函数体中 reject 回调的值。下面的片段展示了一个例子：
 
-```php
+```js
 // Reject the promise with a value
 const myPromise = new Promise( ( resolve, reject ) => {
   // Do asynchronous work here
@@ -590,7 +590,7 @@ myPromse.then( () => {}, error => console.log( error) );
 
 ##### Index.js
 
-```php
+```js
 const myPromise = new Promise( ( resolve, reject ) => {
   console.log( 'Starting asynchronous work!' );
   setTimeout( () => { resolve( 'Done!' ); }, 1000 );
@@ -620,7 +620,7 @@ https://bit.ly/2TVQNcz
 
 `Promise.catch`接受一个参数，一个处理程序函数，用于处理 promise 的拒绝值。当调用`Promise.catch`时，内部会调用`Promise.then( undefined, rejectHandler )`。这意味着在内部，只调用了`Promise.then()`处理程序，只有 promise 拒绝回调`rejectHandler`，没有 promise 完成回调。`Promise.catch()`返回内部`Promise.then()`调用的值：
 
-```php
+```js
 const myPromise = new Promise( ( resolve, reject ) => {
   reject( new Error 'Promise was resolved!' );
 } );
@@ -631,7 +631,7 @@ myPromise.catch( err => console.log( err ) );
 
 promise 成员函数`Promise.finally()`是一个用于捕获所有 promise 完成情况的 promise 处理程序。`Promise.finally()`处理程序将被用于处理 promise 的拒绝和解决。它接受一个单一函数参数，在 promise 被拒绝或解决时调用。`Promise.finally()`将捕获被拒绝和解决的 promise，并运行指定的函数。它为我们提供了一个捕获所有情况的处理程序来处理任何完成情况。`Promise.finally()`应该用于防止在 then 和 catch 处理程序之间重复代码。传递给`Promise.finally()`的函数不接受任何参数，因此忽略了传递给 promise 的解决或拒绝的任何值。因为在使用`Promise.finally()`时没有可靠的区分拒绝和解决的方法，所以只有在我们不关心 promise 是否被拒绝或解决时才应该使用`Promise.finally()`。以下片段中显示了一个示例：
 
-```php
+```js
 // Resolve the promise with a value
 const myPromise = new Promise( ( resolve, reject ) => {
   resolve( 'Promise was resolved!' );
@@ -647,7 +647,7 @@ myPromse.finally( value => {
 
 在使用 promise 时，有时我们可能希望创建一个已经处于完成状态的 promise。Promise 类有两个静态成员函数，允许我们这样做。这些函数是`Promise.reject()`和`Promise.resolve()`。`Promise.reject()`接受一个参数，并返回一个已经被拒绝的带有传入拒绝函数值的 promise。`Promise.resolve()`接受一个参数，并返回一个已经被解决的带有传入解决值的 promise。
 
-```php
+```js
 Promise.resolve( 'Resolve value!' ).then( console.log );
 Promise.reject( 'Reject value!' ).catch( console.log );
 //Expected output:
@@ -661,7 +661,7 @@ Promise.reject( 'Reject value!' ).catch( console.log );
 
 在使用承诺时，我们可能会遇到**承诺地狱**。这与回调地狱非常相似。当承诺主体在获得值后需要执行更多的异步工作时，可以嵌套另一个承诺。当嵌套链变得非常深时，嵌套的承诺调用可能变得难以跟踪。为了避免承诺地狱，我们可以将承诺链接在一起。`Promise.then()`、`Promise.catch()`和`Promise.finally()`都返回承诺，这些承诺将根据处理程序函数的结果被实现或拒绝。这意味着我们可以在这个承诺上附加另一个 then 处理程序，并创建一个承诺链来处理新返回的承诺。这在以下片段中显示：
 
-```php
+```js
 function apiCall1( result ) { // Function that returns a promise
  return new Promise( ( resolve, reject ) => { 
     resolve( 'value1' );
@@ -685,7 +685,7 @@ myPromse.then( apiCall1 ).then( apiCall2 ).then( result =>  console.log( 'done!'
 
 在链接承诺时，我们必须小心处理 catch 处理程序。当承诺被拒绝时，它会跳转到下一个承诺拒绝处理程序。这可以是`then`处理程序的第二个参数或`catch`处理程序。在承诺被拒绝的地方和下一个拒绝处理程序之间的所有实现处理程序都将被忽略。当 catch 处理程序完成时，由`catch()`返回的承诺将以拒绝处理程序的返回值被实现。这意味着下一个承诺实现处理程序将获得一个值来运行。如果`catch`处理程序不是承诺链中的最后一个处理程序，承诺链将继续以`catch`处理程序的返回值运行。这可能是一个棘手的错误调试；然而，它允许我们捕获承诺拒绝，以特定方式处理错误，并继续承诺链。它允许承诺链以不同的方式处理拒绝或接受，然后继续进行异步工作。这在以下片段中显示：
 
-```php
+```js
 // Promise chain handles rejection and continues
 // apiCall1 is a function that returns a rejected promise
 // apiCall2 is a function that returns a resolved promise
@@ -702,7 +702,7 @@ myPromse.then( apiCall1 ).then( apiCall2, errorHandler1 ).then( apiCall3 ).catch
 
 如果我们希望在 promise 被拒绝时提前退出 promise 链并且不继续，应该只在链的末尾包含一个 catch 处理程序。当 promise 被拒绝时，拒绝会被找到的第一个处理程序处理。如果这个处理程序是 promise 链中的最后一个处理程序，链就结束了。如下面的片段所示：
 
-```php
+```js
 // Promise chain handles rejection and continues
 // apiCall1 returns a rejected promise
 myPromse.then( apiCall1 ).then( apiCall2 ).then( apiCall3 ).catch( errorHandler1 );
@@ -714,7 +714,7 @@ myPromse.then( apiCall1 ).then( apiCall2 ).then( apiCall3 ).catch( errorHandler1
 
 链接 promise 用于确保所有 promise 按照链的顺序完成。如果 promise 不需要按顺序完成，我们可以使用`Promise.all()`静态成员函数。`Promise.all()`函数不是在 promise 类的实例上创建的。它是一个静态类函数。`Promise.all()`接受一个 promise 数组，当所有 promise 都解决时，将调用 then 处理程序。then 处理程序函数的参数将是原始`Promise.all()`调用中每个 promise 的解决值的数组。解决值的数组将与输入到`Promise.all()`的数组的顺序匹配。如下面的片段所示：
 
-```php
+```js
 // Create promises
 let promise1 = new Promise( ( resolve, reject ) => setTimeout( () => resolve( 10 ), 100 ) );
 let promise2 = new Promise( ( resolve, reject ) => setTimeout( () => resolve( 20 ), 200 ) );
@@ -729,7 +729,7 @@ Promise.all( [ promise1, promise2, promise3 ] ).then( results => console.log( re
 
 如果`Promise.all()`调用中的一个或多个 promise 被拒绝，`reject`处理程序将被调用，并且会使用第一个 promise 的拒绝值。所有其他 promise 将继续运行，但是这些 promise 的拒绝或解决不会调用`Promise.all()` promise 链的任何`then`或`catch`处理程序。如下面的片段所示：
 
-```php
+```js
 // Create promises
 let promise1 = new Promise( ( resolve, reject ) => {
   setTimeout( () => { reject( 'Error 1' ); }, 100 );
@@ -757,7 +757,7 @@ Promise.all( [ promise1, promise2, promise3 ] ).then( console.log ).catch( conso
 
 像`Promise.all()`一样，`Promise.race()`传递一个承诺数组；然而，`Promise.race()`只调用第一个完成的承诺的承诺完成处理程序。然后它按照正常的承诺链继续。其他承诺的结果被丢弃，无论它们是拒绝还是解决。使用`Promise.race()`处理承诺拒绝的方式与`Promise.all()`相同。只处理第一个拒绝的承诺。其他承诺被忽略，无论完成状态如何。`Promise.race()`的示例如下所示：
 
-```php
+```js
 // Create promises
 let promise1 = new Promise( ( resolve, reject ) => setTimeout( resolve( 10 ), 100 ) );
 let promise2 = new Promise( ( resolve, reject ) => setTimeout( resolve( 20 ), 200 ) );
@@ -782,7 +782,7 @@ Shim 是用于向代码库添加缺失功能的代码文件。Shim 通常用于�
 
 要将承诺函数包装在回调中，我们只需创建一个包装器函数，该函数接受`promise`函数、参数和`callback`。在`wrapper`函数内部，我们调用`promise`函数并传入提供的参数。我们附加`then`和`catch`处理程序。当这些处理程序解决时，我们调用`callback`函数并传递承诺返回的结果或错误。这在下面的片段中显示：
 
-```php
+```js
 // Promise function to be wrapped
 function promiseFn( args ){
   return new Promise( ( resolve, reject ) => {
@@ -803,7 +803,7 @@ function wrapper( promiseFn, args,  callback ){
 
 要将基于回调的函数包装在承诺中，我们只需创建一个包装器函数，该函数接受要包装的函数和函数参数。在包装器函数内部，我们在一个新的承诺中调用被包装的函数。当回调返回结果或错误时，如果有错误，我们拒绝承诺，如果没有错误，我们解决承诺。这在下面的片段中显示：
 
-```php
+```js
 // Callback function to be wrapped
 function wrappedFn( args, cb ){
   /* do work */ 
@@ -860,7 +860,7 @@ Promises 和回调不兼容，不应该在程序主体中混合使用。为了�
 
 ##### Index.js
 
-```php
+```js
 function promiseFunction( data ) {
  return new Promise( ( resolve, reject ) => {
    setTimeout( () => {
@@ -894,7 +894,7 @@ https://bit.ly/2SRZapq
 
 `async`关键字被添加到函数声明中；它必须在函数关键字之前。`async`函数声明定义了一个异步函数。以下是`async`函数声明的示例声明：
 
-```php
+```js
 async function asyncExample( /* arguments */  ){ /* do work */ }
 ```
 
@@ -902,7 +902,7 @@ async function asyncExample( /* arguments */  ){ /* do work */ }
 
 `async`函数隐式返回一个 promise，无论指定的返回值是什么。如果返回值被指定为非 promise 类型，JavaScript 会自动创建一个 promise，并用返回的值解析该 promise。这意味着所有异步函数都可以对返回值应用`Promise.then()`和`Promise.catch()`处理程序。这允许与现有基于 promise 的代码非常轻松地集成。这在以下片段中显示：
 
-```php
+```js
 async function example1( ){ return 'Hello'; }
 async function example2( ){ return Promise.resolve( 'World' ); }
 example1().then( console.log ); // Expected output: Hello
@@ -917,7 +917,7 @@ example2().then( console.log ); // Expected output: World
 
 尽管 async/await 功能使 JavaScript 代码看起来和行为上都像是同步的，但 JavaScript 仍然通过事件循环异步运行代码。
 
-```php
+```js
 async function awaitExample( /* arguments */ ){ 
   let promise = new Promise( ( resolve, reject ) => {
     setTimeout( () => resolve( 'done!'), 100 );
@@ -936,7 +936,7 @@ awaitExample( /* arguments */ );
 
 既然我们知道如何处理异步/等待的承诺兑现，那么我们如何处理承诺的拒绝呢？使用异步/等待处理错误拒绝非常简单，并且与标准的 JavaScript 错误处理非常契合。如果一个承诺被拒绝，等待该承诺解决的 await 语句会抛出一个错误。当在`async`函数内部抛出错误时，JavaScript 引擎会自动捕获，并且由`async`函数返回的承诺会被拒绝并携带该错误。这听起来有点复杂，但实际上非常简单。这些关系在下面的片段中展示：
 
-```php
+```js
 async function errorExample1( /* arguments */ ){ 
   return Promise.reject( 'Rejected!' );
 }
@@ -957,7 +957,7 @@ errorExample3().catch( console.log ); // Expected output: Rejected!
 
 由于如果等待的承诺被拒绝，await 会抛出一个错误，我们可以简单地使用 JavaScript 中的标准 try/catch 错误处理机制来处理异步错误。这非常有用，因为它允许我们以相同的方式处理所有错误，无论是异步还是同步的。这在下面的示例中展示：
 
-```php
+```js
 async function tryCatchExample() {
   // Try to do asynchronous work
   try{
@@ -980,7 +980,7 @@ tryCatchExample()
 
 由于错误被包裹在承诺中，并且被异步函数拒绝，当一个承诺被拒绝时，等待会抛出错误，异步/等待函数错误向最高级别的等待调用传播。这意味着除非需要在各种嵌套级别上以特殊方式处理错误，否则我们可以简单地在最外层错误处使用一个 try catch 块。错误将通过被拒绝的承诺在异步/等待函数堆栈上传播，并且只需要被顶层等待块捕获。这在以下片段中显示：
 
-```php
+```js
 async function nested1() { return await Promise.reject( 'Error!' ); }
 async function nested2() { return await nested1; }
 async function nested3() { return await nested2; }
@@ -1001,7 +1001,7 @@ nestedErrorExample();
 
 为了处理错误和承诺拒绝，我们用 try catch 块包围整个块。以下片段中显示了一个例子：
 
-```php
+```js
 // Promise chain - API functions return a promise
 myPromse.then( apiCall1 ).then( apiCall2 ).then( apiCall3 ).catch( errorHandler );
 async function asyncAwaitUse( myPromise ) {
@@ -1027,7 +1027,7 @@ asyncAwaitUse( myPromise );
 
 正如我们之前学到的，`Promise.all` 同时运行所有子承诺，并返回一个未完成的承诺，直到所有子承诺都以一个值解决。我们可以像附加 then 处理程序到 `Promise.all` 一样等待 `Promise.all`。通过等待 `Promise.all` 调用返回的值，只有当所有子承诺都完成时才能使用。这在下面的片段中显示：
 
-```php
+```js
 async function awaitPromiseAll(){
   let promise1 = new Promise( ( resolve, reject ) => setTimeout( () => resolve( 10 ), 100 ) );
   let promise2 = new Promise( ( resolve, reject ) => setTimeout( () => resolve( 20 ), 200 ) );
@@ -1044,7 +1044,7 @@ awaitPromiseAll();
 
 在下面的片段中显示了一个 promise 竞赛的示例：
 
-```php
+```js
 async function awaitPromiseAll(){
   let promise1 = new Promise( ( resolve, reject ) => setTimeout( () => resolve( 10 ), 100 ) );
   let promise2 = new Promise( ( resolve, reject ) => setTimeout( () => resolve( 20 ), 200 ) );

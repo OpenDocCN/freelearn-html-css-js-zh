@@ -50,7 +50,7 @@ JavaScript 中的**函数作用域**是在函数内部创建的。当声明一�
 
 以下代码段提供了函数作用域的示例：
 
-```php
+```js
 var example = 5;
 function test() {
   var testVariable = 10;
@@ -73,7 +73,7 @@ console.log( testVariable ); // Expect reference error
 
 当使用函数作用域创建变量时，其声明会自动提升到作用域的顶部。**提升**意味着解释器将实体的实例化移动到其声明的作用域顶部，而不管它在作用域块中的定义位置。在 JavaScript 中，使用`var`声明的函数和变量会被提升；也就是说，函数或变量可以在其声明之前使用。以下代码演示了这一点：
 
-```php
+```js
 example = 5; // Assign value
 console.log( example ); // Expect output: 5
 var example; // Declare variable
@@ -89,7 +89,7 @@ var example; // Declare variable
 
 在 JavaScript 中，使用花括号（`{}`）创建一个新的块作用域。一对**花括号**可以放置在代码的任何位置以定义一个新的作用域块。if 语句、循环、函数和任何其他花括号对都将有自己的块作用域。这包括与关键字（if、for 等）无关的浮动花括号对。以下片段中的代码是块作用域规则的示例：
 
-```php
+```js
 // Top level scope
 function scopeExample() {
   // Scope block 1
@@ -106,7 +106,7 @@ function scopeExample() {
 
 使用关键字`let`和`const`声明的变量具有**块作用域**。当使用块作用域声明变量时，它不具有与在函数作用域中创建的变量相同的变量提升。块作用域变量不会被提升到作用域的顶部，因此在声明之前无法访问。这意味着使用块作用域创建的变量受到**暂时性死区**（**TDZ**）的影响。TDZ 是指进入作用域和声明变量之间的时间段。它在变量被声明而不是赋值时结束。以下示例演示了 TDZ：
 
-```php
+```js
 // console.log( example ); // Would throw ReferenceError
 let example;
 console.log( example ); // Expected output: undefined
@@ -162,7 +162,7 @@ console.log( example ); // Expected output: 5
 
 index.js：
 
-```php
+```js
 function fn1(){
  console.log('Scope 1');
  let scope = 5;
@@ -209,7 +209,7 @@ fn1();
 
 `var` 关键字是在 JavaScript 中用于声明变量的较旧的关键字。所有使用 `var` 创建的变量都可以重新分配，具有函数作用域，并且具有变量提升。这意味着使用 `var` 创建的变量被提升到作用域块的顶部，在那里它们被定义并且可以在声明之前访问。以下代码片段演示了这一点，如下所示：
 
-```php
+```js
 // Referenced before declaration
 console.log( example ); // Expect output: undefined
 var example = 'example';
@@ -219,7 +219,7 @@ var example = 'example';
 
 由关键字 `var` 创建的变量不是常量，因此可以随意创建、分配和重新分配值。以下代码演示了 `var` 功能的这一方面：
 
-```php
+```js
 // Declared and assigned
 var example = { prop1: 'test' };
 console.log( 'example:', example );
@@ -235,7 +235,7 @@ console.log( example ); // Expect output: 5
 
 `let` 关键字与关键字 `var` 类似。如预期的那样，关键字 `let` 允许我们声明一个可以在任何时候重新分配的变量。以下代码中展示了这一点：
 
-```php
+```js
 // Declared and initialized
 let example = { prop1: 'test' };
 console.log( 'example:', example );
@@ -251,7 +251,7 @@ console.log( example ); // Expect output: 5
 
 使用 `let` 声明的变量不受变量提升的影响。这意味着在赋值之前访问使用 `let` 声明的变量将引发运行时错误。正如前面讨论的那样，这就是暂时性死区。以下代码示例说明了这一点：
 
-```php
+```js
 // Referenced before declaration
 console.log( example );
 // Expect ReferenceError because example is not defined
@@ -262,7 +262,7 @@ let example = 'example';
 
 最后一个变量声明关键字是`const`。`const`关键字具有与`let`关键字相同的作用域和变量提升规则；使用`const`声明的变量具有块作用域，并且不会被提升到作用域的顶部。这在以下代码中显示：
 
-```php
+```js
 // Referenced before declaration
 console.log( example );
 // Expect ReferenceError because example is not defined
@@ -275,7 +275,7 @@ const example = 'example';
 
 即使使用`const`创建的变量不能被重新分配，这并不意味着它们是不可变的。如果数组或对象存储在使用`const`声明的变量中，则无法覆盖变量的值。但是，数组内容或对象属性可以更改。可以使用`push()`、`pop()`或`map()`等函数修改数组的内容，并且可以添加、删除或更新对象属性。这在以下代码中显示：
 
-```php
+```js
 // Declared and initialized
 const example = { prop1: 'test' };
 // Variable reassigned
@@ -342,7 +342,7 @@ example.prop1 = 5;
 
 ##### index.js:
 
-```php
+```js
 var hoisted = 'this got hoisted';
 try{
  console.log(notHoisted1);
@@ -380,7 +380,7 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 创建箭头函数时，我们只需要删除函数关键字，并在函数参数和函数体之间放置一个箭头。箭头函数用以下语法表示：
 
-```php
+```js
 ( arg1, arg2, ..., argn ) => { /* Do function stuff here */ }
 ```
 
@@ -416,7 +416,7 @@ JavaScript 中箭头函数和普通函数之间的关键区别在于箭头函数
 
 ##### index.js:
 
-```php
+```js
 const fn1 = function( a, b ) { return a + b; };
 const fn2 = ( a, b ) => { return a + b; };
 console.log( fn1( 3 ,5 ), fn2( 3, 5 ) );
@@ -440,7 +440,7 @@ console.log( fn1( 3 ,5 ), fn2( 3, 5 ) );
 
 这个规则有一个例外，那就是参数不是简单的标识符。如果我们在函数参数中包含默认值或执行操作，那么我们必须包含括号。例如，如果我们包含默认参数，那么我们将需要在参数周围加上括号。这两条规则如下面的代码所示：
 
-```php
+```js
 // Single argument arrow function
 arg1 => { /* Do function stuff here */ }
 // Non simple identifier function argument
@@ -451,7 +451,7 @@ arg1 => { /* Do function stuff here */ }
 
 如果我们创建一个没有参数的箭头函数，那么我们需要包括括号，但括号将是空的。如下面的代码所示：
 
-```php
+```js
 // No arguments passed into the function
 ( ) => { /* Do function stuff here */ }
 ```
@@ -460,7 +460,7 @@ arg1 => { /* Do function stuff here */ }
 
 箭头函数的语法也可以有所不同，取决于函数的主体。如预期的那样，如果函数的主体是多行的，那么我们必须用花括号括起来。但是，如果函数的主体是单行的，那么我们不需要在函数的主体周围包含花括号。这如下面的代码所示：
 
-```php
+```js
 // Multiple line body arrow function
 ( arg1, arg2 ) => { 
   console.log( `This is arg1: ${arg1}` );
@@ -475,7 +475,7 @@ arg1 => { /* Do function stuff here */ }
 
 在使用箭头函数时，如果函数是单行的，我们也可以省略 return 关键字。箭头函数会自动返回该行表达式的解析值。这种语法如下面的代码所示：
 
-```php
+```js
 // With return keyword - not necessary
 ( num1, num2 ) => { return ( num1 + num2 ) }
 // If called with arguments num1 = 5 and num2 = 5, expected output is 10
@@ -488,7 +488,7 @@ arg1 => { /* Do function stuff here */ }
 
 由于单行表达式体的箭头函数可以在没有花括号的情况下定义，我们需要特殊的语法来允许我们将单个表达式分成多行。为此，我们可以将多行表达式放在括号中。JavaScript 解释器会看到括号中的行，并将其视为单行代码。这如下面的代码所示：
 
-```php
+```js
 // Arrow function with a single line body
 // Assume numArray is an array of numbers
 ( numArray ) => numArray.filter( n => n > 5).map( n => n - 1 ).every( n => n < 10 )
@@ -505,7 +505,7 @@ arg1 => { /* Do function stuff here */ }
 
 如果我们有一个返回对象字面量的单行箭头函数，我们将需要特殊的语法。在 ES6 中，作用域块、函数主体和对象字面量都是用花括号定义的。由于单行箭头函数不需要花括号，我们必须使用特殊的语法来防止对象字面量的花括号被解释为函数主体花括号或作用域块花括号。为此，我们用括号括起返回的对象字面量。这指示 JavaScript 引擎将括号内的花括号解释为表达式，而不是函数主体或作用域块声明。这如下面的代码所示：
 
-```php
+```js
 // Arrow function with an object literal in the body
 ( num1, num2 ) => ( { prop1: num1, prop2: num2 } ) // Returns an object
 ```
@@ -558,7 +558,7 @@ arg1 => { /* Do function stuff here */ }
 
 ##### index.js：
 
-```php
+```js
 let fn1 = ( a, b ) => { … };
 let fn2 = ( a, b ) => a * b;
 let fn3 = a => { … };
@@ -592,7 +592,7 @@ let fn5 = ( a ) => ( …  );
 
 ## 学习模板文字
 
-**模板文字**是 ECMAScript 6 中引入的一种新形式的字符串。它们由**反引号**符号(```php`) instead of the usual single or double quotes. Template literals allow you to embed expressions in the string that are evaluated at runtime. Thus, we can easily create dynamic strings from variables and variable expressions. These expressions are denoted with the dollar sign and curly braces (`${ expression }`). The template literal syntax is shown in the following code:
+**模板文字**是 ECMAScript 6 中引入的一种新形式的字符串。它们由**反引号**符号(```js`) instead of the usual single or double quotes. Template literals allow you to embed expressions in the string that are evaluated at runtime. Thus, we can easily create dynamic strings from variables and variable expressions. These expressions are denoted with the dollar sign and curly braces (`${ expression }`). The template literal syntax is shown in the following code:
 
 ```
 
@@ -602,7 +602,7 @@ console.log( `模板文字非常 ${ example } 有用！！！` );
 
 // 期望输出：模板文字非常有用！！！
 
-```php
+```js
 
 ###### Snippet 1.22: Template literal basic syntax
 
@@ -630,7 +630,7 @@ console.log( `This is line 1
 
 // 这是第 2 行
 
-```php
+```js
 
 ###### Snippet 1.23: Template literal multi-line syntax
 
@@ -654,7 +654,7 @@ console.log( a + ' + ' + b + ' is equal to ' + ( a + b ) );
 
 console.log( `${a} + ${b} is equal to ${a + b}` );
 
-```php
+```js
 
 ###### Snippet 1.24: Template literal and string comparison
 
@@ -676,7 +676,7 @@ function javascriptOrCPlusPlus() { return 'JavaScript'; }
 
 const outputLiteral = `我们正在学习关于 ${ `专业 ${ javascriptOrCPlusPlus() }` }`
 
-```php
+```js
 
 ###### Snippet 1.25: Template literal nesting
 
@@ -708,7 +708,7 @@ console.log( output )
 
 // 期望输出：We have very few of apples. Exciting!!
 
-```php
+```js
 
 ###### Snippet 1.26: Tagged template literal example
 
@@ -722,7 +722,7 @@ tagFunction`This is line 1\. \n This is line 2.`
 
 //预期输出：“这是第 1 行。 \n 这是第 2 行。”字符//'\'和'n'不会解析为换行符
 
-```php
+```js
 
 ###### Snippet 1.27: Tagged template raw property
 
@@ -746,7 +746,7 @@ owner：“John Doe”
 
 }
 
-```php
+```js
 
 ###### Snippet 1.28: Object Input
 
@@ -784,7 +784,7 @@ owner：“John Doe”
 
 console.log（parseHouse（house））;
 
-```php
+```js
 
 ###### Snippet 1.29: Template literal using expressions
 
@@ -832,7 +832,7 @@ getPersionES5（'Zachary'，23，195）
 
 //预期输出：{name：'Zachary'，age：23，height：195}
 
-```php
+```js
 
 ###### Snippet 1.30: ES5 object properties
 
@@ -858,7 +858,7 @@ getPersionES6（'Zachary'，23，195）
 
 //预期输出：{name：'Zachary'，age：23，height：195}
 
-```php
+```js
 
 ###### Snippet 1.31: ES6 object properties
 
@@ -888,7 +888,7 @@ getPersonES5（'Zachary'，23，195）.getAge（）
 
 //预期输出：23
 
-```php
+```js
 
 ###### Snippet 1.32: ES5 function properties
 
@@ -914,7 +914,7 @@ getPersionES6（'Zachary'，23，195）.getAge（）
 
 //预期输出：23
 
-```php
+```js
 
 ###### Snippet 1.33: ES6 function properties
 
@@ -938,7 +938,7 @@ lastName：'Smith'
 
 console.log（person.firstName）; //预期输出：John
 
-```php
+```js
 
 ###### Snippet 1.34: ES6 Computed property
 
@@ -966,7 +966,7 @@ console.log（person.firstName）; //预期输出：John
 
 console.log（person.lastName）; //预期输出：Smith
 
-```php
+```js
 
 ###### Snippet 1.35: Computed property from function
 
@@ -1024,7 +1024,7 @@ return n1 - n2;
 
 console.log（exportObject）;
 
-```php
+```js
 
 ###### Snippet 1.36: Enhanced object properties
 
@@ -1060,7 +1060,7 @@ console.log（name1）; //预期输出：'John'
 
 console.log（name2）; //预期输出：'Michael'
 
-```php
+```js
 
 ###### Snippet 1.37: Basic array destructuring
 
@@ -1086,7 +1086,7 @@ console.log（name3）; //预期输出：'Michael'
 
 console.log（name4）; //预期输出：未定义
 
-```php
+```js
 
 ###### Snippet 1.38: Array destructuring with mismatched variable and array items
 
@@ -1110,7 +1110,7 @@ console.log（name1）; //预期输出：'John'
 
 console.log（name3）; //预期输出：'Jessica'
 
-```php
+```js
 
 ###### Snippet 1.39: Array destructuring with skipped values
 
@@ -1126,7 +1126,7 @@ console.log（b）; //预期输出：null
 
 console.log（c）; //预期输出：3
 
-```php
+```js
 
 ###### Snippet 1.40: Array destructuring with skipped values
 
@@ -1144,7 +1144,7 @@ console.log（a）; //预期输出：5
 
 console.log（b）; //预期输出：10
 
-```php
+```js
 
 ###### Snippet 1.41: Array destructuring with skipped values
 
@@ -1173,7 +1173,7 @@ const [ a，，b，c = 4 ] = data;
 
 console.log（a，b，c）;
 
-```php
+```js
 
 ###### Snippet 1.42: Array destructuring
 
@@ -1225,7 +1225,7 @@ fn（1, 2, 3, 4, 5, 6）;
 
 // [3, 4, 5, 6]
 
-```php
+```js
 
 ###### Snippet 1.43: Array destructuring with skipped values
 
@@ -1251,7 +1251,7 @@ console.log（n1，n2，n3）;
 
 fn（1, 2）; //预期输出：1, 2, 未定义
 
-```php
+```js
 
 ###### Snippet 1.44: Destructured rest operator
 
@@ -1269,7 +1269,7 @@ const values = [1, 2, 3];
 
 fn（...values）; //预期输出：1, 2, 3
 
-```php
+```js
 
 ###### Snippet 1.45: Spread operator
 
@@ -1289,7 +1289,7 @@ console.log（n3）; //预期输出：3
 
 console.log（remaining）; //预期输出：[4, 5, 6]
 
-```php
+```js
 
 ###### Snippet 1.46: Spread operator
 
@@ -1311,7 +1311,7 @@ console.log( firstName ); // 期望输出：'Bob'
 
 console.log( lastName ); // 期望输出：'Smith'
 
-```php
+```js
 
 ###### Snippet 1.47: Object destructuring
 
@@ -1331,7 +1331,7 @@ console.log( firstName ); // 期望输出：'Bob'
 
 console.log( middleName ); // 期望输出：未定义
 
-```php
+```js
 
 ###### Snippet 1.48: Object destructuring with no defined key
 
@@ -1349,7 +1349,7 @@ console.log( first ); // 期望输出：'Bob'
 
 console.log( lastName ); // 期望输出：'Smith'
 
-```php
+```js
 
 ###### Snippet 1.49: Object destructuring into new variable
 
@@ -1367,7 +1367,7 @@ console.log( firstName ); // 期望输出：'Bob'
 
 console.log( middleName ); // 期望输出：'Chris'
 
-```php
+```js
 
 ###### Snippet 1.50: Object destructuring with default values
 
@@ -1385,7 +1385,7 @@ console.log( first ); // 期望输出：'Bob'
 
 console.log( middle); // 期望输出：'Chris'
 
-```php
+```js
 
 ###### Snippet 1.51: Object destructuring into new variables with default values
 
@@ -1414,7 +1414,7 @@ const { f1, f2: field2, f4 = 'v4' } = data;
 
 console.log( f1, field2, f4 );
 
-```php
+```js
 
 ###### Snippet 1.52: Object destructuring
 
@@ -1444,7 +1444,7 @@ console.log( firstName ); // 期望输出：'Bob'
 
 console.log( lastName ); // 期望输出：'Smith'
 
-```php
+```js
 
 ###### Snippet 1.53: Object destructuring into predefined variables
 
@@ -1466,7 +1466,7 @@ console.log( otherNames );
 
 // 期望输出：{ middleName: 'Chris', lastName: 'Smith' }
 
-```php
+```js
 
 ###### Snippet 1.54: Object destructuring with the rest operator
 
@@ -1499,7 +1499,7 @@ const { arr: [ , v2 ] } = data;
 
 console.log( v2 );
 
-```php
+```js
 
 ###### Snippet 1.55: Nested array and object destructuring
 
@@ -1547,7 +1547,7 @@ ISBN: '912-6-44-578441-0'
 
 ]
 
-```php
+```js
 
 ###### Snippet 1.56: Course array format
 
@@ -1560,7 +1560,7 @@ To obtain data from complicated array and object nesting by using nested destruc
 
 [ course ] = [ … ]
 
-```php
+```js
 
 3.  Replace the `course` variable with object destructuring to save the texts field into a variable called `textbooks`:
 
@@ -1568,7 +1568,7 @@ To obtain data from complicated array and object nesting by using nested destruc
 
 [ { texts: textbooks} ] = [ … ]
 
-```php
+```js
 
 4.  Replace the `textbooks` variable with array destructuring to get the first element of the texts array and save it into the variable called `textbook`:
 
@@ -1576,7 +1576,7 @@ To obtain data from complicated array and object nesting by using nested destruc
 
 [ { texts: [ textbook ] } ] = [ … ]
 
-```php
+```js
 
 5.  Replace the `textbook` variable with object destructuring to get the `ISBN` field and save it into the `ISBN` variable:
 
@@ -1584,7 +1584,7 @@ To obtain data from complicated array and object nesting by using nested destruc
 
 [ { texts: [ { ISBN } ] } ] = [ … ]
 
-```php
+```js
 
 6.  Log the value of the `ISBN`.
 
@@ -1632,7 +1632,7 @@ console.log( textbook );
 
 console.log( ISBN );
 
-```php
+```js
 
 ###### Snippet 1.57: Implementing destructuring into code
 
@@ -1662,7 +1662,7 @@ In JavaScript, a class can be defined with the keyword class. A class is created
 
 class name { /* class stuff goes here */ }
 
-```php
+```js
 
 ###### Snippet 1.58: Class syntax
 
@@ -1684,7 +1684,7 @@ this.garage = garage;
 
 }
 
-```php
+```js
 
 ###### Snippet 1.59: Basic class creation
 
@@ -1724,7 +1724,7 @@ const tricycle = new Vehicle( 3, 20 );
 
 console.log( tricycle.wheels, tricycle.topSpeed );
 
-```php
+```js
 
 ###### Snippet 1.60: Creating a class
 
@@ -1758,7 +1758,7 @@ this.floors = floors;
 
 let myHouse = new House( '1100 Fake St., San Francisco CA, USA', 2, false );
 
-```php
+```js
 
 ###### Snippet 1.61: Class instantiation
 
@@ -1790,7 +1790,7 @@ let myHouse = new House( '1100 Fake St., San Francisco CA, USA', 2 );
 
 console.log( myHouse.getFloors() ); // 期望输出：2
 
-```php
+```js
 
 ###### Snippet 1.62: Creating a class with functions
 
@@ -1804,7 +1804,7 @@ class House {}
 
 class Mansion extends House {}
 
-```php
+```js
 
 ###### Snippet 1.63: Extending a class
 
@@ -1840,7 +1840,7 @@ let mansion = new Mansion( 'Hollywood CA, USA', 6, 'Brad Pitt' );
 
 console.log( mansion.floors ); // 期望输出：6
 
-```php
+```js
 
 ###### Snippet 1.64: Extending a class with and without a constructor
 
@@ -1894,7 +1894,7 @@ return degrees * PI / ( DEGREES_IN_CIRCLE /2 );
 
 export { PI, DEGREES_IN_CIRCLE, convertDegToRad };
 
-```php
+```js
 
 ###### Snippet 1.65: Named Exports
 
@@ -1912,7 +1912,7 @@ export default class() { /* Class body goes here */ }
 
 export default function() { /* Function body goes here */ }
 
-```php
+```js
 
 ###### Snippet 1.66: Default exports
 
@@ -1952,7 +1952,7 @@ import { PI as pi, DEGREES_IN_CIRCLE as degInCircle } from 'math-module.js'
 
 import * as MathModule from 'math-module.js'
 
-```php
+```js
 
 ###### Snippet 1.67: Different ways to import a module
 
@@ -1982,7 +1982,7 @@ EmailAPI.send( { to: 'ceo@google.com', subject: 'promotion', body: 'Please promo
 
 } );
 
-```php
+```js
 
 ###### Snippet 1.68: Importing a module
 
@@ -1992,7 +1992,7 @@ To use an import in the browser, we must use the `script` tag. The module import
 
 <script type="module" src="./path/to/module.js"></script>
 
-```php
+```js
 
 ###### Snippet 1.69: Browser import inline
 
@@ -2010,7 +2010,7 @@ import * as ModuleExample from './path/to/module.js';
 
 </script>
 
-```php
+```js
 
 ###### Snippet 1.70: Browser import in script body
 
@@ -2026,7 +2026,7 @@ If the browser does not support ES6 modules, we can provide a fallback option wi
 
 <script nomodule src="es6-module-NOT-supported.js"></script>
 
-```php
+```js
 
 ###### Snippet 1.71: Browser import with compatibility option
 
@@ -2083,7 +2083,7 @@ let subaru = new Car( 'Subaru', 'Outback', 2005, 'Grey' );
 
 subaru.setColor( 'Red' );
 
-```php
+```js
 
 ###### Snippet 1.72: Full class implementation
 
@@ -2129,7 +2129,7 @@ To install the Babel command-line interface, use the following command: `npm ins
 
 }
 
-```php
+```js
 
 ###### Snippet 1.73: Adding the first dependency
 
@@ -2145,7 +2145,7 @@ This command only installed the base Babel with no plugins for transpiling betwe
 
 }
 
-```php
+```js
 
 ###### Snippet 1.74: Adding the second dependency
 
@@ -2159,7 +2159,7 @@ This installs the ES6 presets. To use these presets, we must tell Babel to confi
 
 }
 
-```php
+```js
 
 ###### Snippet 1.75: Installing the ES6 presets
 
@@ -2173,7 +2173,7 @@ const sum5 = inputNumber  => inputNumber + 5;
 
 console.log( `The sum of 5 and 5 is ${sum5(5)}!`);
 
-```php
+```js
 
 ###### Snippet 1.76: Pasting the code
 
@@ -2187,7 +2187,7 @@ Now that Babel has been configured and we have a file that we wish to transpile,
 
 }
 
-```php
+```js
 
 ###### Snippet 1.77: Update the package.json file
 
@@ -2246,7 +2246,7 @@ Ensure that Node.js is already installed before you start.
 
 }
 
-```php
+```js
 
 ###### Snippet 1.78: Package.json config file
 
@@ -2260,7 +2260,7 @@ Ensure that Node.js is already installed before you start.
 
 { "presets": ["es2015"] }
 
-```php
+```js
 
 ###### Snippet 1.79: Babel config file
 
@@ -2282,7 +2282,7 @@ var fn4 = function fn4() { … };
 
 var fn5 = function fn5(a) { … };
 
-```php
+```js
 
 ###### Snippet 1.80: Fully transpiled code
 
@@ -2330,7 +2330,7 @@ return currentIndex < array.length ?
 
 }
 
-```php
+```js
 
 ###### Snippet 1.81: Iterator declaration
 
@@ -2354,7 +2354,7 @@ console.log( it.next() );
 
 // Expected output: { value: undefined, done: true }
 
-```php
+```js
 
 ###### Snippet 1.82: Iterator use
 
@@ -2374,7 +2374,7 @@ To create a `generator`, we must define a function with an asterisk in front of 
 
 function *testGen( data ) { yield 0; }.
 
-```php
+```js
 
 The asterisk designates that this is a `generator function`. The `yield` keyword designates a break in the normal function flow until the generator function is called again. An example of a generator is shown in the following snippet:
 
@@ -2392,7 +2392,7 @@ yield i++;
 
 }
 
-```php
+```js
 
 ###### Snippet 1.83: Generator creation
 
@@ -2439,7 +2439,7 @@ const generator = gen();
 
 console.log( generator.next(), generator.next(), generator.next() );
 
-```php
+```js
 
 ###### Snippet 1.84: Simple generator
 
@@ -2471,7 +2471,7 @@ console.log(sequence.next());
 
 //Expected output: { value: 2, done: false }
 
-```php
+```js
 
 ###### Snippet 1.85: Generator use
 
