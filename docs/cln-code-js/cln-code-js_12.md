@@ -42,7 +42,14 @@
 
 最容易想象控制流程全局地作为一种*光标*或*手指*，它总是指向特定的表达式或代码语句。当程序执行时，控制流将逐行向下进行，直到遇到一段语法，将重定向控制到另一段代码。如果遇到对函数的调用，那么该函数将以相同的方式执行；控制将在函数内的每一行连续进行，直到通过`return`语句将其返回给函数的调用者。当*控制*穿过程序时，它遇到的每个语言结构都将控制执行，直到它们各自完成。考虑以下简单的代码片段：
 
-[PRE0]
+```js
+let basket = [];
+for (let i = 0; i < 3; i++) {
+  basket.push(
+    makeEgg()
+  );
+}
+```
 
 在上述代码中采取的控制流程如下：
 
@@ -84,7 +91,18 @@
 
 命令式编程关注于**如何**完成某事，而声明式编程关注于**我们想要**完成什么。很难看出它们之间的区别，所以最好用一个简单的程序来说明它们：
 
-[PRE1]
+```js
+function getUnpaidInvoices(invoiceProvider) {
+  const unpaidInvoices = [];
+  const invoices = invoiceProvider.getInvoices();
+  for (var i = 0; i < invoices.length; i++) {
+    if (!invoices[i].isPaid) {
+      unpaidInvoices.push(invoices[i]);
+    }
+  }
+  return unpaidInvoices;
+}
+```
 
 这个函数的问题领域将是：*获取未付发票*。这是函数的任务，也是我们希望在函数内部实现的*目标*。然而，这个特定的函数非常关注*如何*实现它的任务：
 
@@ -100,7 +118,13 @@
 
 虽然*命令式*形式的编程忙于任务中涉及的程序低级步骤，*声明式*形式的编程使用抽象来避免直接控制流，更倾向于仅用问题领域本身来表达事物。以下是我们`getUnpaidInvoices`函数的更声明式版本：
 
-[PRE2]
+```js
+function getUnpaidInvoices(invoiceProvider) {
+  return invoiceProvider.getInvoices().filter(invoice => {
+    return !invoice.isPaid;
+  });
+}
+```
 
 在这里，我们委托给`Array#filter`来处理初始化新数组、迭代和条件检查的具体细节。通过使用抽象，我们摆脱了传统控制流的复杂性。
 
@@ -114,17 +138,46 @@
 
 想象一下，我们被要求有条件地执行特定的代码片段，但只有在某个功能启用时才能执行。在我们的想法中，这就是它应该工作的方式：
 
-[PRE3]
+```js
+if (feature.isEnabled) {
+  // Do the task.
+}
+```
 
 这是我们想要编写的代码，但后来我们发现事情并不那么简单。首先，我们没有`isEnabled`属性可以在功能对象上使用。但是，有一个`flags`数组属性，当完全禁用时将包括`Feature.DISABLED_FLAG`：
 
-[PRE4]
+```js
+// A feature that is disabled:
+feature.flags; // => [Feature.DISABLED_FLAG]
+```
 
 这似乎很简单。 但是然后我们发现，即使该功能没有此标志，因此似乎已启用，我们还需要检查当前时间是否与存储在`feature.enabledTimeSlots`中的一组时间对齐。 如果当前时间不在启用的时间段之一，则我们必须得出结论，即使具有该标志，该功能也已禁用。
 
 这开始变得相当复杂。 除了检查*disabled*标志之外，我们还需要通过这些时间段来发现基于当前时间功能当前是否已启用。 因此，我们简单的`if`语句很快就变成了一个难以控制的混乱，具有多层控制流：
 
-[PRE5]
+```js
+let featureIsEnabled = true;
+
+for (let i = 0; i < feature.flags.length; i++) {
+  if (feature.flags[i] === Feature.DISABLED_FLAG) {
+    featureIsEnabled = false;
+    break;
+  }
+}
+
+if (!featureIsEnabled) {
+  for (let i = 0; i < feature.enabledTimeSlots.length; i++) {
+    if (feature.enabledTimeSlots[i].isNow()) {
+      featureIsEnabled = true;
+      break;
+    }
+  }
+}
+
+if (featureIsEnabled) {
+  // Do the task.
+}
+```
 
 这是不受欢迎的复杂代码。 它与我们最初想要编写的原始声明性代码相去甚远。 要理解此代码，其他程序员在扫描每个单独的构造时必须在脑海中维护`featureIsEnabled`的状态。 这是一段令人心烦的代码，因此更容易产生误解，错误和一般的不可靠性。
 
@@ -132,11 +185,31 @@
 
 我们最终决定将所有这些逻辑放在新创建的`Feature`类中的`isEnabled`方法中-但不仅如此！ 我们决定通过委托给两个内部方法`_hasDisabledFlag`和`_isEnabledTimeSlotNow`来进一步抽象逻辑。 而这些方法本身将它们的迭代逻辑委托给数组方法`includes(...)`和`filter(...)`：
 
-[PRE6]
+```js
+class Feature {
+  // (Other methods of the Feature class here,..)
+
+  _hasDisabledFlag() {
+    return this.flags.includes(Feature.DISABLED_FLAG);
+  }
+
+  _isEnabledTimeSlotNow() {
+    return this.enabledTimeSlots.filter(ts => ts.isNow()).length;
+  }
+
+  isEnabled() {
+    return !this._isDisabledFlag() && this._isEnabledTimeSlotNow();
+  }
+}
+```
 
 这些对`Feature`类的非常小的声明性添加使我们能够编写最初的声明性代码：
 
-[PRE7]
+```js
+if (feature.isEnabled()) {
+  // Do the task.
+}
+```
 
 这不仅仅是一个简单抽象的练习。 这是一个减少控制流层次的练习。 我们避免了使用嵌套的`if`和`for`块的需要，减少了我们自己和其他程序员面临的认知负担，并以最干净的方式完成了最初设定的任务。
 
@@ -149,760 +222,1568 @@
 在 JavaScript 中，有几种控制可以从一段代码移动到另一段代码。 通常，代码将从*左到右*和*上到下*进行评估，直到达到以下任何一种情况：
 
 +   **调用**（通过`fn()`，`` fn` ` ``或者`new fn()`调用函数）
-*   **Returning** (returning from a function via either implicit or explicit `return`)
-*   **Yielding** (yielding from a generator via `yield`)
-*   **Breaking** (breaking from a loop or switch via `break`)
-*   **Continuing** (continuing an iteration via `continue`)
-*   **Throwing** (throwing an exception via `throw`)
 
-# Invocation
++   **Returning** （通过隐式或显式的`return`从函数返回）
 
-Invocation occurs, in its most simple form, by explicitly calling a function. We do this by attaching calling parentheses (`(...)`) to a value we know to be a function. This value on the left side of `(...)` can be a direct reference to a variable or property that holds a function or any expression that evaluates to a function:
++   **Yielding** （通过`yield`从生成器中产出）
 
-[PRE8]
++   **Breaking**（通过`break`从循环或 switch 中断）
 
-To construct instances, as we've explored, you can use the `new` operator. This is also a type of invocation although, in the case of zero arguments, it doesn't technically require calling parentheses:
++   **Continuing** （通过`continue`继续迭代）
 
-[PRE9]
++   **Throwing** （通过`throw`抛出异常）
 
-The exact syntax of evaluation before the calling parentheses (on the left side of `(...)`) is not important as long as it evaluates to a function. If it does not, then you will receive `TypeError`:
+# 调用
 
-[PRE10]
+调用以最简单的形式通过显式调用函数来发生。我们可以通过在我们知道是函数的值的左侧附上调用括号（`(...)`)来实现这一点。这个左侧的值可以是直接引用一个持有函数的变量或属性，也可以是一个求值为函数的表达式。
 
-When a function is called, JavaScript will create a new **Lexical Environment** (a scope) in which that function will be evaluated, and the function will become the current *execution context*, shifting control from the current area of code to the function's code. This should not be too unintuitive. It makes sense that, in the code, `foo();`, `baz();`, and `foo()` will be given control and will run to completion before `baz()` is then given control.
+```js
+someFunction();
+(function(){})();
+someObject.someMethod();
+[function(){}][0]();
+```
 
-A function will return control to you in the following ways:
+要构造实例，正如我们所探讨的，你可以使用`new`操作符，这也是一种调用方式，尽管在零参数的情况下，它在技术上不需要调用括号：
 
-*   By *returning* (implicitly or via an explicit `return` statement)
-*   By *throwing* (implicitly due to `SyntaxError`, `TypeError`, and so on or via an explicit `throw` statement)
-*   By *yielding* (in the case of a generator)
+```js
+function MyConstructor() {}
 
-Invocation can also occur indirectly, via JavaScript's internal mechanisms. For example, in the case of coercion, as explored in the last chapter, methods such as `valueOf`, `toString`, or `Symbol.toPrimitive` may be called in various scenarios. Additionally, JavaScript enables you to define *setters* and *getters* so that your custom functionality is activated whenever a given property is accessed or assigned to:
+// Both equivalent:
+new MyConstructor();
+new MyConstructor;
+```
 
-[PRE11]
+在调用括号之前（在`(...)`的左侧）的评估的确切语法并不重要，只要它评估为一个函数即可。如果它不是函数，你就会收到 `TypeError`：
 
-By assigning to the `name` property here, we are effectively invoking a function, which itself may then do all manner of things, potentially invoking other functions itself. You can imagine how the control flow of a given program can become potentially incomprehensible when there are many implicit means of invocation such as this. Such implicit mechanisms do have their advantages, but if too much of our problem domain's logic is embedded within such places, then it's less plainly visible to our fellow programmers and hence more likely to cause confusion.
+```js
+1();     // ! TypeError: 1 is not a function
+[]();    // ! TypeError: [] is not a function
+'wat'(); // ! TypeError: "wat" is not a function
+```
 
-# Returning
+当调用一个函数时，JavaScript 将创建一个新的**词法环境**（作用域），在这个环境中，该函数将被评估，函数将成为当前的*执行上下文*，从当前的代码区域转移到函数的代码中。这不应该太让人感到困惑。在代码中，`foo();`、 `baz();` 和 `foo()` 将获得控制权，并在运行完成后才将控制权交给 `baz()`。
 
-*Returning* is a shift of control from a function to its caller. It is achieved either via an explicit `return` statement within the function itself or implicitly when the function runs to completion:
+一个函数将以以下方式返回控制权给你：
 
-[PRE12]
++   通过*returning* （隐式或通过显式的`return`语句）
 
-Here, you'll notice that we don't bother placing the implied `else` condition of a falsy name in its own else block (`else {...}`) as this would be unnecessary. Because we return when the name is truthy, any code following that return statement will therefore only run in the implied `else` condition. It's quite common to see such patterns in functions that carry out preemptive input checks:
++   通过*throwing*（由于`SyntaxError`，`TypeError`等隐式地或通过显式的`throw`语句抛出异常）
 
-[PRE13]
++   通过*yielding*（在生成器的情况下）
 
-As we see here, returning is not only used to return control to the caller but also for its side-effect: avoiding work that exists on lines below itself in its function. This is often termed *returning early* and can significantly help to reduce the overall complexity of a function.
+调用也可能通过 JavaScript 的内部机制间接发生。例如，在上一章探讨的强制转换的情况下，诸如`valueOf`、`toString`或`Symbol.toPrimitive`等方法可能会在各种场景下被调用。此外，JavaScript 还使你能够定义*setters*和*getters*，以便在访问或赋值给特定属性时激活你的自定义功能：
 
-# Yielding
+```js
+const person = {
+  set name(name) {
+    console.log('You are trying to set the name to', name);
+  }
+};
 
-*Yielding* is a shift of control between a generator and its caller. It is achieved by the `yield` expression, which can optionally designate a value to its right side (the yielded value). It is only valid to use a `yield` statement within a generator function:
+person.name = 'Leo';
+// Logs: "You are trying to set the name to Leo"
+```
 
-[PRE14]
+在这里给`name`属性赋值，实际上是在调用一个函数，该函数本身可能会执行各种操作，可能会间接调用其他函数。当存在许多这样的隐式调用方式时，你可以想象给定程序的控制流可能会变得难以理解。这样的隐式机制确实有其优点，但如果我们问题领域的大部分逻辑都内嵌在这些地方，那么对同事程序员而言，这些内嵌的逻辑就不那么容易看到，因此更容易造成混淆。
 
-If you yield without a value (`yield;`) then the result will be the same as yielding `undefined`. 
+# 返回
 
-Yielding will force any subsequent calls to the generator function to continue evaluation from the point of yield (as if the yield hadn't occurred). Yielding can be thought of as *pausing* a function with the prospect of coming back to it later. We can see this in action if we log which part of our generator runs during consecutive calls:
+*Returning*是从函数转移控制权给其调用方。这既可以在函数内部通过显式的`return`语句实现，也可以在函数运行完毕时隐式地实现：
 
-[PRE15]
+```js
+function sayHiToMe(name) {
 
-This will log the following:
+ if (name) {
+   return `Hi ${name}`;
+ }
 
-*   `"Calling first time"`
-*   ``"Chunk A"``
-*   `"Done calling first time"`
-*   `"Calling second time"`
-*   `"Chunk B"`
-*   `"Done calling second time"`
+ // In the case of a truthy `name` this code is never arrived at
+ // because `return` exists on a previous line:
+ throw 'You do not have a name! :(';
 
-It is also possible to return from a generator function with a regular `return;` statement. This is the same as yielding for the final time. That is, no further code will ever be run within that generator. 
+}
 
-# Yielding to a yield
+sayHiToMe('James'); // => "Hi James"
+```
 
-Yielding is not necessarily a shift of control in just one direction. You can use a generator as a *data consumer* or *observer*. In such scenarios, when a caller requests the next yielded value by calling `iterable.next()`, it can optionally pass an argument to this `next()` method. Whatever value is passed will then cause the `yield` expression within the generator to evaluate to that value.
+在这里，你会注意到我们没有将一个 falsy 名称的暗指`else`条件放在自己的 else 块（`else {...}`）中，因为这是不必要的。因为当名称为真时我们返回，所以跟在返回语句后面的任何代码都只会在暗指的`else`条件中执行。这种模式在执行输入预检查的函数中很常见：
 
-This is more easily explained with an example. Here, we have created a generator that consumes numbers and yields the sum of all numbers previously consumed:
+```js
+function findHighestMountain(mountains) {
 
-[PRE16]
+  if (!mountains || !mountains.length) {
+    return null;
+  }
 
-Here, we are using the return value of our `yield` expression (`yield n`) and then adding it to the existing value of `n` on each run of the generator. We need to call `next()` once initially to kick things off as, before this, the `n += yield n` expression has not been run and is hence is not *waiting for* a `next()` call yet.  
+  if (mountains.length === 1) {
+    return mountains[0];
+  }
 
-Using generators as consumers does not have many use cases and can be quite an awkward pattern to employ since we must use the designated `next()` method to pass in data. It is, however, useful to know about the flexibility of the `yield` expression since you may encounter it in the wild.
+  // Do the actual work of finding the 
+  // highest mountain here...
+}
+```
 
-# Complexity of yielding
+正如我们在这里看到的，返回不仅用于将控制返回给调用者，还用于它的副作用：避免存在于其函数中下方行中的工作。这通常被称为*提前返回*，可以显著帮助减少函数的整体复杂性。
 
-For fellow programmers, comprehending the flow of control within generators can be complicated and counter-intuitive since it involves a lot of *back-and-forth* between the caller and the generator. Knowing what exact code is running at any specific point may be difficult to determine and so it is advisable to keep your generators short and ensure that they yield consistently—in other words, don't have too many different pathways of yielding within your generators and generally attempt to keep *cyclomatic complexity* quite low (you can read more about this if you skip ahead to the *Handling cyclomatic complexity* section).
+# 产出
 
-# Breaking
+*产出*是生成器和其调用者之间的控制转移。这是通过`yield`表达式实现的，该表达式可以在其右侧可选地指定一个值（产出的值）。只有在生成器函数中才能使用`yield`语句：
 
-*Breaking* is a shift of control from within the current `for`, `while`, `switch`, or labeled statement to the code following the statement. It effectively terminates the statement, preventing any following code from being executed.
+```js
+function* makeSomeNumbers() {
+  yield 645;
+  yield 422;
+  yield 789;
+}
 
-In the context of iteration, whether or not to continue or break from iteration is usually determined by `ConditionExpression` within the construct itself (for example, `counter < array.length`), or by the length of the data structure in the case of `for..in` and `for..of`. However, it may still be necessary, at times, to *break out* of the iteration early.
+const iterable = makeSomeNumbers();
+iterable.next(); // => {value: 645, done: false}
+iterable.next(); // => {value: 422, done: false}
+iterable.next(); // => {value: 789, done: false}
+```
 
-For example, if you are looking for a specific item within a data structure (a *needle-in-a-haystack* situation), then it would make sense to stop looking once the item is found. We achieve that by breaking:
+如果你没有值就产出（`yield;`），那结果将和产出`undefined`一样。
 
-[PRE17]
+产出将强制后续对生成器函数的调用从产出点继续评估（就好像产出没有发生过一样）。产出可以被视为*暂停*一个函数，有望以后回来继续执行。如果我们在连续的调用中记录生成器运行的哪一部分，我们可以看到这一点：
 
-Breaking from an iteration will immediately halt and exit the iteration, meaning any remaining code within the containing `IterationBody` will not be run. The code immediately following `IterationBody` will then run.
+```js
+function* myGenerator() {
+  console.log('Chunk A');
+  yield;
+  console.log('Chunk B');
+  yield;
+}
 
-The `break` statement is also used to break out from `switch` statements, typically when you have executed the relevant `case` statement. As we will discuss later in this chapter, the `switch` statement will transfer control to the `case` statement that is considered strictly equal (`===`) to the value passed to `switch(...)`, and will then run all code following that `case` statement until an explicit `break;` (or `return;`, `yield;`, or `throw;`) occurs:
+const iterable = myGenerator();
 
-[PRE18]
+console.log('Calling first time');
+iterable.next();
+console.log('Done calling first time');
 
-Here, we see that a value of `2` shifts control to the matching `case 2`, and then all of the following code within the switch's body will run naturally until a `break;` statement is encountered. Hence, we only see logs for `2`, `3`, and `4`. A log for `1` is avoided as `case 1` does not match the value, `2`, and a log for `5` is avoided as `break;` occurs before it.
+console.log('Calling second time');
+iterable.next();
+console.log('Done calling second time');
+```
 
-When `case` within `switch` does not break, it is called **fallthrough**. This common technique used in `switch` statements is useful when you want to carry out a single action or cascade of actions based on more than one matching condition (we will cover this concept more in the *The* *switch statement se*).
+这将记录以下内容：
 
-To the right side of the `break` keyword there may be a label that refers to the `switch`, `for`, or `while` statement. If you don't supply a label, then JavaScript will assume you are referring to the current containing iteration or `switch` construct. This is only useful when you have two or more breakable constructs within each other, for example, an iteration within an iteration. Observe here how we've labeled our outer `for` loop with the `outerLoop` label, enabling us to break out of it from within the inner `for` loop:
++   `"第一次调用"`
 
-[PRE19]
++   ``"块 A"``
 
-You can, in fact, break out of any labeled statement (even if it is outside of an iteration or `switch` construct) but you must explicitly provide the label:
++   `"第一次调用完成"`
 
-[PRE20]
++   `"第二次调用"`
 
-This is very rarely applicable but is nonetheless worth knowing about in case you ever run into such code.
++   `"块 B"`
 
-One last thing to note on *breaking out* of iterations or `switch` statements is that, although we typically do so by using an explicit `break;` statement, it is something that can also effectively occur via other mechanisms of moving control such as *yielding*, *returning*, or *throwing*. It's quite common, for example, to see an iteration that uses `return;` to *break out* not only of itself but also of the containing function.
++   `"第二次调用完成"`
 
-# Continuing
+也可以使用普通的`return;`语句从生成器函数中返回。这与最终产出是一样的。也就是说，再也不会在生成器内执行任何代码了。
 
-*Continuing* is a shift of control from the current statement to the potential start of the next iteration. It is achieved via a `continue` statement.
+# 将产出交给了产出
 
-The `continue` statement is valid in all iteration constructs, including `for`, `while`, `do...while`, `for...in`, and `for...of`.
+产出不一定只是单向控制的转移。你可以将生成器用作*数据消费者*或*观察者*。在这种情况下，当调用者通过调用`iterable.next()`请求下一个产出的值时，可以选择性地向这个`next()`方法传递一个参数。传递的任何值都将导致生成器中的`yield`表达式评估为该值。
 
-Here is an example of continuing conditionally, so that the body of the iteration does not execute for a specific item but the iteration still continues to progress:
+这更容易通过一个例子来解释。在这里，我们创建了一个消耗数字并产出所有先前消耗数字的总和的生成器：
 
-[PRE21]
+```js
+function* createAdder() {
+  let n = 0;
+  while (true) n += yield n;
+}
 
-*Continuing* skips all of the code following `continue` in the current iteration and then moves onto whatever would naturally occur next. 
+const adder = createAdder();
 
-Similar to the `break` statement, to the right side of the `continue` keyword can optionally be a label that indicates which iteration construct should be continued. If you don't supply it, then JavaScript will assume you are referring to the current iteration construct. If you have two or more iteration constructs nested within each other, then it may be necessary to use an explicit label:
+adder.next(); // Initialize (kick things off!)
 
-[PRE22]
+adder.next(100).value; // => 100
+adder.next(100).value; // => 200
+adder.next(150).value; // => 350
+```
 
-The `continue` statement will only work in our native looping constructs. If we wish to continue in an abstracted looping construct such as `Array#forEach`, then we'll typically want to use a `return` statement instead (to return from the callback and hence continue the iteration).
+在这里，我们使用我们的`yield`表达式（`yield n`）的返回值，并在每次生成器运行时将其添加到`n`的现有值上。我们需要最初调用`next()`一次来启动这一切，因为在这之前，`n += yield n`表达式还没有运行，因此还没有*等待*`next()`的调用。
 
-Since *continuing* is a movement of control, we want to remain cautious about how clearly we are communicating our intent. If we have several layers of loops or several `continue` or `break` statements, it can burden the reader with an unnecessary level of complexity. 
+作为消费者使用生成器并没有很多用例，并且很可能是一种尴尬的模式，因为我们必须使用指定的`next()`方法来传递数据。但是，了解`yield`表达式的灵活性是有用的，因为你在实际应用中可能会遇到。
 
-# Throwing
+# 产出的复杂性
 
-*Throwing* is a shift of control from the current statement to the nearest containing `try...catch` statement on the call stack. If no such `try...catch` statement exists, then the execution of the program will terminate entirely. Throwing is conventionally used to raise exceptions when specific requirements or expectations are not met:
+对于程序员来说，理解生成器内部控制流可能会变得复杂和难以理解，因为它涉及*来回*很多次调用者和生成器之间的交互。在任何特定点知道正在运行的确切代码可能很难确定，因此建议保持生成器的简短，并确保它们在其他方面一直保持一致——换句话说，在你的生成器内不要有太多不同的生成路径，并且通常尽量保持*圈复杂度*很低（如果您直接跳到*处理圈复杂度*部分，您可以阅读更多相关信息）。
 
-[PRE23]
+# 中断
 
-To catch this error, we would need to have a `try...catch` block somewhere on the call-stack, wrapping the call to the `nameToUpperCase` function or the call to the function that calls it (and so on):
+*中断*是从当前`for`、`while`、`switch`或带标签的语句内部转移控制到该语句后面的代码。它有效地终止了该语句，阻止后续任何代码的执行。
 
-[PRE24]
+在迭代的上下文中，是否继续或中断迭代通常由构造本身内的`ConditionExpression`（例如，`counter < array.length`）确定，或者由数据结构的长度在`for..in`和`for..of`的情况下确定。然而，有时仍然可能需要*提前中断*迭代。
 
-It is a best practice to throw objects that are instances of the natively provided generic `Error` constructor. There are several native sub-classed constructors of `Error`:
+例如，如果您正在查找数据结构中的特定项（类似于在大海里找针的情况），那么一旦找到该项就停止查找是有意义的。我们通过中断来实现这一点：
 
-*   `SyntaxError`: This indicates that a parsing error has occurred
-*   `TypeError`: This indicates an unsuccessful operation when none of the other `Error` objects are appropriate
-*   `ReferenceError`: This indicates that an invalid reference value has been detected
-*   `RangeError`: This indicates a value that is not in the set or range of allowable values
-*   `URIError`: This indicates that a URI handling function was used in a way that is incompatible with its definition
+```js
+for (let i = 0; i < array.length; i++) {
+  if (myCriteriaIsMet(array[i]) {
+    happyPath();
+    break;
+  }
+}
+```
 
-JavaScript will naturally raise such exceptions to you if you misuse native APIs or produce invalid syntax, but you can also use these constructors yourself to provide more semantically meaningful errors to your fellow programmers. If none of the preceding are suitable, then you can directly use `Error` or extend from it to produce your own specialized instance, as follows:
+从迭代中中断将立即停止并退出迭代，这意味着包含的`IterationBody`中的任何剩余代码将不会被执行。随后将执行`IterationBody`后面紧跟的代码。
 
-[PRE25]
+`break`语句也用于从`switch`语句中退出，通常是在执行相关的`case`语句之后。正如我们稍后将在本章讨论的那样，`switch`语句将将控制转移到与传递给`switch(...)`的值严格相等（`===`）的`case`语句，然后运行所有该`case`语句之后的代码，直到出现显式的`break;`（或者`return;`、`yield;`、`throw;`）：
 
-All `Error` instances will contain a `name` and `message` property. Depending on the JavaScript implementation, there may also be additional properties related to the stack trace of the error. In both the V8 JavaScript engine (used in Chromium and Node.js) and in SpiderMonkey (Mozilla), there is a stack property that gives us serialized call stack information:
+```js
+switch (2) {
+  case 1: console.log(1);
+  case 2: console.log(2);
+  case 3: console.log(3);
+  case 4: console.log(4); break;
+  case 5: console.log(5);
+}
 
-[PRE26]
+// Logs: 2, 3, 4
+```
 
-There may be unique situations where you wish to throw a value that is not an `Error` instance, and technically, this is perfectly legal, but it is rarely useful to do so. It's best to only throw in the case of an actual error, and in that case, it is best to use an appropriate `Error` object to represent the error. 
+在这里，我们看到值为`2`将控制转移到匹配的`case 2`，然后 switch 体内的所有后续代码将自然运行，直到遇到`break;`语句。因此，我们只能看到`2`、`3`和`4`的日志。`1`的日志被避免了，因为`case 1`不匹配值`2`，而`5`的日志也被避免了，因为`break;`出现在它之前。
 
-# Statements of control flow
+当`switch`中的`case`不中断时，称为**贯穿**。在`switch`语句中使用的这种常见技术在你想要根据多个匹配条件执行单个操作或级联操作时是有用的（我们将在*switch 语句*部分更详细地介绍这个概念）。
 
-Now that we've cemented our understanding of how *control* is moved at a high level, we can delve further into the specific statements and mechanisms that JavaScript gives us to control flow. We'll combine an exploration of the syntax of each statement with some best practices and pitfalls to avoid.
+在`break`关键字的右侧可能有一个标签，表示`switch`、`for`或`while`语句。如果没有提供标签，JavaScript 将默认认为你是指当前包含的迭代或`switch`结构。只有当你有两个或更多可打破的结构相互嵌套时，例如在一个迭代中嵌套另一个迭代。请注意这里我们如何用`outerLoop`标签标记我们外部的`for`循环，使我们能够从内部的`for`循环中跳出：
 
-# The if statement
+```js
+outerLoop: for (let obj in objects) {
+  for (let key in obj) {
+    if (/* some condition */) {
+      break outerLoop;
+    }
+  }
+}
+```
 
-The `if` statement is composed of the `if` keyword followed by a parenthesized expression and then an additional statement:
+实际上，你可以跳出*任何*带标签的语句（即使它在迭代或`switch`结构之外），但你必须显式提供标签：
 
-[PRE27]
+```js
+specificWork: {
+  doSomeSpecificWork();
+  if (weAreFinished) {
+    break specificWork;
+      // immediately exits the `specificWork: {...}` block
+  }
+  doOtherWork();
+}
+```
 
-`ConditionExpression` can be of limitless complexity as long as it is truly an expression:
+这种情况非常少见，但是确实值得了解，以防你碰到这样的代码。
 
-[PRE28]
+最后要注意的一点是关于*跳出*迭代或`switch`语句的是，尽管我们通常使用显式的`break;`语句来做到这一点，但也可以通过其他控制移动的机制有效地发生，例如*yielding*、*returning*或*throwing*。例如，看到使用`return;`来*跳出*不仅是它本身的迭代，也是包含函数的迭代是非常常见的。
 
-The statement following the parenthesized expression can be a single-line statement or a block and designates the code that should be run if the `ConditionExpression` evaluates to a truthy value:
+# 继续
 
-[PRE29]
+*Continuing*是一种控制的转移，从当前语句到可能的下一个迭代的开始。它是通过一个`continue`语句来实现的。
 
-The value you pass as `ConditionExpression` is compared to a Boolean to determine its truthiness. We've already been aptly introduced to the concepts of truthiness and falsiness in Chapter 6*, Primitive and Built-In Types,* but just in case you're rusty: there are only seven falsy values in JavaScript, and as such, only seven possible values that you can pass to an `if` statement that won't satisfy it:
+`continue`语句在所有迭代构造中都有效，包括`for`、`while`、`do...while`、`for...in`和`for...of`。
 
-[PRE30]
+这是一个有条件继续的例子，所以迭代体不会对特定项目执行，但迭代仍然会继续进行：
 
-When an `if` statement is not satisfied, it will run an optional `else` statement, which you may specify immediately following your `if` statement. Just as with `if`, you may use a block here as well:
+```js
+const numbers = [1, 2, 3];
 
-[PRE31]
+for (const n of numbers) {
+  if (n === 2) continue;
+  console.log(n);
+}
 
-You can effectively *chain* together `if`/`else` statements as follows:
+// Logs: 1, 3
+```
 
-[PRE32]
+*Continuing*会跳过当前迭代中`continue`后面的所有代码，然后继续执行接下来的自然情况。
 
-Syntactically, it's important to understand that this isn't a construct of its own (there is no such thing as an `if`/`else`/`if`/`else` construct); it is merely a regular `if` statement, followed by an `else` statement that itself contains its own `if`/`else` duo. Therefore, it is more accurate, perhaps, to see it as follows:
+与`break`语句类似，在`continue`关键字的右侧可以选择性地加上一个标签，表示应该继续的哪个迭代构造。如果没有提供标签，JavaScript 将默认认为你是指当前迭代构造。如果你有两个或更多嵌套在一起的迭代构造，那么可能需要使用显式标签：
 
-[PRE33]
+```js
+objectsIteration: for (let obj in objects) {
+  for (let key in obj) {
+    if (/* some condition */) {
+      continue objectsIteration;
+    }
+  }
+}
+```
 
-An `if` statement is best suited for when there are one or two possible outcomes of a condition. If there are more possible outcomes, then you may be better off using a switch statement. Long `if`/`else` chains can get unwieldy. See the *Handling cyclomatic complexity* section later in this chapter to explore other novel ways of handling complex conditional logic.
+`continue`语句只会在我们原生的循环构造中起作用。如果我们希望在类似`Array#forEach`这样的抽象化循环结构中继续，那么通常我们会希望使用`return`语句（从回调返回，因此继续迭代）。
 
-# The for statement
+由于*continuing*是一种控制的移动，我们必须谨慎地考虑我们在传达意图时是否清晰。如果我们有多层循环或多个`continue`或`break`语句，那么会给读者带来不必要的复杂性。
 
-The `for` statement is used to iterate through a set, typically, an array or any iterable structure. It comes in four broad varieties:
+# 抛出
 
-*   **Conventional for**: This includes the following:
-    *   **Syntax**: `for (initializer; condition; incrementer) {...}`
-    *   **Usage**: Typically used to iterate in a custom fashion through an indexed structure 
-*   **For...in**: This includes the following:
-    *   **Syntax**: `for (let item in object) {...}`
-    *   **Usage**: Used to iterate through the keys of any object (typically used on *plain objects*)
-*   **For...of**: This includes the following:
-    *   **Syntax**: `for (let item of iterable) {...}`
-    *   **Usage**: Used to iterate over an iterable (typically array-like) structure
+*抛出* 是控制从当前语句转移到调用堆栈上最近的包含 `try...catch` 语句。如果不存在这样的 `try...catch` 语句，则程序的执行将完全终止。抛出通常用于在特定要求或期望不满足时引发异常：
 
-The type of `for` construct you'll employ will depend on what exactly you wish to iterate over. For straightforward indexed and array-like structures, for example, the `for...of` construct will be most useful. We'll go over each of these constructs to explore use cases and potential challenges.
+```js
+function nameToUpperCase(name) {
+  if (typeof name !== 'string') {
+    throw new TypeError('Name should be a string');
+  }
+  return name.toUpperCase();
+}
+```
 
-# Conventional for
+要捕获这个错误，我们需要在调用堆栈的某个位置上有一个 `try...catch` 块，包裹住对 `nameToUpperCase` 函数的调用，或者调用这个函数的函数（以此类推）：
 
-The conventional `for` statement is used to iterate over all manner of data structures or conceptual looping scenarios. It includes three expressions, parenthesized and separated by semicolons, and a statement at the end, which is considered the body of the iteration:
+```js
+let theUpperCaseName;
+try {
+  theUpperCaseName = nameToUpperCase(null);
+} catch(e) {
+  e.message; // => "Name should be a string"
+}
+```
 
-[PRE34]
+最佳做法是抛出作为原生提供的通用 `Error` 构造函数的实例对象。其中有几个原生的子类构造函数 `Error`：
 
-The purpose of each part is as follows:
++   `SyntaxError`：这表示发生了解析错误
 
-*   The `InitializerExpression` initializes the iteration; this will be evaluated first and only once. This can be any statement (it usually includes a `let` or `var` assignment, but doesn't need to).
-*   The `ConditionExpression` checks whether the iteration may continue; this will be evaluated and coerced to a Boolean (as if via `Boolean(...)`) before each iteration to determine whether the next iteration will occur. This can be any expression, though it is usually used to check whether the current index is less than some upper bound (usually the length of the data structure that you are iterating through).
-*   The `UpdateExpression` finalizes each iteration, ready for the next iteration. This will be evaluated at the end of each iteration. This can be any statement though is most idiomatically used to increment or decrement the current index.
-*   The `IterationBody` contains the actual iteration logic—the code that will be evaluated on every iteration. This is typically a *block* but can be a single-line statement.
++   `TypeError`：这表示在没有其他 `Error` 对象适用的情况下，操作不成功
 
-Using the conventional `for` statement to loop over an array would look like this:
++   `ReferenceError`：这表示检测到无效的引用值
 
-[PRE35]
++   `RangeError`：这表示一个不在可允许值的集合或范围内的值
 
-It is preferable to use `for...of` if you're just iterating over a regular array or iterable structure. However, if you need to iterate over a structure indexed unconventionally, then it may be appropriate to use the conventional `for` loop.
++   `URIError`：这表示以与其定义不兼容的方式使用了 URI 处理函数
 
-An example of an unconventionally indexed structure is the pixel data of a `<canvas>` element, which forms an array containing the RGBA (*Red, Green, Blue*, and *Alpha*) values of every pixel consecutively, like so:
+如果您误用本机 API 或产生无效语法，JavaScript 将自然将这些异常提供给您，但您也可以自己使用这些构造器为您的其他程序员提供更语义化的错误。如果以上情况都不适用，则可以直接使用`Error`或从中扩展出自己的专门实例，如下所示：
 
-[PRE36]
+```js
+class NetworkError extends Error {}
 
-Since each individual pixel occupies four elements of the array, we would need to iterate over it four indexes at a time. The conventional `for` loop is perfectly suited to this:
+async function makeDataRequest() {
+  try {
+    const response = await fetch('/data');
+  } catch(e) {
+    throw NetworkError('Cannot fetch data');
+  }
+  // ... (process response) ...
+}
+```
 
-[PRE37]
+所有的 `Error` 实例都会包含 `name` 和 `message` 属性。根据 JavaScript 的实现，可能还会有与错误的堆栈追踪相关的其他属性。在 V8 JavaScript 引擎（用于 Chromium 和 Node.js）和 SpiderMonkey（Mozilla）中都有一个 stack 属性，提供了序列化的调用堆栈信息：
 
-The conventional `for` statement is a well understood and idiomatic piece of syntax. It is best to ensure that you use each of its parts for its purpose. It is entirely possible (though unadvisable) to exploit its syntax by including the actual logic of your iteration in the parenthesized portion of the construct, but this and other misuses can be quite hard to parse for humans:
+```js
+try {
+  throw new Error;
+} catch(e) {
+  e.stack; // => "Error\n at filename.js:2:9"
+}
+```
 
-[PRE38]
+可能会出现独特的情况，您希望抛出一个不是 `Error` 实例的值，从技术上讲这是完全合法的，但很少有用。最好只在真正出现错误的情况下进行抛出，并且在这种情况下，最好使用适当的 `Error` 对象来表示该错误。
 
-`UpdateExpression` here includes the `copy[i] = array[i++]` expression, which will copy across the element of the array at the current index and will then increment the index. The postfix `++` operator ensures that the previous value of its operand will be returned, guaranteeing that the index accessed on `copy[i]` is always equal to `array[i++]`. This is a clever but rather obscure syntax. It would have been far clearer to use the idiomatic `for` structure, which places the iteration logic in its own statement after `for(...)`:
+# 控制流语句
 
-[PRE39]
+现在我们已经巩固了我们对*控制*在高层次上是如何移动的理解，我们可以进一步探索 JavaScript 给我们控制流的特定语句和机制。我们将探讨每个语句的语法，并结合一些最佳实践和需要避免的陷阱。
 
-This is a more familiar and comprehensible piece of code for most programmers. It is more verbose, and perhaps not as fun to write, but in the end, as explored in the initial chapters of this book, we are most interested in writing code that communicates its intent clearly.
+# 如果语句
 
-Naturally, this fictional scenario, copying the contents of one array to another array, would be better solved by using the `Array#slice` method (`array.slice()`) but we used it here as an illustration.
+`if` 语句由 `if` 关键词 开始，后面跟着一个括号表达式，再然后是一个额外的语句：
+
+```js
+if (ConditionExpression) Statement
+```
+
+`ConditionExpression` 可以是无限复杂的表达式，只要它真正是一个表达式：
+
+```js
+if (true) {}
+if (1 || 2 || 3) {}
+if ([1, 2, 3].filter(n => n > 2).length > 0) {}
+```
+
+在括号表达式后面的语句可以是一个单行语句或一个 代码块，并指定了当 `ConditionExpression` 评估为真时应运行的代码：
+
+```js
+// These are equivalent
+if (true) { doBaz(); }
+if (true) doBaz();
+```
+
+您传递为`ConditionExpression`的值将与布尔值进行比较，以确定其真实性。我们在第六章，*基本和内置类型*中已经恰当地介绍了真实性和虚伪性的概念，但以防万一您生疏了：在 JavaScript 中只有七个虚假值，因此，您可以传递给`if`语句的只有七个可能的值不会满足它：
+
+```js
+if (false) {}
+if (null) {}
+if (undefined) {}
+if (0n) {}
+if (0) {}
+if ('') {}
+if (NaN) {}
+```
+
+当`if`语句不满足时，它将运行一条可选的`else`语句，您可以在`if`语句后面立即指定。就像`if`一样，您也可以在此处使用一个*块*：
+
+```js
+if (isLegalDrinkingAge) drink(); else leave();
+
+// Equivalent, with Blocks:
+if (isLegalDrinkingAge) {
+  drink();
+} else {
+  leave();
+}
+```
+
+您可以有效地*链式*将`if`/`else`语句连接在一起，如下所示：
+
+```js
+if (number > 5) {
+  // For numbers larger than five
+} else if (number < 3) {
+  // For numbers less than three
+} else {
+  // For everything else
+}
+```
+
+在语法上，重要的是要理解这不是自己的结构（没有像`if`/`else`/`if`/`else`结构一样的东西）；它只是一个常规的`if`语句，然后是一个包含自己`if`/`else`对的`else`语句。因此，也许更准确地看待它如下所示：
+
+```js
+if (number > 5) {
+  // For numbers larger than five
+} else {
+  if (number < 3) {
+    // For numbers less than three
+  } else {
+    // For everything else
+  }
+}
+```
+
+当条件有一个或两个可能的结果时，最适合使用`if`语句。如果有更多可能的结果，那么您可能更适合使用 switch 语句。*长*`if`/`else`链条会变得难以操作。稍后在本章中查看*处理圈复杂度*部分，探索处理复杂条件逻辑的其他新颖方法。
+
+# `for`语句
+
+`for`语句用于循环遍历一组，通常是数组或任何可迭代的结构。它有四种广义的变体：
+
++   **传统 for**：包括以下内容：
+
+    +   **语法**：`for (initializer; condition; incrementer) {...}`
+
+    +   **用法**：通常用于自定义方式在索引结构中进行迭代
+
++   **For...in**：包括以下内容：
+
+    +   **语法**：`for (let item in object) {...}`
+
+    +   **用法**：用于遍历任何对象的键（通常用于*纯对象*）
+
++   **For...of**：包括以下内容：
+
+    +   **语法**：`for (let item of iterable) {...}`
+
+    +   **用法**：用于在可迭代的结构（通常是类似数组的结构）上进行迭代
+
+您将使用的`for`结构的类型取决于您希望迭代的确切内容。例如，对于简单的索引和类似数组的结构，`for...of`结构最有用。我们将逐个讨论这些结构，以探讨其用例和潜在挑战。
+
+# 传统的 for
+
+传统的`for`语句用于迭代各种数据结构或概念循环场景。它包括三个表达式，用分号分隔，并且最后是一个语句，它被认为是迭代的*主体*：
+
+```js
+for (
+  InitializerExpression;
+  ConditionExpression;
+  UpdateExpression
+) IterationBody
+```
+
+每个部分的目的如下：
+
++   `InitializerExpression`初始化迭代；这将首先进行评估，并且仅进行一次。这可以是任何语句（通常包括`let`或`var`分配，但不必是）。
+
++   `ConditionExpression`检查迭代是否可以继续；在每次迭代之前，将对其进行评估和强制转换为布尔值（就像通过`Boolean(...)`一样），以确定下一次迭代是否会发生。这可能是任何表达式，尽管通常用于检查当前索引是否小于某个上限（通常是您正在迭代的数据结构的长度）。
+
++   `UpdateExpression`完成每次迭代，准备进行下一次迭代。这将在每次迭代结束时进行评估。这可以是任何陈述，虽然在习惯用法上最常用于增加或减少当前索引。
+
++   `IterationBody`包含实际的迭代逻辑——将在每次迭代时评估的代码。这通常是一个*块*，但可以是一个单行语句。
+
+使用传统的`for`语句循环遍历数组的代码如下：
+
+```js
+for (let i = 0; i < array.length; i++) {
+  array[i]; // => (Each `array` item)
+}
+```
+
+如果只需要遍历常规数组或可迭代结构，则最好使用`for...of`。然而，如果需要对结构进行非常规索引的迭代，那么使用传统的`for`循环可能是合适的。
+
+一个非常规索引结构的示例是`<canvas>`元素的像素数据，它形成一个包含每个像素的 RGBA（红色、绿色、蓝色和 Alpha 通道）值的数组，连续排列，如下所示：
+
+```js
+[r, g, b, a, r, g, b, a, ...]
+```
+
+由于每个单独的像素占据数组的四个元素，我们需要每次迭代四个索引。传统的`for`循环非常适合于这种情况：
+
+```js
+const pixelData = canvas.getContext('2d').getImageData(0, 0, 100, 100).data;
+
+for (let i = 0; i < pixelData.length; i += 4) {
+  let red = pixelData[i];
+  let blue = pixelData[i + 1];
+  let green = pixelData[i + 2];
+  let alpha = pixelData[i + 3];
+  // (do something with RGBA)
+}
+```
+
+传统的`for`语句是一个被理解并习惯使用的语法结构。最好确保您使用每个部分来实现其目的。虽然可以（尽管不建议）通过将迭代的实际逻辑包含在结构的括号部分来利用其语法，但这和其他误用对人类来说可能非常难解析：
+
+```js
+var copy = [];
+for (
+  let i = 0;
+  i < array.length;
+  copy[i] = array[i++]
+); 
+```
+
+这里的`UpdateExpression`包括`copy[i] = array[i++]`表达式，它将复制当前索引处的数组元素，然后递增索引。后缀`++`运算符确保其操作数的先前值将被返回，从而保证在`copy[i]`上访问的索引始终等于`array[i++]`。这是一个巧妙但相当晦涩的语法。使用习惯用法的`for`结构将会更清晰，它在`for(...)`之后将迭代逻辑放在自己的语句中：
+
+```js
+for (
+  let i = 0;
+  i < array.length;
+  i++
+) {
+  copy[i] = array[i];
+}
+```
+
+对于大多数程序员来说，这是一个更熟悉和易懂的代码片段。它更冗长，也许写起来不那么有趣，但最终，正如本书的初步章节中所探讨的，我们最感兴趣的是编写能清晰传达其意图的代码。
+
+当然，这个虚构的情景，将一个数组的内容复制到另一个数组中，最好使用`Array#slice`方法（`array.slice()`）来解决，但我们在这里使用它进行说明。
 
 # for...in
 
-The `for...in` construct is used to iterate over an  object's set of enumerable property names. It has the following syntax:
+`for...in`构造用于迭代对象的一组可枚举属性名称。它具有以下语法:
 
-[PRE40]
+```js
+for (LeftSideAssignment in Object) IterationBody
+```
 
-The various parts have the following constraints:
+各个部分具有以下限制:
 
-*   `LeftSideAssignment` can be anything that would be valid on the left side of an assignment expression and is evaluated within the scope of `IterationBody` on every new iteration
-*   `Object` can be any expression that evaluates to (or can be coerced to) an object—in other words, anything except `null` or `undefined`
-*   `IterationBody` is any single-line or block statement
++   `LeftSideAssignment`可以是在每次新迭代中在`IterationBody`范围内评估的任何有效赋值表达式左侧，并且
 
-The `for...in` construct is usually used to iterate through a plain object's properties:
++   `Object`可以是任何求值为（或可以被强制转换为）对象的表达式——换句话说，除了`null`或`undefined`之外的任何东西。
 
-[PRE41]
++   `IterationBody`是任何单行或块语句
 
-You can see that we're using `const key` here to initialize our `key` variable on each iteration. This is the preferred declaration to use unless you have a specific need for the mutable behavior of `let` or the different scoping behavior of `var`. Naturally, all of these declarations are perfectly valid to use, in addition to using no declaration whatsoever:
+`for...in`构造通常用于遍历普通对象的属性:
 
-[PRE42]
+```js
+const city = { name: 'London', population: 8136000 };
+for (const key in city) {
+  console.log(key);
+}
+// Logs: "name", "population"
+```
 
-A new block scope is created for each iteration. When you use either a `let` or `const` declaration, it will be scoped to that iteration, while a variable declared via `var` will, as we know, be scoped to the nearest execution context's scope (*function scope*). Using no declaration whatsoever is fine, but you should ensure that you have already initialized that identifier beforehand:
+你可以看到我们在这里使用`const key`来初始化我们的`key`变量。除非你特别需要`let`的可变行为或`var`的不同作用域行为，否则这是首选的声明。当然，除了不声明，所有这些声明都是完全有效的：
 
-[PRE43]
+```js
+for (let key in obj) {}
+for (var key in obj) {}
+for (const key in obj) {}
+for (key in obj) {}
+```
 
-Since anything that would be valid on the left side of an assignment expression is valid on the left side of `in`, we can also place a property reference here, as in the following example:
+每次迭代都会创建一个新的块作用域。当你使用`let`或`const`声明时，它将作用于该迭代，而通过`var`声明的变量将作用于最近的执行上下文范围（*函数作用域*）。完全不声明也没问题，但你应该确保之前已经初始化了该标识符：
 
-[PRE44]
+```js
+let key;
+for (key in obj) {}
+```
 
-This would result in `foo.key` being assigned each key of `obj` as the iteration progresses. This would be quite an odd thing to do, but will nonetheless work correctly.
+由于任何在赋值表达式左侧有效的东西在`in`的左侧也是有效的，我们也可以在这里放置一个属性引用，就像下面的例子:
 
-Now that we have the syntax out of the way, we can discuss the behavior and use cases of `for..in`. It is, as mentioned, useful in iterating through the properties of an object. By default, this will include all properties inherited from the object's `[[Prototype]]` chain as well, but only if they are *enumerable*:
+```js
+let foo = {};
+for (foo.key in obj) {}
+```
 
-[PRE45]
+这将导致`foo.key`在迭代进行中被赋予`obj`的每个键。这将是一个非常奇怪的事情，但仍然可以正确工作。
 
-As you can see, properties on the object itself are iterated over before those from inherited objects. The order of iteration, however, should not be depended upon as this may differ between implementations. If you're looking to iterate through a set of keys in a specific order, it may be better instead to gather the keys via `Object.keys(obj)` and then iterate over that as an array.
+现在我们介绍了语法，可以讨论`for..in`的行为和用例了。如前所述，它在迭代对象的属性时非常有用。默认情况下，这将包括从对象的`[[Prototype]]`链继承的所有属性，但仅当它们是*可枚举*时：
 
-Since `for...in` will naturally iterate over inherited properties, it's conventional to place an additional check within the iteration body to avoid these properties:
+```js
+const objectA = { isFromObjectA: true };
+const objectB = { isFromObjectB: true };
 
-[PRE46]
+Object.setPrototypeOf(objectB, objectA);
 
-Where you have an iterable object (such as an array), it is advisable to use `for...of` instead, which is more performant and idiomatic for such situations. 
+for (const prop in objectB) {
+ console.log(prop);
+}
+
+// Logs: "isFromObjectB", "isFromObjectA"
+```
+
+正如你所看到的，对象本身的属性先于继承对象的属性进行迭代。然而，迭代的顺序不应该被依赖，因为这可能会在不同的实现之间有所不同。如果你想以特定顺序迭代一组键，最好通过`Object.keys(obj)`来收集键，然后像遍历数组一样对其进行迭代。
+
+由于`for...in`自然会迭代继承的属性，因此在迭代体内放置附加检查以避免这些属性是传统做法:
+
+```js
+for (const key in obj) {
+  if (obj.hasOwnProperty(key)) {
+    // `key` is a non-inherited (direct) property of `obj`
+  }
+}
+```
+
+当你有一个可迭代对象（比如一个数组）时，最好使用`for...of`，它更适合这种情况，并且性能更好。
 
 # for...of
 
-The `for...of` construct is used to iterate over an iterable object. Natively provided iterable objects include `String`, `Array`, `TypedArray`, `Map`, and `Set`. Syntactically, `for...of` shares the characteristics of `for...in`:
+`for...of`结构用于遍历可迭代对象。原生提供的可迭代对象包括`String`，`Array`，`TypedArray`，`Map`和`Set`。在语法上，`for...of`具有与`for...in`相似的特征：
 
-[PRE47]
+```js
+for (LeftSideAssignment in IterableObject) IterationBody
+```
 
-The purpose of each part is as follows: 
+每个部分的目的如下：
 
-*   `LeftSideAssignment` can be anything that would be valid on the left side of an assignment expression and is evaluated within the scope of `IterationBody` on every new iteration
-*   `IterableObject` can be any expression that evaluates to an *iterable* object—in other words, anything that implements `[Symbol.iterator]` as a method
-*   `IterationBody` is any single-line or block statement
++   `LeftSideAssignment`可以是任何在赋值表达式左侧有效的东西，并在每次新迭代中在`IterationBody`的范围内进行评估
 
-An idiomatic `for...of` usage may look like this:
++   `IterableObject`可以是任何评估为*可迭代*对象的表达式，换句话说，任何实现`[Symbol.iterator]`为方法的东西
 
-[PRE48]
++   `IterationBody`是任何单行或块语句
 
-Since its introduction into the language, `for...of` has become the most idiomatic way to loop over arrays, replacing the previously idiomatic `for (var i = 0; i < array.length; i++) {...}` pattern.
+一个惯用的`for...of`用法可能是这样的：
 
-The scoping behavior of `let`, `var`, and `const` is identical to that described in the last section on `for...in`. It is advisable to use `const` as it will initialize a fresh and immutable variable for each iteration. Using `let` is not awful but, unless you have a specific reason to need to mutate the variable yourself within `IterationBody`, you'll be better off using `const`.
+```js
+const array = [1, 2, 3];
 
-# The while statement
+for (const i of array) {
+  console.log(i);
+}
 
-The `while` statement is used to run a piece of code until some condition stops being met. It has the following syntax:
+// Logs: 1, 2, 3
+```
 
-[PRE49]
+自从引入语言以来，`for...of`已成为循环数组的最惯用方式，取代了先前惯用的`for (var i = 0; i < array.length; i++) {...}`模式。
 
-The purpose of each part is as follows: 
+`let`，`var`和`const`的作用域行为与上一节关于`for...in`描述的相同。建议使用`const`，因为它将为每次迭代初始化一个新的不可变变量。使用`let`并不可怕，但除非你有特定的原因需要在`IterationBody`内自己对变量进行变化，否则最好使用`const`。
 
-*   `ConditionExpression` is evaluated to determine whether `IterationBody` should run. If it evaluates to `true`, then the `IterationBody` portion will run. `ConditionExpression` will then be re-evaluated and so on. The cycle only stops when `ConditionExpression` evaluates to `false`.
-*   `IterationBody` can be either a single-line or block statement and will be run as many times as `ConditionExpression` evaluates to `true`.
+# `while`语句
 
-It is rare to use `while` for straightforward iteration because there are more suitable constructs for this (for example, `for...of`), but if we wanted to, it might look something like the following:
+`while`语句用于运行一段代码，直到某个条件不再被满足。它的语法如下：
 
-[PRE50]
+```js
+while (ConditionExpression) IterationBody
+```
 
-Since we are initializing `i` to `-1` and are using the prefix increment operator (`++i`), `ConditionExpression` will evaluate to `0 < array.length`, `1 < array.length`, `2 < array.length`, and `3 < array.length`. Naturally, the last check will fail as `3` is not less than `array.length`, meaning that the `while` statement will stop running its `IterationBody`. This means `Body` will only `3` times in total.
+每个部分的目的如下：
 
-It's common to use `while` when the limit of iteration is, as yet, unknown or computed in a complex fashion. In such instances, it is common to see `true` directly passed as `ConditionExpression` to `while(...)` and then a manual `break;` statement within the iteration to force it to end:
++   `ConditionExpression`被评估以确定`IterationBody`是否应该运行。如果评估为`true`，那么`IterationBody`部分将运行。然后`ConditionExpression`将被重新评估，依此类推。只有当`ConditionExpression`评估为`false`时，循环才会停止。
 
-[PRE51]
++   `IterationBody`可以是单行或块语句，将根据`ConditionExpression`评估为`true`运行多次。
 
-The `while` statement is also used in the context of generator functions if those generators are intended to produce infinite outputs. For example, you may wish to create a generator that always produces the *next* letter in an alphabet, and then loops round to the start of the alphabet when it gets to `z`:
+很少使用`while`进行直接迭代，因为有更适合此目的的结构（例如，`for...of`），但如果我们想要，可能会看起来像下面这样：
 
-[PRE52]
+```js
+const array = ['a', 'b', 'c'];
 
-Such infinite applications of generators are rare but they do exist and are a perfect place to use `while(...)`. Most other applications of `while` have been replaced with more succinct and contained methods of iteration such as `for...in` and `for...of`. Nonetheless, it is useful to know how to cleanly wield it.
+let i = -1;
+while (++i < array.length) {
+  console.log(array[i]);
+}
 
-# The do...while statement
+// Logs: 'a', 'b', 'c'
+```
 
-The `do...while` statement is similar to while it although guarantees an iteration before the check is carried out. Its syntax is formed of the `do` keyword followed by its body and then a typical parenthesized `while` expression:
+由于我们将`i`初始化为`-1`并使用前缀递增运算符（`++i`），`ConditionExpression`将评估为`0 < array.length`，`1 < array.length`，`2 < array.length`，和`3 < array.length`。自然地，最后一个检查将失败，因为`3`不小于`array.length`，这意味着`while`语句将停止运行其`IterationBody`。这意味着`Body`总共只会运行`3`次。
 
-[PRE53]
+当迭代的限制尚不明确或以复杂的方式计算时，通常会使用`while`。在这种情况下，常常会看到`true`被直接传递给`ConditionExpression`以在`while(...)`内部强制结束迭代的手动`break;`语句：
 
-The purpose of each part is as follows: 
+```js
+while (true) {
+  if (/* some custom condition */) {
+    break;
+  }
+}
+```
 
-*   `IterationBody` can be either a single-line or block statement and will be run once initially and then as many times as `ConditionExpression` evaluates to `true`.
-*   `ConditionExpression` is evaluated to determine whether `IterationBody` should run more than once. If it evaluates to `true`, then the `Body` portion will run. `ConditionExpression` will then be re-evaluated and so on. The cycle only stops when `ConditionExpression` evaluates to `false`.
+`while` 语句也在生成器函数的上下文中使用，如果这些生成器旨在产生无限的输出。例如，您可能希望创建一个始终产生字母表中的 *下一个* 字母的生成器，然后在到达 `z` 时循环到字母表的开头：
 
-Although the behavior of the `do...while` statement is different from  regular `while` statement, its semantics and broad applications remain the same. It is most useful in contexts where you need to always complete at least one step of an iteration before either checking whether to continue or changing the subject of the iteration. An example of this would be upward DOM traversal. If you have a DOM element and wish to run certain code on it and each of its DOM ancestors, then you may wish to use a `do...while` statement as follows:
+```js
+function *loopingAlphabet() {
+ let i = 0;
+ while (true) {
+   yield String.fromCharCode(
+     97 + (i >= 26 ? i = 0 : i++)
+   );
+ }
+}
 
-[PRE54]
+const alphabet = loopingAlphabet();
 
-A loop like this will execute its body once for the `element` value, whatever `element` is, and then will evaluate the assignment expression, `element = element.parentNode`. This assignment expression will evaluate to its newly assigned value, meaning that, in the case of `element.parentNode` being falsy (for example, `null`) the `do...while` will halt its iteration.
+alphabet.next(); // => { value: "a" }
+alphabet.next(); // => { value: "b" }
+alphabet.next(); // => { value: "c" }
+// ...
+alphabet.next(); // => { value: "z" }
+alphabet.next(); // => { value: "a" }
+alphabet.next(); // => { value: "b" }
+// ...
+```
 
-Assigning values in the `ConditionExpression` portion of a `while` or `do...while` statement is relatively common although it can be obscure to fellow programmers, so it's best to only do so if it's plainly obvious what the intent of the code is. If the preceding code was wrapped in a function called `traverseDOMAncestors`, then that would provide a helpful clue.
+这种无限应用的生成器很少见，但它们确实存在，并且是使用 `while(...)` 的理想场所。大多数其他 `while` 的应用已被更简洁且更受限制的迭代方法（如 `for...in` 和 `for...of`）取代。尽管如此，了解如何清晰地使用它还是有用的。
 
-# The switch statement
+# do...while 语句
 
-The `switch` statement is used to move control to a specific inner `case` clause that specifies a value that matches the value passed to `switch(...)`. It has the following syntax:
+`do...while` 语句类似于 while 语句，尽管它保证在执行检查之前会进行一次迭代。其语法由 `do` 关键字后面跟着其主体，然后是典型的带有括号的 `while` 表达式组成：
 
-[PRE55]
+```js
+do IterationBody while (ConditionExpression)
+```
 
-`SwitchExpression` will be evaluated once and its value compared via strict-equality to case statements within `SwitchBody`. Within `SwitchBody` there may be one or more `case` clauses and/or a `default` clause. The `case` clauses designate `CaseExpression`, whose value will be compared to that of `SwitchExpression`, and their syntax is as follows:
+每个部分的目的如下：
 
-[PRE56]
++   `IterationBody` 可以是单行语句或块语句，并将首先运行一次，然后根据 `ConditionExpression` 的评估结果运行多次。
 
-The `switch` statement is usually used to specify a selection of two or more mutually exclusive outcomes based on a specific value. With fewer conditions, it'd be conventional to use an `if...else` construct, but to accommodate more potential conditions, it's simpler to use `switch`:
++   评估 `ConditionExpression` 来确定 `IterationBody` 是否应运行多次。如果评估为 `true`，则将运行 `Body` 部分。然后将重新评估 `ConditionExpression`，依此类推。只有当 `ConditionExpression` 评估为 `false` 时，循环才会停止。
 
-[PRE57]
+虽然 `do...while` 语句的行为与常规的 `while` 语句不同，但其语义和广泛的应用仍然相同。它在需要在检查是否继续或更改迭代主题之前始终完成至少一个步骤的上下文中最有用。其中一个例子是向上的 DOM 遍历。如果您有一个 DOM 元素并希望在它及其每个 DOM 祖先上运行某些代码，那么可以像下面这样使用 `do...while` 语句：
 
-Once the `switch` mechanism finds the appropriate `case`, it will execute all code following that `case` statement until the very end of the `switch` statement or until it encounters a `break` statement. A `break` statement is used to *break out* of `SwitchBody` when the desired work is accomplished.
+```js
+do {
+  // Do something with `element`
+} while (element = element.parentNode);
+```
 
-# Breaking and fallthrough
+像这样的循环将为 `element` 值执行其主体一次，无论 `element` 是什么，然后将评估赋值表达式 `element = element.parentNode`。这个赋值表达式将评估为其新分配的值，这意味着在 `element.parentNode` 为虚假值（例如 `null`）的情况下，`do...while` 将停止其迭代。
 
-Given that `switch` statements are usually used to execute specific and mutually exclusive pieces of code depending on the value, it is conventional to use `break` between every `case` statement to ensure that only the appropriate code runs for any given value. Sometimes, however, it is desirable to avoid breaking between cases and let the `SwitchBody`code continue to run through multiple `case` statements and beyond. Doing this is known as **fallthrough**:
+在 `while` 或 `do...while` 语句的 `ConditionExpression` 部分分配值相对常见，尽管对其他程序员来说可能不太明显，因此最好只有在代码意图明显的情况下才这样做。如果前面的代码包装在一个名为 `traverseDOMAncestors` 的函数中，那将提供一个有用的线索。
 
-[PRE58]
+# `switch` 语句
 
-Here, you can see that we are employing fallthrough so that a language of either `'German'`, `'Deutsche'`, or `'DE'` will result in the same code running `welcomeMessage = 'Willkommen!'`. And following that, we immediately break to prevent any more of `SwitchBody` from running.
+`switch` 语句用于将控制移动到特定的内部 `case` 子句，该子句指定与传递给 `switch(...)` 的值匹配的值。它具有以下语法：
 
-It's unfortunately quite easy to accidentally forget the odd `break;` statement, resulting in accidental fallthrough and a very confused programmer. To avoid this, I'd recommend using a linter that has a rule that warns or gives an error in such cases unless given a specific directive. (We will cover linters in more detail in Chapter 15, *Tools for Cleaner Code*.)
+```js
+switch (SwitchExpression) SwitchBody
+```
 
-# Returning from a switch directly
+`SwitchExpression`将被评估一次，其值将通过严格相等性与`SwitchBody`内的 case 语句进行比较。在`SwitchBody`中可能有一个或多个`case`子句和/或一个`default`子句。`case`子句指定`CaseExpression`，其值将与`SwitchExpression`的值进行比较，其语法如下：
 
-When you have a `switch` statement residing in a function, it is sometimes best to simply `return` the intended values instead of having to rely on `break` statements. For example, in `generateWelcomeMessage`, we can simply return the welcome string. There's no need to go through the rigamarole of initializing a variable, assigning it, and breaking between cases:
+```js
+case CaseExpression:
+  [other JavaScript statements or additional clauses]
+```
 
-[PRE59]
+`switch`语句通常用于根据特定值指定两个或多个互斥结果的选择。如果条件较少，习惯上会使用`if...else`结构，但为了适应更多的潜在条件，使用`switch`更简单：
 
-Returning directly, in this way, is arguably clearer than breaking within each case, especially if each case's logic is fairly simple. 
+```js
+function generateWelcomeMessage(language) {
 
-# Case blocks
+  let welcomeMessage;
 
-Usually, the code following a `case` or `default` clause will not only occupy a single line. As such, it has become conventional to wrap these statements with a block, so that there is a sense of containment:
+  switch (language) {
+    case 'DE':
+      welcomeMessage = 'Willkommen!';
+      break;
+    case 'FR':
+      welcomeMessage = 'Bienvenue!';
+      break;
+    default:
+      welcomeMessage = 'Welcome!';
+  }
+
+  return welcomeMessage;
+}
 
-[PRE60]
+generateWelcomeMessage('DE'); // => "Willkommen!"
+generateWelcomeMessage('FR'); // => "Bienvenue!"
+generateWelcomeMessage('EN'); // => "Welcome!"
+generateWelcomeMessage(null); // => "Welcome!"
+```
+
+一旦`switch`机制找到适当的`case`，它将执行所有跟随该`case`语句的代码，直到`switch`语句的最后，或者直到遇到`break`语句为止。使用`break`语句是为了在完成所需的工作时*跳出*`SwitchBody`。
+
+# 中断和穿透
+
+鉴于`switch`语句通常用于根据值执行特定且互不相同的代码块，习惯上在每个`case`语句之间使用`break`，以确保对于任何给定值只执行适当的代码。但有时，希望在情况之间避免中断，让`SwitchBody`代码继续通过多个`case`语句和更多。这样做被称为**穿透**：
+
+```js
+switch (language) {
+
+  case 'German':
+  case 'Deutsche':
+  case 'DE':
+    welcomeMessage = 'Willkommen!';
+    break;
+
+  case 'French':
+  case: 'Francais':
+  case 'FR':
+    welcomeMessage = 'Bienvenue!';
+    break;
+
+  default:
+    welcomeMessage = 'Welcome!';
+}
+```
+
+在这里，你可以看到我们使用了穿透，以便`'German'`、`'Deutsche'`或`'DE'`的任何语言都会导致相同的代码运行`welcomeMessage = 'Willkommen!'`。随后，我们立即中断，以防止任何更多的`SwitchBody`代码运行。
+
+遗憾的是，很容易不小心忘记奇怪的`break;`语句，导致意外的穿透和一个非常困惑的程序员。为了避免这种情况，我建议使用一个具有规则的检查器，该规则在这种情况下发出警告或错误，除非给定特定指令。（我们将在第十五章 *更清洁代码的工具*中更详细地介绍检查器。）
+
+# 直接从开关返回
+
+当你在一个函数中有一个`switch`语句时，有时最好的方法是简单地`return`预期的值，而不是依赖于`break`语句。例如，在`generateWelcomeMessage`中，我们可以简单地返回欢迎字符串。没有必要初始化变量，赋值，和在不同的情况下来回跳转：
+
+```js
+function generateWelcomeMessage(language) {
+  switch (language) {
+    case 'DE':
+      return 'Willkommen!';
+    case 'FR':
+      return 'Bienvenue!';
+    default:
+      return 'Welcome!';
+  }
+}
+```
 
-This isn't strictly necessary and doesn't change any functionality, but it does offer more clarity to the reader of our code. It also paves the way for any block-level variables, should we wish to introduce these later. As we know, within a block (delimited with `{` and `}`), we can use `const` and `let` to declare variables that will be scoped only to that block:
+直接返回，这种方式可以说比在每个 case 中中断要更清晰，特别是如果每个 case 的逻辑相当简单。
 
-[PRE61]
+# case 块
 
-Here, we're able to declare specific variables that are scoped to the `February` case only. This is useful if we have a large amount of logic that we'd like to isolate. At this point, however, we should consider abstracting that logic in some other way. Lengthy `switch` statements can be incredibly hard to understand.
+通常，`case`或`default`子句之后的代码不止占据一行。因此，习惯上将这些语句包含在一个块中，以便有一种包容性：
 
-# Multivariant conditions
+```js
+switch (speed) {
+  case 'slow': {
+    console.log('Initiating slow speed');
+    car.changeSpeedTo(speed);
+    car.enableUrbanCollisionControl();
+  }
+  case 'fast': {
+    console.log('Initiating fast speed');
+    car.changeSpeedTo(speed);
+    car.enableSpeedLimitWarnings();
+    car.enableCruiseControlOption();
+  }
+  case 'regular':
+  default: {
+    console.log('Initiating regular speed');
+    car.changeSpeedTo(speed);
+  }
+}
+```
 
-Often, there's a need to express more complex conditions in each `case`, instead of just matching a singular value. If we pass `true` as `SwitchExpression`, then we are free to express custom conditional logic within each `CaseExpression`, as long as each `CaseExpression` evaluates to `true` when successful:
+这并不是严格必要的，也不会改变任何功能，但它确实为我们的代码读者提供了更多的清晰度。它还为我们引入块级变量铺平了道路，如果我们以后想引入这些变量的话。正如我们所知，在一个由`{`和`}`界定的块中，我们可以使用`const`和`let`来声明仅限于该块的作用域的变量：
 
-[PRE62]
+```js
+switch (month) {
+  case 'December':
+  case 'January':
+  case 'February': {
+    const message = 'In the UK, Spring is coming soon!';
+    // ...
+  }
+  //...
+}
+```
 
-This pattern allows us to express more multivariate and hybrid conditions. You may usually feel inclined toward multiple `if`/`else`/`if`/`else` statements, but if your logic can be expressed in a `switch` statement, then it may be best to opt for that. As always, you should consider the nature of your problem domain and its logic, and seek to make an informed decision about how you wish to implement your control flow. In some cases, a `switch` statement will only end up being more confusing.
+在这里，我们能够声明仅限于`February`情况的特定变量。如果我们有大量逻辑需要隔离，这将会很有用。然而，在这个时候，我们应该考虑以其他方式对这些逻辑进行抽象。冗长的`switch`语句可能是难以理解的。
 
-In the next section, we will cover some other approaches you can use to handle complex and lengthy logic that doesn't suit native constructs such as `switch`.
+# 多变条件
 
-# Handling cyclomatic complexity
+经常需要在每个`case`中表达更复杂的条件，而不仅仅是匹配单个值。如果我们将`SwitchExpression`传递为`true`，那么我们可以在每个`CaseExpression`中自由表达自定义的条件逻辑，只要每个`CaseExpression`在成功时都求值为`true`：
 
-**Cyclomatic complexity** is a measure of how many *linearly independent paths* there are through a program's code.
+```js
+switch (true) {
+  case user.role === 'admin' || user.role === 'root': {
+    // ...
+    break;
+  }
+  case user.role === 'member' && user.isActive: {
+    // ...
+    break;
+  }
+  case user.role === 'member' && user.isRecentlyInactive: {
+    // ...
+    break;
+  }
+}
+```
 
-Consider a simple program that contains several conditional checks and function invocations:
+这种模式允许我们表达更多多变和混合条件。你可能通常倾向于多个`if`/`else`/`if`/`else`语句，但如果你的逻辑可以在一个`switch`语句中表达，那么最好选择这种方式。总是应该考虑你的问题领域的特性和逻辑，并努力做出关于如何实现控制流的明智决定。在某些情况下，`switch`语句可能会变得更加混乱。
 
-[PRE63]
+在下一节中，我们将介绍一些其他方法，这些方法可以用于处理不适合原生结构（如`switch`）的复杂和冗长逻辑。
 
-Even in this misleadingly simple piece of code, nine distinct paths can be taken. So, depending on the values of `a`, `b`, `c`, and `d`, there are nine possible sequences of `alpha`, `bravo`, `charlie`, and `delta` that will run:
+# 处理圈复杂度
 
-*   `alpha()`
-*   `alpha()` and `bravo()`
-*   `alpha()`, `bravo()`, and `charlie()`
-*   `alpha()`, `bravo()`, `charlie()`, and `delta()`
-*   `alpha()`, `bravo()`, and ``delta()``
-*   `alpha()` and `charlie()`
-*   `alpha()`, `charlie()`, and `delta()`
-*   `alpha()` and `delta()`
-*   `delta()`
+**圈复杂度**：是衡量程序代码中有多少*线性独立路径*的指标。
 
-A high level of cyclomatic complexity is undesirable. It can lead to the following:
+考虑一个包含多个条件检查和函数调用的简单程序：
 
-*   **Cognitive burden**: Cyclomatically complex code can be difficult for programmers to understand. Code with many branches is difficult to internalize and hold in our minds and therefore harder to maintain or change.
-*   **Unpredictability**: Cyclomatically complex code can be unpredictable, especially if rare situations occur where there is, for example, an unforeseen state transition or underlying change of data. 
-*   **Fragility**: Cyclomatically complex code can be fragile in the face of change. Changing one line can have a disproportionate effect on the functionality of many other lines.
-*   **Bugginess**: Cyclomatically complex code can cause obscure bugs. If there are a dozen or more code paths within a singular function, then it's possible for a maintainer to not see all of them, leading to regressions.
+```js
+if (a) {
+ alpha();
+ if (b) bravo();
+ if (c) charlie();
+}
+if (d) delta();
+```
 
-There are tools that can quantify a code base's cyclomatic complexity. We will cover these in [Chapter 15](https://cdp.packtpub.com/clean_code_in_javascript/wp-admin/post.php?post=415&action=edit#post_508), *Tools for Cleaner Code*. Knowing areas of high cyclomatic complexity can help us to focus on those areas for maintenance and testing.
+即使在这段看似简单的代码中，也存在九条不同的路径。因此，根据`a`、`b`、`c`和`d`的值，可能会有九种`alpha`、`bravo`、`charlie`和`delta`的运行序列：
 
-It's frustratingly easy to end up in a situation where there are so many different conditions and branches within a singular module that nobody can understand what's happening. In addition to using tools to help us to identify areas of high complexity, we can use our own judgment and intuitions. The following are some examples of complexity that we can easily identify and avoid:
++   `alpha()`
 
-*   A function that has more than one `if`/`else`/`if` combination 
-*   An `if` statement that has many sub-conditions (many `if` statements within `if` statements)
-*   A `switch` statement that has many sub-conditions following each `case` clause
-*   Many `case` clauses within a `switch` block (for example, over 20 would be alarming!)
++   `alpha()` 和 `bravo()`
 
-These are not precise cautions but they should give you an idea of what you should watch out for. When we find such complexity, the first thing we should do is to sit back and re-consider our problem domain. Can we describe our logic differently? Can we form new or different abstractions?
++   `alpha()`，`bravo()` 和 `charlie()`
 
-Let's explore an example of a piece of code with high cyclomatic complexity and consider how we might simplify it with these questions in mind.
++   `alpha()`，`bravo()`，`charlie()` 和 `delta()`
 
-# Simplifying conditional spaghetti
++   `alpha()`，`bravo()` 和 ``delta()``
 
-To illustrate too much cyclomatic complexity and how we should approach simplifying it, we're going to be refactoring a piece of code that is responsible for deriving a set of ID numbers and types from a set of licenses:
++   `alpha()` 和 `charlie()`
 
-[PRE64]
++   `alpha()`，`charlie()`，和 `delta()`
 
-This function accepts an array of licenses and then extracts the ID numbers of those licenses (avoiding cases of `null` or `undefined` IDs). We determine the type of license based on characters found within its ID. There are four types of licenses that need to be identified and extracted:
++   `alpha()` 和 `delta()`
 
-*   `car`: These are of the `c{digits}` form, where digits form a number greater than or equal to 1,000,000
-*   `car_old`: These are of the `c{digits}` form, where digits form a number less than 1,000,000
-*   `hgv`: These are of the `h{digits}`
-*   `motorcycle`: These are of the `m{digits}`
++   `delta()`
 
-The following is an example of the input and the derived output of the `getIDsFromLicenses` function:
+高圈复杂度是不可取的，可能会导致以下情况：
 
-[PRE65]
++   **认知负荷**：具有圈复杂度的代码对程序员来说可能很难理解。具有许多分支的代码不容易内化并记住，因此更难维护或更改。
 
-As you may have observed, the code we've used to extract the IDs is quite cyclomatically complex. You may consider it perfectly reasonable code, and it arguably is, but it could be simpler still. Our function achieves its results imperatively, using up a lot of syntax to explain *how* it wants to accomplish its task instead of *what* it wants to accomplish. 
++   **不可预测性**：具有圈复杂度的代码可能是不可预测的，特别是在罕见情况下，例如出现了未预料的状态转换或数据底层变化。
 
-To simplify our code, it's first useful to take a fresh look at the problem domain. The task we want to accomplish is to take an input array and, from it, derive a set of license ID types and values. The output array will be an almost **1:1 **mapping from the input array, except for cases where licenses have a falsy `id` property (`null`, in this case). The following is an illustration of our I/O flow:
++   **脆弱性**：圈复杂的代码在面对变化时可能是脆弱的。改变一行可能会对许多其他行的功能产生不成比例的影响。
 
-[PRE66]
++   **Bugginess**：圈复杂的代码可以导致难以捉摸的错误。如果在一个单一函数中有十几个或更多的代码路径，那么维护者可能看不到所有这些，导致回归。
 
-Looked at abstractly in this way, this seems like the perfect opportunity to use `Array#map`. The `map` method allows us to run a function on every element within an array to derive a new array containing mapped values.
+有工具可以量化代码库的圈复杂性。我们将在[第十五章](https://cdp.packtpub.com/clean_code_in_javascript/wp-admin/post.php?post=415&action=edit#post_508)中介绍这些，*更干净代码的工具*。了解高圈复杂性区域可以帮助我们专注于这些区域的维护和测试。
 
-The first thing we'll want to map is the license to its `id`:
+很容易陷入一种情况，在一个单一模块中有太多不同的条件和分支，以至于没有人能够理解发生了什么。除了使用工具来帮助我们识别高复杂性区域外，我们还可以使用自己的判断和直觉。以下是一些我们可以轻松识别和避免的复杂性的例子:
 
-[PRE67]
++   一个具有多个`if`/`else`/`if`组合的函数
 
-We'll want to handle cases where there is no `id`. To do this, we can apply a filter on the derived IDs:
++   一个有许多子条件的`if`语句（即在`if`语句内部有许多`if`语句）
 
-[PRE68]
++   一个`switch`语句，后面跟随着许多子条件的`case`子句
 
-And, in fact, because we know that all valid IDs are truthy, we can simply do a Boolean check by directly passing `Boolean` as our filter function:
++   在一个`switch`块中有很多`case`子句（例如，超过 20 个将是令人担忧的！）
 
-[PRE69]
+这些并不是精确的警告，但它们应该给你一个关于你应该注意的内容的想法。当我们发现这样的复杂性时，我们应该做的第一件事是坐下来重新考虑我们的问题领域。我们能否以不同的方式描述我们的逻辑? 我们是否可以创建新的或不同的抽象?
 
-From this, we'll receive an array of our licenses but only those with a truthy `id` property. Following this, we can consider the next transformation we wish to apply to the data. We'd like to split the `id` value into its constituent parts: we need the initial character of the ID (`id.charAt(0)`), and then we want to extract the remaining characters (the digits) and cast them to the `Number` type (`Number(id.slice(1))`). We can then pass these parts to another function, which will be responsible for extracting the correct ID fields (`type` and `digits`) from this information:
+让我们探讨一个具有较高圈复杂度的代码示例，并考虑如何以这些问题为依据来简化它。
 
-[PRE70]
+# 简化条件分支乱麻
 
-The `getIDFields` function will need to determine the type from the individual character and digits for the ID, returning an object of the `{ type, digits }` form:
+为了说明圈复杂性过高以及我们应该如何简化它，我们将重构一段代码，该代码负责从一组许可证中产生一组 ID 号码和类型：
 
-[PRE71]
+```js
+function getIDsFromLicenses(licenses) {
+  const ids = [];
+  for (let i = 0; i < licenses.length; i++) {
+    let license = licenses[i];
+    if (license.id != null) {
+      if (license.id.indexOf('c') === 0) {
+        let nID = Number(license.id.slice(1));
+        if (nID >= 1000000) {
+          ids.push({ type: 'car', digits: nID });
+        } else {
+          ids.push({ type: 'car_old', digits: nID });
+        }
+      } else if (license.id.indexOf('h') === 0) {
+        ids.push({
+          type: 'hgv',
+          digits: Number(license.id.slice(1))
+        });
+      } else if (license.id.indexOf('m') === 0) {
+        ids.push({
+          type: 'motorcycle',
+          digits: Number(license.id.slice(1))
+        });
+      }
+    }
+  } 
+  return ids;
+}
+```
 
-Since we've abstracted this part our logic away to an individual function, we can independently observe and test its behavior:
+此函数接受许可证的数组，然后提取这些许可证的 ID 号码(避免`null`或`undefined`ID 的情况)。我们根据 ID 中的字符确定许可证的类型。需要鉴定和提取四种类型的许可证:
 
-[PRE72]
++   `car`: 这些是`c{digits}`形式，其中 digits 形成一个大于或等于 1,000,000 的数字
 
-Tying everything together, we end up with a new implementation of `getIDsFromLicenses` that looks like this:
++   `car_old`: 这些是`c{digits}`形式，其中 digits 形成一个小于 1,000,000 的数字
 
-[PRE73]
++   `hgv`: 这些是`h{digits}`形式的
 
-What we have achieved here is a significant reduction in the amount of cyclomatic complexity that our fellow programmers will need to contend with. We are utilizing `Array#map` and `Array#filter` to abstract away both decision-making and iteration logic. This means we end up with an implementation that is far more *declarative*.
++   `motorcycle`: 这些是`m{digits}`形式的
 
-You may notice, as well, that we have extracted repeated logic and generalized it. For example, in our initial implementation, we were implementing many calls to discover the first character of the ID (for example, `license.id.indexOf('m') === 0`). Our new implementation generalizes this by mapping to a data structure that already includes the first character as a distinct value that we can then pass through to `getIDFields` to get the relevant `type` and `digits` for that ID.
+以下是`getIDsFromLicenses`函数的输入和派生输出的示例:
 
-To summarize, our general refactoring approach has involved the following considerations:
+```js
+getIDsFromLicenses([
+    { name: 'Jon Smith', id: 'c32948' },
+    { name: 'Marsha Brown' },
+    { name: 'Leah Oak', id: 'h109' },
+    { name: 'Jim Royle', id: 'c29283928' }
+]);
+// Outputs:
+[
+  {type: "car_old", digits: 32948}
+  {type: "hgv", digits: 109}
+  {type: "car", digits: 29283928}
+]
+```
 
-*   We've considered the problem domain with a fresh perspective
-*   We've considered whether there is a common functional or declarative idiom for our I/O
-*   We've considered whether individual logic can be abstracted away or separated
+正如你可能已经观察到的那样，我们用于提取 ID 的代码具有相当复杂的圈复杂度。你可能认为它是完全合理的代码，而且它确实是，但它还可以更简单。我们的函数以命令式方式实现了其结果，使用大量语法来解释它希望如何完成任务，而不是它希望完成什么任务。
 
-Our code is now easier to comprehend, and hence easier to maintain and debug. It'll likely also be more reliable and stable since its individual units can be more simply tested and can hence avoid regressions in the future. There is, naturally, the potential for a slight performance decrease due to the increased usage of higher abstracted declarative idioms and functions over imperative code, but this is an incredibly marginal difference and, in the vast majority of situations, is worth implementing for the significant benefits that the refactoring produces in terms of maintainability and reliability.
+为了简化我们的代码，首先需要重新审视问题域。我们想要完成的任务是从输入数组中得出一组许可证 ID 类型和值。输出数组几乎与输入数组一一对应，只有许可证的`id`属性为假值（在这种情况下为`null`）的情况除外。以下是我们的输入/输出流程的示例：
 
-# Asynchronous control flow
+```js
+[INPUT LICENSES] ==> (DERIVATION LOGIC) ==> [OUTPUT ID TYPES AND DIGITS]
+```
 
-Most of the constructs we've looked at so far are used for synchronous code, where statements are evaluated sequentially, with each line completing before the next one begins:
+从抽象地看，这似乎是使用`Array#map`的绝佳机会。`map`方法允许我们对数组中的每个元素运行一个函数，以得出包含映射值的新数组。
 
-[PRE74]
+我们要映射的第一件事是将许可证映射到其`id`：
 
-Code like this is straightforward. We intuitively understand that these two lines of code will run one after the other. There is also an assumption that neither of these lines will take very long to execute, probably taking no more than a few micro- or milliseconds. 
+```js
+ids = licenses.map(license => license.id)
+```
 
-But what happens if we wish to bind to a user Event or fetch some remote data? These are things that take time and will only complete when some future Event occurs. In a less kind universe, there would be no way to deal with such scenarios other than simply waiting for them to complete and then continuing the execution of our program:
+我们需要处理没有`id`的情况。为此，我们可以对衍生的 ID 应用过滤器：
 
-[PRE75]
+```js
+ids = ids.filter(id => id != null)
+```
 
-In this unkind universe, `fetchSomeData()` would be a *blocking* function call, so named because it would block the execution of all other code until it finally completes. This means that we wouldn't be able to carry out any other vital tasks, and our application would essentially be at a standstill state until the task is completed, negatively affecting the user experience.
+实际上，由于我们知道所有有效的 ID 都是真值，我们可以直接用`Boolean`作为过滤函数进行布尔检查：
 
-Thankfully, JavaScript gives us a nicer universe than this—one in which we can initialize a task, such as fetching data, and then continue on with the rest of our program while that task is running. Such tasks are named *asynchronous* because they occur and complete non-synchronously, at a later time than *now*. When they do finally complete, JavaScript can helpfully notify us of this fact, calling whatever code depends upon the completion of that task.
+```js
+ids = ids.filter(Boolean)
+```
 
-# The Event Loop
+从中，我们将收到一个包含我们的许可证的数组，但只有那些具有真值`id`属性的许可证。在此之后，我们可以考虑对数据应用的下一个转换。我们想要将`id`值拆分为其构成部分：我们需要 ID 的初始字符（`id.charAt(0)`），然后我们想提取剩余的字符（数字），将它们转换为`Number`类型（`Number(id.slice(1))`）。然后我们可以将这些部分传递给另一个函数，负责从这些信息中提取正确的 ID 字段（`type`和`digits`）：
 
-To accomplish this, JavaScript maintains a single-threaded *Event Loop*. When the *Event Loop* kicks off, it'll run our program. Following the execution of a piece of code (such as that which initiates our program), the *Event Loop* will await messages (or Events) indicating that something has occurred (for example, a network request has completed or a browser UI event has occurred). When it receives a message, it will then execute any code that is depending upon or listening for that Event. The *Event Loop* will, again, run that code to completion before continuing to await other messages. This process repeats infinitely until the JavaScript program is halted (for example, by closing a tab in a browser).
+```js
+ids = ids.map(id => getIDFields(
+  id.charAt(0),
+  Number(id.slice(1))
+));
+```
 
-The fact that the *Event Loop* will always run a given piece of code to its completion means that any long-running or *blocking* code will prevent any other code from executing until it has completed. Some older browser API methods such as `alert()` and `prompt()` are examples of blocking functions that you may encounter. Calling these will effectively block any further execution of your JavaScript program:
+`getIDFields`函数需要根据 ID 的单个字符和数字确定类型，返回一个形如`{ type, digits }`的对象：
 
-[PRE76]
+```js
+function getIDFields(idType, digits) {
+  switch (idType) {
+    case 'c': return {
+      type: digits >= 1000000 ? 'car' : 'car_old',
+      digits
+    };
+    case 'h': return { type: 'hgv', digits };
+    case 'm': return { type: 'motorcycle', digits };
+  }
+}
+```
 
-Here, `console.log()` will not be evaluated until the alert dialog is dismissed by the user. This could be milliseconds, minutes, or even hours. During this period, our JavaScript program is halted, unable to continue. Its *Event Loop* may be receiving Events but it will not run the code associated with those Events until `alert()` finally completes.
+由于我们将逻辑的这部分抽象给了一个独立的函数，我们可以独立观察和测试它的行为：
 
-# Native asynchronous APIs
+```js
+getIDFields('c', 1000); // => { type: "car_old", digits: 1000 }
+getIDFields('c', 2000000); // => { type: "car", digits: 1000 }
+getIDFields('h', 1000); // => { type: "hgv", digits: 1000 }
+getIDFields('i', 1000); // => { type: "motorcycle", digits: 1000 }
+```
 
-Nowadays, it's normal to expect APIs within a browser and server to provide non-blocking asynchronous ways to call native mechanisms. Common examples of such APIs include the following:
+将所有部分联系在一起，我们最终得到一个类似下面这样的对`getIDsFromLicenses`的新实现：
 
-*   The DOM Event API, enabling code such as `window.addEventListener('click', callback)`
-*   The Node.js file API, enabling code such as `fs.readFile(path, callback)`
-*   The Browser Fetch API, enabling code such as `fetch().then(callback)`
+```js
+function getIDsFromLicenses(licenses) {
+  return licenses
+    .map(license => license.id)
+    .filter(Boolean)
+    .map(id => getIDFields(
+      id.charAt(0),
+      Number(id.slice(1))
+    ))
+}
+```
 
-All such interfaces share something in common: they all provide a way to somehow listen for their completion. Usually, this is achieved via a provided callback (a function). This callback will be called at some later point when the task has completed. Similarly, some native APIs return promises, which enable a richer mechanism of asynchronous control flow, but fundamentally still rely on passing callbacks via the Promise API. Additionally, ECMAScript 2017 introduced the concept of asynchronous functions (`async function() {}`) and the `await` keyword, which finally provided language support for promises, meaning that the completion of asynchronous work no longer requires callbacks.
+我们在这里取得的成就是大大减少了同行程序员需要处理的圈复杂度。我们利用了`Array#map`和`Array#filter`来抽象决策和迭代逻辑。这意味着我们最终得到了一个更加*声明式*的实现。
 
-Let's explore each of these asynchronous of control flow mechanisms individually.
+你可能还注意到，我们提取了重复逻辑并将其概括化。例如，在我们最初的实现中，我们实现了许多调用来发现 ID 的第一个字符（例如，`license.id.indexOf('m') === 0`）。我们的新实现通过映射到已经包括第一个字符的数据结构来概括这个问题，然后我们可以通过`getIDFields`获得该 ID 的相关`type`和`digits`。
 
-# Callbacks
+总结来说，我们的一般重构方法包括以下考虑因素：
 
-A callback is a conventional approach to providing a way to hook into asynchronous tasks. A callback is simply a function that is passed to another function and is expected to be called at some later point, possibly immediately, possibility soon, and possibly never. Consider the following `requestData` function:
++   我们以新的视角考虑了问题领域
 
-[PRE77]
++   我们考虑了是否有常见的函数式或声明式习惯用法来处理我们的 I/O
 
-As you can see, it accepts a callback as its second argument. When calling `requestData`, the callback will typically be anonymously passed inline, like so:
++   我们考虑了个别逻辑是否可以抽象化或分离。
 
-[PRE78]
+现在我们的代码更容易理解，因此更容易维护和调试。它可能也更可靠和稳定，因为其各个单元可以更简单地测试，因此可以避免未来的回归。当然，由于更高程度的抽象化声明习惯和函数的增加使用，可能会导致轻微的性能下降，但这是一个非常边缘的差异，在绝大多数情况下，为了维护性和可靠性的重大益处而实施是值得的。
 
-It is, of course, totally fine to have previously declared the callback, and doing so can aid comprehensibility as now the reader of your code will have an inkling as to when a callback might be invoked. Observe here how we're calling our `onResponse` callback to make clear that it is expected to be called upon the response becoming available (when it completes):
+# 异步控制流
 
-[PRE79]
+到目前为止，我们看过的大部分构造都用于同步代码，其中语句按顺序评估，每一行完成后下一行开始：
 
-Similarly, in complex APIs with multiple asynchronous state changes, it's common to see named callbacks registered in bulk, via an *object literal*:
+```js
+const someValue = getSomeValue();
+doSomethingWithTheValue(someValue);
+```
 
-[PRE80]
+像这样的代码很简单。我们直观地理解这两行代码会依次运行。我们还假设这两行代码都不会花费太长时间来执行，可能只需要几个微秒或毫秒。
 
-A callback will typically be passed arguments that indicate some important state that has been determined from the asynchronous work. For example, the Node.js `readFile` function invokes its callback with two arguments, a (possibly null) error and the (possibly null) data from the file itself:
+但是如果我们希望绑定到用户事件或获取一些远程数据会发生什么？这些事情需要时间，只有当未来事件发生时才会完成。在一个不那么友好的宇宙中，除了等待它们完成然后继续执行我们的程序之外，没有其他处理这种情况的方法：
 
-[PRE81]
+```js
+fetchSomeData();
+processFetchedData();
+```
 
-The function you pass a callback to is entirely in control of when your callback is invoked, how it is invoked, and what data is passed along with that invocation. This is why sometimes callbacks are spoken about as an *inversion of control*. Normally, you are in control of what functions you call, but when using callbacks, the control is inverted so that you are relying on another function or abstraction to (at some point) call your callback in the expected manner.
+在这个不友好的宇宙中，`fetchSomeData()`将是一个*阻塞*的函数调用，因为它会阻塞所有其他代码的执行，直到最终完成。这意味着我们将无法执行任何其他重要任务，我们的应用程序基本上会处于停滞状态，直到任务完成，从而对用户体验产生负面影响。
 
-*Callback hell* is the name given to the undesirable proliferation of multiple nested callbacks within a piece of code, usually done to carry out a series of asynchronous tasks that each rely on another previous asynchronous task. Here is an example of such a situation:
+幸运的是，JavaScript 给了我们一个比这更好的世界——一个可以初始化一个任务（比如获取数据），然后在任务运行时继续进行程序的其余部分的世界。这些任务被称为 *异步*，因为它们发生和完成的时间比 *现在* 晚。当它们最终完成时，JavaScript 可以帮助我们通知这一事实，调用任何依赖于该任务完成的代码。
 
-[PRE82]
+# 事件循环
 
-Here, you can see we have three different callbacks, all appearing in one hierarchy of scopes. We await the response of `/data/current-user`, then we optionally make a request to `twitterFeedURL`, and then, upon the rendering of the twitter feed (`renderTwitterFeed()`), we finally log a `"twitterFeedRender"` Event. That final log depends on two previous asynchronous tasks completing and so is (seemingly unavoidably) nested quite deeply.
+为了实现这一点，JavaScript 保持单线程的 *事件循环*。当 *事件循环* 开始时，它将运行我们的程序。在执行完一段代码（比如启动我们的程序的代码）后，*事件循环* 会等待消息（或事件），表明发生了什么（例如，网络请求已完成或浏览器 UI 事件已发生）。当它收到消息时，它将执行依赖或监听该事件的任何代码。*事件循环* 将再次运行该代码直到完成，然后继续等待其他消息。这个过程会一直重复下去，直到 JavaScript 程序停止（例如，通过关闭浏览器选项卡）。
 
-We can observe that this deeply nested piece of code is at the peak of a kind of *horizontal pyramid* of indentation. This is a common trait of *callback hell*, and as such, you can use the existence of these *horizontal pyramids*as something to watch out for. Not all deep indentations will be due to callbacks, of course, but it's usually high on the list of suspects:
+*事件循环* 总是运行给定的代码直到完成，这意味着任何长时间运行或 *阻塞* 的代码都会阻止其他代码执行直到它完成。一些旧的浏览器 API 方法，如 `alert()` 和 `prompt()` 就是你可能会遇到的阻塞函数的例子。调用这些函数将有效地阻止 JavaScript 程序的进一步执行：
+
+```js
+alert('Hello!');
+console.log('The alert has been dismissed by the user');
+```
+
+在这里，`console.log()` 在用户关闭警告对话框之前不会被评估。这可能是毫秒、分钟，甚至小时。在此期间，我们的 JavaScript 程序被停止，无法继续执行。它的 *事件循环* 可能正在接收事件，但直到 `alert()` 最终完成才会运行与这些事件相关的代码。
+
+# 本机异步 API
+
+如今，在浏览器和服务器中期望提供非阻塞异步调用本机机制的 API 是很正常的。这类 API 的常见例子包括以下内容：
+
++   DOM 事件 API，使得能够运行这样的代码：`window.addEventListener('click', callback)`
+
++   Node.js 文件 API，使得能够运行这样的代码：`fs.readFile(path, callback)`
+
++   浏览器的 Fetch API，使得能够运行这样的代码：`fetch().then(callback)`
+
+所有这样的接口都有共同之处：它们都提供了一种监听其完成的方式。通常，这是通过提供的回调（函数）实现的。此回调将在任务完成后的某个时刻被调用。同样，一些本机 API 返回 promises，这使得有更丰富的异步控制流机制，但基本上仍然依靠通过 Promise API 传递回调。此外，ECMAScript 2017 引入了异步函数（`async function() {}`）和`await`关键字的概念，最终为 promises 提供了语言支持，这意味着异步工作的完成不再需要回调。
+
+让我们分别探讨这些异步控制流机制。
+
+# 回调
+
+回调是提供连接到异步任务的常规方法。回调只是一个传递给另一个函数的函数，并且预计将在以后的某个时刻被调用，可能是立即，可能很快，或可能永远不会。考虑以下的`requestData`函数：
+
+```js
+function requestData(path, callback) {
+  // (Implementation of requestData)
+}
+```
+
+如您所见，它将回调作为其第二个参数。在调用`requestData`时，回调通常会被匿名地内联传递，如下所示：
+
+```js
+requestData('/data/123', (response) => { /* ... */ });
+```
+
+当然，先前声明回调是完全可以的，这样做可以增加可理解性，因为现在你的代码读者会对何时可能调用回调有所了解。请注意这里我们是如何调用我们的`onResponse`回调的，以明确表明期望在响应可用时（当它完成时）调用它：
+
+```js
+function onResponse(response) {
+  // Do something with the response...
+}
+
+requestData('/data/123', onResponse);
+```
+
+类似地，在具有多个异步状态更改的复杂 API 中，通常会看到通过*对象文字*批量注册命名回调：
+
+```js
+createDropdownComponent({
+  onOpen() {},
+  onSelect() {},
+  onClose() {},
+  onHover() {} // etc.
+});
+```
+
+回调通常会传递参数，指示已从异步工作中确定的一些重要状态。例如，Node.js 的`readFile`函数会用两个参数调用它的回调函数，即（可能为 null 的）错误和文件本身的（可能为 null 的）数据：
+
+```js
+fs.readFile('/path/to/file', (error, data) => {
+  if (error) {
+    // Handle the error!
+  } else {
+    // Handle the data! (No error has occurred!)
+  } 
+});
+```
+
+您将回调传递给的函数完全控制何时调用您的回调，如何调用它以及在调用时传递了什么数据。这就是为什么有时会将回调称为*控制反转*。通常情况下，您控制调用哪些函数，但是当使用回调时，控制被颠倒，因此您依赖另一个函数或抽象（在某个时刻）以期望的方式调用您的回调。
+
+*回调地狱*是指在代码片段中不希望存在多个嵌套回调的繁殖现象，通常用于执行一系列相互依赖的异步任务。以下是这种情况的一个示例：
+
+```js
+requestData('/data/current-user', (userData) => {
+  if (userData.preferences.twitterEnabled) {
+    requestData(userData.twitterFeedURL, (twitterFeedData) => {
+      renderTwitterFeed(twitterFeedData, {
+        onRendered() {
+          logEvent('twitterFeedRender', { userId: userData.id });
+        }
+      });
+    });
+  }
+});
+```
+
+在这里，你可以看到我们有三个不同的回调，都出现在一个范围层次的层级结构中。我们等待 `/data/current-user` 的响应，然后我们可以选择地发送请求到 `twitterFeedURL`，最后，在 Twitter feed 渲染(`renderTwitterFeed()`)完成后，我们最终记录了一个 `"twitterFeedRender"` 事件。这个最终的日志取决于前两个异步任务的完成，因此嵌套得非常深。
+
+我们可以看到，这个嵌套深度的代码片段处在一种*水平金字塔* 式缩进的顶峰。这是*回调地狱* 的一个常见特征，因此，你可以将这些*水平金字塔* 的存在视为一个需要注意的事项。当然，并非所有的深缩进都是由回调引起的，但通常在嫌疑名单中排名很高：
 
 ![](img/9fabad56-8ede-4573-9fcb-0467a4188f66.png)
 
-To avoid the *callback hell *indicated by the *horizontal pyramid*, we should consider re-thinking and potentially re-abstracting our code. In the preceding case, logging a Twitter feed render Event, we could, for example, have a generalized function for *getting and rendering Twitter feed data*. This would simplify the top-level of our program:
+为了避免*水平金字塔* 所指示的*回调地狱*，我们应该考虑重新思考和可能重构我们的代码。在上述情况中，记录 Twitter feed 渲染事件，我们可以，例如，有一个通用的*获取和渲染 Twitter feed 数据*的函数。这将简化我们程序的顶层：
 
-[PRE83]
+```js
+requestData('/data/current-user', (userData) => {
+  if (userData.preferences.twitterEnabled) {
+    renderTwitterForUser(userData);
+  }
+});
+```
 
-Observe how we have shortened our *horizontal pyramid* here. We are now free to implement `renderTwitterForUser` as we wish and import it as a dependency. Even though its implementation may involve its own callbacks, it is still a reduction in overall complexity for the programmer as it abstracts away half of the *pyramid* to a neatly separated abstraction. Most *callback hell* scenarios can be solved with a similar approach to re-designing and abstraction. This was a simple scenario, though. With more intertwined asynchronous tasks, it may be useful to use other mechanisms of asynchronous control flow.
+请注意，我们在这里缩短了*水平金字塔*。我们现在可以自由地实现`renderTwitterForUser`，并将其作为一个依赖导入。即使其实现可能涉及自己的回调，它对于程序员来说仍然是整体复杂性的减少，因为它将一半的*金字塔*抽象为一个整洁分离的抽象。大多数*回调地狱* 的情况都可以通过重新设计和抽象的类似方法来解决。尽管这是一个简单的情况。对于更加交织的异步任务，可能有必要使用其他异步控制流机制。
 
-# Event subscribing/emitting
+# 事件订阅/发射
 
-JavaScript is a language that feels right at home when subscribing to and emitting Events. Events are incredibly common in most JavaScript programs, whether dealing with user-derived Events within the browser or server-side Events in Node.js.
+JavaScript 在订阅和发射事件时感觉非常自然。事件在大多数 JavaScript 程序中都非常常见，无论是处理浏览器中用户派生的事件，还是在 Node.js 中处理服务器端事件。
 
-There are various names used for operations relating to Events in JavaScript, so it's useful to know all of these names upfront so we're not confused when encountering them. An event is an occurrence in time that will result in the invocation of any callbacks that have been subscribed for that Event. Subscribing to an Event has many names, which all effectively mean the same thing: *subscribing*, *registering*, *listening*, *binding*, and so on. When the Event occurs, the subscribed callback is invoked. This, as well, has many names: *invoking*, *calling*, *emitting*, *firing*, or *triggering*. The actual function that is called can also have various names: *function*, *callback*, *listener*, or *handler*.
+JavaScript 中有许多与事件相关的操作名称，因此事先了解所有这些名称是很有用的，这样我们在遇到它们时就不会感到困惑。事件是时间上的发生，将导致已订阅该事件的任何回调的调用。订阅事件有很多名称，它们都有效地意味着相同的事情：*订阅*，*注册*，*监听*，*绑定*等。当事件发生时，订阅的回调被调用。这也有许多名称：*调用*，*调用*，*发射*，*触发*等。被调用的实际函数也可以有各种名称：*函数*，*回调*，*监听器*或*处理器*。
 
-At its core, any abstraction that supports Events will usually do so by storing callbacks to be called later, keyed with specific Event names. We can imagine that a DOM element might store its Event listeners in a structure like the following:
+从其核心来看，任何支持事件的抽象通常都会通过存储稍后要调用的回调，并使用特定的事件名称作为键，来实现这一点。我们可以想象，DOM 元素可能会将其事件侦听器存储在以下结构中：
 
-[PRE84]
+```js
+{
+  "click": [Function, Function, Function],
+  "mouseover": [Function, Function],
+  "mouseout": [Function]
+}
+```
 
-Any Event-supporting abstraction will simply store a series of callbacks to be called later. As such, when subscribing to an Event, you will need to provide both the callback you wish it to call and the Event name that it will be tied to. In the DOM, we would do this like so:
+任何支持事件的抽象只会简单地存储一系列稍后要调用的回调。因此，当订阅事件时，你需要同时提供你希望它调用的回调和它将与之相关联的事件名称。在 DOM 中，我们会这样做：
 
-[PRE85]
+```js
+document,body.addEventListener('mousemove', e => {
+  e; // => the Event object
+});
+```
 
-Here, we see that an `Event` object is passed to the callback. This is idiomatically named `e` or `evt` for succinctness. Most abstractions that provide an Events API will pass specific Event-related information to the callback. This may be in the form of a singular `Event` object or several arguments.
+在这里，我们看到`Event`对象被传递给回调函数。这是为了简洁起见，习惯上用`e`或`evt`来命名。大多数提供事件 API 的抽象将向回调传递特定的与事件相关的信息。这可能以一个单独的`Event`对象或几个参数的形式传递。
 
-It's important to note that there truly is no single standard for Events although there are conventions that have emerged. Typically there will always be a method used to register or subscribe to an Event and then another to remove that subscription. The following is an example of using the Node.js Event-Emitter API, which is supported by the native HTTP module:
+重要的是要注意，事件真的没有单一的标准，尽管已经出现了一些惯例。通常情况下，会始终有一种方法用于注册或订阅事件，然后另一种方法用于取消订阅。以下是一个使用 Node.js 事件发射器 API 的示例，该 API 受到原生 HTTP 模块支持：
 
-[PRE86]
+```js
+const server = http.createServer(...);
 
-Here, you can see that the `on()` method is used to subscribe to Events, and the `off()` method is used to unsubscribe. Most Events APIs have similar event registration and de-registration methods although they may implement them in different ways. If you're crafting your own *Events* implementation, then it's advisable to ensure that you're providing a familiar set of methods and abstractions. To do this, take inspiration from either the native DOM Events interface or the Node.js **Event Emitter**. This will ensure that your Events implementation does not surprise or horrify other programmers too much.
+function onConnect(req, cltSocket, head) {
+  // Connect to an origin server...
+}
 
-Even though an Events API is essentially just a series of callbacks stored and invoked at specific times, there are still challenges in crafting it well. Amongst them are the following:
+// Subscribe
+server.on('connect', onConnect);
 
-*   Ensuring the order of invocation when a singular Event fires
-*   Handling cases where Events are emitted while other Events are mid-emission
-*   Handling cases where Events can be entirely canceled or removed per callback
-*   Handling cases where Events can be bubbled, propagated, or delegated (this is usually a DOM challenge)
+// Unsubscribe
+server.off('connect', onConnect);
+```
 
-*Propagation*, *bubbling*, and *delegation* are terms related to firing Events within a hierarchical structure. In the DOM, since `<div>` may exist within `<body>`, the Events API has prescribed that, if the user clicks on `<div>`, the emitted Event will propagate or *bubble* upward, first triggering any `click` listeners on `<div>` and then `<body>`. Delegation is intentional listening at a higher level of hierarchy, for example, listening at the `<body>` level and then reacting in a certain way, depending on what the Event object tells you about the Event's `target` node.
+在这里，你可以看到`on()`方法用于订阅事件，而`off()`方法用于退订。大多数事件 API 都有类似的事件注册和取消注册方法，尽管它们可能以不同的方式实现它们。如果你正在设计自己的*事件*实现，那么建议确保你提供一套熟悉的方法和抽象。为此，可以从原生 DOM 事件接口或 Node.js 的**事件发射器**中汲取灵感。这将确保你的事件实现不会让其他程序员感到太惊讶或害怕。
 
-Events provide more possibilities than a simple callback. Since they allow several different Events to be listened for, and the same Event to be listened for several times, any consuming code has far more flexibility in how it constructs its asynchronous control flow. An object that has an Events interface can be passed around throughout a code base and may be subscribed to many times, potentially. The nature of distinct Events, as well, means that different asynchronous concepts or occurrences are usefully kept separated so that a fellow programmer can easily tell which action will be taken in specific circumstances:
+尽管事件 API 本质上只是一系列在特定时间存储和调用的回调，但在设计良好的情况下仍然存在一些挑战。其中包括以下内容：
 
-[PRE87]
++   确保单一事件触发时的调用顺序
 
-This type of transparent separation helps to encode expectations within the mind of the programmer. It's simple to discern which function will be called in each case. Compare this to a generalized *something happened* `event` with an internal `switch` statement:
++   处理事件在其他事件正在进行中发射的情况。
 
-[PRE88]
++   处理事件可以完全取消或根据回调移除的情况
 
-Well-implemented Events provide a good semantic separation between conceptually different Events and, therefore, provide the programmer with a predictable series of asynchronous actions that they can reason about easily.
++   处理事件可能会被冒泡、传播或委托的情况（这通常是 DOM 的一个挑战）。
 
-# Promises
+*传播*、*冒泡*和*委托*是在分层结构内触发事件相关的术语。在 DOM 中，由于`<div>`可能存在于`<body>`内，事件 API 规定，如果用户点击`<div>`，发射的事件将向上传播或*冒泡*，首先触发`<div>`上的任何`click`监听器，然后是`<body>`上的。委托是在更高层次的层次上有意地监听，例如，在`<body>`级别上进行监听，然后根据事件对象告诉你有关事件的`target`节点的信息做出相应的反应。
 
-A *Promise* is an abstraction that surrounds the concept of an eventual value. It's easiest to think of a *Promise* as a simple object that will, at some point, contain a value. A Promise provides an interface via which you can pass callbacks to wait for either the eventually-fulfilled value or an error.
+事件提供了比简单回调更多的可能性。因为它们允许监听多种不同的事件，并且多次监听同一个事件，任何消费代码在构建其异步控制流时都具有更大的灵活性。具有事件接口的对象可以在整个代码库中传递，并且可能被订阅多次。不同事件的性质意味着不同的异步概念或发生可以被有用地分开，以便其他程序员可以轻松地了解特定情况下会采取哪些操作：
 
-At any given time a *Promise* will have a certain state:
+```js
+const dropdown = new DropDown();
+dropdown.on('select', () => { /*...*/ });
+dropdown.on('deselect', () => { /*...*/ });
+dropdown.on('hover', () => { /*...*/ });
+```
 
-*   **Pending**: The *Promise* is awaiting its resolution (the asynchronous task has not yet completed).
-*   **Settled**: The *Promise* is no longer pending and has either been fulfilled or rejected:
-    *   **Fulfilled**: The *Promise* has been successful and now has a value
-    *   **Rejected**: The *Promise* has failed with an error
+这种透明的分离有助于在程序员的头脑中编码期望。很容易辨别每种情况下将会调用哪个函数。将其与带有内部`switch`语句的泛化的*发生了某事*`事件`进行比较:
 
-Promises can be constructed via the *Promise* constructor, by passing a singular function argument (called an *executor*) that calls either a `resolve` or `reject` function to indicate either a settled value or an error, respectively:
+```js
+// Less transparent & more burdensome:
+dropdown.on('action', event => {
+  switch (event.action) {
+    case 'select': /*...*/; break;
+    case 'deselect': /*...*/; break;
+    // ...
+  }
+});
+```
 
-[PRE89]
+良好实施的事件在概念上不同的事件之间提供了很好的语义分离，因此为程序员提供了可以轻松推理的可预测的一系列异步操作。
 
-The instantiated `Promise` has the following methods available so that we can access its changed state (when it moves from *pending* to either *fulfilled* or *rejected):*
+# *Promise*
 
-*   `then(onFulfilled[, onRejected])`: This will append a fulfillment callback to the *Promise* and optionally a *rejection* callback. It will return a new *Promise* object, which will resolve to the return value of the called fulfillment or rejection handler, or will resolve as per the original *Promise* if there is no handler.
-*   `catch(onRejected)`: This will append a *rejection* callback to the *Promise* and will return a new *Promise* that will resolve to either the return value of the callback or (if the original *Promise* succeeds) its fulfillment value.
-*   `finally(onFinally)`: This will append a handler to the *Promise*, which will be called when the *Promise* is resolved, regardless of whether the resolution is a fulfillment or a rejection.
+*Promise*是包围潜在值概念的抽象。最容易将*Promise*视为一个简单的对象，该对象最终会包含一个值。*Promise*提供了一个接口，通过该接口可以传递回调函数，以等待最终完成值或错误。
 
-We can access the eventually resolved value of `answerToEverything` by passing a callback to its `then` method:
+在任何给定时间，*Promise*都会具有某种状态:
 
-[PRE90]
++   **挂起**: *Promise*正在等待其解析（异步任务尚未完成）。
 
-We can illustrate the exact nature of a *Promise* by exploring the native Fetch API, supported by most modern browsers:
++   **已解决**: *Promise*不再处于挂起状态，并且已经被完成或拒绝：
 
-[PRE91]
+    +   **已完成**: *Promise*已成功，现在有一个值
 
-The `fetch` function returns a *Promise* that we assign to our variable, `promiseOfData`. We can then hook into the request's eventual success (or failure) like so:
+    +   **已拒绝**: *Promise*已因错误而失败
 
-[PRE92]
+可以通过*Promise*构造函数构造*Promise*，通过传递一个名为*executor*的函数参数（调用`resolve`或`reject`函数来指示已解决值或错误）来构造*Promise*:
 
-It may appear as though promises are just a slightly more verbose abstraction than callbacks. Indeed, in the simplest case, you might just pass a *fulfillment* callback and a *rejection* callback. This, arguably, does not provide us with anything more useful than the original callback approach. But promises can be so much more than this.
+```js
+const answerToEverything = new Promise((resolve, reject) => {
+   setTimeout(() => {
+     resolve(42);
+   }, 1000);
+});
+```
 
-Since a *Promise* is just a regular object, it can be passed around your program just like any other value, meaning that the eventual resolution of a task no longer needs to be tied to code at the call site of the original task. Additionally, the fact that each `then`, `catch`, or `finally` call returns a *Promise* of its own, we can chain together any number of either synchronous or asynchronous tasks that rely on some original fulfillment.
+实例化的*Promise*具有以下方法，以便我们可以访问其更改的状态（当它从*挂起*转移到*完成*或*拒绝*）：
 
-In the case of `fetch()`, for example, the fulfilled `Response` object provides a `json()` method, which itself completes asynchronously and returns a *Promise*. Hence, to get the actual JSON data from a given resource, you would have to do the following:
++   `then(onFulfilled[, onRejected])`: 这将在*Promise*上附加一个*完成*回调，并可选地附加一个*拒绝*回调。它将返回一个新的*Promise*对象，该对象将解析为所调用的完成或拒绝处理程序的返回值，或者如果没有处理程序，则将根据原始*Promise*解析。
 
-[PRE93]
++   `catch(onRejected)`: 这将在*Promise*上附加一个*拒绝*回调，并将返回一个新的*Promise*，将解析为回调的返回值或（如果原始*Promise*成功）其完成值。
 
-Chaining together `then` calls is a popular pattern used to derive a new value from some prior value. Given the response, we wish to compute the JSON, and given the JSON, we may wish to compute something else:
++   `finally(onFinally)`: 这将在*Promise*上附加一个处理程序，当*Promise*被解决时，无论解决是完成还是拒绝，该处理程序都将被调用。
 
-[PRE94]
+通过向`then`方法传递回调函数，我们可以访问`answerToEverything`最终解决的值：
 
-Here, we are using multiple `then` calls to compute the sorted forenames of our users. There are, in fact, four distinct promises being created here, as foll:
+```js
+answerToEverything.then(answer => {
+  answer; // => 42
+});
+```
 
-[PRE95]
+通过探索大多数现代浏览器支持的本机 Fetch API，我们可以说明*Promise*的确切性质：
 
-Each *Promise* will only ever resolve to a single value. Once it's been either *fulfilled* or *rejected*, no other value can take its place. But as we see here, we can freely derive a new *Promise* from an original *Promise* by simply registering a callback via `then`, `catch`, or `finally`. The nature of only resolving once and of returning new derived promises means that we can compose promises together in a number of useful ways. In our example, we could derive two promises from our `users` data *Promise*: one that collects the forenames of users and another that collects their surnames:
+```js
+const promiseOfData = fetch('/some/data?foo=bar');
+```
 
-[PRE96]
+`fetch`函数返回一个*Promise*，我们将其赋给我们的变量`promiseOfData`。然后我们可以像这样连接到请求的最终成功（或失败）：
 
-We can then freely pass around these `forenames` and `surnames` promises, and any consuming code can do what it wants with them. For example, we may have a DOM element that we'd like to populate with the forenames when they are eventually available:
+```js
+const promiseOfData = fetch('/some/data');
 
-[PRE97]
+promiseOfData.then(
+  response => {
+    response; // The "fulfilled" Response
+  },
+  error => {
+    error; // The "rejected" Error 
+  }
+);
+```
 
-This `createForenamesComponent` function accepts the `forenames` *Promise* as an argument and then returns a `<div>` element. As you can see, we have called `render()` initially with `null`, which populates the DIV element with the `"loading..."` text. Once the *Promise* is fulfilled, we then re-render with the newly populated forenames.
+也许看起来 Promise 只是比回调更啰嗦的抽象。事实上，在最简单的情况下，你可能只需传递一个*完成*回调和一个*拒绝*回调。可以说，这并没有比原始回调方法提供更有用的内容。但 Promise 可以是更多。
 
-The ability to pass around promises in this manner makes them far more flexible than callbacks, and similar in spirit to an object that implements an Events API. However, with all of these mechanisms, it is necessary to create and pass around functions so that you can listen for future Events and then act on them. If you have a significant amount of asynchronous logic to express, this can be a real struggle. The control flow of a program littered with callbacks, Events, and promises can be unclear, even to those well accustomed to a particular code base. Even a small number of independently asynchronous Events can create a large variety of *states* throughout your application. A programmer can become very confused, as a result; the confusion relates to *what* is happening *when*. 
+由于*Promise*只是一个常规对象，它可以像任何其他值一样在您的程序中传递，这意味着任务的最终解决不再需要与原始任务的调用站点的代码绑定。此外，每个`then`、`catch`或`finally`调用返回自己的*Promise*，我们可以连接任意数量的依赖某些原始完成的任何同步或异步任务。
 
-The *state* of your program is determined at runtime. When a value or piece of data changes, no matter how small, it will be considered a *change of state*. *State* is typically expressed in terms of outputs from the program, such as a GUI or a CLI can be also be held internally and manifest in a later observed output.
+例如，在`fetch()`的情况下，完成的`Response`对象提供了一个`json()`方法，该方法本身是异步完成并返回一个*Promise*。因此，要从给定资源获取实际的 JSON 数据，您需要执行以下操作：
 
-To avoid confusion, it's best to implement any timing-related code as transparently as possible, so that there is no room for misunderstanding. The following is an example of code that may lead to misunderstanding:
+```js
+fetch('/data/users')
+  .then(response => response.json())
+  .then(jsonDataOfUsers => {
+    jsonDataOfUsers; // the JSON data that we got from response.json()
+  });
+```
 
-[PRE98]
+链接`then`调用是一种常用的模式，用于从先前的值派生新值。给定响应，我们希望计算 JSON，而给定 JSON，我们可能希望计算其他内容：
 
-This code seems to assume that the *Promise* returned by `appStartup()` will always fulfill after `userInfoLoader` has completed its work. Perhaps the author of this code happens to know that the `appStartup()` logic will always complete after `userInfoLoader`. Perhaps that is a certainty. But for us, reading this code for the first time, we have no confidence that `userInfoLoader.data` will be populated by the time `appStartup()` is fulfilled. It would be better to make the timing more transparent by, for example, returning a *Promise* from `userInfoLoader.init()` and then carrying out `appStartup()` on the explicit fulfillment of that *Promise:*
+```js
+fetch('/data/users')
+  .then(response => response.json())
+  .then(users => users.map(user => user.forename))
+  .then(userForenames => userForenames.sort());
+```
 
-[PRE99]
+在这里，我们使用多个`then`调用来计算我们用户的排序 forenames。实际上，这里创建了四个不同的 promise，如下所示：
 
-Here, we are arranging our code so that it is obvious what actions are dependent on what other actions and in what order the actions will occur. Using promises by themselves, just like any other asynchronous control flow abstraction, does not guarantee that your code will be easily comprehensible. It's important to always consider the perspective of your fellow programmers and the temporal assumptions that they'll make. Next, we will explore a newer addition to JavaScript that gives us native linguistic support for asynchronous code: you'll see how these additions enable us to write asynchronous code that is clearer in terms of *what* is happening *when*.
+```js
+const promiseA = fetch('/data/users');
+const promiseB = promiseA.then(response => response.json());
+const promiseC = promiseB.then(users => users.map(user => user.forename))
+const promiseD = promiseC.then(userForenames => userForenames.sort());
 
-# async and await
+promiseA === promiseB; // => false
+promiseB === promiseC; // => false
+promiseC === promiseD; // => false
+```
 
-The ECMAScript 2017 specification introduced new concepts to the JavaScript language in the form of the `async` and `await` keywords. The `async` keyword is used to designate a function as asynchronous:
+每个*Promise*只会解决为一个值。一旦它被*完成*或*拒绝*，没有其他值可以取而代之。但正如我们在这里所看到的，我们可以通过简单地通过`then`、`catch`或`finally`注册回调来自原始*Promise*派生一个新的*Promise*。只解决一次并返回新派生的 promise 的性质意味着我们可以以许多有用的方式组合 promise。在我们的例子中，我们可以从我们的`users`数据*Promise*派生两个 promise：一个收集用户的 forenames，另一个收集他们的 surnames:
 
-[PRE100]
+```js
+const users = fetch('/data/users').then(r => r.json());
+const forenames = users.then(users => users.map(user => user.forename));
+const surnames = users.then(users => users.map(user => user.surname));
+```
 
-Doing this, effectively, wraps whatever the function returns in `Promise` (if it is not already `Promise`)*.* So, if we attempt to call this function we will receive `Promise`:
+然后我们可以自由地传递这些`forenames`和`surnames` promises，任何消费代码都可以随意处理它们。例如，当它们最终可用时，我们可能有一个 DOM 元素，我们想要用 forenames 填充它:
 
-[PRE101]
+```js
+function createForenamesComponent(forenamesPromise) {
 
-As we've learned, we can subscribe to the fulfillment of `Promise` by using its `then` method:
+  const div = document.createElement('div');
 
-[PRE102]
+  function render(forenames) {
+    div.textContent = forenames ? forenames.join(', ') : 'Loading...';
+  }
 
-In concert with async functions that return *Promises,* we also have an `await` keyword. This enables us to wait for the fulfillment (or rejection) of the `Promise` simply by passing it to the right side of `await`. This may, for example, be a `Promise` returned from an `async` function call:
+  render(null); // Initial render
 
-[PRE103]
+  forenamesPromise.then(forenames => {
+    // When we receive the forenames we want to render them:
+    render(forenames);
+  });
 
-Or it may be a *Promise* designated inline, like so:
+  return div; 
+}
+```
 
-[PRE104]
+这个`createForenamesComponent`函数接受`forenames`*Promise*作为参数，然后返回一个`<div>`元素。如您所看到的，我们最初用`null`调用`render()`，它用`"loading..."`文本填充 DIV 元素。一旦*Promise*实现了，我们就会重新渲染，用新填充的 forenames 重新渲染。
 
-As you can see, the `await` keyword will wait for its *Promise* to resolve and thereby prevents any following lines from executing until that occurs.
+以这种方式传递 Promise 的能力使它们比回调更加灵活，并且与实现 Events API 的对象精神相似。然而，通过这些机制，有必要创建和传递函数，以便您能监听未来的事件，然后对其进行操作。如果要表达大量的异步逻辑，这可能是一个真正的挑战。代码中到处充斥着回调、事件和 Promise 的控制流可能不清晰，甚至对于熟悉特定代码库的人也是如此。即使少量独立的异步事件也可以在应用程序中产生大量的*状态*。程序员可能会变得非常困惑；困惑与*什么时候*发生*什么*有关。
 
-The following is another example—a `setupFeed` async function that awaits both `fetch()` and `response.json()`:
+你的程序的*状态*是在运行时确定的。当一个值或数据发生变化，无论多么小，都将被视为*状态的改变*。*状态*通常以程序输出的形式来表达，例如 GUI 或 CLI 也可以内部保存并在稍后观察的输出中体现。
 
-[PRE105]
+为了避免混淆，最好尽可能透明地实现与时间相关的代码，以便不会产生误解。以下是一个可能导致误解的代码示例：
 
-It's important to note that the `await` keyword does not block like `alert()` or `prompt()`. Instead, it simply pauses the execution of the asynchronous function, freeing up the *Event Loop* to continue with other work, and then, when its *Promise* resolves, it will continue execution where it left off. Remember, `await` is only syntactic *sugar* over functionality that we can already achieve. If we wanted to implement our `setupFeed` function without `async`/`await`, we could easily do that by reverting to our old pattern of passing callbacks to `Promise#then`:
+```js
+userInfoLoader.init();
 
-[PRE106]
+appStartup().then(() => {
+  const userID = userInfoLoader.data.id;
+  const userName = userInfoLoader.data.name;
+  renderApplication(userID, userName);
+});
+```
 
-Observe how the code is slightly clunkier and more congested when we don't use `await`. Using `await` in concert with asynchronous functions gives us the same satisfyingly linear and procedural appearance as regular synchronous code. This can vastly simplify an otherwise complicated asynchronous control flow, making it clearer to our fellow programmer *what* is happening *when*. 
+这段代码似乎假设 `appStartup()` 返回的 *Promise* 在 `userInfoLoader` 完成工作后总是会被执行。也许这段代码的作者碰巧知道 `appStartup()` 逻辑总是在 `userInfoLoader` 完成之后执行。也许这是一个确定性。但对于我们来说，第一次阅读这段代码，我们无法确信 `appStartup()` 被执行时 `userInfoLoader.data` 是否已被填充。最好通过更加透明的方式来控制时机，比如，从 `userInfoLoader.init()` 返回一个 *Promise*，然后在该 *Promise* 明确被执行时执行 `appStartup()`。
 
-The await keyword is also available for use within the `for...of` iteration construct. Doing so will await each value iterated over. If, during iteration, any encountered value is a *Promise,* the iteration will not continue until that *Promise* has been resolved:
+```js
+userInfoLoader.init()
+  .then(() => appStartup())
+  .then(() => {
+    const userID = userInfoLoader.data.id;
+    const userName = userInfoLoader.data.name;
+    renderApplication(userID, userName);
+  });
+```
 
-[PRE107]
+在这里，我们安排我们的代码，使得什么动作依赖于什么其他动作，以及动作的执行顺序显而易见。仅仅使用 Promise，就像任何其他异步控制流抽象一样，并不能保证你的代码会易于理解。重要的是要始终考虑你的同行程序员的视角和他们会做出的时间假设。接下来，我们将探讨 JavaScript 的一个新添加，它为我们提供了对异步代码的本地语言支持：你将看到这些添加如何使我们能够编写更清晰的异步代码，以便清楚地说明*什么时候*发生*什么*。
+
+# 异步和等待
+
+ECMAScript 2017 规范引入了一种新的概念，用 `async` 和 `await` 关键字形式添加到了 JavaScript 语言中。 `async` 关键字用于指定一个函数是异步的：
+
+```js
+async function getNumber() {
+  return 42;
+}
+```
+
+这样做，实际上将函数返回的内容包装在`Promise`中（如果它还不是`Promise`的话）。所以，如果我们尝试调用这个函数，我们将收到`Promise`：
+
+```js
+getNumber() instanceof Promise; // => true
+```
+
+正如我们所了解的，我们可以通过使用`then`方法来订阅`Promise`的满足：
+
+```js
+getNumber().then(number => {
+  number; // => 42
+});
+```
+
+与返回*Promises*的异步函数相协作，我们还有一个`await`关键字。这使我们能够等待`Promise`的满足（或拒绝），只需将其传递到`await`的右侧即可。例如，这可能是从`async`函数调用返回的`Promise`：
+
+```js
+await someAsyncFunction();
+```
+
+或者它可能是内联指定的*Promise*，像这样：
+
+```js
+const n = await new Promise(fulfill => fulfill(123));
+n; // => 123
+```
+
+正如你所看到的，`await`关键字将等待它的*Promise*解决，从而阻止任何后续行动，直到这种情况发生。
+
+以下是另一个例子——一个`setupFeed`异步函数，它等待`fetch()`和`response.json()`：
+
+```js
+async function setupFeed() {
+  const response = await fetch('/data');
+  const json = await response.json();
+  console.log(json);
+}
+```
+
+值得注意的是，`await`关键字不像`alert()`或`prompt()`一样阻塞。相反，它只是暂停异步函数的执行，释放*Event Loop*以继续其他工作，然后，当它的*Promise*解决时，它将在离开的地方继续执行。记住，`await`只是对我们已经实现的功能的语法*糖*。如果我们想要在不使用`async`/`await`的情况下实现我们的`setupFeed`函数，我们可以很容易地通过恢复到将回调传递给`Promise#then`的旧模式来做到这一点：
+
+```js
+function setupFeed() {
+  fetch('/data').then(response => {
+    return response.json()
+  }).then(json => {
+    console.log(json);
+  });
+}
+```
+
+注意，当我们不使用`await`时，代码略显笨拙和拥挤。与异步函数一起使用`await`可以给我们提供与常规同步代码一样令人满意的线性和程序化外观。这可以大大简化否则复杂的异步控制流程，使我们的同行程序员更清楚*何时*发生*什么*。
+
+`await`关键字也可用于`for...of`迭代结构内部。这样做将等待每个迭代的值。如果在迭代期间遇到任何*Promise*值，那么迭代将不会继续，直到*Promise*被解决为止：
+
+```js
+const allData = [
+  fetch('/data/1').then(r => r.json()),
+  fetch('/data/2').then(r => r.json()),
+  fetch('/data/3').then(r => r.json())
+];
+
+for await (const data of allData) {
+  console.log(data);
+}
+
+// Logs data from /data/1, /data/2 and /data/3
+```
 
 没有*Promises*或`await`和`async`，表达这种异步过程不仅需要更多的代码，还需要更多的时间来理解。这些构造和抽象的美妙之处在于它们使我们能够忽略异步操作的实现细节，从而使我们能够纯粹地专注于表达我们的问题领域。随着我们在本书中的进展，我们将进一步探索这种抽象精神，因为我们将处理一些更大更棘手的问题领域。
 
