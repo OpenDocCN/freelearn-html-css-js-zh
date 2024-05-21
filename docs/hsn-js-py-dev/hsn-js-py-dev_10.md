@@ -1,4 +1,4 @@
-与框架和库一起工作
+# 第八章：与框架和库一起工作
 
 很少有语言存在于一个自包含的、整体的象牙塔中。几乎总是，特别是对于任何现代语言，程序中都会使用第三方代码来增加功能。使用第三方代码，比如库和框架，也是使用 JavaScript 的一个重要部分。让我们来看看我们工具包中一些更受欢迎的开源工具。
 
@@ -12,7 +12,7 @@
 
 +   Vue.js
 
-# 第十一章：技术要求
+# 技术要求
 
 准备好使用存储库的`Chapter-8`目录中提供的代码：[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-8`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-8)。由于我们将使用命令行工具，还要准备好你的终端或命令行 shell。我们需要一个现代浏览器和一个本地代码编辑器。
 

@@ -1,4 +1,4 @@
-安全和密钥
+# 第十七章：安全和密钥
 
 安全性并不是一件简单的事情。在设计应用程序时，从一开始就牢记安全性是很重要的。例如，如果您意外地将您的密钥提交到存储库中，您将不得不进行一些技巧，要么从存储库的历史记录中删除它，要么更有可能的是，您将不得不撤销这些凭据并生成新的凭据。
 
@@ -12,7 +12,7 @@
 
 +   `.gitignore`和凭据的环境变量
 
-# 第二十二章：技术要求
+# 技术要求
 
 准备好使用存储库的`Chapter-17`目录中提供的代码：[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-17`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-17)。由于我们将使用命令行工具，还需要准备您的终端或命令行 shell。我们需要一个现代浏览器和一个本地代码编辑器。
 

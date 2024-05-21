@@ -1,4 +1,4 @@
-将所有内容整合在一起
+# 第十九章：将所有内容整合在一起
 
 终于！我们现在可以构建网站的前端和后端，并在两侧使用 JavaScript！为了将所有内容整合在一起，让我们构建一个小型 Web 应用程序，该应用程序使用带有 React 前端和 MongoDB 的 Express API。
 
@@ -14,7 +14,7 @@
 
 +   数据库 - 所有 CRUD 操作
 
-# 第二十四章：技术要求
+# 技术要求
 
 准备好使用存储库的`chapter-19`目录中提供的代码，网址为[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-19`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-19)。由于我们将使用命令行工具，还需要准备终端或命令行 shell。我们需要一个现代浏览器和一个本地代码编辑器。
 

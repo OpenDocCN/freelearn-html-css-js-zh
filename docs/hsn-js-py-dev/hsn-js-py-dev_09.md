@@ -1,4 +1,4 @@
-事件，事件驱动设计和 API
+# 第七章：事件，事件驱动设计和 API
 
 在前端应用的核心是*事件*。JavaScript 允许我们监听并对用户和浏览器事件做出反应，以直观地改变用户内容，从而创建优雅的用户界面和体验。我们需要知道如何使用这些被抛出的数据包。浏览器事件是我们的基础 - 它们使我们不仅仅拥有静态应用，而是动态的！通过理解事件，您将成为一个完整的 JavaScript 开发人员。
 
@@ -12,7 +12,7 @@
 
 +   处理异步性
 
-# 第十章：技术要求
+# 技术要求
 
 准备好使用存储库的`Chapter-7`目录中提供的代码：[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-7`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-7)。
 

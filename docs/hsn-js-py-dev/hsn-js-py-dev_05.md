@@ -1,4 +1,4 @@
-数据和你的朋友，JSON
+# 第四章：数据和你的朋友，JSON
 
 现在是时候学习 JavaScript 如何内部处理数据的具体细节了。这些结构大多数（几乎）与 Python 相同，但在语法和用法上有所不同。我们在第三章中提到过，*Nitty-Gritty Grammar*，但现在是时候深入了解如何处理数据、使用方法和属性了。了解如何处理数据是使用 JavaScript 的基础，特别是在进行高级工作，比如处理 API 和 Ajax 时。
 
@@ -16,7 +16,7 @@
 
 +   前端的 API 调用 - Ajax
 
-# 第六章：技术要求
+# 技术要求
 
 从 GitHub 上克隆或下载本书的存储库[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers)，并查看`Chapter-4`的材料。
 

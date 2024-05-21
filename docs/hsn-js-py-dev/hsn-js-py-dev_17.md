@@ -1,4 +1,4 @@
-React 与 Django
+# 第十四章：React 与 Django
 
 到目前为止，我们已经使用了相当多的 Express，但 Django 提供了标准 Express 应用程序所没有的功能。它具有内置的脚手架、数据库集成和模板工具，提供了一种诱人的后端解决方案。然而，正如我们所学到的，JavaScript 在前端解决方案方面具有更强大的功能。那么，我们如何将这两者结合起来呢？
 
@@ -12,7 +12,7 @@ React 与 Django
 
 +   将所有内容整合在一起
 
-# 第十八章：技术要求
+# 技术要求
 
 准备好使用存储库中`chapter-14`目录中提供的代码，该存储库位于[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-14`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-14)。由于我们将使用命令行工具，还需要准备好终端或命令行 shell。我们需要一个现代浏览器和本地代码编辑器。
 

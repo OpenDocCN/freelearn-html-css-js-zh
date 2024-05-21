@@ -1,4 +1,4 @@
-Node.js 和 MongoDB
+# 第十八章：Node.js 和 MongoDB
 
 您可能已经听说过**MEAN**堆栈：MongoDB、Express、Angular 和 Node.js，或者**MERN**堆栈：MongoDB、Express、React 和 Node.js。我们尚未讨论的缺失部分是 MongoDB。让我们探讨一下这个 NoSQL 数据库如何可以直接从 Express 中使用。我们将构建我们在第十三章中开始的星际飞船游戏的下一个迭代，*使用 Express*，只是这次使用 MongoDB 并且加入了一些测试！
 
@@ -12,7 +12,7 @@ Node.js 和 MongoDB
 
 +   将 API 连接在一起
 
-# 第二十三章：技术要求
+# 技术要求
 
 准备好使用存储库的`chapter-18`目录中提供的代码：[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-18`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-18)。由于我们将使用命令行工具，还要确保您的终端或命令行 shell 可用。我们需要一个现代浏览器和一个本地代码编辑器。
 

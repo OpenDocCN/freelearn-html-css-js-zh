@@ -1,4 +1,4 @@
-我们可以在服务器端使用 JavaScript 吗？当然可以！
+# 第二章：我们可以在服务器端使用 JavaScript 吗？当然可以！
 
 我们通常不会认为 JavaScript 存在于服务器端，因为它的大部分历史只存在于浏览器端。然而，归根结底，JavaScript *是*一种语言——而语言可以对其应用程序（在一定程度上）是不可知的。虽然从一开始就可以使用一些不同的工具在服务器端使用 JavaScript，但是**Node.js**的引入使得在服务器端使用 JavaScript 成为主流。在这里，Python 和 JavaScript 之间的相似之处比在前端更多，但在实践中两种技术的使用仍然存在显著差异。让我们来看一下 Node.js 以及我们如何利用它在服务器端的力量——以及为什么我们想要这样做！
 
@@ -10,7 +10,7 @@
 
 +   线程和异步性
 
-# 第四章：技术要求
+# 技术要求
 
 您可以在 GitHub 上找到本章中的代码文件：[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers)。
 

@@ -1,4 +1,4 @@
-什么是 Node.js？
+# 第十一章：什么是 Node.js？
 
 现在我们已经研究了 JavaScript 在前端的使用，让我们深入探讨它在“JavaScript 无处不在”范式中的作用，使用 Node.js。我们在第二章，*我们可以在服务器端使用 JavaScript 吗？当然可以！*中讨论了 Node.js，现在是时候更深入地了解我们如何使用它来创建丰富的服务器端应用程序了。
 
@@ -12,7 +12,7 @@
 
 +   Hello, World!
 
-# 第十五章：技术要求
+# 技术要求
 
 准备好在存储库的 `Chapter-11` 目录中使用提供的代码：[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-11`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-11)。由于我们将使用命令行工具，还需要准备好终端或命令行 shell。我们需要一个现代浏览器和一个本地代码编辑器。
 

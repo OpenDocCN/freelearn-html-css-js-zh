@@ -1,4 +1,4 @@
-JavaScript 进入主流编程
+# 第一章：JavaScript 进入主流编程
 
 JavaScript 可以在客户端和服务器端运行，这意味着使用 JavaScript 与 Python 的用例会有所不同。从不起眼的开始，JavaScript 以其怪癖、优势和局限性，现在成为我们所知的交互式网络的主要支柱之一，从丰富的前端交互到 Web 服务器。它是如何成为 Web 上最重要的普遍技术之一的？为了理解 JavaScript 在前端和后端都能添加功能的强大能力，我们首先需要了解前端是什么，以及它不是什么。了解 JavaScript 的起源有助于澄清 JavaScript 的“为什么”，所以让我们来看一下。
 
@@ -14,7 +14,7 @@ JavaScript 可以在客户端和服务器端运行，这意味着使用 JavaScri
 
 +   JavaScript 如何适应前端生态系统
 
-# 第三章：技术要求
+# 技术要求
 
 您可以在 GitHub 上找到本章中的代码文件[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers)。
 

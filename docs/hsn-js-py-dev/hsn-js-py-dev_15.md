@@ -1,4 +1,4 @@
-Node.js 与 Python
+# 第十二章：Node.js 与 Python
 
 为什么开发人员会选择 Node.js 而不是 Python？它们可以一起工作吗？我们的程序是什么样子的？这些问题等等都是 Python 和 Node.js 之间一些差异的核心，了解何时以及在何处使用特定的语言非常重要。例如，有些任务更适合某种语言，而不适合其他语言，技术人员有责任为适当的语言进行倡导。让我们调查在选择 Node.js 与 Python 时的用例和不同的考虑因素。
 
@@ -8,7 +8,7 @@ Node.js 与 Python
 
 +   性能影响
 
-# 第十六章：技术要求
+# 技术要求
 
 准备好使用存储库中`Chapter-12`目录中提供的代码，网址为[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-12`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-12)。由于我们将使用命令行工具，请确保你的终端或命令行 shell 可用。我们需要一个现代浏览器和一个本地代码编辑器。
 

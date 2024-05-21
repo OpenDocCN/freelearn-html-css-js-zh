@@ -1,4 +1,4 @@
-解读错误消息和性能泄漏
+# 第九章：解读错误消息和性能泄漏
 
 当然，没有一个好的语言是完整的，没有一种方法可以检测和诊断代码中的问题。JavaScript 提供了非常强大和直观的丰富错误消息，但在处理错误时有一些注意事项和技巧。
 
@@ -14,7 +14,7 @@
 
 +   适应 JavaScript 的性能限制
 
-# 第十二章：技术要求
+# 技术要求
 
 准备好在 GitHub 上的`Chapter-9`示例中进行工作，网址为[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-9/`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-9/)。
 

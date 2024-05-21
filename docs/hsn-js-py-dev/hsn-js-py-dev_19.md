@@ -1,4 +1,4 @@
-进入 Webpack
+# 第十六章：进入 Webpack
 
 所以，现在你有了漂亮的前端和后端代码。太棒了！它看起来在你的笔记本上如此漂亮……那么下一步是什么？将它发布到世界上！听起来很容易，但当我们有像 React 这样的高级 JavaScript 使用时，我们可能还想采取一些额外步骤，以确保我们的代码以最高效率运行，所有依赖项都得到解决，并且一切都与现代技术兼容。此外，下载大小是一个重要考虑因素，所以让我们探讨一下 webpack，这是一个帮助解决这些问题的工具。
 
@@ -10,7 +10,7 @@
 
 +   部署
 
-# 第二十章：技术要求
+# 技术要求
 
 准备好使用存储库的`Chapter-16`目录中提供的代码：[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-16`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-16)。因为我们将使用命令行工具，还要准备好你的终端或命令行 shell。我们需要一个现代浏览器和一个本地代码编辑器。
 

@@ -1,4 +1,4 @@
-文档对象模型（DOM）
+# 第六章：文档对象模型（DOM）
 
 **文档对象模型**（**DOM**）是浏览器暴露给 JavaScript 的 API，允许 JavaScript 与 HTML 和间接与 CSS 进行通信。由于 JavaScript 的主要能力之一是动态更改页面上的内容，我们应该知道如何做到这一点。这就是 DOM 的作用。
 
@@ -12,7 +12,7 @@
 
 +   操作
 
-# 第九章：技术要求
+# 技术要求
 
 确保在`Chapter-6`目录中有[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers) 存储库方便使用。
 

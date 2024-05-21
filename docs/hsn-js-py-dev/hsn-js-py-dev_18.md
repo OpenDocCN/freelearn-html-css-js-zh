@@ -1,4 +1,4 @@
-将 Node.js 与前端结合
+# 第十五章：将 Node.js 与前端结合
 
 现在我们知道了前端框架和 Node.js，让我们将两端连接起来。我们将构建三个小应用程序，以演示我们的知识几乎实现全栈功能。毕竟，前端和后端都想要彼此了解！这将是我们首次尝试同时使用这些技术，所以一定要给自己足够的空间和时间来学习，因为这些是重要但非常重的话题。
 
@@ -12,7 +12,7 @@
 
 +   使用 Yelp 和 Firebase 创建餐厅数据库
 
-# 第十九章：技术要求
+# 技术要求
 
 准备好使用存储库的`Chapter-15`目录中提供的代码：[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-15`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-15)。由于我们将使用命令行工具，还要准备好您的终端或命令行 shell。我们需要一个现代浏览器和一个本地代码编辑器。
 

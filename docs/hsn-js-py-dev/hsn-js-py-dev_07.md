@@ -1,4 +1,4 @@
-Hello World! and Beyond: Your First Application
+# 第五章：Hello World 以及更多：你的第一个应用
 
 啊，那个古老的“Hello World!”脚本。虽然非常简单，但它是对任何语言的一个很好的第一次测试。不过，让我们做得更多一点，不仅仅是说 hello；让我们用几个小应用程序来动手。毕竟，编程不仅仅是理论。我们将看一下编码挑战中提出的一个常见问题，以及*我们的程序是如何工作的。
 
@@ -12,7 +12,7 @@ Hello World! and Beyond: Your First Application
 
 +   理解作用域
 
-# 第八章：技术要求
+# 技术要求
 
 从[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers)克隆或下载本书的存储库，并准备查看`Chapter-5`的材料。
 

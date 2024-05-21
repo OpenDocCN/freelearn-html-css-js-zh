@@ -1,4 +1,4 @@
-JavaScript，前端的统治者
+# 第十章：JavaScript，前端的统治者
 
 如果您开始领会 JavaScript 对现代网站和 Web 应用程序功能的重要性，那么您正在走上正确的道路。没有 JavaScript，我们在网页上理所当然的大多数用户界面都不会存在。让我们更仔细地看看 JavaScript 如何将前端整合在一起。我们将使用一些 React 应用程序，并比较和对比 Python 应用程序，以进一步了解 JavaScript 在前端的重要性的原因和方式。
 
@@ -10,7 +10,7 @@ JavaScript，前端的统治者
 
 +   了解现代应用程序
 
-# 第十三章：技术要求
+# 技术要求
 
 准备好使用存储库中`Chapter-10`目录中提供的代码进行工作，网址是[`github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-10`](https://github.com/PacktPublishing/Hands-on-JavaScript-for-Python-Developers/tree/master/chapter-10)。由于我们将使用命令行工具，因此请确保您的终端或命令行 shell 可用。我们需要一个现代浏览器和一个本地代码编辑器。
 
