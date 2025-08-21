@@ -1,0 +1,980 @@
+- en: Chapter 7. Load Time and Responsiveness
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第7章. 加载时间和响应性
+- en: JavaScript scalability includes the *load time* of the application, and the
+    *responsiveness* of the application when the user interacts with it. Collectively,
+    we refer to these two architectural qualities as performance. Performance is the
+    prominent indicator of quality in the eyes of a user—it's important to get it
+    right.
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JavaScript的可伸缩性包括应用程序的*加载时间*以及用户与应用程序交互时的*响应性*。共同地，我们将这两个架构品质称为性能。在用户眼中，性能是质量的主要指标——正确地做到这一点很重要。
+- en: As our applications acquire new features and as the user base grows, we must
+    find a way to avoid the associated performance degradation. The initial load is
+    affected by things such as the JavaScript artifact payload size. The responsiveness
+    of our UI has more to do with the runtime characteristics of our code.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随着我们的应用程序获得新功能和用户基础的增长，我们必须找到避免相关性能下降的方法。初始加载受到诸如JavaScript工件负载大小等因素的影响。我们UI的响应性更多地与代码的运行特性有关。
+- en: Throughout this chapter, we'll address these two dimensions of performance,
+    and how the various trade-offs we'll make will impact other areas of the system.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将探讨这两个性能维度的各种权衡，以及它们将如何影响系统其他区域。
+- en: Component artifacts
+  id: totrans-4
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 组件工件
+- en: Earlier on in the book, we had emphasized that large-scale JavaScript applications
+    are just collections of components. These components communicate with one another
+    in complex and intricate ways—these communications are what realize the behavior
+    of our system. Before components can communicate, they have to be delivered to
+    the browser. It's helpful in understanding what these components are made of,
+    and how they're actually delivered to the browser. Then we can reason about the
+    initial load time of our application.
+  id: totrans-5
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在书的早期部分，我们强调过，大型JavaScript应用程序只是组件的集合。这些组件以复杂和精细的方式相互通信——这些通信实现了我们系统的行为。在组件可以通信之前，它们必须被交付到浏览器。了解这些组件是由什么组成的，以及它们实际上是如何被交付到浏览器的，有助于我们推理出应用程序的初始加载时间。
+- en: Component dependencies
+  id: totrans-6
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 组件依赖
+- en: Components are the bedrocks of our application; that means we need to deliver
+    them to the browser, and execute them in some coherent manner. The components
+    themselves can range from being monolithic JavaScript files, to something that's
+    spread out over several modules. All the puzzle pieces are put together through
+    the dependency graph. We start off with an application component, as this is the
+    entry point into our application. It finds all the components it needs by requiring
+    them. For example, there may only be a handful of top-level components, which
+    map to the key features of our software. This is the first level of the dependency
+    tree, and unless all our feature components are composed monolithically, there'll
+    probably further module dependencies to resolve.
+  id: totrans-7
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 组件是我们应用程序的基石；这意味着我们需要将它们交付给浏览器，并以某种连贯的方式执行它们。组件本身可以从单体的JavaScript文件，到分布在几个模块中的东西。所有拼图碎片都是通过依赖图拼在一起的。我们从一个应用程序组件开始，因为这是进入我们应用程序的入口点。它通过要求它们来找到所有它需要的组件。例如，可能只有少数几个顶级组件，它们映射到我们软件的关键功能。这是依赖树的第一层，除非我们的所有功能组件都是单体构成的，否则可能还会有进一步的模块依赖需要解决。
+- en: The module loading mechanism progresses through the tree until it has everything
+    it needs. What's nice about modules and dependencies, broken down to a reasonable
+    level of granularity, is that a lot of complexity is masked. We don't have to
+    hold the entire dependency graph in our heads, an unreasonable goal for even medium-scale
+    applications.
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 模块加载机制遍历树结构，直到获取所需的所有内容。模块及其依赖关系细化到合理粒度的好处是，很多复杂性都被隐藏了起来。我们不需要在脑海中持有整个依赖图，这对于中等规模的应用来说是一个不切实际的目标。
+- en: With this modular structure, and the mechanism used to load and process dependencies,
+    comes performance implications. Namely, the initial load time is impacted since
+    the module loader needs to walk through the dependency graph, and ask the backend
+    for each resource. While the requests are asynchronous, the network overhead exists
+    nonetheless—that's what hurts us the most during the initial load.
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种模块化结构和用于加载和处理依赖的机制带来了性能影响。具体来说，初始加载时间会受到影响，因为模块加载器需要遍历依赖图，并为每个资源向后端请求。虽然请求是异步的，但网络开销依然存在——这在初始加载时对我们影响最大。
+- en: However, just because we want a modular structure, doesn't mean we have to suffer
+    the consequences of network overhead. Especially as we start scaling to lots of
+    features and lots of users. There's more to deliver to each client session, and
+    there's more resource contention in the backend as more users ask for the same
+    thing. Module dependencies are traceable, which give our build tools a number
+    of options.
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，仅仅因为我们想要一个模块化结构，并不意味着我们必须承担网络开销的后果。尤其是当我们开始扩展大量功能和大量用户时。每个客户端会话需要交付更多内容，随着更多用户请求相同的事物，后端资源争用也会增加。模块依赖关系是可以追踪的，这为我们的构建工具提供了许多选项。
+- en: '![Component dependencies](img/4639_07_01.jpg)'
+  id: totrans-11
+  prefs: []
+  type: TYPE_IMG
+  zh: '![组件依赖关系](img/4639_07_01.jpg)'
+- en: How JavaScript application modules are loaded; dependencies are automatically
+    loaded
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如何加载JavaScript应用程序模块；依赖项会自动加载。
+- en: Building components
+  id: totrans-13
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 构建组件
+- en: When our components reach a certain level of complexity, they'll likely require
+    more than just a few modules to realize all their functionality. Multiply this
+    by a growing number of components, and we've got ourselves a network request overhead
+    issue. Even if the modules carry a small payload, there's still the network overhead
+    to consider.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们的组件达到一定复杂程度时，它们可能需要不仅仅是几个模块来实现所有功能。随着组件数量的增加，我们给自己制造了网络请求开销问题。即使模块携带的数据量很小，仍然需要考虑网络开销。
+- en: We should actually strive for smaller modules, as they're more easily consumed
+    by other developers—if they're small, they likely have less moving parts. As we
+    saw in the preceding section, modules and the dependencies amongst them, enable
+    us to divide and conquer. That's because the module loader traces the dependency
+    graph and pulls in the modules as they're needed.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们应该实际上追求更小的模块，因为它们更容易被其他开发者消费——如果它们小，那么它们很可能有更少的运动部件。如前所见，模块及其之间的依赖关系使我们能够实现分而治之。这是因为模块加载器追踪依赖关系图，并在需要时拉入模块。
+- en: If we want to avoid hitting the backend with so many requests, we can build
+    larger component artifacts as part of our build toolchain. There are many tools
+    out there, that directly leverage the module loader to trace the dependencies,
+    and build the corresponding components, like RequireJS and Browserify. This is
+    important because it means that we can choose a level of module granularity that
+    suits our application, and still be able to build larger component artifacts.
+    Or we can switch back to loading smaller modules into the browser on the fly.
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们想避免向后端发送这么多请求，我们可以将更大的组件工件作为构建工具链的一部分来构建。有许多工具可以直接利用模块加载器来追踪依赖关系，并构建相应的组件，如RequireJS和Browserify。这很重要，因为它意味着我们可以选择适合我们应用程序的模块粒度，同时仍然能够构建更大的组件工件。或者我们也可以切换回实时将较小模块加载到浏览器中。
+- en: The scaling implications in terms of network request overhead make big difference.
+    The more components, and the larger these components are, the more this build
+    process matters. Especially since uglification, the process of shrinking down
+    the file size, is often part of the process. Being able to turn these build steps
+    off, on the other hand, has scaling implications for the development team as well.
+    If we can switch back and forth between the types of component artifacts delivered
+    to the browser, the development process can move forward much quicker.
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在网络请求开销方面的扩展含义造成了很大的影响。组件越多，这些组件越大，构建过程就越重要。特别是自从进行了代码压缩以来，这个压缩文件大小的过程经常是构建过程的一部分。能够关闭这些构建步骤，另一方面，对开发团队的可扩展性也有影响。如果我们能够在这之间切换浏览器接收的组件工件类型，那么开发过程可以推进得更快。
+- en: '![Building components](img/4639_07_02.jpg)'
+  id: totrans-18
+  prefs: []
+  type: TYPE_IMG
+  zh: '![构建组件](img/4639_07_02.jpg)'
+- en: Building components results in fewer requested artifacts, and fewer network
+    requests
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 构建组件会导致请求的工件更少，网络请求也较少。
+- en: Loading components
+  id: totrans-20
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 加载组件
+- en: In this section, we'll take a look at the mechanisms responsible for actually
+    loading our source modules and built components into the browser. There are many
+    third-party tools in use today for structuring our modules and declaring their
+    dependencies, but the trend is moving toward using newer browser standards for
+    these tasks. We'll also look at lazily loading our modules, and the usability
+    implications for load latency.
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们将探讨负责将我们的源模块和构建组件实际加载到浏览器中的机制。目前有许多第三方工具用于结构化我们的模块并声明它们的依赖关系，但趋势是转向使用这些任务的新浏览器标准。我们还将探讨延迟加载模块以及加载延迟对用户体验的影响。
+- en: Loading modules
+  id: totrans-22
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 加载模块
+- en: Many large-scale applications in production today use technologies such as RequireJS
+    and Browserify. RequireJS is a pure JavaScript module loader and has tools that
+    can build larger components. The aim with Browserify is to build components that
+    run in the browser, using code that was written for Node.js. While both these
+    technologies solve many of the issues discussed so far in this chapter, the new
+    ECMAScript 6 module approach is the way forward.
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 目前在生产中使用的大型应用程序许多都采用了如RequireJS和Browserify这样的技术。RequireJS是一个纯粹的JavaScript模块加载器，它有可以构建较大组件的工具。Browserify的目标是使用为Node.js编写的代码来构建在浏览器中运行的组件。尽管这两种技术都解决了本章讨论的许多问题，但新的ECMAScript
+    6模块方法才是未来的发展方向。
+- en: The main argument in favor of using the browser-based approach to module loading
+    and dependency management is that there's no longer a need for another third-party
+    tool. If the language has a feature to solve a scaling issue, it's always better
+    to go that route, because there's less work for us. It's certainly not a silver
+    bullet, but it does have a lot of the functionality we require.
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 支持使用基于浏览器的模块加载和依赖管理方法的主要论点是，不再需要另一个第三方工具。如果语言有一个解决扩展问题的特性，走那条路总是更好的，因为我们的工作量会少一些。这肯定不是万能的，但它确实具备我们所需的大部分功能。
+- en: For example, we no longer have to rely on sending Ajax requests, and evaluating
+    the JavaScript code when it arrives—that's all up to the browser now. The syntax
+    itself is actually more aligned with the standard `import export` keywords found
+    in other programming languages. On the other hand, native JavaScript modules are
+    still new hotness, and that's not really justification enough to throw away code
+    that's using a different module loader. For new projects, it's worth looking at
+    ES6 transpiler technologies that allow us to start using these new module constructs
+    from the start.
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，我们不再需要依赖发送Ajax请求，并在请求到达时评估JavaScript代码——这一切都交给浏览器处理。该语法实际上与在其他编程语言中找到的标准`import
+    export`关键词更加一致。另一方面，原生的JavaScript模块仍然是新宠，而仅仅因为这一点就抛弃使用不同模块加载器的代码还不够充分。对于新项目，研究允许我们一开始就使用这些新模块结构的ES6转换器技术是值得的。
+- en: Note
+  id: totrans-26
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: A portion of the network overhead our application experiences, and the user
+    ultimately pays for, has to do with the HTTP specification. The latest draft Version
+    of the spec, 2.0, addresses a lot of overhead and performance issues. What does
+    this mean for loading modules? Well, if we can get reasonable network performance
+    with minimal overhead, we might be able to simplify our artifacts. The need to
+    compile larger components can be de-prioritized in favor of focusing on a solid
+    modular architecture.
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们应用程序经历的网络开销的一部分，以及用户最终支付的一部分，与HTTP规范有关。该规范最新草稿版2.0解决了许多开销和性能问题。这对模块加载意味着什么？如果我们能够以最小的开销获得合理的网络性能，我们可能能够简化我们的构件。编译较大组件的需求可能会被推迟，以便专注于坚实的模块化架构。
+- en: Lazy module loading
+  id: totrans-28
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 懒加载模块
+- en: One advantage we lose with monolithically compiled components is the opportunity
+    to defer loading of certain modules till they're actually required. With compiled
+    components, it's all or nothing—which is especially true if our entire frontend
+    is compiled into a single JavaScript artifact. On the plus side, everything is
+    there when it's needed. If the user decides to interact with a feature five minutes
+    after the initial load, the code is already in the browser, ready to go.
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 单块编译组件丧失的一个优势是，我们可以推迟到实际需要时才加载某些模块。对于编译组件来说，要么全部加载，要么全部不加载——这在我们整个前端被编译成一个单独的JavaScript文件时尤其正确。好处是，当需要时一切都已准备就绪。如果用户决定在初次加载后五分钟与一个功能互动，代码早已在浏览器中，随时待命。
+- en: Lazy loading, on the other hand, is the default mode. This simply means that
+    the module isn't loaded into the browser till some other component explicitly
+    asks for it. This could mean either a `require()` call or an `import` statement.
+    Until these calls are made, they're not fetched from the backend. The advantage
+    being, the initial page load should be a lot faster, it's only pulling in the
+    modules it needs for the features displayed to the user initially.
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一方面，懒加载是默认模式。这意味着模块直到另一个组件明确请求它时才被加载到浏览器中。这可能意味着一个`require()`调用或一个`import`声明。在这些调用被作出之前，它们不会从后端获取。好处是，初始页面加载应该要快得多，它只拉取初始显示给用户的特性所需的模块。
+- en: On the other hand, when the user goes to use some feature, five minutes after
+    the initial load, our application will be requiring or importing some modules
+    for the first time. This means that there's some latency involved after the initial
+    load. Mind you, the modules that are loaded on demand, later on in the session,
+    should be small in number. Because there're bound to be some shared modules loaded
+    up-front by the initial page presented to the user.
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一方面，当用户在初始加载五分钟后尝试使用某个功能时，我们的应用程序将首次需要或导入一些模块。这意味着在初始加载后会有一些延迟。请注意，随后的会话中按需加载的模块数量应该很少。因为必然有一些共享模块在用户最初看到的页面中被加载。
+- en: We have to put some thought into the dependencies throughout our system. While
+    we may think we're deferring the loading of certain modules, there could be some
+    indirect dependencies that inadvertently load modules for the home screen, when
+    they're not actually needed. The network panel in the developer tools is ideal
+    for this, as it's usually obvious that we're loading things we don't actually
+    need. If our application has lots of features, lazy loading is especially helpful.
+    The savings on initial load time are big, and there are likely to be features
+    that the user never uses, and hence never needs to load.
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们必须仔细考虑我们系统中的依赖关系。尽管我们可能认为我们推迟了某些模块的加载，但可能存在一些间接依赖，它们会在不需要的时候无意中加载主页面的模块。开发工具中的网络面板为此提供了理想的功能，因为通常很明显我们正在加载我们实际上不需要的东西。如果我们的应用有很多功能，懒加载尤其有帮助。初始加载时间的节省是巨大的，而且很可能有些用户从未使用过这些功能，因此也无需加载。
+- en: 'Next is an example that shows the concept of not loading modules until they''re
+    actually needed:'
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来是一个示例，展示了在实际需要时才加载模块的概念：
+- en: '[PRE0]'
+  id: totrans-34
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: Module load latency
+  id: totrans-35
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 模块加载延迟
+- en: Modules load in response to events, and these are almost always user events.
+    The application is launched. A tab is selected. These types of events have the
+    potential to load new modules if they haven't been loaded already. The challenge
+    is what can we do for the user while these code modules are in transit, or being
+    evaluated? Because it's the code we're waiting on, we can't exactly execute code
+    that makes for a better loading experience.
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 模块是对事件的响应而加载的，而这些事件几乎总是用户事件。应用被启动。选择了一个标签页。这类事件如果它们尚未被加载，有可能会加载新的模块。挑战在于在这些代码模块还在传输中或被评估时，我们能为此类用户做些什么？因为正是我们在等待的代码，所以我们不能执行那些能提供更好加载体验的代码。
+- en: For example, until we have a module loaded, and until all its dependencies have
+    been loaded, we can't do things that are critical to the user-perceived responsiveness
+    of our UI. These are things like making API calls, and manipulating the DOM to
+    provide user feedback. Without data from the API, all we can tell the user is,
+    *sit tight, stuff is loading!* If the user is frustrated enough, because our modules
+    are taking a while and the loading indicator isn't going away, they'll start randomly
+    clicking elements that look clickable. If we don't have any event handlers setup
+    for these, then the UI will feel unresponsive.
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，在我们有一个模块被加载，以及它所有的依赖都被加载之前，我们无法执行那些对用户感知到的UI响应性至关重要的操作。这些操作包括发起API调用，以及操纵DOM以提供用户反馈。没有来自API的数据，我们只能告诉用户，*耐心点，东西正在加载!*
+    如果用户因为我们的模块需要一些时间而且加载指示器没有消失而感到沮丧，他们将会开始随机点击看起来可以点击的元素。如果我们没有为这些元素设置任何事件处理程序，那么UI将感觉不响应。
+- en: '''Following is an example that shows how an imported module that runs expensive
+    code, can block code in the importing module from running:'
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下是示例，展示了导入运行昂贵代码的模块如何阻塞导入模块中代码的运行：
+- en: '[PRE1]'
+  id: totrans-39
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: Networks aren't predictable, nor are the scaling influencers our application
+    is facing in the backend. Lot's of users means there's a potential for high latency
+    with loading our modules. We have to account for these circumstances if we want
+    to scale. This involves the use of tactics. The first module we need to load,
+    after the main application, is something that's capable of notifying the user.
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 网络是不可预测的，我们应用后台所面对的规模化的影响者也是如此。用户众多意味着在加载我们的模块时可能会产生高延迟。如果我们想要扩展，就必须考虑这些情况。这涉及到使用策略。在主应用之后我们需要加载的第一个模块，是能够通知用户的功能。
+- en: For example, our UI has a default loader element, but when our first module
+    loads, it proceeds to render more detailed information on what's loading and how
+    long it might take, or, it just might have to deliver the bad news that there's
+    something wrong with the network or the backend. As we scale, these types of unpleasant
+    events will happen. If we want to keep scaling up, we have to account for them
+    early on, and make the UI always feel responsive, even when it isn't.
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，我们的UI有一个默认的加载器元素，但是当我们的第一个模块加载时，它会继续渲染关于正在加载的内容以及可能需要多长时间的更详细信息，或者，它可能只需要传达网络或后端存在问题的坏消息。随着我们的扩展，这类不愉快的事件会发生。如果我们想要继续扩展，我们必须尽早考虑这些问题，并使UI始终感觉响应灵敏，即使它实际上不是。
+- en: Communication bottlenecks
+  id: totrans-42
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 通信瓶颈
+- en: When our application acquires more moving parts, it acquires more communication
+    overhead. That's because our components need to communicate with one another in
+    order to realize the larger behavior of our features. We could reduce the inter-component
+    communication overhead to essentially zero, if we were so inclined, but then we
+    would face the issue of monolithic and repetitive code. If we want modular components,
+    communication has to happen, but that comes at a cost.
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们的应用程序拥有更多的运动部件时，它会增加更多的通信开销。这是因为我们的组件需要彼此通信以实现特性的更大行为。如果我们愿意，我们可以将组件间的通信开销减少到几乎为零，但那样我们将面临单体和重复代码的问题。如果我们想要模块化的组件，通信是必须的，但这需要付出代价。
+- en: This section looks at some issues we'll face as we scale our software in terms
+    of communication bottlenecks. We need to look for the trade-offs that improve
+    communication performance, without sacrificing modularity. One of the most effective
+    ways to do that is by using the profiling tools available in our web browsers.
+    They can reveal the same responsiveness issues that the user experiences while
+    interacting with our UI.
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本节将探讨在我们扩展软件时可能会遇到的一些与通信瓶颈有关的问题。我们需要寻找在不牺牲模块化的情况下提高通信性能的折衷方案。其中最有效的方法之一是使用我们网络浏览器中可用的分析工具。它们可以揭示用户在与我们的UI交互时所经历的同等响应问题。
+- en: Reducing indirection
+  id: totrans-45
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 减少间接性
+- en: The primary abstraction, by which our components communicate with one another,
+    is an event broker. It's the job of the broker to maintain the list of subscribers
+    for any given event type. Our JavaScript applications scale in two respects—the
+    number of subscribers for a given event type, and the number of event types. In
+    terms of performance bottlenecks, this can get out of control quickly.
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 主要的抽象概念是通过事件经纪人实现的，我们的组件通过他彼此间进行通信。经纪人的职责是维护任何给定事件类型的订阅者列表。我们的JavaScript应用程序在两个方面可扩展——给定事件类型的订阅者数量和事件类型数量。在性能瓶颈方面，这可能会迅速变得无法控制。
+- en: 'The first thing we''ll want to pay close attention to is the composition of
+    our features. To implement a feature, we''ll follow the same pattern of existing
+    features. This means that we''ll use the same component types, the same events,
+    and so on. There are subtle variations, but the over-arching pattern is the same
+    across features. This is a good practice: following the same pattern from feature
+    to feature. The patterns used are a good starting point to figure out how to reduce
+    overhead.'
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们首先想要密切关注的是我们特性的构成。实现一个特性时，我们将遵循现有特性的相同模式。这意味着我们将使用相同的组件类型，相同的事件等。虽然有细微的差异，但跨特性的总体模式是相同的。这是一个好习惯：遵循特性间的相同模式。所使用的模式是了解如何减少开销的良好起点。
+- en: For example, say the pattern we're using throughout our application requires
+    8-10 components to realize a given feature. That's too much overhead. Any one
+    of these components communicates with several others, and some of the abstractions
+    just aren't all that valuable. They looked good in our heads and on paper, as
+    we designed the architecture where the pattern originated. Now that we've implemented
+    the pattern, that initial value has diluted a bit, and is now a performance issue.
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，说我们应用程序中使用的模式需要8-10个组件来实现给定特性。这是开销太大。这些组件中的任何一个都要与几个其他组件通信，其中一些抽象概念并没有那么有价值。它们在我们的脑海中和设计纸上看起来很好，因为这是我们设计起源于架构的模式。现在我们已经实现了这个模式，最初的价值已经有点稀释，现在变成了一个性能问题。
+- en: 'Next is an example that shows how simply adding new components is enough to
+    increase communication overhead costs exponentially:'
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来是一个示例，它展示了仅仅添加新组件就足以使通信开销成本呈指数级增加：
+- en: '[PRE2]'
+  id: totrans-50
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: Loosely coupled components are a good thing, as they separate concerns, and
+    give us more implementation freedoms with less risk of breaking other components.
+    The way we couple our components establishes a repeatable pattern. At some point
+    after initial implementation, as our software matures, we will realize that the
+    pattern that once served us well is now too heavy. The concerns of our components
+    are well understood, and we have no need for the implementation freedoms we thought
+    we might need. The solution to this is changing the pattern. The pattern is what's
+    followed, so it's the ultimate indicator of what our code will look like in future
+    components. It's the best place to fix communication bottlenecks, by removing
+    unnecessary components.
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 松耦合的组件是一件好事，因为它们分离了关注点，并且给了我们更少的实现风险和更多的实现自由。我们组件之间的耦合方式建立了一个可重复的模式。在初始实现之后的某个时刻，随着我们软件的成熟，我们会意识到曾经很好地服务于我们的模式现在过于复杂。我们组件的关注点已经被很好地理解，我们不再需要我们曾经认为可能需要的实现自由。解决这个问题的是改变模式。模式是被遵循的，所以它是未来我们代码的样子
+    ultimate indicator。它是解决通信瓶颈的最佳位置，通过移除不必要的组件。
+- en: Profiling code
+  id: totrans-52
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 代码分析
+- en: We can get an intuitive sense, just by looking at our code; that there's a lot
+    more going on than there needs to be. As we saw in the preceding section, the
+    inter-component communication patterns we use throughout the application are quite
+    telling. We can see the excessive components at a logical design level, but what
+    about the physical level during runtime?
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们只需查看我们的代码，就能直观地感觉到有很多不必要的复杂性。正如我们在上一节所看到的，应用程序中使用的组件间通信模式非常明显。我们可以在逻辑设计层面看到过量的组件，但在运行时物理层面呢？
+- en: Before we go and start re-factoring our code, changing patterns, removing components,
+    and so on, we need to profile our code. This will give us an idea of the runtime
+    performance characteristics of our code, and not just how it appears. Profiles
+    give us the information we need to make useful decisions on optimizations. Most
+    importantly, by profiling our code, we can avoid micro-optimizations that have
+    little or no impact on the end user's experience. At the very least, we can prioritize
+    the performance issues we need to tackle. Communication overhead between our components
+    is likely to take top priority, as it has the most tangible impact on the user,
+    and is a huge scaling obstacle.
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们开始重构代码、改变模式、移除组件等之前，我们需要对代码进行基准测试。这将给我们一个关于我们代码的运行时性能特性的想法，而不仅仅是它看起来如何。配置文件为我们提供了我们需要的信息，以对优化做出有用的决策。最重要的是，通过配置我们的代码，我们可以避免对最终用户体验影响很小或没有影响的微优化。至少，我们可以优先解决我们需要处理的性能问题。我们组件之间的通信开销很可能会优先考虑，因为它对用户的影响最直观，并且是一个巨大的扩展障碍。
+- en: The first tool available to us is the built-in profiling tools of the browser.
+    We can manually use the developer tools UI to profile the entire application as
+    we interact with it. This is useful for diagnosing specific responsiveness issues
+    in the UI. We can also write code that uses the same in-browser profiling mechanism
+    to target smaller pieces of code, like individual functions, and get the same
+    output. The resulting profile is essentially a call stack, with a breakdown of
+    how much CPU time is spent where. This points us in the right direction, so we
+    can focus our efforts on optimizing expensive code.
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用的第一个工具是浏览器的内置分析工具。我们可以手动使用开发者工具UI来分析整个应用程序，同时与之交互。这对于诊断UI的具体响应性问题很有用。我们还可以编写使用相同浏览器内分析机制的代码，针对更小的代码片段，如单个函数，并获得相同的输出。结果配置文件实际上是一个调用堆栈，详细介绍了CPU时间是如何花费的。这指向了正确的方向，因此我们可以将精力集中在优化昂贵的代码上。
+- en: Note
+  id: totrans-56
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: 'We''re only scratching the surface of profiling JavaScript application performance.
+    This is a huge topic, and you can Google "Profiling JavaScript code"—there are
+    a ton of good resources out there. Here''s a great resource to get you started:
+    [https://developer.chrome.com/devtools/docs/cpu-profiling](https://developer.chrome.com/devtools/docs/cpu-profiling)'
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们只是触及了分析JavaScript应用程序性能的表面。这是一个巨大的主题，你可以在Google上搜索“分析JavaScript代码”-那里有很多好的资源。这是一个让你入门的好资源：[https://developer.chrome.com/devtools/docs/cpu-profiling](https://developer.chrome.com/devtools/docs/cpu-profiling)
+- en: 'Next is an example that shows how to use the browser developer tools to create
+    a profile that compares several functions:'
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下面是一个示例，展示了如何使用浏览器开发者工具创建一个比较几个函数的配置文件：
+- en: '[PRE3]'
+  id: totrans-59
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: Other tools that profile JavaScript code exist outside of the browser. We use
+    these for different purposes. For example, benchmark.js and tools similar to it,
+    are used to measure the raw performance of our code. The output tells us how many
+    operations per second our code is running at. The really useful aspect of this
+    approach is comparing two or more function implementations. The profile can give
+    as a breakdown of which function is the fastest, and by what margin. At the end
+    of the day, that's the most important profiling information we need.
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 存在一些可以在浏览器外部分析JavaScript代码的工具。我们使用它们各有不同的目的。例如，benchmark.js以及与之类似的工具，用于测量我们代码的原始性能。输出结果告诉我们每秒我们的代码可以运行多少次操作。这种方法真正有用的地方在于比较两个或更多函数的实现。分析可以为我们提供哪个函数最快，以及优势有多大的详细
+    breakdown。归根结底，这是我们最需要的重要分析信息。
+- en: Component optimization
+  id: totrans-61
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 组件优化
+- en: Now that we've fixed our component communication performance bottlenecks, it's
+    time to look inside our components, at the implementation specifics and the performance
+    issues they may present. For example, maintaining state is a common requirement
+    of JavaScript components, however, this does not scale well performance-wise because
+    of all the book-keeping code required. We also need to be aware of side effects
+    introduced by functions that mutate data that other components use. Finally, the
+    DOM itself, and the way our code interacts with it, has much potential for unresponsiveness.
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经解决了组件通信性能瓶颈的问题，是时候看看我们组件内部了，具体是在实现细节和它们可能带来的性能问题上。例如，维护状态是JavaScript组件的一个常见要求，然而，从性能角度来看，这并不容易扩展，因为需要所有的记账代码。我们还需要注意那些修改其他组件使用的数据的函数引入的副作用。最后，DOM本身以及我们的代码与它交互的方式，有很多可能导致不响应。
+- en: Components that maintain state
+  id: totrans-63
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 维护状态的组件
+- en: Most components in our code need to maintain state, and this is unavoidable
+    for the most part. For example, if our component is composed of a model and a
+    view, the view needs to know when to render itself, based on the state of the
+    model. The view also holds a reference to a DOM element—either directly or through
+    a selector string—and any given element has state, at all times.
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们代码中的大多数组件需要维护状态，这在很大程度上是不可避免的。例如，如果我们的组件由一个模型和一个视图组成，视图需要根据模型的状态来决定何时重新渲染自己。视图还持有一个DOM元素的引用——直接或通过选择器字符串——而任何给定的元素在任何时候都具有状态。
+- en: So state is a fact of life in our components—what's the big deal? There isn't
+    one, really. In fact, we get to write some really nice event-driven code that
+    reacts to these changes in state, resulting in a change to what the user is looking
+    at. The problem comes when we scale, of course; our components, on an individual
+    basis, acquire more state to maintain, our data model served up by the backend
+    grows more complex, and the DOM elements grow as well. All these things with state
+    depend on one another. There's a multitude of complexity as systems like these
+    grow, and can really hurt performance.
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所以状态是我们组件中的一个事实——这有什么大不了的？实际上，真的没有什么大不了的。事实上，我们可以写出一些真正的事件驱动的代码，这些代码对状态的变化做出反应，从而改变用户所看到的内容。当然，问题出现在我们进行扩展的时候；我们的组件单独来看，需要维护更多的状态，后端提供的数据模型变得更加复杂，DOM元素也是如此。所有这些具有状态的东西都相互依赖。随着这些系统的增长，会带来大量的复杂性，并且真的可能会损害性能。
+- en: Thankfully, the frameworks we use, handle a lot of this complexity for us. Not
+    only that—they're also heavily optimized for these types of state change operations,
+    since they're so fundamental to the applications using them. Different frameworks
+    take different approaches to handling the changing states of components. For example,
+    some take a more automated approach, requiring more overhead in monitoring for
+    changes in state. Others are more explicit in that the state is explicitly changed,
+    and as a direct result, events are fired. The latter approach requires more discipline
+    on the part of the programmer, but also requires less overhead.
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 幸运的是，我们使用的框架为我们处理了很多这种复杂性。不仅如此——它们还针对这些类型的状态变更操作进行了大量优化，因为这对于使用它们的应用程序来说是如此基础。不同的框架采取不同的方法来处理组件状态的变化。例如，一些采取了更自动化的方法，这需要更多的开销来监控状态的变化。其他的更明确，状态是显式改变的，因此直接结果是事件被触发。后者的方法要求程序员更加自律，但也需要更少的开销。
+- en: There are two things we can do to avoid performance issues that might occur
+    as we scale up the number of our components and their complexity. First, we can
+    make sure that we're only maintaining state for things that matter. For example,
+    if we set up handlers for changes in state that never happen, it's wasteful. Likewise,
+    if we have components that change state and fire events that never result in a
+    UI update, it's also wasteful. Though difficult to spot, if these hidden gems
+    can be avoided, we'll also avoid future scaling issues related to responsiveness.
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了避免随着组件数量及其复杂性的增加可能出现的性能问题，我们可以采取两件事。首先，我们要确保只维护那些重要事物的状态。例如，如果我们为永远不会发生状态变化设置处理程序，这是浪费的。同样地，如果我们有组件状态发生变化并触发永远不会导致UI更新的事件，这也是浪费的。虽然难以发现，但如果能避免这些隐藏的宝藏，我们也将避免与响应性相关的未来扩展问题。
+- en: '![Components that maintain state](img/4639_07_03.jpg)'
+  id: totrans-68
+  prefs: []
+  type: TYPE_IMG
+  zh: '![维护状态的组件](img/4639_07_03.jpg)'
+- en: Views can react the same to any model property change; or, they can have specialized
+    responses to specific property changes. Virtual DOMs attempt to automate this
+    process for us.
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 视图可以对任何模型属性变化做出相同反应；或者，它们可以对特定属性变化有特殊反应。虚拟DOM试图为我们自动化这个过程。
+- en: Dealing with side-effects
+  id: totrans-70
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 处理副作用
+- en: In the preceding section, we looked at the states that components maintain,
+    and how they can hurt performance if we're not careful. So how do these changes
+    in state come about? They don't happen spontaneously—something explicitly has
+    to change the value of a variable. This is called a side effect, something else
+    that has the potential to hurt performance, and is unavoidable. Side effects are
+    what cause the changes in state we covered in the previous section, and they too
+    can hurt performance if not treated with care.
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前一部分，我们探讨了组件维护的状态以及如果我们不小心，它们如何影响性能。那么这些状态变化是如何发生的呢？它们不是自发发生的——必须有什么明确地改变变量的值。这称为副作用，是另外一种可能影响性能且不可避免的东西。副作用是我们在前一部分讨论的状态变化的原因，如果不对它们小心处理，它们也会影响性能。
+- en: The opposite of a function with side effects is a pure function. These take
+    input and return output. Nothing changes state in between. Functions such as these
+    have what's known as **referential transparency**—which means that for a given
+    input, we're guaranteed the same output, no matter how many times we call the
+    function. This property is important for things like optimization and concurrency.
+    For example, if we're always going to get the same result for a given input, the
+    temporal location of the function call really doesn't matter.
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 具有副作用的函数相反的是纯函数。这些函数接收输入并返回输出。中间没有状态变化。这类函数具有所谓的**引用透明性**——这意味着对于给定的输入，无论我们调用函数多少次，我们都保证有相同的输出。这个属性对于优化和并发性等事情很重要。例如，如果对于给定的输入我们总是得到相同的结果，函数调用的时间地点实际上并不重要。
+- en: Think about generic components that our application shares with components that
+    are specific to features. These are less likely to maintain state—the state is
+    more likely to be in components that are closer to the DOM. Functions in these
+    top-level components are good candidates for implementations free of side effects.
+    Even our feature components could potentially implement side-effect-free functions.
+    As a rule of thumb, we should push our state and side effects as close to the
+    DOM as possible.
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 想想我们应用程序中共享的通用组件和特定功能的组件。这些组件不太可能维护状态——状态更有可能存在于更接近DOM的组件中。这些顶级组件中的函数是没有副作用实现的好的候选者。甚至我们的功能组件也可能实现没有副作用的函数。作为一个经验法则，我们应该将我们的状态和副作用推送到尽可能接近DOM的地方。
+- en: As we saw in [Chapter 4](ch04.html "Chapter 4. Component Communication and Responsibilities"),
+    *Component Communication and Responsibilities*, it's difficult to mentally trace
+    what's happening in a convoluted publish/subscribe event system. With events,
+    we don't really need to trace these paths, but with functions, it's a different
+    story. The challenge is that if our function changes the state of something, and
+    that causes a problem elsewhere in the system, it's very difficult to track that
+    sort of issue down. Additionally, the more side-effect-free functions we use,
+    the less sanity checking code that's needed. We often come across bits of code
+    that check the state of something, seemingly for no reason. The reason—that's
+    what made it work. This approach can only get one so far with scaling up the development
+    effort.
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们在[第4章](ch04.html "第4章 组件通信与职责")*组件通信与职责*所看到的，在大致的发布/订阅事件系统中，要心理追溯正在发生的事情是困难的。有了事件，我们实际上并不需要追踪这些路径，但有了函数，情况就不同了。挑战在于，如果我们的函数改变了某物的状态，并且这导致了系统其他地方的故障，要追踪这类问题是非常困难的。此外，我们使用越多的无副作用函数，就越不需要进行理智检查的代码。我们经常遇到一些检查某物状态的代码片段，看似无原因。原因就在于——这是它工作的方式。这种方法在开发努力的扩展上只能走那么远。
+- en: 'Following is an example that shows a function with side effects, versus a function
+    *without* side effects:'
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下面是一个展示有副作用函数与*无*副作用函数的例子：
+- en: '[PRE4]'
+  id: totrans-76
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: DOM rendering techniques
+  id: totrans-77
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: DOM渲染技术
+- en: Updating the DOM is expensive. The best way to optimize DOM updates is to not
+    update them. In other words, as infrequently as possible. The challenge with scaling
+    up our application is that DOM manipulations become more frequent, out of necessity.
+    There's more state to monitor, and more things that we need to notify the user
+    about. Even so, in addition to the techniques employed by our frameworks of choice,
+    there're things we can do with our code to lighten the load on DOM updates.
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 更新DOM是昂贵的。优化DOM更新的最佳方法是不更新它们。换句话说，尽可能少地更新。我们应用扩展的挑战在于DOM操作变得更为频繁，出于必要。需要监视的状态更多，需要通知用户的事情也更多。即便如此，除了我们选择的框架所采用的技术外，我们还可以通过编写代码来减轻DOM更新的负担。
+- en: So, why exactly are DOM updates so expensive, relative to plain JavaScript that's
+    running in the page? The computations that take place to figure out what the display
+    should look like, eat a lot of CPU cycles. We can take steps to ease the load
+    on the browser render engine, and improve the responsiveness of our UI, using
+    techniques in our view components that require less work from the rendering engine.
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 那么，为什么DOM更新相对于在页面中运行的简单JavaScript来说如此昂贵呢？确定显示应该看起来怎样的计算过程，消耗了大量的CPU周期。我们可以采取措施减轻浏览器渲染引擎的负载，使用在我们的视图组件中需要的更少工作的技术，从而提高UI的响应性。
+- en: For example, reflows are rendering events that result in a whole class of computations
+    that need to be made. Essentially, reflows happen when something about our element
+    changes, which could result in changes to the layout of other nearby elements.
+    The whole process cascades throughout the DOM, so a seemingly inexpensive DOM
+    operation could result in quite a lot of overhead. Rendering engines in modern
+    browsers are fast. We can get away with a little sloppiness in our DOM code, and
+    the UI will perform perfectly. But as new moving parts are added, the scalability
+    of our DOM rendering techniques comes into play.
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，重排是导致一系列需要进行的计算的渲染事件。本质上，重排发生在我们元素的某些方面发生变化时，这可能导致其他附近元素布局的改变。整个过程在整个DOM中级联，所以一个看似廉价的DOM操作可能造成相当多的开销。现代浏览器中的渲染引擎很快。我们可以在DOM代码中有点粗心，UI将表现完美。但随着新移动部件的增加，DOM渲染技术的可扩展性就发挥作用了。
+- en: So the first strategy to consider is, which view updates can result in reflows?
+    For example, changing the content of elements is not a big deal and will likely
+    never cause performance problems. Inserting new elements into the page, or altering
+    the style of existing elements in response to user interactions—these have potential
+    for responsiveness issues.
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，首先要考虑的是，哪些视图更新可能导致重排？例如，改变元素的内容不是什么大问题，很可能永远不会导致性能问题。将新元素插入页面中，或者响应用户交互更改现有元素的样式——这些都可能带来响应性问题。
+- en: Note
+  id: totrans-82
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: One DOM rendering technique that's trendy today is using a **virtual DOM**.
+    ReactJS and similar libraries leverage this concept. The idea is that our code
+    can just render content into the DOM, as though it's rendering the whole component
+    for the first time. The virtual DOM intercepts these rendering calls and figures
+    out the difference between what's already rendered, and what's changed. The name
+    virtual DOM comes from the fact that a representation of the DOM is stored in
+    JavaScript memory, and this is used to make comparisons. This way, the real DOM
+    is only touched when absolutely necessary. This abstraction allows for some interesting
+    optimizations, while keeping the view code minimalistic.
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 目前流行的一个DOM渲染技术是使用**虚拟DOM**。ReactJS和其他类似库利用了这个概念。想法是，我们的代码可以直接将内容渲染到DOM中，就像它是在第一次渲染整个组件一样。虚拟DOM拦截这些渲染调用，并找出已经渲染的内容和发生变化的内容之间的差异。虚拟DOM的名字来源于事实，即DOM的表示形式存储在JavaScript内存中，并用于进行比较。这样，只有在绝对必要时才会触摸真实的DOM。这种抽象允许进行一些有趣的优化，同时保持视图代码的简洁性。
+- en: Sending one update after another to DOM isn't ideal either. Because the DOM
+    will receive the list of changes to make and apply them sequentially. For complex
+    DOM updates that have the potential to trigger reflow after reflow, it's better
+    to detach the DOM element, make the updates, and then reattach it. When the element
+    is reattached, the expensive reflow calculations are done at once, rather than
+    several times in succession.
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 不断地向DOM发送更新也不是理想的选择。因为DOM会接收到需要执行的更改列表，并按顺序应用它们。对于可能引发多次重排的复杂DOM更新，最好先卸载DOM元素，进行更新，然后重新挂载。当元素重新挂载时，昂贵的重排计算一次性完成，而不是连续几次执行。
+- en: However, sometimes the DOM itself isn't the problem—it's the single-threaded
+    nature of JavaScript. While our component JavaScript is running, there's no chance
+    for the DOM to render any pending updates. If our UI is unresponsive in certain
+    scenarios, it's best to set a timeout to let the DOM update. This also gives any
+    pending DOM events a chance to be processed, which is important if the user is
+    trying to do something while there's JavaScript code running.
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，有时问题并不在DOM本身——而是在JavaScript的单线程特性。当我们的组件JavaScript正在运行时，DOM没有机会渲染任何待处理的更新。如果在某些情况下我们的UI无响应，最好设置一个超时，让DOM更新。这也给了任何待处理的DOM事件一个被处理的机会，这对于用户在JavaScript代码运行时尝试做某事来说很重要。
+- en: 'Next is an example that shows how to defer running JavaScript code during CPU-intensive
+    computations, giving the DOM a chance to update:'
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来是一个示例，展示了如何在CPU密集型计算期间延迟运行JavaScript代码，给DOM一个更新机会：
+- en: '[PRE5]'
+  id: totrans-87
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: Web Workers are another possibility for long-running JavaScript code. Because
+    they can't touch the DOM, they don't interfere with the responsiveness of it.
+    However, this technology is beyond the scope of this book.
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Web Workers是另一种处理长时间运行的JavaScript代码的可能性。因为它们不能接触DOM，所以它们不会影响DOM的响应性。然而，这项技术超出了本书的范围。
+- en: API data
+  id: totrans-89
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: API数据
+- en: The last major obstacle that will hit us with performance issues as we continue
+    to scale, is the application data itself. This is an area we have to be especially
+    mindful of, because there are so many scaling influencers at play. More features
+    doesn't necessarily translate to more data, but it often does. That's more types
+    of data, and more data volume. The latter is mostly influenced by the growing
+    user base of our software. Our job as JavaScript architects is to figure out how
+    we can scale our application to deal with both the increased load time, and the
+    increased size of our data once it arrives at the browser.
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随着我们继续扩展，性能问题的最后一个主要障碍将是应用程序数据本身。这是我们必须特别注意的一个领域，因为有这么多影响扩展的因素在起作用。更多功能并不一定意味着更多数据，但通常确实如此。这意味着更多类型的数据和更多的数据量。后者主要受我们软件不断增长的用户基础的影响。我们作为JavaScript架构师的工作是要找出我们如何扩展应用程序，以应对加载时间增加和数据到达浏览器时的数据量增加。
+- en: Load latency
+  id: totrans-91
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 加载延迟
+- en: Perhaps the biggest risk to scaling our application's performance is the data
+    itself. The way our application data changes and evolves over time is somewhat
+    of a phenomenon. The features we add in the frontend certainly influence the shape
+    of our data, but our JavaScript code doesn't control the number of users or the
+    way they interact with our software. These latter two points can lead to an explosion
+    in data, and if our frontend isn't prepared, it will grind to a halt.
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 或许对我们应用程序性能扩展的最大威胁就是数据本身。我们应用程序数据随时间变化和演进的方式 somewhat of a phenomenon。我们前端添加的功能确实影响了我们数据的形状，但我们的JavaScript代码不控制用户数量或他们与我们的软件互动的方式。后两者可能导致数据爆炸，如果我们的前端没有准备，它将停止运行。
+- en: The challenge we face as frontend engineers is that there's nothing to display
+    for the user when we're waiting for data. All we can do is take the necessary
+    steps for providing an acceptable *loading* user experience. Which begs the question—while
+    we're waiting for data to load, do we block the whole screen with a loading message,
+    or do we show loading messages piecemeal for the elements that are waiting on
+    data? With the first approach, there's little risk of the user doing something
+    that's not allowed, because we prevent them from interacting with the UI. With
+    the second approach, we have to worry about the user interacting with the UI while
+    there are outstanding network requests.
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们作为前端工程师面临的挑战是，当我们等待数据时，用户没有什么可显示的。我们所能做的就是采取必要的步骤，提供一个可接受的*加载*用户体验。这引出了一个问题——当我们等待数据加载时，我们是否应该用加载信息遮挡整个屏幕，还是为等待数据的元素逐一显示加载信息？第一种方法，用户很少有风险做不允许的事情，因为我们阻止了他们与UI交互。第二种方法，我们需要担心在网络请求未完成时用户与UI交互。
+- en: Neither approach is ideal, because at any point while data is loading, the responsiveness
+    of our application is fundamentally constrained. We don't want to completely block
+    the user from interacting with the UI. So, maybe we need to enforce a strict timeout
+    for data loading. On the plus side, we're guaranteeing responsiveness, even if
+    the response is to inform the user that the backend is taking too long. The down
+    side is that sometimes waiting is necessary, as far as the user is concerned,
+    if something needs to get done. Sometimes, the bad user experience is preferable—instead
+    of unintentionally creating an even worse experience.
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这两种方法都不理想，因为数据加载的任何时刻，我们应用程序的响应性都会受到根本性的限制。我们不想完全阻止用户与UI交互。所以，也许我们需要对数据加载强制执行严格的超时。好处是，我们保证了响应性，即使响应是告知用户后端正在花费太长时间。缺点是，有时等待是必要的，就用户而言，如果需要完成某事。有时，糟糕的用户体验是可取的——而不是无意中创造出更糟糕的体验。
+- en: There are two things that the frontend needs to do to help scale our backend
+    data. First, we need to cache responses where possible. This reduces the load
+    on the backend, and also improves the responsiveness for the client with the cached
+    data, since it doesn't have to make another request. Obviously, we need some kind
+    of invalidation mechanism in place, because we don't want to cache stale data.
+    Web sockets are a good candidate solution here—even if they only notify the frontend
+    sessions that a particular entity type has changed, so that the cache can be cleared.
+    The second technique to help with growing datasets is to reduce the amount of
+    data that's loaded with any given request. For example, most API calls have options
+    that let us constrain the number of results. This needs to be kept to a reasonable
+    number. It helps to think about what the user needs to look at first, and design
+    around that.
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了帮助后端数据扩展，前端需要做两件事。首先，尽可能地缓存响应。这减轻了后端的负载，而且使用了缓存数据的客户端响应性也更强，因为它无需再次请求。显然，我们需要一种失效机制，因为我们不想缓存过时的数据。WebSocket在这里是一个很好的解决方案候选——即使它们只通知前端会话某个特定实体类型已更改，以便清除缓存。第二种帮助处理增长数据集的技术是减少任何给定请求加载的数据量。例如，大多数API调用都有选项，让我们限制结果的数量。这需要保持在一个合理的范围内。有助于思考用户首先需要查看什么，并围绕这一点进行设计。
+- en: Working with large data sets
+  id: totrans-96
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 处理大数据集的工作
+- en: In the preceding section, we went over some of the scaling issues we face in
+    frontend development concerning application data. As our application grows, so
+    does the data, presenting a loading challenge. Once we've managed to get the data
+    into the browser, we still have lots of data to work with, which can lead to unresponsive
+    user interactions. For example, if we have a 1000 item collection, and an event
+    passes this structure around to several components for processing, the user experience
+    is affected. What we need are tools that help us transform data that's big and
+    difficult to scale across several components, into something that's filtered down
+    to just the essentials.
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前一节中，我们讨论了前端开发中与应用程序数据相关的扩展问题。随着我们应用程序的增长，数据也在增长，这带来了一个加载挑战。一旦我们设法将数据加载到浏览器中，我们仍然有很多数据需要处理，这可能导致用户交互不响应。例如，如果我们有一个1000项的集合，并且一个事件将这个结构传递给几个组件进行处理，用户体验就会受到影响。我们需要的是帮助我们将大数据集和难以扩展的数据集转换为仅包含必需品的工具。
+- en: This is where low-level utility libraries come in handy—complex transformations
+    on large data sets. Larger frameworks might expose similar tools—they're likely
+    using low-level utilities under the hood. The transformations we'll want to perform
+    on our data are of the map-reduce variety. That's the abstract pattern anyway,
+    functional programming libraries such as Underscore/lodash, provide many variations
+    on this pattern. How does this help us scale with large data sets? We can write
+    clean reusable mapping and reducing functionality, while deferring much of the
+    optimizations to these libraries.
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是低级实用库大显身手的地方——对大数据集进行复杂转换。更大的框架可能暴露出类似的工具——它们很可能在幕后使用低级实用工具。我们将要在数据上执行的转换是映射-减少（map-reduce）类型的。无论如何，这是抽象的模式，函数式编程库如Underscore/lodash提供了这个模式的许多变体。这如何帮助我们处理大数据集的扩展呢？我们可以编写干净、可复用的映射和减少功能，同时将许多优化工作推迟到这些库中。
+- en: Note
+  id: totrans-99
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: Ideally, our application would only load the data it needs for rendering the
+    current page. A lot of the time this simply isn't possible—the API can't account
+    for every possible query scenario required by our features. So we use the API
+    to filter broadly, then when the data arrives, our components filter the data
+    using more specific criteria.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 理想情况下，我们的应用程序只加载当前页面渲染所需的数据。很多时候这根本不可能——API不能为我们的功能所需的每个可能的查询场景都做好准备。所以，我们用API进行广泛过滤，然后当数据到达时，我们的组件使用更具体的条件对数据进行过滤。
+- en: The scaling problem here is the confusion between what's being filtered by the
+    backend, and what's filtered in the browser. If one component relies more on the
+    API, while other components do most of their filtering locally, it leads to confusion
+    amongst developers, and non-intuitive code. It can even lead to unpredictable
+    bugs if the API changes, even subtly, since our components are using it differently.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，扩展问题在于后端过滤的内容和浏览器中过滤的内容之间的混淆。如果一个组件更多地依赖API，而其他组件则在本地进行大部分过滤，这会导致开发者之间的混淆，以及非直观的代码。如果API发生微妙变化，甚至可能导致不可预测的错误，因为我们的组件以不同的方式使用它。
+- en: The less time that's spent mapping or reducing, the more responsive the UI feels
+    to the user. This is why it's important that we get only the data that the user
+    sees, as early on as possible. For example, we don't want to pass around API data
+    in an event as soon as it arrives. We need to structure our component communication
+    in such a way that the computationally expensive filtering on large collections
+    happens as soon as possible. This lightens the load for all the components, since
+    they're now working with a smaller collection. So scaling to more components isn't
+    a big deal because they'll have less data to process.
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 映射或减少的时间越少，UI对用户的响应性越强。这就是为什么我们要尽早获取用户看到的数据非常重要的原因。例如，我们不想在数据一到达就立即在事件中传递API数据。我们需要以这样的方式构建组件通信，即在可能的情况下尽快进行计算密集型的集合过滤。这减轻了所有组件的工作负担，因为它们现在正在处理一个较小的集合。因此，扩展到更多组件并不是什么大问题，因为它们将处理更少的数据。
+- en: Optimizing components at runtime
+  id: totrans-103
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 运行时优化组件
+- en: Our code should be optimized for the common case. This is a good scaling tactic
+    because as more features and users are added to the mix, it's the common cases
+    that grow, not the edge cases. However, there's always the possibility that we'll
+    have two equally common cases to deal with. Think about deploying our software
+    to a number of customer environments. Over time, as features evolve to meet customer
+    requests, there could be two or three common cases for any given piece of functionality.
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的代码应该针对常见情况进行优化。这是一个不错的扩展策略，因为随着更多功能和用户的加入，增长的是常见情况，而不是边缘情况。然而，总是有可能我们会处理两个同样常见的案例。想想将我们的软件部署到多个客户环境中的情况。随着功能的发展以满足客户的需求，对于任何给定的功能，可能会有两到三个常见情况。
+- en: If we have two functions that deal with the common case, then we have to figure
+    out which function to use at runtime. These common cases are extremely course-grained.
+    For example, a common case might be "collection is large" or "collection is small".
+    Checking for these conditions isn't expensive. So if we're adaptable to the common
+    case as it changes, our software will be more responsive than if we weren't adaptable
+    to changing conditions. For example, if the collection is large, the function
+    could take a different approach to filtering it.
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们有两个处理常见情况的函数，那么我们需要在运行时确定使用哪个函数。这些常见情况非常粗粒度。例如，一个常见情况可能是“集合很大”或“集合很小”。检查这些条件并不昂贵。因此，如果我们能够适应不断变化的常见情况，那么我们的软件将比如果我们不能适应变化条件时的响应性更强。例如，如果集合很大，函数可以采取不同的过滤方法。
+- en: '![Optimizing components at runtime](img/4639_07_04.jpg)'
+  id: totrans-106
+  prefs: []
+  type: TYPE_IMG
+  zh: '![在运行时优化组件](img/4639_07_04.jpg)'
+- en: A component can alter it's behavior at runtime, based on broad classifications
+    such as small or large collections
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 组件可以在运行时根据大型或小型集合等粗分类改变其行为。
+- en: Summary
+  id: totrans-108
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: Responsiveness, from the user's perspective, is a strong indicator of quality.
+    Unresponsive user interfaces are frustrating to work with, and are unlikely to
+    require any further scaling efforts on our part. The initial load of the application
+    is the first impression the user has of our application, and it's also the most
+    difficult to make fast. We looked at the challenges of loading all our resources
+    into the browser. This is a combination of modules, dependencies, and build tools.
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从用户的角度来看，响应性是质量的一个强烈指标。不响应的用户界面令人沮丧，并且不太可能需要我们在扩展方面做出任何进一步的努力。应用程序的初始加载是用户对我们应用程序的第一个印象，也是最难快速实现的部分。我们研究了将所有资源加载到浏览器中的挑战。这是模块、依赖项和构建工具的组合。
+- en: The next major hurdle to responsiveness in JavaScript applications are the inter-component
+    communication bottlenecks. These usually result from too much indirection, and
+    the design of the events required to fulfill a given feature. The components themselves
+    can also serve as bottlenecks to responsiveness, because JavaScript is single-threaded.
+    We went over several potential issues in this space, including the cost of maintaining
+    state, and the cost of dealing with side effects.
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在JavaScript应用程序中，响应性的下一个主要障碍是组件间通信的瓶颈。这通常是由于过多的间接性，以及实现特定功能所需的事件设计。组件本身也可能成为响应性的瓶颈，因为JavaScript是单线程的。我们讨论了这一领域的几个潜在问题，包括维护状态的成本，以及处理副作用的成本。
+- en: The API data is what the user cares about, and the user experience degrades
+    until we have it. We looked at some of the scaling issues posed by an expanding
+    API and the data within. Once we have the data, our components need to be able
+    to quickly map and reduce it, all while the data set continues to grow as we scale.
+    Now that we have a better idea of how to make our architecture perform well, it's
+    time to look into making it testable and functional in a variety of contexts.
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: API数据是用户关心的内容，直到我们拥有这些数据，用户体验才会下降。我们研究了扩展API及其内部数据带来的扩展问题。一旦我们拥有了数据，我们的组件需要能够快速地映射和减少它，同时数据集在我们扩展时继续增长。现在我们已经有了如何使我们的架构表现良好的更好想法，是时候考虑如何使其在各种环境中具有可测试性和功能性了。
