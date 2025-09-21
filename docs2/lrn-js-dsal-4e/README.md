@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# JavaScript 数据结构和算法学习指南第四版
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/7e09bf5d52a7802ecd8a14ab3775a3b6`](https://zh.annas-archive.org/md5/7e09bf5d52a7802ecd8a14ab3775a3b6)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
