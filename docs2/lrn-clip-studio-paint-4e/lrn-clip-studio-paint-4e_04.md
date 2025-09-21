@@ -1,4 +1,4 @@
-# 4
+
 
 # 介绍 Clip Studio Paint 画笔
 

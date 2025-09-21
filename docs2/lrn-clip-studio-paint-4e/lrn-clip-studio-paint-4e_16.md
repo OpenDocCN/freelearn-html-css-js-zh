@@ -1,4 +1,4 @@
-# 16
+
 
 # 使用 Clip Studio Paint 为你的漫画上色
 

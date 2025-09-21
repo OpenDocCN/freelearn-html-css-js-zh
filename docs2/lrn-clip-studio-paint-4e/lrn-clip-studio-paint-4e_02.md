@@ -1,4 +1,4 @@
-# 2
+
 
 # 安装 Clip Studio Paint Pro 和界面基础
 

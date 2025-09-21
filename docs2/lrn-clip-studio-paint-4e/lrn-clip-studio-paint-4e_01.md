@@ -1,4 +1,4 @@
-# 1
+
 
 # 由 Clip Studio Paint 创作的漫画和插画图像库
 

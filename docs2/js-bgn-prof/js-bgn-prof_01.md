@@ -1,4 +1,4 @@
-# 1
+
 
 # 开始学习 JavaScript
 

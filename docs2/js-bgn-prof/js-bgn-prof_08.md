@@ -1,4 +1,4 @@
-# 8
+
 
 # 内置 JavaScript 方法
 

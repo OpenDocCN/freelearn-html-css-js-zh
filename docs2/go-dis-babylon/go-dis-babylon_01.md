@@ -1,4 +1,4 @@
-# 1
+
 
 # Space-Truckers 操作手册
 
