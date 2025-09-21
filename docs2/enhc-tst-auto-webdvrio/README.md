@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# WebDriverIO 测试自动化提升指南
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/e41c77b0cd979c4981a5e9fb51217fa2`](https://zh.annas-archive.org/md5/e41c77b0cd979c4981a5e9fb51217fa2)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

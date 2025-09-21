@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# D3.js 数据可视化
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/bd6fb82c4a05403e09666ef2f73f1d3b`](https://zh.annas-archive.org/md5/bd6fb82c4a05403e09666ef2f73f1d3b)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

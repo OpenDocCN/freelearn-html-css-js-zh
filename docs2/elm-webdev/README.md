@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Elm Web 开发
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/24f389663f49b115ac5a6a70accc8d3b`](https://zh.annas-archive.org/md5/24f389663f49b115ac5a6a70accc8d3b)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
