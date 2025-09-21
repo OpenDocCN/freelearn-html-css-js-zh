@@ -1,0 +1,883 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Web and Service Workers</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">Let's suppose that you are building a cool web app, say, to factorize a number to two prime numbers. Now, this involves a lot of CPU-intensive work, which will block the main UI thread. The main UI thread is the traffic lane that the end user directly observes and perceives. If it seems congested (laggy) or blocked, even for a few seconds, it destroys the user experience.</p>
+<p>This is where web workers come into the picture. Web workers can be thought of as those side-lanes available on the road where you can divert heavy and slow (CPU-intensive) trucks so that you don't block a user's shining Lamborghini on the main road (the main UI thread).</p>
+<p>On the other hand, service workers are quite cool, too. A service worker is your own programmable network proxy, which sits right in between the user's internet connection and your website. There will be more on that in the <em>Working with service workers</em> section.</p>
+<p>In this chapter, we'll cover:</p>
+<ul>
+<li>Introduction to threads</li>
+<li>Introduction to web workers</li>
+<li>Introduction to dedicated workers</li>
+<li>Setting up dedicated workers</li>
+<li>Introduction to shared workers</li>
+<li>Setting up shared workers</li>
+<li>Setting up inline web workers</li>
+<li>Communication with the main thread</li>
+<li>Introduction to service workers</li>
+<li>Setting up service workers</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">An introduction to the concept of threads</h1>
+                </header>
+            
+            <article>
+                
+<p>Simply put, a thread is a simple and independent snippet of running code. It is a container in which your tasks get executed. Before web workers, JavaScript provided just a single thread; that is, the main thread for the developers to do everything in.</p>
+<p>This created some problems with advancements in tech. Suppose you're running a smooth CSS3 animation, and suddenly you need to do a heavy calculation on the JavaScript end for some reason. This'll make the animation sluggish if you do it on the main thread. However, if you offload it to a web worker that runs in its own thread, it will have no effect on the user experience.</p>
+<p>Because web workers run in their own threads, they cannot have access to the following:</p>
+<ul>
+<li><kbd>DOM</kbd>: It is not thread-safe to access it from web workers and the main UI script</li>
+<li><kbd>parent</kbd> object: Basically, this gives access to some DOM APIs that for the same reason as stated above, would be thread-unsafe to access</li>
+<li><kbd>window</kbd> object: BOM (Browser Object Model); access to this is also thread-unsafe</li>
+<li><kbd>document</kbd> object: <kbd>DOM</kbd> object; hence, thread-unsafe</li>
+</ul>
+<p>Web workers lack access to all of the aforementioned items because it is not thread-safe to give workers access to them. Let's learn more about what I mean by that.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">What makes something thread-safe?</h1>
+                </header>
+            
+            <article>
+                
+<p>When two or more threads access a common data source, extreme care must be taken, because there is a high chance of data corruption and thread safety conditions such as deadlocks, preconditions, race conditions, and so on.</p>
+<p>JavaScript did not add thread support from the very start. With web workers introducing a <strong>sort-of</strong> threading environment in JavaScript, it'll help to understand a few conditions associated with threads in general.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">What, exactly, is a deadlock?</h1>
+                </header>
+            
+            <article>
+                
+<p>A deadlock is a situation where two threads are waiting for each other, for whatever reasons, and the reasons of both threads depend on each other. The following figure will explain what deadlock means:</p>
+<div class="CDPAlignCenter CDPAlign"><img height="330" src="assets/2baf6d73-527e-4759-b8b3-762242b2d7c9.png" width="374"/></div>
+<p>Clearly, both threads (people with guns) need the other thread's resource in order to proceed. So, nobody proceeds.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">What, exactly, is a race condition?</h1>
+                </header>
+            
+            <article>
+                
+<p>A <strong>race condition</strong> is a problem that can happen if a DOM is allowed to be accessed by web workers. A race condition is a condition where two threads race, or compete, to read/modify a single data source. This is dangerous because when both threads try to modify the data at same time, and it is unknown which one will modify the data first. Consider the following example.</p>
+<p>Suppose two threads are working on the same variable in memory:</p>
+<pre>// thread 1 - pseudo program code<br/>if variable == 5:<br/>    asyncOperationWhichTakes200MS()<br/>    // just here thread 2 modifies variable to 10<br/>    res = variable * 5<br/>    // res is now 50 instead of 25<br/>    // unpredicatable behavior ahead</pre>
+<p>Race conditions can be avoided by using <strong>semaphores</strong>, which is nothing but locking a shared data resource, until one thread is done with it and releases it back.</p>
+<div class="packt_infobox"><strong>Just a fun fact:</strong> If you ever use <kbd>sudo apt-get update</kbd> on Ubuntu or any Linux distro supporting <kbd>apt-get</kbd> as the package manager, and try to run another <kbd>apt-get update</kbd> command in another Terminal, you'll get this error:<br/>
+<br/>
+<kbd>E: Unable to lock the administration directory (/var/lib/dpkg/) is another process using it?</kbd></div>
+<p>Linux locks the directory to avoid a possible race condition in which two commands overwrite each other's results.</p>
+<p class="mce-root">Most languages have just a single thread that interacts with and updates the UI, and other threads can only post messages to the main thread to update the UI.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Introduction to web workers</h1>
+                </header>
+            
+            <article>
+                
+<p><span class="fontstyle0">The web worker is, essentially, a piece of JS code w</span>hich does not run in the same thread as your main application. And by thread, I literally mean a different thread. The web workers truly enable JS to work in a multi-threaded mode. A question that might arise here is, What are the differences between asynchronous operations and web workers?</p>
+<p>If you think about it, they are more or less the same thing. The web workers take away loads from the main thread for a while and then come back with the results. However understand the fact that <kbd>async</kbd> functions run on the UI thread, whereas web workers do not. Also, web workers are long-lived, and live inside a separate thread, whereas asynchronous operators, as we discussed in <em>Chapter 4, Asynchronous Programming,</em> follow the <em>Event loop</em>.</p>
+<p>Performance-wise, web workers are also much faster than traditional asynchronous operations. Here's a test which sorts randomly generated arrays of lengths <strong>10K</strong> and <strong>1M</strong> as an asynchronous operation and web worker:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/0fd49ce5-f3e9-4e78-9db0-669da6798119.png"/></div>
+<p>Take note that <strong>2,493 ops/sec</strong> means that JS was able to sort <strong>2,493</strong> arrays of length <strong>10K</strong> in <strong>1</strong> second! Async JS, on the other hand, was able to sort about 67 arrays of length <strong>10K</strong> in <strong>1</strong> second, which is still pretty darn fast, but quite a lot slower than its competitor.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Checking if worker support is available</h1>
+                </header>
+            
+            <article>
+                
+<p>Although web workers have been around for quite a long time and support is very strong, you still might want to check if web worker support is available in a client's browser (for example, Opera Mini doesn't support it). If it isn't, then just load the web worker file in the main script as well, and let your user feel the heat.</p>
+<p>Web workers are available as a <kbd>window</kbd> object, so that is pretty much all you have to check in order to get started:</p>
+<pre>if(typeof window.Worker !== "function") {<br/>    // worker not available<br/>} else {<br/>    // good to go<br/>}</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Working with dedicated web workers</h1>
+                </header>
+            
+            <article>
+                
+<p><strong>Dedicated workers</strong> are the workers dedicated to a single main script. That means the worker cannot interact with any other script, apart from the main script on the page or any other domain. </p>
+<p>Let us try to understand dedicated workers by setting one up.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Setting up a dedicated worker</h1>
+                </header>
+            
+            <article>
+                
+<p>Calling a <kbd>new Worker()</kbd> with a filename in the constructor argument is all you need to do to spawn a dedicated worker:</p>
+<pre>// script.js loaded on index.html<br/><br/>const awesomeWorker = new Worker('myworker.js');</pre>
+<p>Using the <kbd>new Worker</kbd> constructor, we created a <kbd>Worker</kbd> instance. This will make the browser download the <kbd>myworker.js</kbd> file and start a new OS thread for it.</p>
+<p>This is what we can place in the <kbd>myworker.js</kbd> file:</p>
+<pre>// myworker.js<br/>console.log('Hello world!');</pre>
+<p>This logs <kbd>Hello world</kbd> inside the console.</p>
+<div class="packt_infobox">A worker can create a sub-worker itself, and everything below will apply to that, as well.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Working with dedicated workers</h1>
+                </header>
+            
+            <article>
+                
+<p>Dedicated workers can communicate with their spawning script, listening to certain events which trigger when either of the scripts sends/receives a message.</p>
+<p>These events can be handled in both scripts (worker and main script) using certain event handlers. Let us learn how to achieve that.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Listening for messages on the main script</h1>
+                </header>
+            
+            <article>
+                
+<p>We can listen to what a worker sent to the main script with the <kbd>onmessage</kbd> event. This is how it'll look:</p>
+<pre>// script.js<br/><br/>const awesomeworker = new Worker('myworker.js');<br/>awesomeworker.addEventListener('message', e =&gt; {<br/>    console.log(e.data); // data sent by worker<br/>});</pre>
+<p>Here, our script is listening for messages sent by the worker. Every time a worker sends a message (which we'll see how to do in a minute, in the <em>Sending messages from the main script</em> section), the previous event is triggered and we console the data.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Listening for messages on the worker script</h1>
+                </header>
+            
+            <article>
+                
+<p>Workers themselves have access to the <kbd>self</kbd> object, to which you can attach similar event listeners, as previously discussed. Let us see how that goes:</p>
+<pre>// myworker.js<br/><br/>self.addEventListener('message', e =&gt; {<br/>    console.log(e.data); // data sent by main script<br/>});</pre>
+<p>Here, the message event listener is fired whenever the main script sends a message to this particular web worker. We simply console-log what the main script sent with <kbd>console.log(e.data)</kbd>.</p>
+<div class="packt_tip packt_infobox">You can omit the <kbd>self</kbd> keyword here if you wish. By default, in workers, events will be attached to <kbd>self</kbd>.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Sending messages from the main script</h1>
+                </header>
+            
+            <article>
+                
+<p>Okay! Once you've set up the<span> listener event </span>correctly, you will want to send some tasks to the worker for it to do. This is how to achieve that:</p>
+<pre>// script.js<br/><br/>const awesomeworker = new Worker('myworker.js');<br/>awesomeworker.addEventListener('message', e =&gt; {<br/>    console.log(e.data); // data sent by worker<br/>});<br/><br/>const data = {task: "add", nums: [5, 10, 15, 20]};<br/><br/>// lets send this data<br/>awesomeworker.postMessage(data);</pre>
+<p>Alright. Here, we're giving a task to the worker to add two numbers. Note that we are able to pass objects/arrays to the <kbd>postMessage</kbd> method, which is actually used to post/deliver a message to the worker which is spawned.</p>
+<div class="packt_infobox">Objects messaged through <kbd>postMessage</kbd> are copied and not referenced. This means that, if the worker script modifies this object in any way, it will not reflect in the main <kbd>script</kbd> object. This is important for message passing consistency.</div>
+<p>Now we can receive this object at the other end (that is, the worker) and process it in the following way:</p>
+<pre>// myworker.js<br/><br/>self.addEventListener('message', e =&gt; {<br/>    if(e.data.task == "add") {<br/>        const res = e.data.nums.reduce((sum, num) =&gt; sum+num, 0);<br/>        // do something with res<br/>    }<br/>});</pre>
+<p>Here, on receiving the message, we check if the main script wants the worker to add numbers. If that's the case, we reduce the array value to a single value using the inbuilt <kbd>reduce</kbd> method to add all numbers in the passed array.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Sending messages from the worker script</h1>
+                </header>
+            
+            <article>
+                
+<p>Similar to the main script, <kbd>postMessage</kbd> is used in the worker script to communicate to the main script. Let us see how to post the previous result to the main script:</p>
+<pre>// myworker.js<br/><br/>addEventListener('message', e =&gt; {<br/>    if(e.data.task == "add") {<br/>        const res = e.data.nums.reduce((sum, num) =&gt; sum+num, 0);<br/>        postMessage({task: "add", result: res}); // self.postMessage will also work<br/>    }<br/>});</pre>
+<p>Here, just like in the preceding code, we're reducing the array value to the <kbd>sum</kbd>, and then actually sending back whatever we did to the main UI script with the <kbd>postMessage</kbd> function. The passed object can be received by calling the script inside its own listening method.</p>
+<p><kbd>script.js</kbd> would look like the following:</p>
+<pre>// script.js<br/><br/>const awesomeworker = new Worker('myworker.js');<br/>awesomeworker.addEventListener('message', e =&gt; {<br/>    if(e.data.task == "add") { <br/>    // task completed. do something with result<br/>        document.write(e.data.result);<br/>    }<br/>});<br/><br/>const data = {task: "add", nums: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]};<br/>awesomeworker.postMessage(data);</pre>
+<p>Here, you can see that we're sending the <kbd>task</kbd> to the worker in the form of an object, and the worker nicely performs the calculation and sends it to the main script, which is further handled by the message event listener attached to the <kbd>awesomeworker</kbd>, which simply writes the result to the document.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Error handling in workers</h1>
+                </header>
+            
+            <article>
+                
+<p>It is possible that your worker might throw an error because of malformed data sent by the main script. In that case, the <kbd>onerror</kbd> method of the worker is called in the main script:</p>
+<pre>// script.js<br/><br/>const awesomeworker = new Worker('myworker.js');<br/>awesomeworker.postMessage({task: "divide", num1: 5, num2: 0})<br/><br/>awesomeworker.addEventListener('error', e =&gt; {<br/>    console.log(e); // information of ErrorEvent<br/>});</pre>
+<p>Here, we attached an error event listener, and for now, we're just logging it to the console. You might want to send it to a server to actually log it for further analysis in a production app.</p>
+<p>The worker is as follows:</p>
+<pre>// myworker.js<br/><br/>self.addEventListener('message', e =&gt; {<br/>    if(e.data.num2 == 0) {<br/>        throw "Cannot divide by 0";<br/>    } else {<br/>        postMessage({task: "divide", result: e.data.num1/e.data.num2 });<br/>    }<br/>});</pre>
+<p>In the previous case, the worker throws an error, which is visible in the main script as an <kbd>ErrorEvent</kbd> object. From there, you can handle the error.</p>
+<div class="packt_infobox">Throwing an error from a web worker doesn't permanently stop it from working. It is still usable unless terminated.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Terminating workers</h1>
+                </header>
+            
+            <article>
+                
+<p>You can terminate a worker when you think it is no longer required. You can terminate a worker from either the worker itself or the parent script. Let us see how to do this in the next section.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Terminating from the worker script</h1>
+                </header>
+            
+            <article>
+                
+<p>Sometimes, it might be required to terminate a worker within the worker when the worker is performing some sort of async task whose duration can be variable. There is a method called <kbd>close()</kbd> available inside the worker for that purpose:</p>
+<pre>// myworker.js<br/><br/>addEventListener('message', e =&gt; {<br/>    if(e.data.message == "doAjaxAndDie") {<br/>        fetch(...).then(data =&gt; {<br/>            postMessage(data);<br/>            close(); // or self.close();<br/>        });<br/>    }<br/>});</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Terminating from the main script</h1>
+                </header>
+            
+            <article>
+                
+<p>Similarly, you can terminate a worker from the main script, as well, if you wish to. After terminating, your worker instance can no longer be used to post messages to. It also kills any executing process in your worker:</p>
+<pre>// script.js<br/><br/>const awesomeworker = new Worker('myworker.js');<br/><br/>awesomeworker.addEventListener('message', e =&gt; {<br/>    if(e.data.message == "killme") {<br/>        awesomeworker.terminate(); // bye bye<br/>        console.log("Worker terminated");<br/>    }<br/>});</pre>
+<p>The <kbd>myworker.js</kbd> file for this would be:</p>
+<pre>// myworker.js<br/>// .. some work<br/>postMessage({message: "killme"});</pre>
+<div class="packt_tip">Killing from within the worker involves calling <kbd>close()</kbd>, while from the parent script it involves calling <kbd>terminate()</kbd> methods.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Transferring (not copying) data through postMessage</h1>
+                </header>
+            
+            <article>
+                
+<p>It is possible to actually just transfer large amounts of data using the <kbd>postMessage</kbd> function. What does that mean, and how it is different from what we've been doing so far with <kbd>postMessage</kbd>?</p>
+<p>Well, the actual syntax of <kbd>postMessage</kbd> is: <kbd>postMessage(aMessage, transferList)</kbd>.</p>
+<p>What this means is, whatever you pass as <kbd>transferList</kbd> is apparently lost in the worker that sent it. You actually gave the other script the authority to own that data. You transferred the ownership of that data to that other script. Remember, this is different from what used to usually happen (that is, you can still access the object in the same script that sent it to the web worker/main script) because in this case, the data is not copied. Its ownership is transferred.</p>
+<p>This makes it lightning fast to transfer very large amounts of data across web workers. Transferable objects include things like <kbd>ArrayBuffer</kbd>. Here's an example of how to work with it:</p>
+<pre>const ab = new ArrayBuffer(100);<br/><br/>// add data to this arraybuffer<br/>console.log(ab.byteLength); // 100<br/>worker.postMessage(ab, [ab]);<br/>console.log(ab.byteLength); // 0 - ownership lost</pre>
+<p>You can see that the size of our <kbd>ArrayBuffer</kbd> went from 100 to 0. This is because you no longer have access to the <kbd>ArrayBuffer</kbd> memory, because you transferred it to some other script.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Working with shared workers</h1>
+                </header>
+            
+            <article>
+                
+<p>As discussed previously, shared workers are workers that multiple scripts can access, given that they follow the same origin policy (more on this in a later section named <em>Same origin policy</em>).</p>
+<p>The API is a little different from dedicated workers, because these workers can be accessed by any script, so there's a need to manage all the connections via different ports baked into the <kbd>SharedWorker</kbd> object.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Setting up a shared worker</h1>
+                </header>
+            
+            <article>
+                
+<p>A shared worker can be created by calling the <kbd>SharedWorker</kbd> constructor and providing the name of the file as the argument:</p>
+<pre>const awesomeworker = new SharedWorker('myworker.js');</pre>
+<p>Here, we used the <kbd>SharedWorker</kbd> constructor to create an instance of a <kbd>sharedworker</kbd> object. Unlike with dedicated workers, you won't be able to see the HTTP network request in the browser made to the <kbd>myworker.js</kbd> file. This is important because the browser has to maintain only one instance of this file across multiple scripts calling this web worker:</p>
+<pre>// myworker.js<br/>console.log('Hello world!');</pre>
+<p>Unlike dedicated workers, this does not log <kbd>Hello World!</kbd> in the main website's console. This is because shared workers do not get loaded into only that page. A shared worker is loaded once for every file accessing it. Therefore, it has its own console.</p>
+<p>In Google Chrome, to debug a shared worker, open <kbd>chrome://inspect/#workers</kbd> after opening the page which is responsible for launching the shared worker. There, you'll have the option to debug it: ("Inspect" link)</p>
+<div class="CDPAlignCenter CDPAlign"><img height="242" src="assets/57bd90a5-58ae-4621-b2c6-872208f41713.png" width="354"/></div>
+<p>With that done, let's proceed to the guide to setting up listeners on shared workers.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Working with shared workers</h1>
+                </header>
+            
+            <article>
+                
+<p>Shared workers can communicate with their spawning script, listening to certain events which trigger when either of the scripts sends/receives a message. However, unlike dedicated workers, here we have to explicitly register the <kbd>onmessage</kbd> event on every connection.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Listening for messages on the main script</h1>
+                </header>
+            
+            <article>
+                
+<p>Here, unlike with dedicated workers, we have to add the <kbd>onmessage</kbd> event on the port property which is available on the shared worker object: </p>
+<pre>// script.js<br/><br/>const awesomeworker = new SharedWorker('myworker.js');<br/>awesomeworker.port.start(); // important<br/>awesomeworker.port.addEventListener('message', e =&gt; { // notice the <strong>.port</strong><br/>    console.log('Shared worker says .. ', e.data);<br/>});</pre>
+<p>This event is triggered whenever our <kbd>SharedWorker</kbd> replies to this particular script.</p>
+<p>Notice the line <kbd>awesomeworker.port.start();</kbd>, which instructs the shared worker to interact with this script. When using <kbd>addEventListener</kbd>, it is mandatory to start the communication with the <kbd>port.start()</kbd> line from both files (worker and script) for two-way communication.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Listening for messages on the worker script</h1>
+                </header>
+            
+            <article>
+                
+<p>Similarly, <kbd>self</kbd> is defined here; however, <kbd>window</kbd> is not. So, you can use  <kbd>self.addEventListener</kbd> or <kbd>addEventListener</kbd> (or just <kbd>onconnect = function()</kbd>):</p>
+<pre>// myworker.js<br/>addEventListener('connect', e =&gt; {<br/>    console.log(e.ports);<br/>    const port = e.ports[0];<br/>    port.start();<br/>    port.addEventListener('message', event =&gt; {<br/>        console.log('Some calling script says.. ', event.data);<br/>    });<br/>});</pre>
+<p>Here, the event contains the details about the ports our script is connected to. We pick up the connecting port and establish a connection with it.</p>
+<p>Similar to our main script, we have to specify <kbd>port.start()</kbd> here for a successful communication between the two files.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Sending messages from parent scripts</h1>
+                </header>
+            
+            <article>
+                
+<p>Note that any script in the same origin (basically, same origin means that you're accessing it from multiple URLs covered under the same domain; for example, <a href="https://www.google.co.in/">https://www.google.co.in/</a><a href="https://www.google.co.in/"> </a>accessing <kbd>google.com/script.js</kbd> follows the same origin, but <a href="https://www.facebook.com/">facebook.com</a> accessing <kbd>google.com/script.js</kbd> does not. There will be more on same origin in a later section named <em>Same origin policy</em>) can access the shared worker in the same way our previous <kbd>script.js</kbd>  accesses it, with the worker being in the same state for every file which accesses it.</p>
+<p>Here's how you'll send a message from a script to a worker:</p>
+<pre>// script.js<br/><br/>const awesomeworker = new SharedWorker('myworker.js');<br/>awesomeworker.port.start();<br/>awesomeworker.port.postMessage("Hello from the other side!");</pre>
+<p>This is similar to dedicated workers, with the exception that we have to explicitly mention the port object here.</p>
+<p>The <kbd>myworker.js</kbd> file looks like:</p>
+<pre>// myworker.js<br/>addEventListener('connect', e =&gt; {<br/>    console.log(e.ports);<br/>    const port = e.ports[0];<br/>    port.start();<br/>    port.addEventListener('message', event =&gt; {<br/>        console.log('Some calling script says.. ', event.data); // logs<br/>        "Hello from the other side!"<br/>    });<br/>});</pre>
+<p>As mentioned previously, we need to do a <kbd>port.start()</kbd> to establish the communication between the worker and the main script if we use <kbd>addEventListener</kbd> to add the callbacks. Then we assign an event listener for <kbd>onmessage</kbd> for this particular port.</p>
+<p>Finally, we just log to console what the calling script has to say to the worker.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Sending messages from the worker script</h1>
+                </header>
+            
+            <article>
+                
+<p>If you've recognized the difference between how we call methods in dedicated workers versus how we call them in shared workers, well done! Instead of just calling methods on <kbd>self</kbd>, we're calling all the dedicated web worker methods on the port object, which is how the worker distinguishes between so many scripts that (can possibly) talk to it:</p>
+<pre>// myworker.js<br/>addEventListener('connect', e =&gt; {<br/>    console.log(e.ports);<br/>    const port = e.ports[0];<br/>    port.start();<br/>    port.addEventListener('message', event =&gt; {<br/>        console.log('Some calling script says.. ', event.data); <br/>        // some work<br/>        port.postMessage("Hello ;)");<br/>    });<br/>});</pre>
+<p>It is exactly like the code above, but with the exception that this time our shared worker replies to whoever sent the message and says <kbd>Hello</kbd> to it.</p>
+<div class="packt_infobox">If you have two instances of the HTML page which loads <kbd>script.js</kbd> (that is, the new <kbd>SharedWorker</kbd>) running, both have separate port connections with the shared worker.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Error handling</h1>
+                </header>
+            
+            <article>
+                
+<p>Here, error handling is a bit tricky. Since the error can occur anywhere in the script by any port (any parent file), you have to manually send the error to every port. But for that, you'll have to store the ports, as well (when they're connected). Here's how it should look:</p>
+<pre>// myworker.js<br/><br/>const ports = [];<br/><br/>addEventListener('connect', e =&gt; {<br/>    const port = e.ports[0];<br/>    ports.push(port); // assemble all connections<br/>    port.start();<br/>    // .. other info<br/>});<br/><br/>addEventListener('error', e =&gt; {<br/>    console.log(e); // Info about error<br/>    ports.forEach(port =&gt; port.postMessage({type: 'error', res: e}));<br/>});</pre>
+<p>Here you can see that we are manually sending the error information to every parent file. Thereafter, you can handle the error in the parent file itself.</p>
+<p>As a side note, it is good practice to have access to all connections in an array inside your shared worker. It might be helpful in some cases, such as when you want different pages to communicate with each other! </p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Terminating a shared worker connection</h1>
+                </header>
+            
+            <article>
+                
+<p>You can terminate a parent's connection from the shared worker, or completely shut down the shared worker. However, the latter can only be done by the worker's JS. <span>The following sections talk about how you can terminate a single parent's connection with the worker.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Terminating a single parent-worker connection</h1>
+                </header>
+            
+            <article>
+                
+<p>When this code is called, the connection between the parent and worker is shut down, and you'll no longer be able to make use of that worker object to post messages:</p>
+<pre>// script.js<br/><br/>const awesomeworker = new SharedWorker('myworker.js');<br/>awesomeworker.port.start(); <br/><br/>// some processing and some work<br/><br/>awesomeworker.port.close();<br/>awesomeworker.port.postMessage("Are you still alive?"); // does not work | no effect</pre>
+<p class="mce-root">Although the worker still lives, it loses its connection from the script which calls <kbd>.port.close()</kbd>.</p>
+<p>After the connection is closed, the worker won't be able to send/receive messages from the main script. However, the main script can always call the shared web worker again by creating a new instance with the <kbd>new SharedWorker</kbd> constructor.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Terminating a shared worker completely</h1>
+                </header>
+            
+            <article>
+                
+<p><span>A s</span>hared worker can itself be permanently terminated by calling <kbd>self.close()</kbd> inside its JS. You can also send a message from the parent script to kill the worker:</p>
+<pre>// script.js<br/><br/>const awesomeworker = new SharedWorker('myworker.js');<br/>awesomeworker.port.start();<br/><br/>awesomeworker.port.postMessage({type: 'cmd', action: 'die'});</pre>
+<p>We simply sent a message from our main script to our shared worker and passed the message that the shared worker should be terminated permanently.</p>
+<p><span>The worker file looks like:</span></p>
+<pre>// myworker.js<br/><br/>addEventListener('connect', e =&gt; {<br/>    const port = e.ports[0];<br/>    port.start();<br/>    port.addEventListener('message', event =&gt; {<br/>        if(event.data.type == 'cmd' &amp;&amp; event.data.action == 'die') {<br/>            self.close(); // terminates worker<br/>        }<br/>    });<br/>});</pre>
+<p>After verifying that the main script really wants to terminate the worker for all instances, the worker calls the <kbd>close</kbd> method on itself, which terminates it.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Introduction to inline web workers</h1>
+                </header>
+            
+            <article>
+                
+<p>It is possible to create a web worker from a single file without actually having a separate JS file for your web worker. However, I still recommend that you create a different file for your web workers, for the sake of clarity of code and to make it more modular. Modularity is always preferred in programming.</p>
+<p>We can make use of <kbd>blob</kbd> URLs to actually point data in memory to a URL, and then load the <kbd>blob</kbd> URL instead of an actual file URL. Since this URL is generated dynamically only on the user's computer, you do not need to create a separate file for that particular web worker. Here's how we'll do that:</p>
+<pre>const blob = new Blob(['(',<br/>function() {<br/>    // web worker code here<br/>}.toString(),<br/>')()'], { type: 'application/javascript' }));<br/><br/>const url = URL.createObjectURL(blob); // gives a url of kind blob:http://....<br/>const awesomeworker = new Worker(url);</pre>
+<p>It sometimes makes it easy to quickly fire a small web worker. However, this approach won't work for shared web workers. You'll need to have a separate file for them. This is because <kbd>SharedWorker</kbd> relies on the fact that all instances are loaded from one single file. However, creating a URL for blob data creates different URLs every time. So two pages, even if they have the same JS code, would have different URLs, and hence, different instances of <kbd>SharedWorker</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Same origin policy</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">Earlier, I said a couple of times that shared workers will be available only to those parent files which share the same origin. What does that mean?</p>
+<p>Let us consider the URL <a href="http://www.packtpub.com/all">http://www.packtpub.com/all.</a></p>
+<p>Here's a table demonstrating which URLs will be of the same origin with this domain, and which won't be:</p>
+<table>
+<tbody>
+<tr>
+<td><strong>New URL</strong></td>
+<td><strong>Same</strong> <strong>Origin</strong></td>
+<td><strong>Reason</strong></td>
+</tr>
+<tr>
+<td><a href="http://www.packtpub.com/support">http://www.packtpub.com/support</a></td>
+<td>Yes</td>
+<td>-</td>
+</tr>
+<tr>
+<td><kbd>http://www.packtpub.com/account/abc/xyz</kbd></td>
+<td>Yes</td>
+<td>-</td>
+</tr>
+<tr>
+<td><a href="https://www.packtpub.com/all">https://www.packtpub.com/all</a></td>
+<td>No</td>
+<td>Different protocol</td>
+</tr>
+<tr>
+<td><a href="http://username:password@www.packtpub.com/all">http://username:password@www.packtpub.com/all</a></td>
+<td>Yes</td>
+<td>-</td>
+</tr>
+<tr>
+<td><kbd>http://www.packtpub.com:8000/somepage</kbd></td>
+<td>No</td>
+<td>Different port number</td>
+</tr>
+<tr>
+<td><kbd>http://packtpub.com/somepage</kbd></td>
+<td>No</td>
+<td>Different host</td>
+</tr>
+<tr>
+<td><kbd>http://dev.packtpub.com/somepage</kbd></td>
+<td>No</td>
+<td>
+<p class="mce-root">Different host</p>
+</td>
+</tr>
+</tbody>
+</table>
+<p> </p>
+<p>By now, I believe that you will be able to guess what makes something the same origin and what does not. Yes, you're right! The same host, port, and protocol make two URLs under the same origin. For listed URLs which have their answers as yes, only those URLs will be able to access the shared worker spun by <a href="http://www.packtpub.com/all">http://www.packtpub.com/all</a>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Working with service workers</h1>
+                </header>
+            
+            <article>
+                
+<p>Service workers! They finally give developers precise control of the network layer by creating a network proxy in JavaScript. Using service workers, you can intercept and modify network resource requests, handle how caching is done, and respond appropriately when the user's network is down.</p>
+<p>Let us show, step-by-step, how to set up a service worker and its associated methods.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Prerequisites for service workers</h1>
+                </header>
+            
+            <article>
+                
+<p>Prerequisites for service workers are:</p>
+<ul>
+<li>Because s<span>ervice workers are </span>so powerful (almost like a network proxy) to avoid certain attacks, they're only available for domains running on HTTPS. However, they run fine on <kbd>localhost</kbd>, as well.</li>
+<li>They heavily depend on promises, which we've already covered in depth in <em>Chapter 4, Asynchronous Programming</em>.</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Checking for browser support</h1>
+                </header>
+            
+            <article>
+                
+<p>It is easy to check whether a client's browser supports service workers or not:</p>
+<pre>if('serviceWorker' in navigator) {<br/>    // service worker available<br/>    // lets code<br/>}</pre>
+<p>Here, I'll assume that a service worker is available in the user's browser, to avoid unnecessary code indentations every time.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The service worker life cycle</h1>
+                </header>
+            
+            <article>
+                
+<p>The following figure illustrates how a service worker lives:</p>
+<div class="CDPAlignCenter CDPAlign"><img height="271" src="assets/bae86247-0f7d-4967-accd-515a09c38a9c.png" width="215"/></div>
+<p>It is clear from the diagram that first a service worker needs to be installed. Then it triggers certain events which we can catch in our code to handle different stuff. Let us now discuss how to implement all of these steps, in detail.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Registering a service worker</h1>
+                </header>
+            
+            <article>
+                
+<p>First, your main script has to register the service worker to the browser. Here's how:</p>
+<pre>navigator.serviceWorker.register('/sw.js')<br/>.then(reg =&gt; console.log(reg))<br/>.catch(err =&gt; console.log(err));</pre>
+<p>The <kbd>reg</kbd> object is associated with information about the registration of your service worker.</p>
+<p>A service worker registration code can be safely run multiple times. If already registered, the browser will not re-register it.</p>
+<div class="packt_tip packt_infobox"><span>You can debug service workers here: <span class="packt_screen">Chrome</span></span>--&gt;<span><span class="packt_screen">Inspect</span></span>--&gt;<span><span class="packt_screen">Service Workers.</span><br/></span></div>
+<p>Note that a service worker script's scope is the scope where it is located. For example, the preceding file is located in the root directory (<kbd>localhost/sw.js</kbd>), so it can intercept all <kbd>localhost/*</kbd> requests. If it were located in, say, <kbd>localhost/directory/sw.js</kbd>, then it would be able to intercept only <kbd>localhost/directory/*</kbd> requests.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Installing service workers</h1>
+                </header>
+            
+            <article>
+                
+<p>Once your worker is registered, an install event is triggered inside your service worker file. Here, we'll set up caching of our resources. A lot of new terms are coming your way; hold tight:</p>
+<pre>// sw.js<br/><br/>self.addEventListener('install', e =&gt; {<br/>    e.waitUntil(async function() {<br/>        const cache = await caches.open('cacheArea');<br/>        await cache.addAll(['/', '/styles/main.css', '/styles/about.css']);<br/>    }());<br/>});</pre>
+<p>Okay! What happened?</p>
+<ol>
+<li>We added an install event listener to our <kbd>sw.js</kbd> file, which is triggered when our service worker is registered.</li>
+<li><kbd>e.waitUntil</kbd> accepts a promise (and we do give it a promise; remember that the <kbd>async function</kbd> returns a promise, and we invoked that function, as well).</li>
+<li>Then we have something known as <strong>CacheStorage</strong> in browsers. We add resources to the cache by naming that cache and then using the <kbd>addAll</kbd> method to add the resources we want to cache.</li>
+<li>We pass an array of all the files/paths we want to add to our cache storage.</li>
+<li>The installation event is over. </li>
+</ol>
+<div class="packt_infobox">It is completely optional to set up caching inside the installation event itself. We can do it later, after the install event, as well. For example, you can set up caching on the go when fetching new resources.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Fetching with service workers</h1>
+                </header>
+            
+            <article>
+                
+<p>Once everything is ready, you should be able to intercept requests with your service workers with the <kbd>fetch</kbd> event, in the following way:</p>
+<pre>self.addEventListener('fetch', e =&gt; {<br/>    e.respondWith(async function() {<br/>        const response = await caches.match(e.request);<br/>        if(response) {<br/>            return response;<br/>        }<br/>        return fetch(e.request);<br/>  }());<br/>});</pre>
+<p>Hang on! Let's see what happened here:</p>
+<ol>
+<li>This listener will be fired whenever the browser makes a fetch request under its registration scope (we discussed that earlier).</li>
+<li><kbd>respondWith</kbd> also accepts a promise, which we gave it.</li>
+<li>Then, we check whether or not the requested file is already present in our cache (using <kbd>catches.match(e.request)</kbd>). If it is, we return the cached file directly. If not, we use the fetch API (we discussed this in the previous chapter) to fetch the response, and the execution continues.</li>
+</ol>
+<p>You can also console-log <kbd>e.request</kbd> and play around with it a little to modify the request. It gives the developer of the site immense power over his own site, and thus should not be handled by anyone else. This is the reason service workers are available only over the  HTTPS protocol, to avoid a man-in-the-middle attack.</p>
+<div class="packt_infobox">Service workers are a relatively new technology, and a lot of work is going on in their spec. Check out ;<a href="http://bit.ly/serviceworkers">http://bit.ly/serviceworkers </a>for any updates.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>So, finally, we've had the chance to take a look at web workers and service workers and the great parts of the multi-threading environment provided by JavaScript! While service workers are the future of progressive web apps, web workers will be there to back them for any high-load task.</p>
+<p>Combine these techs in just the right way, and everything seems possible! In the next chapter, we're going to take a look at very interesting concepts introduced in JavaScript for the first time: shared memory and atomics.</p>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>
