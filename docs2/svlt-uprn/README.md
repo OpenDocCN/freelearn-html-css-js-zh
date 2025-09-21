@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Svelte 入门和启动指南
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/e96f946280935a201b4993c4d37278eb`](https://zh.annas-archive.org/md5/e96f946280935a201b4993c4d37278eb)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
