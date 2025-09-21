@@ -1,0 +1,616 @@
+- en: '11'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Replacing Behavior with a Side-By-Side Implementation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous two chapters you built out a fully formed repository and an
+    API for accessing it. Now it’s time to complete the story arc by updating both
+    the SvelteKit loader and form actions to use the API instead of the repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It’s worth pointing out that this isn’t a necessary step: it would be perfectly
+    acceptable to keep the SvelteKit server pieces pointing directly at the repository.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But reworking our existing code to point at the new API endpoints will introduce
+    you to two ideas: first, that of a **side-by-side implementation**, which is a
+    way to use tests to replace the existing code while ensuring the test suite remains
+    on *Green*. The second is the use of a test double to shield the unit tests from
+    SvelteKit. The test double takes the place of the framework code, avoiding a real
+    network call out to the API – which wouldn’t work anyway since the API isn’t running
+    within our Vitest test suite.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 11**.1* shows two views of our code base. The left side shows how the
+    new architecture of our application code will look, with the SvelteKit route loaders
+    and form actions pointing to the API endpoints. The right side shows how the unit
+    tests for the router loaders and form actions will see the world. In this setup,
+    the API endpoints are not accessed at all.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 11.1 – Using a test double to plug SvelteKit behavior within unit
+    test suites](img/Figure_11.1_B19611.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11.1 – Using a test double to plug SvelteKit behavior within unit test
+    suites
+  prefs: []
+  type: TYPE_NORMAL
+- en: After updating our SvelteKit components, we’ll wrap things up by updating the
+    Playwright test to use the new API and stop the database seed data from appearing
+    in test environments (both Playwright and Vitest).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This chapter covers the following key topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Updating the route loader to use the API
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Updating the page form action to use the API
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using a server hook to seed sample data
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: By the end of the chapter, you’ll have seen how to use a **spy** (a form of
+    test double) and the process of building a side-by-side implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The code for the chapter can be found online at [https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter11/Start](https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter11/Start).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Updating the route loader to use the API
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, you’ll introduce a call to the `GET` `/api/birthdays` endpoint
+    using the SvelteKit fetch function. That will involve using a spy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What is a test spy?
+  prefs: []
+  type: TYPE_NORMAL
+- en: A spy is a function that keeps a record of each time it is called, together
+    with the arguments it is called with. It can then be inspected later to verify
+    that it was called with the correct arguments. The spy is almost always a *stub*
+    as well, meaning it avoids calling the real function entirely, instead returning
+    a hardcoded – stubbed – value. The spy acts as a substitute for a real function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In Vitest, a spy is created by calling the `vi.fn` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we use a test spy, you’ll have at least one test that checks the arguments
+    passed to the spy. Then you’ll have at least one more test for each stubbed return
+    value that the spy returns.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will use a spy for the `fetch` function that mimics retrieving birthdays
+    via the `GET` `/``api/birthdays` endpoint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the SvelteKit fetch function
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'SvelteKit provides a `fetch` parameter to the user-defined `load` function
+    and to the form actions. The value of this parameter is a function that has the
+    same semantics as the standard Fetch API provided by browsers. The difference
+    is in mechanics: SvelteKit’s `fetch` function is able to short-cut calls made
+    on the server so that they don’t cause an HTTP request but instead feed directly
+    into the `GET` function that matches the route specified.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s begin with a new factory method definition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create a new file named `src/factories/fetch.js` and add the following definition.
+    We will use this to build stub `Response` objects that the test spy will return:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now open the test file at `src/routes/birthdays/page.server.test.js` and add
+    an `import` statement to that function:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, update the Vitest `import` statement to include an import for `vi`, like
+    this:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Add the following test at the bottom of the `describe` block with the title
+    `/birthdays - load`. In addition to creating a test spy with a call to `vi.fn()`,
+    this also uses the `mockResolvedValue` function to specify that the spy should
+    return a value wrapped in a `Promise` object. The test concludes with the `toBeCalledWith`
+    matcher to verify that the spy is called in the right way:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To make that pass, we’ll start with a side-by-side implementation. That means
+    the previous implementation remains in place alongside the new implementation.
+    In the `src/routes/birthdays/+page.server.js` file, modify the `load` function
+    so that it takes a `fetch` argument and then invokes it as the first thing it
+    does, like this:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: This will cause the original test case to fail due to a missing value for `fetch`.
+    We are about to delete this test, but for now, let’s humor ourselves by fixing
+    the test.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Update the test case to use a very simple stub value for `fetch`, as shown
+    in the following code. This highlights the fact that a Vitest spy created by `vi.fn`
+    is not always necessary. If you’re not checking the spy, then a plain stub is
+    enough:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Continue by writing the second test, which checks that the `load` function
+    returns whatever data came back from `fetch`. This time, we need to pass an actual
+    value to `fetchResponseOk`, and compare that to the `return` value:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Go ahead and update the `load` function to return this value:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: You might have noticed this is in direct conflict with the original test we
+    wrote. When we build a side-by-side implementation, the final step is often switching
+    out the return value. When that happens, it’s time to delete the original test.
+    So, go ahead and delete the original test – the only one titled *returns a fixture
+    of two items* – since it no longer applies.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Finally, remove the `getAll` import from the `+``page.server.js` file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: You’ve now seen how to use `vi.fn` to create a test spy for testing `fetch`
+    calls and a basic side-by-side implementation. The next section repeats the same
+    process for the page form action, but this time the implementation is more complex.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Updating the page form action to use the API
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the section, we will update the page form action to use the new `POST` and
+    `PUT` methods on the API endpoints instead of the `addNew` and `replace` functions
+    of the repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This will be done using the same side-by-side technique of the previous section,
+    but this time it’s more involved. We still need tests to verify that the spy is
+    called with the right parameters and that the return value is given. But now we
+    also need to verify that errors are converted to SvelteKit form failures, since
+    the form action has separate handling for errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another important change here is that we will use two tests for checking the
+    parameters passed to the `fetch` call. This is a powerful technique when faced
+    with complex arguments where there are *clumps* of arguments that have separate
+    meanings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the case of fetch, the URL and the HTTP verb are one *clump*: we can have
+    a single test that verifies, for example, that we’re calling the `POST` `/api/birthdays`
+    endpoint. But there’s also the `body` property, and since that isn’t static data
+    – it changes depending on the form action input parameters – it seems sensible
+    to give that a test of its own.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, since the API endpoints are performing data validation, we no longer
+    need that functionality. So we’ll finish by deleting that implementation and its
+    related tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s get started by updating the existing `describe` block with some new setup:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Find the `describe` block named `/birthdays - default action` and add the following
+    three pieces of setup: a `fetch` variable that can be accessed in all tests; a
+    new `beforeEach` block to set up the `fetch` response; and an updated `performFormAction`
+    method that passes in the `fetch` argument:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, add this new nested `describe` block with its single test below all the
+    existing tests. It checks that the `fetch` spy has been called with the correct
+    URL and `method` of `POST`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To make that pass, start by adding the `fetch` argument into the form action:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, make a start on the side-by-side implementation. Find the call to `addNew`,
+    and just below it, add a new call to `fetch`, as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'For the next test, we have a very similar test which is still testing the arguments
+    to the `fetch` spy, but this time checking the varying portion of it: the `body`
+    property. Add that test now:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The preceding code sample makes use of a helper function called `expect.anything`,
+    which you also saw in [*Chapter 10*](B19611_10.xhtml#_idTextAnchor119), *Test-Driving
+    API Endpoints*. Since we already have a previous test that checks the value of
+    the first argument, we can avoid repeating ourselves by checking it here and simultaneously
+    relax the expectation so that the tests are kept independent of each other.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using this helper also aids with the readability of the test by focusing the
+    reader’s attention on what’s specifically of interest: the second argument, not
+    the first.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To make that pass, update the `fetch` call from *step 4* to include the `body`
+    property:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now let’s handle the error case. For this, we need a new factory for an error
+    response. In `src/factories/fetch.js`, add the following definition for `fetchResponseError`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then import it into your test suite:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We’re ready for the next test. This test checks what happens when an error
+    occurs. Since our spy has no real logic, we don’t care about the *specifics* of
+    the error. We just need it to trigger the same behavior as the real code. That
+    means having a non-`ok` status message, just like the `fetchResponseError` factory
+    gives us. To make it clear that it’s not real logic, I’ve used an `error message`
+    string as opposed to a real error message:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To make this pass, start by saving the response from the `fetch` call in the
+    form action:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, add the following return clause *after* the existing error clause for
+    the original `result` value. This is a trick of the side-by-side implementation.
+    It ensures that the original implementation won’t fail on us:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'All right, let’s do the same for the `replace` call. Add the following new
+    nested `describe` block with a single test:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'In the application code, find the call to `replace`, and just below it, add
+    a new call to `fetch`. After this, the test should pass:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we’ll test the body of the `PUT` request. Because we’re not actually
+    calling into the repository, it no longer matters whether the item exists or not.
+    It’s all down to the test double setup:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To make that pass, add the `body` property to the `fetch` call:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'For the final test, repeat the same process used for the `POST` request. We
+    use `mockResolvedValue` combined with the `fetchResponseError` factory to make
+    the spy trigger our error flow:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To make that pass, simply save the result in the `response` variable. The code
+    will then rely on the same return clause from *step 11*:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now comes the satisfying bit. You can go ahead and delete the original implementation,
+    first by deleting the tests, then by deleting the code itself. Delete all these
+    tests:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`adds a new birthday into` `the list`'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`saves unique ids onto each` `new birthday`'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`updates an entry that shares the` `same id`'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`when the name is` `not provided...`'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`when the date of birth in the` `wrong format...`'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`when the id` `is unknown...`'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`returns the id when an empty name` `is provided`'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`returns the id when an empty date of birth` `is provided`'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using the online code repository
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is a lot of code change. You can use the online repository to cross-check
+    your changes as you go along.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can delete the import for `birthayRepository`, since you’re no longer using
+    that, and the `storedId` method too. If you run your tests now, you should find
+    they still pass.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Go ahead and delete all the bits from the implementation that reference the
+    birthday repository:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The calls to `addNew` and `replace`
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `result` variable and the error handling
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `import` statement for the `replace` function (although the `addNew` function
+    is still needed; we’ll remove it in the next section)
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: That completes the new version of the page form actions. But before finishing,
+    we need to do something about our seed data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using a server hook to seed sample data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the early chapters of the book, we added seed data into the `/birthdays`
+    route in the `src/routes/birthdays/+page.server.js` file. At the top, there are
+    two calls to `addNew` to create two fake birthdays. We relied on this data within
+    our Playwright tests. It’s now time to clean up.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating repeated data in the development environment
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you’ve been running the dev server while you edited files, you will have
+    noticed that as SvelteKit reloaded your files, the fake birthdays were repeatedly
+    created, resulting in many birthday objects in the system. This was because of
+    those `addNew` calls at the top of the route’s `+page.server.js` file. Another
+    problem caused by our seed data will now be fixed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we’ll update the Playwright tests to create all their test data via the
+    API. Then we’ll remove the hardcoded seed data from our system. Finally, we will
+    bring the seed data back when loading the development environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That means the seed data is available using the `npm run dev` command but won’t
+    be there when running the automated tests or when launching in production mode.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s start with the Playwright tests:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Add the following to the top of `tests/birthdays.test.js`, which is a new function
+    to make a `POST /api/birthdays` request to insert a birthday into the repository:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, update the `list all birthdays` test so that it begins with two calls
+    to `addBirthday`, like this:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, update the `edits a birthday` test in the same way:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Before running the Playwright tests, we need to remove the seed data. In `src/routes/birthdays/+page.server.js`,
+    delete the two calls to `addNew` and the `addNew` import statement.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Run the Playwright tests and verify they’ve passed.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'All that’s left is to add a server hook for that data so that when you run
+    the server in dev mode, you get some data. Create a new file named `src/hooks.server.js`
+    with the following content. SvelteKit will automatically load this file when the
+    web server is launched:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: That completes the removal of the hardcoded seed data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter introduced you to the concept of a test double that can be used
+    to block out unwanted framework behavior. In our case, that was the `fetch` call
+    that, at runtime, will be magically hooked up to the API endpoints. But since
+    we don’t have access to the SvelteKit runtime environment within a Vitest unit
+    test, we stubbed it out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You also learned how a side-by-side implementation is used to keep your test
+    suites on *Green* while you systematically replace the internals of a function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next chapter continues the theme of test doubles with a detailed look at
+    component mocks.
+  prefs: []
+  type: TYPE_NORMAL

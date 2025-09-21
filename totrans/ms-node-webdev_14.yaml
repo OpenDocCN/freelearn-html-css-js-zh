@@ -1,0 +1,941 @@
+- en: '13'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Using Sessions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, I explain how Node.js applications can correlate HTTP requests
+    to create *sessions*, which allow the results of one request to affect the outcome
+    of future requests. *Table 13.1* puts this chapter in context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 13.1: Putting sessions in context'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Question | Answer |'
+  prefs: []
+  type: TYPE_TB
+- en: '| What are they? | Sessions correlate the requests made by a user, allowing
+    requests to be associated with one another. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Why are they useful? | Sessions allow stateful application features to be
+    implemented using stateless HTTP requests. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| How are they used? | Cookies are used to transmit small amounts of data or
+    a session ID that is associated with data stored by the server, which identifies
+    related requests. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Are there any pitfalls or limitations? | Browsers sometimes use cookies in
+    ways that are unhelpful for managing sessions, but with care, sessions have few
+    pitfalls. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Are there any alternatives? | Cookie-based sessions are the only reliable
+    way to correlate HTTP requests, but not all applications require request correlation.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '*Table 13.2* summarizes the chapter.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 13.2: Chapter summary'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Problem | Solution | Listing |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Correlate related HTTP requests | Set and read cookies | *2-5, 8-10* |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prevent the data stored in cookies from being altered | Sign and verify cookies
+    | *6, 7* |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Store larger amounts of data | Use sessions where the data is stored by the
+    application and accessed using a key stored in a cookie | *11-15, 19-21* |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Persistently store session data | Use a database | *16-18* |'
+  prefs: []
+  type: TYPE_TB
+- en: Preparing for this chapter
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter uses the `part2app` project from *Chapter 12*. No changes are required
+    for this chapter. Run the command shown in *Listing 13.1* in the `part2app` folder
+    to start the development tools.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.1: Starting the development tools'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Use a browser to request `http://localhost:5000,` fill out the form, and click
+    the **Submit** button, as shown in *Figure 13.1*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Tip**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can download the example project for this chapter – and for all the other
+    chapters in this book – from [https://github.com/PacktPublishing/Mastering-Node.js-Web-Development](https://github.com/PacktPublishing/Mastering-Node.js-Web-Development).
+    See *Chapter 1* for how to get help if you have problems running the examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_13_01.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 13.1: Running the example application'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Correlating stateless HTTP requests
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: HTTP requests are *stateless*, meaning that each request is self-contained and
+    contains no information that associates it with any other request, even when made
+    by the same browser. You can see the problem this creates by opening two browser
+    windows and filling out the form with the same name but different ages and number
+    of years, simulating two users with the same name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The only information the server has to work with is the data in the form and
+    it has no way to figure out that these are requests from different users, so the
+    users see each other’s data, and any other data created by users with the same
+    name, as shown in *Figure 13.2*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_13_02.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 13.2: The effect of stateless requests'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Most applications are *stateful*, and that means the server has to be able to
+    *correlate* requests so that the application can reflect past actions in future
+    responses. In the case of the example, this would allow the application to show
+    just the requests made by one user and not just all requests made by anyone who
+    happens to have the same name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using cookies to correlate requests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The most common way to correlate requests is with a *cookie*. Cookies are small
+    fragments of text that a server includes in an HTTP response header. The browser
+    includes the cookies in subsequent requests, which means that if the server creates
+    cookies with unique IDs, those requests can be identified as related. (There are
+    other ways to correlate requests, such as including unique IDs in URLs, but cookies
+    are the most robust and reliable approach.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cookies can be set just like any response header. Add a file named `cookies.ts`
+    to the `src/server` folder, with the content shown in *Listing 13.2*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.2: The contents of the cookies.ts file in the src/server folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Cookies are sent to the browser using the `Set-Cookie` header, and the header
+    value is a cookie name, a value, and one or more attributes that tell the browser
+    how to manage the cookie. A response can set multiple cookies by including multiple
+    `Set-Cookie` headers. For this reason, the code in *Listing 13.2* checks to see
+    whether there is an existing `Set-Cookie` header and adds its value to the array
+    of values passed to the `setHeader` method. When the response is written, Node.js
+    will add a `Set-Cookie` header for each element in the array.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**User caution**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consent is required for cookies in some parts of the world, most notably within
+    the EU with the **General Data Protection Regulation** (**GDPR**). I am not a
+    lawyer, and I am in no way qualified to provide legal advice, but you should make
+    sure you understand the laws in each region where your application has users and
+    make sure you comply with the rules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A header produced by the `setCookie` function in *Listing 13.2* will look like
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The cookie name is `user`, its value is `Alice`, and the cookie has been configured
+    with the `Max-Age` and `SameSite` attributes, which tell the browser how long
+    the cookie is valued for and when to send the cookie. The cookie attributes are
+    described in *Table 13.3*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 13.3: Cookie attributes'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Name | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This attribute specifies the cookie’s domain, as described after this table.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This attribute specifies the time and date when the cookie expires. The data
+    format is described at [https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Date](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Date).
+    For most projects, the `Max-Age` attribute is easier to use. |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This attribute tells the browser to prevent JavaScript code from reading
+    the cookie. This is rarely set for web applications that have client-side JavaScript
+    code. |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This attribute specifies the number of seconds until the cookie expires.
+    This attribute takes precedence over `Expires`. |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This attribute specifies a path that must be in the URL for the browser to
+    include the cookie. |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This attribute tells the browser whether the cookie should be included in
+    cross-site requests, as described later. The policy options are `Strict`, `Lax`,
+    and `None`. |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| When this option is set, the browser will only include the cookie in HTTPS
+    requests and not plain HTTP requests. |'
+  prefs: []
+  type: TYPE_TB
+- en: Two of the cookie attributes require additional explanation. The `Domain` attribute
+    is used to widen the range of requests for which the browser will include a cookie.
+    If a request is sent to [https://users.acme.com](https://users.acme.com), for
+    example, any cookies that are returned won’t be included in requests to [https://products.acme.com](https://products.acme.com),
+    which can be a problem for some projects. This can be resolved with the `Domain`
+    attribute, which can be set to `acme.com`, and telling the browser to include
+    the cookie more broadly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `SameSite` attribute is used to control whether the cookie will be included
+    in requests that originate from outside the site that created the cookie, known
+    as the *first-party* or same-site *context.* The options for the `SameSite` attribute
+    are: `Strict`, meaning that cookies are only included for requests made from the
+    same website that created the cookie, `Lax`, which tells the browser to include
+    the cookie when following a link but not for cross-site requests, such as the
+    email, and `None`, which means that the cookie is always included.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Imagine that a user has previously visited [https://www.acme.com](https://www.acme.com)
+    and has received a cookie, after which the user navigates to `www.example.com`.
+    The response from `www.example.com` contains a link back to `www.acme.com`. If
+    the cookie was created with the `Strict` option, the browser won’t send the cookie
+    in the request, but it will be included with the `Lax` option. The `None` option
+    will also cause the browser to include the cookie and will also allow it to be
+    included in requests that are made within frames or that are for images.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Revisiting the cookies created by the code in *Listing 13.2*, you can see that
+    the `Max-Age` attribute has been used to give the cookie a 300-second (5-minute)
+    life and that the `SameSite` policy is set to `Strict`, which means cookies will
+    not be included in requests from outside the cookie’s domain:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `setJsonCookie` function produces cookies with the same configuration but
+    accepts arbitrary objects that are serialized into the JSON format before being
+    used as the cookie value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Avoiding cookies without expires and Max-Age attributes**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A cookie that is created without either the `Expires` or `Max-Age` attributes
+    is a *session cookie*, which is a confusing term because this type of cookie isn’t
+    especially useful for creating user sessions, a process I demonstrate later in
+    this chapter. The name “session cookies” means that a cookie is valid for a browsing
+    session, which means they are invalidated when the user closes the browser window,
+    for example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Browsers have changed since this type of cookie was created, and session cookies
+    should be avoided because leaving the browser to decide when to invalidate a cookie
+    can produce unexpected results, and cookies can have long and unpredictable lives,
+    especially now that browsers allow users to resurrect browser tabs long after
+    they are closed. Cookies should always be given a fixed life with the `Expires`
+    or `Max-Age` attributes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Receiving cookies
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The browser includes cookies in requests using the `Cookie` header, which contains
+    one or more `name=value` pairs, separated by semicolons (the `;` character). The
+    attributes used with the `Set-Cookie` header are not included, so the header looks
+    like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: '*Listing 13.3* defines a function to parse the header and extract the individual
+    cookies. There is also a method for parsing JSON cookie values.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.3: Parsing cookies in the cookies.ts file in the src/server folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `getCookie` function uses JavaScript string processing and regular expression
+    features to split up the cookie string and get the name and value to locate a
+    specific cookie. This is not an efficient approach because the cookie header is
+    processed each time a cookie is requested, but it does show how the header can
+    be handled and will be improved upon later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting and reading cookies
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '*Listing 13.4* updates the code that handles the `/form` requests to set a
+    cookie that keeps track of the user’s requests. The cookie’s contents are updated
+    each time a new request is received, and the cookie’s value is read from every
+    request and added to the context data passed to the template used to generate
+    a response.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.4: Using cookies in the forms.ts file in the src/server folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: A cookie is used to store the last five results created for the user. Each new
+    `POST` request creates a new `Set-Cookie` header in the response, with a new five-minute
+    expiry time. If the user keeps submitting requests, new cookies will be created,
+    effectively extending the user’s session. If no request is made before the cookie
+    expires, then the browser will discard the cookie and won’t include it in future
+    requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Listing 13.5* updates the partial view that displays recent queries to display
+    the personal history when it is available.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.5: Displaying data in the history.handlebars file in the templates/serve/partials
+    folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Browsers share cookies between tabs so the most reliable way to test the changes
+    to the example is to open one regular browser tab and one private or incognito
+    browsing tab. Navigate to `http://localhost:5000` with both tabs and fill out
+    the form using the same name but different ages and years. Submit the forms and
+    you will see that each browser tab has its own history, as shown in *Figure 13.3*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_13_03.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 13.3: Using cookies to correlate requests'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Signing cookies
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Users can change the contents of cookies, and browsers make it easy to add,
+    delete, and alter cookies. The Chrome F12 developer tools, for example, allow
+    cookies to be edited in the **Application/Cookies** pane.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This means that cookies cannot be trusted unless their contents can be verified
+    to ensure they have not been tampered with. Add a file named `cookies_signed.ts`
+    to the `src/server` folder with the content shown in *Listing 13.6*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.6: The contents of the cookies_signed.ts file in the src/server
+    folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Node.js provides a comprehensive cryptography API in the `crypto` module, which
+    includes support for **hash-based message authentication codes** (**HMACs**),
+    which are hash codes created using a secret key that can be used to verify data.
+    The `signCookie` function in *Listing 13.6* uses the Node.js API to create a hash
+    code that can be used as a cookie value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `createHmac` function is used to create the hash code generator, using
+    the **SHA-512** algorithm and the secret key:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `update` method is used to apply the hashing algorithm to the cookie value,
+    and the `digest` method returns the hash code in the `Base64` URL encoding, which
+    allows the hash code to be safely included in the cookie. The result is the data
+    value, followed by a period, followed by the hash code, which will look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Real hash codes are longer, but what’s important is that the cookie value isn’t
+    encrypted and can still be seen by the user. The user can still edit the cookie,
+    but the hash code allows those changes to be detected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the cookie is submitted, the `validateCookie` method generates a new hash
+    code for the cookie value and compares it to the one received in the cookie. Hash
+    codes are *one way*, which means they are validated by generating a new hash code
+    for the cookie value included in the HTTP request and comparing it with the previous
+    hash code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Node.js `crypto` module provides the `timingSafeEqual` function, which performs
+    a byte-by-byte comparison of two `Buffer` objects, which are created from the
+    two hash codes to compare.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The user may be able to alter the cookie value but doesn’t have the secret key
+    required to generate a valid hash code for the altered value. If the hash code
+    received from the request doesn’t match, the cookie data is discarded. *Listing
+    13.7* updates the `setCookie` and `getCookie` functions so that all the cookies
+    created by the application are signed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Caution**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Be careful not to commit secret keys to public source code repositories, such
+    as GitHub. One approach is to define sensitive data in `.env` files, which can
+    be excluded from code commits. See *Part 3* of this book for an example of using
+    this type of configuration file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.7: Signing cookies in the cookies.ts file in the src/server folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: There is no change in the behavior of the application, but if you use your browser’s
+    developer tools to alter a cookie, you will find that it is ignored when the browser
+    sends a request.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using a package to manage cookies
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The previous examples not only demonstrated how the `Set-Cookie` and `Cookie`
+    headers can be used but also showed that working directly with cookies can be
+    awkward. Express includes support for parsing cookies, as well as generating JSON
+    and signed cookies, without the need to manually format or parse headers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Parsing `cookies``.cpp` is done using a middleware component, which isn’t included
+    in the main Express package. Run the commands shown in *Listing 13.8* in the `part2app`
+    folder to install the parsing package and the TypeScript description of its API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.8: Installing the cookie middleware package'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '*Listing 13.9* enables the cookie parsing middleware and specifies the secret
+    key that will be used for signed cookies.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.9: Applying middleware in the forms.ts file in the src/server folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The middleware populates the `Request` object’s `cookies` property for regular
+    cookies and the `signedCookies` property for signed cookies. Cookies are set using
+    a `cookie` property defined by the `Response` object. *Listing 13.10* uses these
+    features to generate the cookies the application requires and adds a parameter
+    to the `setCookie` method to allow the default cookie options to be overridden.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.10: Using the Express cookie features in the cookies.ts file in
+    the src/server folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Express and.the cookie middleware take responsibility for creating the `Set-Cookie`
+    header in responses and parsing `Cookie` headers in requests. The `Response.cookie`
+    method is used to create cookies and it accepts a name, a value, and a configuration
+    object. The configuration object has properties that correspond to the cookie
+    attributes described in *Table 13.3*, although there are some oddities. For example,
+    the `maxAge` configuration is specified in milliseconds, rather than the seconds
+    used by the `Max-Age` attribute (which is why the value in *Listing 13.10* is
+    multiplied by 1,000).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The configuration object accepted by the `cookie` method supports a `signed`
+    property, which enables cookie signing. The key is obtained from the configuration
+    used to set up the cookie middleware, which is another oddity but works, nonetheless.
+    Cookies are signed using an HMAC, in a similar way to the custom code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cookies received in requests are available through the `Request.cookies` and
+    `Request.signedCookies` properties, which return objects whose properties correspond
+    to the names of the cookies in the request. Signed cookies are easily detected
+    because the `Response.cookie` method creates signed cookie values with the prefix
+    `s.`, and the values are automatically verified using the secret key with which
+    the middleware was configured.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The changes in *Listing 13.10* don’t change the behavior of the application,
+    but the cookies have a different format, and cookies created using the custom
+    code won’t pass verification.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using sessions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Cookies are suited to storing small amounts of data, but that data has to be
+    sent to the application with every request, and any changes to that data have
+    to be signed and sent in the response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An alternative is to have the application store the data and include just a
+    reference to that data in the cookie. This allows larger amounts of data to be
+    stored without that data being included in every request and response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Session data can be stored as a set of key/value pairs, which makes it easy
+    to use JavaScript objects to represent data. I am going to start by creating a
+    memory-based session system and then introduce persistent storage with a database,
+    using a repository layer to make the transition easier. Create the `src/server/sessions`
+    folder and add to it a file named `repository.ts` with the content shown in *Listing
+    13.11*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.11: The contents of the repository.ts file in the src/server/sessions
+    folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `SessionRepository` interface defines methods for creating a session, retrieving
+    a previously stored session, and saving or updating a session. The `Session` type
+    defines the minimum requirements for a `Session`, which entails an ID and a `data`
+    property that can be assigned arbitrary data indexed by string values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To create a memory-based implementation of the interface, add a file named `memory_repository.ts`
+    to the `src/server/sessions` folder with the content shown in *Listing 13.12*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.12: The contents of the memory_repository.ts file in the src/server/sessions
+    folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: The Node.js `crypto` package defines the `randomUUID` function, which generates
+    unique IDs that are suitable for use as session IDs. The rest of the implementation
+    uses a `Map` to store `Session` objects, which are checked for expiration when
+    they are read.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One point of note is that the `getSession` method doesn’t return the `Session`
+    from the store, but instead creates a new object, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `structuredClone` function is part of the standard JavaScript API and it
+    creates a deep copy of an object. Session data should only be modified for `POST`
+    requests because the other HTTP methods are idempotent and creating new objects
+    makes it easy to discard changes that are accidentally made for other HTTP methods,
+    which you will see in the next section. This is an issue only when storing states
+    as JavaScript objects, where the `Session` object associated with the request
+    is the same as the one in the store. It doesn’t arise when session data is stored
+    in a database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating the session middleware
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Sessions need to be stored after the response has been generated so that any
+    changes made to the session data are not lost, and that can most easily be done
+    by creating an Express middleware component. Add a file `middleware.ts` to the
+    `src/server/sessions` folder with the content shown in *Listing 13.13*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.13: The contents of the middleware.ts file in the src/server/sessions
+    folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: This middleware component reads a cookie that contains a session ID and uses
+    it to get the session from the repository and associate it with the `Request`
+    object by adding a property named `session`. If there is no cookie, or no session
+    can be found with the ID, then a new session is started.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The session can only be safely stored once the response has been generated and
+    when it is certain that no further changes will be made. The `finish` event is
+    triggered once a response is complete, and the `once` method is used to handle
+    the event and store the session.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sessions are only stored for HTTP `POST` requests and when properties have been
+    assigned to the `data` object. For other HTTP methods, the `touchSession` method
+    is used to extend the session expiry time but the session data isn’t stored.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Updating the session expiry after every request creates a *sliding expiry*,
+    which means that the session can remain valid indefinitely. This is the most common
+    approach because it means sessions are valid for as long as the user is active
+    and will time out after a period of inactivity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the session feature
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The middleware component adds a `session` property to requests, but this isn’t
+    a part of the standard Express `Request` type and isn’t known by the TypeScript
+    compiler. There are two good ways to solve this problem: a helper function that
+    reads the `session` property or a new type that extends the one provided by Express.
+    Add a file named `session_helpers.ts` to the `src/server/sessions` folder with
+    the content shown in *Listing 13.14*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.14: The contents of the session_helpers.ts file in the src/server/sessions
+    folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `getSession` function receives a `Request` object and returns the `session`
+    property by using `as any` to work around the TypeScript type checks. The `declare`
+    keyword is used to tell TypeScript that the `Request` interface has an additional
+    property.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Of the two approaches, my preference is the helper function, which isn’t as
+    elegant, but which is more easily understood and makes it obvious how the `Session`
+    object is being obtained. *Listing 13.15* applies both approaches to switch from
+    storing session data in the cookie to using the session repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.15: Using the session repository in the forms.ts file in the src/server
+    folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: The changes enable the session middleware and store the user’s history using
+    the new session feature. Once again, there is no change in the way the application
+    behaves, because the changes are invisible to the user. As the form is submitted,
+    the cookie sent by the browser is used to load the session data from the repository,
+    which is used in the response, as shown in *Figure 13.4*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_13_04.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 13.4: Using session data'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Storing session data in a database
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Storing session data in memory is a good way to understand how the pieces fit
+    together but isn’t ideal for real projects where more persistent storage is usually
+    required. The conventional approach is to store session data in a database, which
+    ensures that sessions are persistent, and allows for large numbers of sessions
+    without exhausting system memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add a file named `orm_models.ts` to the `src/server/sessions` folder, with the
+    content shown in *Listing 13.16*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.16: The contents of the orm_models.ts file in the src/server/sessions
+    folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: A single model class can represent a session and the IDs generated by the `crypto.randomUUID`
+    function can be used as primary keys. Sequelize has good support for working with
+    JavaScript dates and will automatically serialize and deserialize objects when
+    the type of a column is `DataTypes.JSON`. To create a session repository, add
+    a file named `orm_repository.ts` in the `src/server/sessions` folder, with the
+    content shown in *Listing 13.17*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `initModelAndDatabase` method in *Listing 13.17* calls the `drop` method,
+    which will reset the database every time the application is started or restarted.
+    This should not be done in a real project, but it is helpful for an example and
+    ensures that any changes in the code files will be reflected in the database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.17: The contents of the orm_repository.ts file in the src/server/sessions
+    folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The repository is similar to the one created for application data, but there
+    are a couple of points that show how an ORM (Object Relational Mapping) like Sequelize
+    can simplify dealing with a database, albeit with awkward JavaScript code. The
+    `getSession` method queries the database to find a row with a given primary key
+    and an expiry date in the future, which is done using the `findOne` method and
+    a `where` expression, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `Op.gt` value represents a greater comparison and allows the search to match
+    rows where the date stored in the `expires` column is greater than the current
+    date. This isn’t the most natural way to express queries, but it works and allows
+    queries to be expressed without needing to write SQL.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Sequelize `upsert` method is used to update a data row if it exists and
+    insert one if not, which makes it easy to implement the `saveSession` method.
+    The `touchSession` method is implemented with the `update` method, which allows
+    specific columns to be updated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: I have not added any support for deleting expired sessions in this chapter.
+    As a rule, I avoid deleting any data automatically because it is easy for things
+    to go wrong. Storage space is relatively affordable but if you need to actively
+    manage the size of the session database, then backing up before a manual cleanup
+    is a safer option.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The final step is to update the session middleware to use the new repository,
+    as shown in *Listing 13.18*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.18: Changing repository in the middleware.ts file in the src/server/sessions
+    folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: No other change is required to use the database because the new repository implements
+    the same interface as the old one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The key difference is that you will see the database queries being logged by
+    the Node.js console as the application is running, starting with the statement
+    that creates the database table:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: No SQL was required to prepare or query the database and the process of creating
+    and parsing JSON is handled automatically.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using a package for sessions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that you understand how sessions work, it is time to replace the custom
+    code with an off-the-shelf sessions package, such as the one provided by Express.
+    Run the commands shown in *Listing 13.19* in the `part2app` folder to install
+    the sessions package, the type description package for its API, and a package
+    that stores sessions in a database using Sequelize. (There is a wide range of
+    database options for the express-sessions package, described at [https://github.com/expressjs/session](https://github.com/expressjs/session)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.19: Installing packages'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: '*Listing 13.20* prepares the application to use the session package and the
+    storage package.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.20: Using the session package in the session_helpers.ts file in
+    the src/server/sessions folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: Adjustments are required to use the package, including *commenting out* the
+    `declare` statement that adds the `Request.session` property because there is
+    a similar statement defined by the `express-session` package.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A new `declare` statement is required to add custom properties to the `SessionData`
+    object, which is the type used to represent session data by the package. There
+    is a `Session` type, but it serves a purpose similar to the wrapper type employed
+    by the custom code. In this case, a `personHistory` property has been added to
+    minimize the changes required to use the package.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `sessionMiddleware` function creates a `Sequelize` object that uses SQLite
+    and uses it to create a store for session data using the `connect-session-sequelize`
+    package. The `sync` method is called to initialize the database, and the default
+    export from the `express-session` package is used to create a middleware component.
+    The configuration options for the session store are described at [https://github.com/expressjs/session](https://github.com/expressjs/session),
+    but the configuration in *Listing 13.20* specifies the secret key for signing
+    cookies, the Sequelize store, and the cookie settings so that the package behaves
+    in the same way as the custom code. Small changes are required to use the session
+    package, as shown in *Listing 13.21*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `cookie-parser` package can be used in the same application as the `express-session`
+    package, but you must ensure that both are configured with the same secret key.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 13.21: Using the session package in the forms.ts file in the src/server
+    folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: The changes replace the custom middleware and read the `personalHistory` property
+    directly on the object returned by the `session` property. The schema of the database
+    used to store sessions is different, which you can see in the SQL statements that
+    are written out by the Node.js console, but otherwise, the behavior of the application
+    is unchanged.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, I explained how an application can use cookies to correlate
+    HTTP requests to create a stateful user experience over a stateless protocol:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cookies are created by adding the `Set-Cookie` header to responses.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Browers include cookies in requests with the `Cookie` header.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cookies are configured using cookie attributes, including setting an expiration
+    time, after which the browser will no longer include the cookie in requests.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cookies can be signed, which reveals when they have been altered.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cookies can be used to store small amounts of data, but this data must then
+    be repeatedly transferred between the browser and the server.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cookies can also be used to store session IDs, which are used to load data stored
+    by the server. This makes the server more complicated but means that only the
+    ID is transferred between the browser and the server.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the next chapter, I will describe how RESTful web services can be used to
+    provide data to clients without including HTML.
+  prefs: []
+  type: TYPE_NORMAL

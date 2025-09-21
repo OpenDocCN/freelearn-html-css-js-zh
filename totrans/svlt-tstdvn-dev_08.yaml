@@ -1,0 +1,580 @@
+- en: '8'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Creating Matchers to Simplify Tests
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'This chapter introduces another method for simplifying tests: building custom
+    matchers. Most of the time, it makes sense to stick to the built-in matchers.
+    For instance, the powerful combination of the `toEqual` matcher with the `expect.objectContaining`
+    and `expect.arrayContaining` functions make it easy to build expressive expectations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: But sometimes it makes sense to build a matcher that can scoop up a number of
+    different checks into one single check. This not only shortens tests but can make
+    them more readable, too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In [*Chapter 5*](B19611_05.xhtml#_idTextAnchor070), *Validating Form Data*,
+    each of the form validation rules was tested by a `describe` context with four
+    tests, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Since all the validation rules have the same format, it seems like a good candidate
+    for abstracting some shared code. The matcher we’ll create will scoop three of
+    these tests into a custom matcher – the `toBeUnprocessableEntity` matcher – that
+    can be used to replace them all with a single test:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There’s one final important point: the custom matcher requires its own set
+    of unit tests. That’s so you can be sure that the matcher does the right thing:
+    it passes when it’s meant to pass, and it fails when it’s meant to fail. Just
+    like how you want to be sure that your application code does the right thing.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Testing test code
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The general rule I have is this: if your code contains any kind of control
+    structure or branching logic, such as `if` statements or loop constructs, then
+    it needs tests.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This chapter covers the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Test-driving the pass or failure of an expectation
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Providing extra information in failure messages
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing the negated matcher
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Updating existing tests to use the matcher
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: By the end of the chapter, you’ll understand how to build a matcher and how
+    to write tests for it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The code for the chapter can be found online at [https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter08/Start](https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter08/Start).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Test-driving the pass or failure of an expectation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, you’ll build the basic functionality of the `toBeUnprocessableEntity`
+    matcher, ensuring that it will correctly pass or fail your test. But first, we’ll
+    look at the structure of a matcher and then the approach to unit testing matchers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding matcher structure
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let’s look at the basic structure of a matcher and how we can test it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `received` parameter value is the object passed to the `expect` call. The
+    `expected` value is the value passed to the matcher. So, in the example from the
+    introduction, the result is the received object, and the object containing the
+    `error`, `name`, and `dob` properties is the expected object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `return` value has two important properties: `pass` and `message`. The
+    `pass` boolean should be `true` if your matcher passes the check, and `false`
+    otherwise. However, for a negated matcher, the opposite happens: a `true` value
+    for `pass` means that the expectation fails.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `message` property is a function that returns a string. This string is
+    what the test runner displays in the event that your test fails. The contents
+    of the string should be enough for the developer to pinpoint what error occurs.
+    The property itself is defined as a function so that it can be lazily evaluated:
+    there’s no point running this code if the test passes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unlike other code samples in this book, the matcher function will be defined
+    using the standard `function` keyword. This means it gains access to the `this`
+    bound variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Vitest primes `this` with a number of useful utility functions that the matcher
+    can use. We’ll use a couple of them in this chapter: `this.equals` and `this.utils.diff`.
+    Another useful property is `this.isNot`, which is `true` if your matcher was invoked
+    in its negated form.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Testing a matcher
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: There are a couple of ways to test a matcher. One way is to test the function
+    return values, as you would with any other function. The difficulty with this
+    approach is that you’ll need to set up the `this` variable, and that’s not straightforward.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another approach, and the approach we’ll use this in this chapter, is to use
+    the `toThrowError` matcher to wrap the matcher under test, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `toThrowError` matcher takes a function as the parameter to expect; this
+    is then executed within a `try` block. The caught `Error` object then has its
+    `message` value checked against the expected value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For this approach to work, we’ll need to ensure `toBeUnprocessableEntity` is
+    registered with the Vitest test runner. We can do that with the `beforeAll` function
+    that runs once at the very beginning test suite.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With all that knowledge, we’re ready to begin writing the matcher.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing the toBeUnprocessableEntity matcher
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let’s get started with the test suite:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create a new file named `src/matchers/toBeUnprocessableEntity.test.js`, and
+    start with the following imports. They include all the Vitest imports, which we’ll
+    use in the next step. We’ll also import the `fail` SvelteKit function, which we’ll
+    use in our tests:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, create a new `describe` block with a `beforeAll` block at the start.
+    This ensures that the new matcher is registered before our tests run. This only
+    needs to be done once:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Our first test will cause the expectation to fail. Add the following test code,
+    which creates a failure reason with a `500` error code rather than a `422`, and
+    then use the `toThrowError` matcher to check that the expectation fails:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To make that test pass, all we need to do is build a matcher that returns a
+    `pass` value of `false`. Create a new file named `src/matchers/toBeUnprocessableEntity.js`
+    with the following content. As mentioned previously, this uses the `function`
+    keyword syntax so that we gain access to Vitest’s matcher utility functions that
+    are attached to the `this` variable:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'With the first test passing, add the second. This one checks the opposite –
+    that the matcher does not throw if the response has a `422` error code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To make that pass, wrap the original code in a conditional so that it becomes
+    a guard clause, and if that condition isn’t met, then return a `pass` value of
+    `true`, as shown:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'If a failure occurs, we want the test runner to display a helpful message about
+    why the expectation failed. To do that, you can pass a string value to the `toThrowError`
+    matcher that defines the error message. This is what the Vitest test runner will
+    display on the screen. Add the following test:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Making that pass involves sending back the `message` property. The value of
+    this property is a function that is only invoked if the test fails. It’s a form
+    of lazy evaluation, allowing the test runner to avoid doing unnecessary work.
+    Update the guard clause to include the `message` property, as shown:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we also need to check the `response` body. In our application code, any
+    `422` result returns an `error` property along with the original form values.
+    We want the matcher to fail the test if the actual response doesn’t match the
+    expected value:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To make that pass, all we need is to add a very simple second guard clause.
+    If an argument is passed to the matcher, then we fail the test. This implementation
+    isn’t even close to a correct implementation, but it’s enough to make the test
+    pass. We’ll need to triangulate with more tests. But for now, you can start with
+    this code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The next test is very similar, but this time, the two response bodies *do*
+    match. This case shouldn’t cause a failure error:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Update the second guard clause to use the `this.equals` function to perform
+    a deep equality check on the `received.data` value and the `expected` parameter.
+    This is enough to make the test pass:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The final test is a check that partial objects match:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To make that pass, we will use the `expect.objectContaining` constraint function,
+    which can be passed into the call to `this.equals`. Start by importing the `expect`
+    object at the top of the test file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, update the guard class to wrap the `expected` value in a call to `expect.objectContaining`,
+    as shown:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Finally, if you run tests now, you’ll find the very first test fails because
+    the value of `expected` is `undefined`, and `expect.objectContaining` doesn’t
+    like that. To fix the issue, set a default value for the `expected` argument,
+    like this:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: You’ve now seen how to test-drive a matcher function. The next section focuses
+    on improving the error messages that are displayed when a failure occurs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Providing extra information in failure messages
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This section improves the detailed information that is presented to the developer
+    when a test fails. The purpose of this extra information is to help pinpoint the
+    issue with the application code so that the developer isn’t left scratching their
+    head about what went wrong.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s begin:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Add the next test, which checks that a basic message is shown when the response
+    bodies do not match:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To make that pass, add the `message` property to the second guard clause `return`
+    value. We’ll expand on this in the next test:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Vitest includes a built-in object `diff` helper that will print out a colorful
+    diff. Colors are added into the text string using ANSI color codes, which the
+    Terminal will decipher and use to switch on and off colors. The presence of these
+    codes means that checking the text content within the `toThrowError` matcher is
+    not straightforward. The following test shows a pragmatic way of checking the
+    same thing in a simpler way, by checking that both the `c` and `a` properties
+    appear somewhere in the output:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To make that pass, we’ll append the diff onto the end of `message` that we’re
+    already printing. First, import the `EOL` constant from Node.js’s `os` module,
+    which gives us the current platform’s line-ending:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'In the matcher code, update the second guard clause’s `message` property to
+    use the `this.utils.diff` function to print the diff of the `expected` and `received.data`
+    objects:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: That completes the display of detailed error information. We’ll finish off our
+    matcher in the next section by ensuring it works nicely when used in a negated
+    sense.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing the negated matcher
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Negating a matcher is a tricky business, mainly because negated matchers can
+    have confusing meanings. For example, what does the following expectation mean?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Presumably, it should fail if the response is `422` and the response body matches
+    the object provided. But should it also fail if the response is, say, a `500`
+    or `200` response? If that was what was expected, wouldn’t it be enough to write
+    this?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: I find that when writing matchers for domain-specific ideas, negated matchers
+    are best avoided, or at least restricted in their use. However, to show how it’s
+    done, let’s carry on with the matcher.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we negate the matcher, the Vitest test runner will fail the test if the
+    matcher returns a `pass` value of `true`. We have exactly one scenario where this
+    occurs, as all our guard clauses return a `pass` value of `false`. So, all these
+    remaining tests simply check the `message` property in this case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s start by creating a nested `describe` block:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Add a nested `describe` block named simply `not`, and add the first test:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To make that pass, head to the bottom of the matcher and add the basic `message`
+    property value to the last `return` value in the function, as shown:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We can improve upon that by ensuring that the actual `response` body is returned
+    in the message. Add the next test:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To make that pass, you can make use of the `this.utils.stringify` utility function,
+    which does all the hard work for you:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Finally, we need to be careful about the case when no expected object is passed
+    in. When this happens, the actual body isn’t relevant for the developer since,
+    by omitting it from the expectation, they have expressed that they aren’t interested
+    in it:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To make that pass, add a third guard clause, as shown:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: You’ve now test-driven a complete matcher, with useful error messages and support
+    for the negated form. Next, it’s time to make use of it in our existing test suites.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Updating existing tests to use the matcher
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this final section, we’ll use the matcher we’ve just built to simplify the
+    form validation error test suite.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s get started:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, register the matcher for our test runs by adding an `import` statement
+    and call to `expect.extend` in the `src/vitest/registerMatchers.js` file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, in `src/routes/birthdays/page.server.test.js`, find the nested `describe`
+    block with the description `when the name is not provided`. It contains four tests.
+    Leave the first one in place, and replace the last three tests with the following
+    test:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, do the same for the nested `describe` block with the description `when
+    the date of birth is in the wrong format`, replacing the last three tests with
+    the test shown:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Do exactly the same thing with the `when the id is` `unknown` context:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, there are a couple of tests specifically for ensuring `id` is returned.
+    Update the expectations for them both, as shown:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: And that completes the changes. Make sure to run all tests and check that everything
+    is passing. Take a step back and look at how much clearer and simpler your tests
+    have become.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter has shown you how to build a custom matcher to simplify your test
+    expectations. It also discussed the importance of test-driving matcher code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Your unit test files act as a specification of your software. It’s imperative
+    that these files are clear and concise so that the specifications are clear. Sometimes,
+    writing custom matchers can help you achieve that clarity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why do we test-drive matcher implementations? Because almost all matchers have
+    branching logic – sometimes they’ll pass and sometimes they’ll fail – and you
+    want to be sure that the right branches are used at the right times.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we’ll switch back to refactoring our application code,
+    with the intention of improving its testability.
+  prefs: []
+  type: TYPE_NORMAL

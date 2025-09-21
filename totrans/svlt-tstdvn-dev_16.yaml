@@ -1,0 +1,268 @@
+- en: '16'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Test-Driving Service Workers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter looks at **service workers**, which are bits of code that are installed
+    on the browser and are invoked before any HTTP operation. That makes them useful
+    for a certain set of features, such as enabling offline access to your app. The
+    service worker implemented in this chapter provides exactly that feature.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s almost always a good idea to use off-the-shelf service workers rather than
+    rolling your own. But it’s instructive to see how you might test your own service
+    workers, hence the inclusion in this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The term **testability** is used to describe how straightforward it is to write
+    tests for your application code. The way we structure our components and modules
+    has a big impact on their testability. Service workers are a great example of
+    taking something that, at first glance, is a highly complex thing to test and
+    restructuring its implementation so that the tests become almost trivial.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This chapter covers the following key topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding a Playwright test for offline access
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing the service worker
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: By the end of the chapter, you’ll have learned how to test-drive service workers,
+    plus you’ll have learned a new technique for making your application code more
+    testable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The code for the chapter can be found online at [https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter16/Complete](https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter16/Complete).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding a Playwright test for offline access
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Service workers tend to have a specific intent. In our case, the service worker
+    enables the application to be used offline: loading the application causes it
+    to be cached. If the network is no longer accessible, the next page load will
+    be served from this cache, courtesy of the service worker.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Therefore, the Playwright test needs to test the application’s behavior when
+    there’s no network connection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At the time of writing, Playwright’s support for service worker events is experimental,
+    so it needs to be enabled using the `PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS`
+    flag in your `package.json` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once that’s done, we’re ready to write our tests. We need two helper functions.
+    The first, `waitForServiceWorkerActivation`, can be invoked by any Playwright
+    test to ensure that subsequent commands don’t run until the service worker is
+    actively caching new requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This code can be found in `tests/offline.test.js`. I’ve parked it right next
+    to the single test that uses it: there’s not much point in moving it to another
+    file because I don’t expect to reuse this function anywhere else in the test suite:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we need a `disableNetwork` function that will cause any network request
+    to return a network error:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then we’re ready to write the test:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Without the service worker, this test will fail because the second `page.goto`
+    call will error. In the next section, we’ll see how this service worker can be
+    implemented.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing the service worker
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Service workers have an odd interface. For one thing, they need to rely on a
+    variable named `self` that is provided by the browser context. Then they need
+    to attach listeners to certain events, and they need to use the `event.waitUntil`
+    function to ensure that the browser waits for its operations to finish before
+    assuming the worker is ready.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It turns out that it’s quite difficult to set up a value for `self` together
+    with fake events within your Vitest tests. Not impossible, but difficult and laborious.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Given this complexity, the trick to implementing a testable service worker
+    is to move most of the functionality into another module: each event becomes a
+    simple function call, and we can test that function call rather than the event.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then, we leave the service worker module untested. We still have the Playwright
+    test giving us coverage, and this code isn’t likely to change once it’s complete,
+    so it’s no big deal that this particular file is without unit tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This example, shown in the following code block, is stored in the `src/service-worker.js`
+    file. It pushes almost all the functionality into the `addFilesToCache`, `deleteOldCaches`,
+    and `fetchWithCacheOnError` functions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Let’s take a look at the implementation of the three functions located in the
+    `src/lib/service-worker.js` file. Each of these functions makes use of the Cache
+    API, which we’ll test by setting up spies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here’s `addFilesToCache`, which simply opens the relevant cache and inserts
+    all the given assets:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To begin testing that, first we need to define a default value for `caches`.
+    In the sample repository, the following code lives in the test suite in `src/lib/service-worker.test.js`,
+    but you could also place it in a Vitest setup file, which would make better sense
+    if you had more than one test suite using the Cache API:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now let’s start off with a `describe` block for the `addFilesToCache` function.
+    All it takes is a call to `vi.spyOn` together with a hand-rolled cache object.
+    Both the `caches` spy and the `cache` stub implement just enough for the purposes
+    of testing the `addFilesToCache` function, nothing more, nothing less:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then the tests themselves are straightforward:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, here’s the definition of `deleteOldCaches`, which is a bit more complex:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It turns out that our spy setup for this is much simpler:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, the tests themselves are fairly straightforward. Notice how each of the
+    tests is self-contained, with their own stub values for the `cache.keys` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we come to the `fetchWithCacheOnError` function, the most complex
+    of the three. This involves the Cache API and the Fetch API, so our tests will
+    need to deal with the `request` and `response` objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let’s take a look at the test setup. In addition to the `caches.open` spy and
+    the `cache` stub; there’s also a `successResponse` object and a `request` object.
+    These have dummy values: calling `successResponse.clone()` doesn’t give you back
+    a response, and `request` isn’t a real request object. They’re just strings. But
+    that’s all we need for the tests:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now let’s look at the four happy path tests. These tests assume a working network
+    connection and a valid HTTP response with a `200` status code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then we have a test for an HTTP status code of anything other than `200`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we have a nested context for the network error. Note the use of `mockRejectedValue`
+    instead of `mockResolvedValue`, which will throw an exception and cause the `catch`
+    block to be executed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And that’s it: we have a fully-tested service worker using a combination of
+    Playwright and Vitest tests.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We've finished the book by looking at how even a complex browser feature, such
+    as service workers, can be fully covered by tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You’ve seen how Playwright tests should always test the benefit provided by
+    the implementation – in this case, checking that the page is available offline
+    – rather than testing an implementation detail, such as whether the service worker
+    is is available or not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You’ve also seen how the Vitest tests can avoid checking the awkward service
+    worker interface by pushing the majority of the implementation into plain JavaScript
+    functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: And with that, our tour of test-driven Svelte comes to an end. It’s now over
+    to you to put what you’ve learned into practice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As this book has shown, there are many avenues that your testing practice can
+    follow. I encourage you to experiment and find what works for you. Seek out the
+    practices that make your life easier and allow you to build higher-quality software
+    at a steady rate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thank you for choosing to spend your time with this book. If you have any feedback,
+    good or bad, I’d love to hear it. You can contact me via the book’s GitHub repository
+    or via my website at [www.danielirvine.com](http://www.danielirvine.com).
+  prefs: []
+  type: TYPE_NORMAL

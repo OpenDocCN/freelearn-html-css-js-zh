@@ -1,0 +1,836 @@
+- en: '7'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Asynchronous Programming Performance Patterns
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A key strength of JavaScript runtimes is the event loop, which couples “non-blocking
+    input/output” within a single-threaded execution model. This means JavaScript
+    is great for high-concurrency systems as long as they are not compute-bound systems
+    (i.e., they’re IO-bound).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With the asynchronous and non-blocking IO, JavaScript has strong built-ins
+    to orchestrate requests. In this chapter, we’ll cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sequential and parallel asynchronous operation patterns in JavaScript, both
+    with Promises only and with async/await
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The cancellation and timeout of fetch requests with AbortController
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Advanced asynchronous operation patterns: throttling, debouncing, and batching'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: At the end of this chapter, you’ll be able to spot and remedy situations where
+    the asynchronous operation orchestration could be improved in JavaScript.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You can find the code files for this chapter on GitHub at [https://github.com/PacktPublishing/Javascript-Design-Patterns](https://github.com/PacktPublishing/Javascript-Design-Patterns)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Controlling sequential asynchronous operations with async/await and Promises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Promises were introduced in ES2015 (ES6), along with other modern data structures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For those familiar with JavaScript prior to ES2015, asynchronous behavior was
+    modeled with callback-based interfaces, for example, `request(url, (error, response)
+    => { /* do work with response */ })`. The key issues that Promises resolved were
+    the chaining of asynchronous requests and issues around managing parallel requests,
+    which we’ll cover in this section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ES2016 included the initial specification for the async/await syntax. It built
+    on top of the Promise object in order to write asynchronous code that didn’t involve
+    “Promise chains,” where different Promises are processed using the `Promise().then`
+    function. Promise functionality and async/await interoperate nicely. In fact,
+    calling an async function returns a Promise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ll start by showing how to use Promises to manage sequential asynchronous
+    operations. We’ll use the Fetch API (which returns a Promise) to load `fakestoreapi.com/auth/login`.
+    Given a username and password, and based on the output, we’ll load all the relevant
+    carts for that user. Subsequently, we’ll load the relevant carts for that user
+    using the `fakestoreapi.com/carts/user/{userId}` endpoint. This request flow is
+    visualized in the following diagram.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.1: Sequence of /auth/login and /carts/user/{userId} requests](img/B19109_07_1.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7.1: Sequence of /auth/login and /carts/user/{userId} requests'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We’ll start by sending a POST request to the `auth/login` endpoint. We add
+    `.then((res) => res.json())`, which will wait for the initial `fetch()` output
+    Promise to resolve to a “response” (hence the `res` name). We then call the `.json()`
+    method on the response, which again is a Promise, which resolves to the JSON-decoded
+    response body:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The Promise returned from `res.json()` can be accessed in another `.then()`
+    callback, in which we parse the `token` field, which is a `jwt-decode` package.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We extract the `sub` field from the decoded token. This is the “subject” claim,
+    which tells us which user this token is about. In the case of the `fakestoreapi`
+    token, `userId` is used as the “subject” claim. We can therefore use the `sub`
+    claim as the user ID for which to load the carts in our following API call to
+    [https://fakestoreapi.com/carts/user/](https://fakestoreapi.com/carts/user/)`{userId}`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: This function can then be used as follows. Note that a password shouldn’t be
+    stored in the source of a production application (as it is in this example).
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we call the `fetchAuthUserThenCartsPromiseThen` function, it makes both
+    the `/auth/login` call and then the `/carts/user/{userId}` call, which means we
+    receive an array with the relevant carts for the requested user (note `userId`
+    = `3`, which is the correct ID for the `kevinryan` user).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that we’re using async/await here to “flatten” the Promise output into
+    `userCartsDataPromiseThen`, which we can assert on:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: As we’ve just seen in the code that calls `fetchAuthUserThenCartsPromiseThen`,
+    the key benefit of async/await over `Promise().then()` chains is that the code
+    is structured more similarly to synchronous code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In synchronous code, the output of an operation can be, for example, assigned
+    to a constant:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Whereas with `Promise().then()`, the output is available only in an additional
+    `.``then` callback:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'What `await` allows us to do is to structure the code as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: One way to think of it is that `await` can unfurl Promises. A Promise’s “resolved
+    value”, usually only accessible in a `Promise().then()` callback is available
+    directly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For sequential operations, this is very useful, since it makes the code structured
+    with a set of variable assignments per async operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `await` operator is available at the top level of ECMAScript modules in
+    modern runtime environments as part of the ES2022 specification.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, in order to use `await` inside of a function, we need to mark the function
+    as `async`. This usage of `await` in `async` functions has been available since
+    ES2016.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code editors and IDEs such as Visual Studio Code provide a refactor from chained
+    `Promise().then()` calls to async/await. In our case, we can build a `fetchAuthUserThenCartsAsyncAwait`
+    function as follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Instead of using `fetch().then(res => res.json())`, we’ll first use `await
+    fetch()` and then `await authResponse.json()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We now have access to `authData`. We can decode `authData.token` as before
+    using the `jwt-decode` package. This gives us access to the `sub` (subject) claim,
+    which is the user ID:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we have the relevant user ID, we can call the `/carts/user/{userId}`
+    endpoint to load the user’s carts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Given the same input data as the approach using `Promise().then()`, the loaded
+    carts are the same. Note, again, that passwords and credentials should not be
+    stored in source code files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: One difference between the approaches is that with async/await, all the variables
+    are defined in a single function scope, whereas the `Promise().then()` approach
+    uses multiple function scopes (for each of the callbacks passed to `.then()`).
+    With a single large function scope, variable names can’t clash, which makes the
+    code more verbose since, for example, each `response` object needs a qualifier
+    to avoid variable name clashes, for example, `authResponse` and `userCartsResponse`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The benefit of a single larger function scope is that all the outputs of previous
+    API calls are available to subsequent ones without having to explicitly set them
+    as values passed as a return in the callback passed to `.then()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, a `fetch()`-specific example, is that since there are multiple Promises
+    that require handling when doing a fetch and accessing the JSON response, the
+    await approach can be a bit “noisier.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'See the two following samples. First, with async/await, we assign a variable
+    for the fetch `response` value:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, with `.then()`, we assign only a `data` variable and use an arrow function
+    to handle the `.``json()` unfurling:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you see, our final example is a mix of `async/await` and `Promise().then()`
+    so that the most “important” parts of the code are obvious. The specifics of how
+    we extract the JSON output from `fetch` are not necessarily core to our logic
+    so might be better expressed with `Promise().then()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In general, this slight difference in style wouldn’t occur since parts of the
+    code that are “less important,” such as how we interact with the fetch API to
+    process a request to JSON, tend to be abstracted – in this case, in an HTTP client
+    of some kind. We would expect that the HTTP client could handle checking `response.ok`
+    and accessing the response body as parsed JSON (using `response.json()`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ve now seen how to implement sequential asynchronous operations using a Promise-only
+    approach, an async/await-based approach, and finally, how both the async/await
+    and Promise techniques can be used together to improve code readability and performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Parallel asynchronous operation patterns
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A common source of bad performance is running operations sequentially that could
+    be completed in parallel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, a naive implementation of loading a cart and then the contained
+    products would be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.2: Load cart then each of the three products contained from fakestoreapi](img/B19109_07_2.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7.2: Load cart then each of the three products contained from fakestoreapi'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this case, the operation completion time is composed of the sum of the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Request-response time for **GET /carts/{cartId}**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Request-response time for **GET /products/1**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Request-response time for **GET /products/2**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Request-response time for **GET /products/3**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'There is a requirement for the `/products/{productId}` calls to be done after
+    the `GET /carts/{cartId}` call completes since that’s where the product IDs are
+    coming from. What isn’t required is for each product call to wait for the previous
+    one to complete; the calls only depend on data from the `GET /carts/{cartId}`
+    call. This is an optimization opportunity. We can start all of the `GET /products/{id}`
+    API calls together. We get the following sequence:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.3: Load cart then each of the three products contained in parallel](img/B19109_07_3.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7.3: Load cart then each of the three products contained in parallel'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this case, the operation completion time is composed of the sum of the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Request-response time for **GET /carts/{cartId}**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The longest request-response time between **GET /products/1**, **GET /products/2**,
+    and **GET /products/3**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This means we’re saving the request-response time of two API calls at least.
+  prefs: []
+  type: TYPE_NORMAL
+- en: JavaScript is especially well suited to these workloads since its concurrency
+    model is based on an event loop. While JavaScript waits for an asynchronous operation
+    to complete, it can complete other synchronous operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In layman’s terms, triggering an asynchronous operation in JavaScript is “cheap
+    and lightweight” compared to thread-based concurrency models that are common in
+    popular programming languages such as Java and C++.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are multiple constructs in JavaScript that allow us to convert an array
+    of Promises into a Promise that resolves to an array. `Promise.all` is one such
+    construct.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing the scenario we described earlier, where we load a cart and then
+    load the relevant product details, would look as follows with `Promise.all` and
+    `Promise().then`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we need to make the API call to load the cart and extract the JSON in
+    the response body:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We then need to set up the fetching of the right product URLs once the request
+    to the `/carts/{cartId}` URL has loaded. The pattern used in order to execute
+    our code after the fetch completes uses `.then()` on the returned promise:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we’ll use `Promise.all` to load all the product URLs with `fetch`. Since
+    our goal is to return both the cart *and* the products, we’ll return `{ cart }`
+    as the first item in the array we’re passing to `Promise.all()`. The rest of the
+    array passed to `Promise.all` will be the Promises generated by calling `fetch().then((res)
+    => res.json())` on each of the product URLs. In order to do this, we use the spread
+    operation (`...`) on `...productUrls.map(/* mapping function */)` in the array:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we’re going to create an object with all the cart fields and a new
+    products field based on the output of the `/``products/{id}` fetches:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can test the output of the function by loading cart ID `1`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The cart is as we expect – it returns three products:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `products` field of our response contains the correct items in positions
+    at indexes 0, 1, and 2:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: We’ve now seen how to leverage `Promise.all` to run multiple promises in parallel
+    and handle their output with one handler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You’ll have noticed the “trick” we did by passing the `{ cart }` object in
+    `Promise.all` and then extracting the first item of the resolved array as the
+    previous response. This is a limitation of `Promise().then()` chaining, as mentioned
+    in the *Controlling sequential asynchronous operations with async/await and Promises*
+    section. Each function argument to `.then()` gets its own scope:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'An alternative way to write this is to store the cart in the function scope:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This works as expected. We’ve obviously removed the actual cart and product
+    fetching logic from the API, but the cart that `{ id: 1 }` relates to, which we
+    resolved in the initial `Promise.resolve()` function call, is cached through the
+    `.``then()` calls:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Another way to improve our implementation without resorting to function-scoped
+    variables, which can be hard to keep track of, is to convert it to use async/await.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our logic would be as follows. We start by loading the cart and converting
+    the JSON response body:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once the cart is loaded, we proceed to fetch the relevant products by generating
+    URLs based on the `cart.products` contents (mainly the `productId` field). We
+    also fetch these URLs using `Promise.all`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we can return the cart and the loaded products:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The implementation is equivalent to our previous, strict `Promise().then()`-based
+    one, as the following checks attest:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: The benefit of using async/await in this case was, again, an increase in readability.
+    The syntax gets less in the way than chained `.then()` calls and we don’t have
+    to resort to either returning the first response as an item in `Promise.all([{
+    cart }])` or adding a function-scoped variable that we store the cart in.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ve now seen how to leverage `Promise.all` to complete asynchronous operations
+    in parallel both with a `Promise().then()`-exclusive approach and with judicious
+    refactors to `async/await` to simplify the code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we’ll see how we can cancel and time out requests with `AbortController`
+    in JavaScript.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Asynchronous cancellation and timeouts with AbortController
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Another source of bad performance in applications in general is doing work that’s
+    not necessary. In the context of a JavaScript web application, one of the types
+    of “work” that can be unnecessary (and therefore a drain on performance) is having
+    HTTP requests that aren’t required any more. For example, in a photo gallery system
+    or any paginated system, when moving across photos, the request for the previous
+    photo might not have completed before the next one is started. In this case, the
+    previous request data is not necessary any more, as we’re essentially on a completely
+    different page.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In these instances, cancelling the request might be useful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`AbortController` is a Web/DOM API that allows us to abort web requests. It’s
+    created using its constructor, `new AbortController`, and controlling a request
+    (to potentially cancel it) is done with the `AbortController().signal` value,
+    which is an `AbortSignal` object.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We instantiate the controller using the `new AbortController()` constructor
+    call. If we want to make a `fetch` call cancellable, we pass `abortController.signal`
+    as the `signal` option:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we want to cancel the `fetch` request, we can then call `abortController.cancel`.
+    We’ll add this as a `cancel` function on the `fetchWithCancel` returned output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: Finally, we need to ensure that when we see `AbortError`, we handle it. In this
+    case, we’ll handle it with a `Promise().catch` handler, which, on seeing an `AbortError`,
+    will return ‘`Aborted'`, and re-throw the error otherwise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An `AbortError` error instance has a name property equal to `''AbortError''`,
+    but also a message such as `DOMException [AbortError]: This operation was aborted`,
+    along with its stack trace:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: Given two API calls to fakestoreapi, `/products/1`, and `/products/2`, we can
+    cancel one of them without affecting the other request as follows, by calling
+    `fetchWithCancel` with both URLs and storing the output in two variables. Note
+    that we’re not using `await` yet.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can then cancel the fetch for `/products/1` by using the `.cancel()` function
+    we built earlier:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: The outcome of this is that when we await `fetchProduct1.response` and `fetchProduct2.response`,
+    the output for `fetchProduct1.response` is `'Aborted'`, which means an `AbortError`
+    instance was handled in `fetchWithCancel` (i.e., our cancellation succeeded).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The output for `fetchProduct2.response` is the product object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: Manually cancelling a request is useful, but a more widespread use case is to
+    time a request out when it takes more than a certain amount of time. This is useful
+    to ensure a responsive user experience for customers. Different situations call
+    for longer or shorter timeout delays.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can implement a `fetchWithTimeout` function using `fetch`, `AbortController`,
+    and `setTimeout`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our function takes a URL and an optional timeout, which we’ll default to `500`
+    (for 500 ms). Similar to our manual cancellation scenario (see `fetchWithCancel`),
+    we’ll create an `abortController` object and pass its `signal` property as an
+    option to `fetch`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In order to cancel the fetch after a certain amount of time, we’ll use `setTimeout`.
+    The `setTimeout` handler will simply call `abortController.abort()` and we’ll
+    set the timeout delay to our `timeout` variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When the request takes less time than the `fetch` request takes to complete,
+    we receive the response data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When a `fetch` request takes longer than the configured timeout, we receive
+    an `AbortError` instance:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: We’ve now seen how to use `AbortController` to control `fetch` cancellation
+    manually and how to use it to create a “fetch with timeout” utility. We can use
+    `AbortController` to cancel operations that aren’t required any more, thereby
+    reducing network usage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we’ll look at further patterns that can help optimize situations with
+    high volumes of requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Throttling, debouncing, and batching asynchronous operations
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Throttling is an operation in which requests are dropped until a certain time
+    is reached. For example, for a 10 ms throttle timeout, once a request is made,
+    no request in the next 10 ms will be sent. If multiple requests are made between
+    0 ms and 10 ms, only the last request will be sent after the 10 ms timeout expires.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In JavaScript, such a throttle function can be implemented as follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A higher-order function, `throttle` takes in an `fn` parameter and returns an
+    executable function with the same input signature as the `fn` parameter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When the “throttled” `fn` function is called, we set `isThrottled = true` in
+    order to be able to discard calls between the first call and a configured timeout:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: We now need to ensure `fn` is not called while `isThrottled` is true. We achieve
+    this by returning early from our returned “throttled” `fn` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We save the arguments with which the “throttled” `fn` function was called so
+    that they can be used when the timeout expires:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we configure `setTimeout` to trigger a reset of the throttled state
+    and execute the last function call:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: A simple example of this in use is the following scenario, where many messages
+    could be sent in a given time. Instead, we want to throttle to 1 message every
+    1 ms interval.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our `storeMessage` function is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can generate a `throttledStoreMessage` function with a 1 ms timeout as follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When called ten times synchronously and subsequently waiting for timers to
+    complete, only the first (`''throttle-1''`) and last (`''throttle-10''`) calls
+    are recorded:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: If we reset the messages and wait for the timers to complete after our call
+    with `'throttle-5'`, we finish with `['throttle-1', 'throttle-5', 'throttle-6']`,
+    that is, the first call, and the calls before and after the timers are cleared.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we clear the timers one more time after completing all our calls, `''throttle-10''`
+    is also present in our messages list, meaning that call completed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: We’ve now seen how to throttle a function. We can now look at debouncing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `debounce` function in JavaScript takes an `fn` parameter, which is a function.
+    The goal is that the debounced `fn` function should discard all calls except the
+    last call before it’s not called for a `timeout` period.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In order to do this, we should “delay” the function call until after a timeout
+    completes. We save the `timeoutId` reference in order to cancel the call if the
+    debounced `fn` function is called again. We use `setTimeout` and forward the arguments
+    with which the debounced `fn` function was called:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With the current state of the `debounce` function, there would still be as
+    many calls to `fn` as there are to the debounced `fn` function; they would just
+    be queued for delayed execution based on the timeout. To avoid this, we can cancel
+    the previous call timeout by using `clearTimeout(timeoutId)`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With these changes in place, if we create a `debouncedStoredMessage` function
+    with a 1 ms timeout and call it 10 times, it will not execute until we wait for
+    the timer to complete:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can further showcase this by waiting for timers to complete after the fifth
+    call. In that case, the fifth call will trigger and, given another timeout window
+    clears, the tenth call will also trigger:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: We’ve now seen how to throttle and debounce functions, which allows us to ensure
+    operations don’t trigger more than necessary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a scenario where we have a “search as you type” or “suggest as you type”
+    input (sometimes referred to as a “typeahead”), which needs to make API requests
+    to get search results or suggestions, it usually makes sense to use either `debounce`,
+    to wait for the user to stop typing before making a request, or to throttle the
+    requests so that an API request is made every window instead of every keystroke.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This can also be coupled with other heuristics to avoid overwhelming the API
+    server with unnecessary requests. For example, it’s usual to avoid sending requests
+    until a few characters have been typed since the search request is too broad with
+    only 1 or 2 characters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ve seen how to protect an API by reducing the number of requests using throttling
+    or debouncing. In the *Parallel asynchronous operation patterns* section, we used
+    `Promise.all` to send requests in parallel. This can be another scenario where
+    the target of our asynchronous operations can get overwhelmed. To avoid an overload
+    scenario, it can be useful to batch our requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: “Batching” is a way to limit concurrency, for example, instead of sending 20
+    requests at the same time (in parallel), we want to send 5 at a time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `batch` function takes an array and a batch size and returns an array of arrays.
+    The nested arrays have a maximum length of “batch size.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: We start by calculating how many `batchItem` list items we’ll need in our `batches`
+    array. In order to do this, we divide the input array length by the batch size
+    and apply the `ceil` function to the value. In other words, we round up `inputLength`
+    divided by `batchSize` to the next largest integer value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can then generate our `batches` array with the right size (`batchCount`,
+    as computed):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We then go through each of the batches using `Array.prototype.map()`. The items
+    in `batches` are initially undefined, but we use the index of the item (which
+    we’ll call `batchNumber`). For each item in `batches`, we take the items from
+    `batchNumber * batchSize` to `(batchNumber + 1) * batchSize` and they constitute
+    the contents of our `batches[batchNumber]` array item:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You’ll note that we’re generating the array with `Array.from` *and then* populating
+    it using `Array.prototype.map()`, however, `Array.from()` supports a second parameter,
+    which is a mapping function. Our code could therefore be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In any case, our `batch` function work for any array, for example, a 10-element
+    array can be batched into chunks of 4 or 3 correctly by our function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding example showcased a synchronous example. For our use case – improving
+    the performance of asynchronous operations, we need to handle Promises. The good
+    news is that Promises can be stored in an array just as well:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: To get the batched output of the Promises, however, we need to write a function
+    that awaits all the Promises in each batch to resolve them sequentially.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This can be achieved by using a `for ... of` loop and `Promise.all`, as follows.
+    We flatten out the resolved values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: In our example, the `Promise.resolve()` calls with `1`, `2`, and `3` can indeed
+    be batched and resolved.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ve now seen how to build and use throttling, debouncing, and batching to
+    improve the performance of our asynchronous operations in JavaScript.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we’ve covered asynchronous operation orchestration patterns
+    with Promises and async/await to manage sequential and parallel operations. We
+    also covered advanced patterns such as request cancellation, implementing timeouts,
+    the difference between throttling and debouncing, and finally, how to use batching
+    in an asynchronous operation context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In order to manage sequential asynchronous operations, we can use a Promise-based
+    approach with `Promise().then()`, async/await, or mix both approaches. This helps
+    keep our code simple to reason about. For parallel execution, we can leverage
+    `Promise.all()` with `Promise.then()` or async/await. We also have multiple approaches
+    to maintaining response data across asynchronous operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can leverage `AbortController` to cancel requests. We implemented a timeout
+    for the `fetch` response time using `AbortController` and `setTimeout`. Stopping
+    in-flight requests is a useful cleanup step that can improve performance by reducing
+    unnecessary load on our API origin.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, the advanced asynchronous programming patterns allow fewer requests
+    to happen via throttling and debouncing. We can also control the concurrency of
+    our parallel requests using batching and resolving the batches. Again, these approaches
+    can reduce unnecessary network traffic and load on the API servers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we’ve covered asynchronous programming performance patterns, with Promise,
+    async/await, and advanced patterns, we can look at patterns for event-driven programming
+    in JavaScript.
+  prefs: []
+  type: TYPE_NORMAL

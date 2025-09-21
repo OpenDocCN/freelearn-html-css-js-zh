@@ -1,0 +1,788 @@
+- en: '14'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The Time-Traveler’s Dilemma – State-Driven End to End User Journeys
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter addresses a different but common type of test automation – navigating
+    through a survey, page by page, to reach a common endpoint. The challenge here
+    is that decisions made by a user along the way can change the order of the pages
+    displayed downstream – that’s if they appear at all. In this case, we need a fluid
+    user journey that can take many branches to get to a common endpoint, as well
+    as report if a path ended with an error page. It is inefficient to try to create
+    an expanding path of pages for end-to-end automation. The amount of `if`/`then`
+    branches or `select`/`case` options would be infinite and complex. To solve this,
+    we will explore ways to identify each page by its URL and look at ways to decouple
+    page paths, allowing tests to handle sequential pages in any order with minimal
+    maintenance. Imagine this approach as a ball bouncing randomly through multiple
+    pegs of a giant Pachinko game.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This chapter covers the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dividing by sections
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The happy path
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Extracting page name from the current URL with `getPageName()`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A page processing loop
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Common exit points
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'All test examples can be found at this GitHub repository: [https://github.com/PacktPublishing/Enhanced-Test-Automation-with-WebdriverIO](https://github.com/PacktPublishing/Enhanced-Test-Automation-with-WebdriverIO).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Divide and conquer!
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this approach, we will be considering a non-deterministic way to navigate
+    from our start point to our endpoint. We will not be working on the traditional
+    assumption that one page follows another. Instead, our script will pass through
+    every potential page repeatedly and interact only if the current page matches
+    one of the page classes. Then, based on high-level flow requirements, we can make
+    different choices and even enter varied and unique data. We might even find a
+    bug along the way!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this small example, we will automate the Halloween Party feature of the
+    Candymapper website. This provides customers with a limited set of options to
+    plan a themed party. Party guests use the same site to attend, or avoid, these
+    spooktacular events. The following paths are included for customers and guests:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Customers can choose to host a zombie theme party
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Customers can choose to host a ghost theme party
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Guests can choose to attend a Zombieton party
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Attend a Ghostville party
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Scared guests can exit back to the **Host or Attend** choice page
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: At least one of these paths will go awry on the [www.Candymapper.com](http://www.Candymapper.com)
+    production website. This journey is fixed on the new release of the website at
+    [www.CandymapperR2.com](http://www.CandymapperR2.com), as well as the order of
+    the pages and new options for attending guests to bring friends.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the first four of these paths, we will end at the common **Party Countdown**
+    timer page. In the last path, we will end up back at the **Halloween Party** Host
+    or Attend page. The pages we will encounter include these actions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Main page**: clear the popup, and click **Halloween Party** in the page header.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Halloween Party page**: a choice to host or attend a party'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Host party page**: a location address and “a **Find Out More**” button (Guest
+    Path Only)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Party location**: a page with a choice of Zombieton or Ghostville'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Attend Party page**: with two location choices and a **Scared** return button'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Party Location choice page**: Zombieton or Ghostville:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A guest list (dev only)
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: An email field with “a **Remind Me**” button (dev only)
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Party Time Countdown page**: the final destination'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The core of this test is the `PartyPath()` driver, which takes a single string
+    that can be parsed to make decision point changes at multiple milestones. This
+    function is a giant loop that passes through every known page repeatedly. For
+    each page, we will create an object model and a `build()` method. This method
+    executes only if the current page matches the class page type. It returns `true`
+    if all actions are successful. If the current page is not this page, it is a `null`
+    function and returns `false`. This method will reference a test data model that
+    is preconfigured with happy path data, which can be overridden from the `Switchboard`
+    object. This will allow choices to be modified in the page flow from beginning
+    to end.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simplifying the complexities of a dynamic journey
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In a real-world application, we might be navigating through multiple pages of
+    job applications with different data requirements on each one. Some decision points
+    might include adding a current address, military status, prior employers’ contact
+    information, and personal references. The application process flow might include
+    additional pages for someone who is under 21 or a driver who requires proof of
+    a specialized license to drive a truck. The multiple paths might ask increasingly
+    more information from someone who is single, married, divorced, or widowed with
+    dependents.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The challenge is that no one can predict the next page in the user journey that
+    eventually leads to the final successful page destination. However, each of those
+    milestones can be described with high-level terms that indicate what to do at
+    each decision point.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What if we had a dictionary of terms that could be passed to the tests in almost
+    any order, describing the type of applicant applying for the real-world job?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Happy Path`: Single, civilian, over 21, no dependents, and no job history
+    or references'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`married dependents cdl`: This path includes the spouse, children, and CDL
+    license information'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`military underage cu dd`: Uses company-known acronyms for **Credit Union**
+    and **Direct Deposit**'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'For the Halloween Party example, these are the paths that we will follow:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Happy Path`: Host a zombie-themed party, with a countdown timer as the final
+    destination'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Attend`/ `""Attend zombie"":` Attends a party with a decision point for a
+    zombie theme over the default ghost theme'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Scared`: Begins the path to attend a party but returns to the main choice
+    Host or Attend choice page'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The secret to this approach is a path generator, `partyPath()`. This is a loop
+    that repeatedly executes every page `build()` method in the Page Object model
+    until the final page is reached. Each page determines whether the current page
+    is the one to process. Then, the test data is used to interact with the values
+    on that page. Every field and list population method will be executed on their
+    respective object. If there is no data provided for a particular input field,
+    the interaction is executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There will be four reasons to exit the infinite loop:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The final Party Countdown page is reached (`Happy Path`)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: An unknown page is encountered
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The same page persists after two loop attempts
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The scared journey encounters the Host or Attend page
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ultimately, the `build()` method will always attempt to explicitly move to the
+    next page. In most cases, this would be a `Page` class, from which all other pages
+    extend. In other cases, moving to the next page will be implicit by simply entering
+    the final required field where no `clickIfExists()` feature mentioned in earlier
+    chapters will come into play. The goal is always to try to reach the end of the
+    process, not find bugs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is expected in some cases that a page will not move on, expecting more data
+    from the user after a selection has been made. While this might be handled within
+    the same path, it could be a path detected on a second pass of the same page.
+    So, if the navigation does not move forward after two loop attempts, the test
+    exits with the user path incomplete, with a detailed error of the problem in the
+    Allure report.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first component we need to add is to determine which page we are currently
+    on. While this is different from project to project, we often find that a unique
+    identifier can be found in its URL. Let us begin by extracting a unique identifier
+    from the last segment of the page URLs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://candymapperr2.com/halloween-party](https://candymapperr2.com/halloween-party)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://candymapperr2.com/party-location-1](https://candymapperr2.com/party-location-1)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://candymapperr2.com/party-time](https://candymapperr2.com/party-time)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To capture the URL that the framework has navigated, the `getPageName()` function
+    will give us a description at the end of the URL. The following function would
+    return `halloween-party`, `party-location-1`, and `party-time` from the aforementioned
+    URLs, respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This will be executed in the main `partyPath()` loop and stored in the automation
+    Switchboard object’s `page` key. Note that we use only the ending portion of the
+    URL, as this allows us to have similar functionality in different environments:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://candymapper.com/party-time](https://candymapper.com/party-time)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://candymapperr2.com/party-time](https://candymapperr2.com/party-time)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Each page class includes the `pages` object model that might be on the page:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that the generic locators use `normalize-space` and also skip the first
+    letter in case capitalization changes. This makes them more robust and less likely
+    to become stale, even if the text changes from release to release.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we have the `build()` method that is common for all pages. This will
+    check first whether the identifier in the URL string matches the page and immediately
+    returns `false` if it is not a match:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: This path example by default will host a party. The `HostOrAttend` milestone
+    in the switchboard can be switched to make it a user journey that attends a party
+    instead. After the click, the next page that appears will be different, depending
+    on which button we click, as well as which environment we run this test in. So,
+    it is vitally important where we disassociate the expected page in the user journey,
+    as it may not always be the same. However, we need to start somewhere and that
+    is the happy path.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The last feature we would introduce is a `beforeEach()` function which will
+    help us reduce our code significantly when writing the tests. Since we have multiple
+    test cases and we are writing the [PRE3] each time. This can be simplified by
+    placing the function in a `beforeEach()` function. This refactoring is performing
+    the exact same process, but with less lines of code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this refactored version we move the await [PRE5] into the `beforeEach(async
+    ()` function. This code will now execute before every test case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Keep in mind this works because we are not building a test that moves from one
+    page to another specific page. We are simply populating whatever page is currently
+    active, attempting to move to the next in a loop. Let’s take a look at our state-driven
+    flow driver, `pathyPath(testData)` – which will navigate through the milestone
+    decision points of our website.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The happy path
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'If the `testData` argument is empty, the default Happy Path will be performed.
+    This is configured in a `userData.json` file in the `shared-data` folder. The
+    two milestones include `HostOrAttend` and `location`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Rule of thumb – documenting JSON files
+  prefs: []
+  type: TYPE_NORMAL
+- en: No developer worth their salt would ever design a data file without some documentation
+    close at hand. However, JSON files do not allow for comments, as we can do in
+    JavaScript files with double forward slashes (`//`). The workaround is to add
+    a matching key, beginning with an underscore and ending with the word “`comment`”.
+    Each key can now be documented to ensure others on the team can understand the
+    intent behind the design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This file is first extracted into the Switchboard object. Then, any overriding
+    values are parsed out of the `testData` argument or from a `JOURNEY` system variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: At this point, we must plan for the future. In our final chapter, we will drive
+    these test cases from Jenkins using the `JOURNEY` system variable. If this variable
+    is populated, it will supersede the `testData` argument.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we build this driver, we should have a list of known company terms that
+    can be used to adjust the milestone decision points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our example, we have `host` and `attend` for the path verbs, and `zombie`
+    and `ghost` and `scared` for decision points:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, the default data values are parsed into the ASB Switchboard:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, any overriding `key:value` data in the `testData` string is parsed into
+    the ASB object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Inside the test data string, we will allow the test to assign specific values
+    to keys in our switchboard. For example, we might want to set a zip code to `12345`.
+    In this case, we will need a regular expression to parse values that are connected
+    with an equal sign. Strings with and without spaces can `be address=""123 main""`
+    as well as `zip=12345`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'While the `testData` string argument tells us what will change at each milestone
+    point, this is first transferred into the ASB switchboard object that all pages
+    will reference when they execute. A data file will contain the default values
+    that are populated into the switchboard, and then `testData` is parsed to customize
+    these values. In preparation for our final chapter, this function also gets data
+    from the `JOURNEY` system variable that will be sent from Jenkins:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The big driver loop
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `partyPath()` method is actually a utility, rather than a test, so we will
+    store it in a `Utilities` folder in the project root folder:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next step is to navigate the start of the Halloween Party path. This will
+    require an `is a` loop that processes every page repeatedly, seeking one of four
+    exit points:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This puts the name of the current page into the Switchboard. This object will
+    be read in every page’s `build()` method. Next, we will call every known page,
+    using logical `OR`, to determine whether any were successfully identified:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that these pages do not need to be in any particular order. In fact, our
+    designs have placed the first processing page list last and others in roughly
+    reverse order. This tends to ensure only one page gets parsed per loop. Having
+    multiple pages executing per loop is just as acceptable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rule of thumb – refactoring
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this small example, we are using only six pages. Real-world projects may
+    have 50 to 100 web pages to navigate. It is always recommended to reduce code
+    to smaller, more manageable units. In this case, the longer the lists of pages,
+    the more they should be refactored into their own function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We now add the first of the four exit points. Note that in the preceding list
+    of pages, one is missing – the final countdown page. This is the success page
+    where our journey ends. Nothing else matters at this point:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: If this page is processed, we report the successful end of the journey. It also
+    sets out the `knownPage` flag as `true` for any additional reporting or cleanup
+    at the end of the function. Then, we break out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our job here is done, unless there is something unknown lurking out there?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this case, no page returned `true`. We output the name of the unknown page.
+    We also use a clever `expect` to set the test to a failed status, while further
+    documenting the issue at hand, the URL of the new page. In our example, the production
+    website `Candymapper.com` will generate an `Error 404` page when a guest is too
+    scared to go to a party and expects to return. This page is never expected, but
+    if we can screen-capture it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we need to handle a situation where a page just did not move forward
+    from the last one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: As superheroes, we are always open to second chances. In this case, a page could
+    have two or three states itself. A point of sale page might add one product if
+    the cart is empty and a different item if the cart has one item, before moving
+    on. Calling such a method twice could be required and offer flexibility.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Lastly, there could be a journey that expects an alternative page as its final
+    destination. This is rare but presented as an option. This path is one where we
+    return to a prior step in the process. This works because the page was identified
+    and processed as the first step in the loop, moving to the next page before reaching
+    this point:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Is that all the exit points? We are certain there are other ways journeys must
+    end prematurely. We can think of one more example – an infinite loop journey.
+    This would require tracking an array of all the URLs visited. It would be triggered
+    when a page has been visited for the third time. We have given you all the tips
+    and tricks to pull this off. Now, it is time to work this one out on your own.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our final step before cycling back again is to set the current page name to
+    the last page name:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This ensures that exit point #3 works correctly when determining whether we
+    are stuck on the same page.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, the test data file object is used to determine what fields are populated.
+    If the test data object does not contain the data for a particular field, a warning
+    is added to our results, but the test continues.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, the method to move on to the next page is performed. Note that we will
+    use the `ClickIfExits()` method to ensure our engine remains robust, even if the
+    element does not exist in future test environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the loop, we check to see whether the page has moved on with an increment
+    counter, starting at 2\. If the page did not move on in the first loop, we decrement
+    the loop counter. If the loop counter reaches 0, we have failed to successfully
+    move on, and we exit. If successive loops do result in a new page URL, the counter
+    is reset to perform two additional loops.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some pages may have code that can resolve issues generated by incomplete data.
+    This may not have been detected in the first execution of the `build` method for
+    the page; thus, the build method must be executed at least twice before the test
+    user journey is abandoned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once we have completed this process for each page, we can begin to add milestones,
+    based on the values passed from the `JOURNEY` user variable. In this example,
+    we will have a path that plans a zombie party by default but will switch to a
+    user attending a party, by passing `attend` in the `JOURNEY` string. This, in
+    turn, will be injected into the test data object and read by the proper page.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we encounter a page that is new, the test will stop. We will report the URL
+    of the page to Allure and provide a screen capture of the results. Our reporting
+    automatically tells us the path that led us to that new endpoint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s all in the details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Similarly, we could detect the string `error` in the URL on our page report
+    with a screen capture, or we could capture all the text on the screen this way
+    – `const allText =` `await $('body').getText();`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another way to capture the scree text would be to send *Ctrl-A / Ctrl-V* to
+    the browser and send the clipboard to the Allure report:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: This makes it more likely we will capture only the visible text of the browser.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This loop also provides the opportunity to interact with any known page, regardless
+    of the order it appears in the path. Consider this path in the candymapperR2 website
+    hosting a party:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Host a Party
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Party Venue Address Confirmed
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Party Theme
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Party Countdown
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'And consider the path to attend a party:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Attend a Party
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Choose a Party Venue or Return
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Party Venue Location Address
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Party Countdown
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Note that these two paths encounter the same **Party Venue Location Address**
+    page but from different pages. In addition, the paths of these two journeys are
+    different from the production Candymapper website. Thus, we can have the same
+    test case run in two environments with dissimilar paths and still complete its
+    goal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our final path would be to set our final expected page. In this example, the
+    path returns us to the `Plan` or `Attend` page indicating the user journey; although
+    it did not end at the common endpoint, it was still a success.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Changing decision points
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The way we pass the string that customizes a path is through a single environmental
+    variable, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This way, we can create test several paths. In this example, the user does
+    not attend the party and instead clicks the **I’m** **scared** button:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With this example, the user takes the path to host the party with a zombie
+    theme:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: A single environmental value can modify multiple decision points from the Happy
+    Path baseline. While an empty string by default will create a Happy Path, the
+    best practice is to assign the string so that the path is shown in the results,
+    with the parsing being case-insensitive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that there is a space prepended to the journey variable. The reason for
+    this is to make it less likely to match a similar string in the path. We have
+    a `host` command and a `ghost` party. Writing this line of code could potentially
+    take the `host` command from the `ghost` string:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is resolved, as every command that is acted upon always has a prepended
+    space. Now, there is less chance of an incorrect path match. For our example,
+    we will go one step further, making `Host` the default Happy Path and `Attend`
+    the deviation from the path:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: This completes the first method to choose a decision point on the first page.
+    The function exits and loops around. The next page could be next, but it does
+    not have to be in sequential order. It could be further down the list inside the
+    loop. All the following pages will not match the URL, and the `build()` method
+    will simply return immediately as a null function. The next page could be earlier
+    in the loop. It would have executed as a null function before this page and now
+    executes as the loop starts from the top again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Wash, rinse, repeat
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The same principle applies to modifying the type of data in the page classes.
+    As an example, the custom `date` tokens could be passed like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, we have a date token extracted from the journey value. The token is passed
+    to `dateField`, if it exists, and set to next week’s date. If there is no token,
+    the date is set to an empty string, which the method will return immediately as
+    there is nothing to do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At this point, we have covered all the processes of a non-deterministic engine.
+    New pages will be reported in the results and must be added to extend the path
+    coverage. If a page is never encountered in a particular path, it does not stop
+    the test. If an error is encountered, it is reported. If the path gets stuck,
+    it is also reported. The data and the paths can be customized. These build methods
+    can be called from other test cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why not generate these Artifacts with API calls?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Using API calls for a task does mean quicker and more stable testing, as it
+    directly communicates with an application. It can be implemented earlier in the
+    development process. This could lead to early detection of issues, making the
+    development process more flexible and agile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Conversely, using an automated GUI could provide a richer understanding of the
+    user experience, as it can simulate the exact paths a user might take, including
+    interactions with visual elements that API tests might overlook. This approach
+    might be more intuitive and can encompass a broader analysis, including the appearance
+    and layout, which are crucial for user satisfaction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In fact, there is no reason to support once approach over another. The GUI
+    approach confirms the system works correctly for the user. The API approaches
+    generate the artifacts with greater speed. We can implement the differences in
+    the approaches by adding another keyword value to the journey parsing code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this example, the default GUI approach is overridden with an API path in
+    the same `build()` methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we delved into a sophisticated approach to test automation,
+    reminiscent of a superhero strategizing for dynamic and complex missions with
+    multiple potential outcomes based on choices made. Our method involved a loop
+    that continuously navigates through each page, engaging only upon recognizing
+    a known resource. The journey is non-deterministic shaped by high-level objectives
+    and occasionally encountering unexpected obstacles like dead ends or logic loops.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This approach is flexible, allowing for the adjustment of user paths based on
+    various variables and can be adapted to different environments, highlighting its
+    robustness and versatility. It also aids in data generation for manual testers,
+    significantly reducing the time and effort needed to create data records for testing
+    when paired with tools like Jenkins, enhancing the efficiency of the testing process
+    overall.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the final chapter, this approach will have additional advantages, making
+    manual testers more efficient. The worst idea is to assume automation replaces
+    “costly” manual testers. We should aways strive to augment their efforts. Manual
+    testers could reduce a lot of setup time creating complex test artifacts when
+    they only need to validate the results. But do we want to have them install a
+    coding tool and teach them how to run a script like this? This is where we employ
+    our final magical item and let a CI/CD tool provide an effortless way to do the
+    heavy lifting. Something like a mystic sentient cloak of levitation perhaps?
+  prefs: []
+  type: TYPE_NORMAL

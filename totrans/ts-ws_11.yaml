@@ -1,0 +1,1959 @@
+- en: 10\. Event Loop and Asynchronous Behavior
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Overview
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, you'll investigate how a web page actually works within the
+    browser, with a special focus on how, when, and why the browser executes the JavaScript
+    code we provide. You'll dive deep into the intricacies of the event loop and see
+    how we can manage it. Lastly, you'll learn about the tools that TypeScript offers
+    you. By the end of this chapter, you will be able to better manage the asynchronous
+    nature of the execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter, you learned the fundamentals of generics and conditional
+    types. This chapter introduces you to event loops and asynchronous behavior. However,
+    before you proceed with learning these topics, let's have a look at a hypothetical
+    scenario to really understand how synchronous and asynchronous executions work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Imagine a small bank that has a single teller. His name is Tom, and he's serving
+    clients all day. Since it's a small bank and there are few clients, there's no
+    queue. So, when a client comes in, they get Tom's undivided attention. The client
+    provides all the necessary paperwork, and Tom processes it. If the process needs
+    some kind of outside input, such as from a credit bureau or the bank's back-office
+    department, Tom submits the request, and he and the client wait for the response
+    together. They might chat a bit, and when the response comes, Tom resumes his
+    work. If a document needs to be printed, Tom sends it to the printer that's right
+    on his desk, and they wait and chat. When the printing is done, Tom resumes his
+    work. Once the work is completed, the bank has another satisfied client, and Tom
+    continues with his day. If somebody comes while Tom is serving a client (which
+    happens seldom), they wait until Tom is completely done with the previous client,
+    and only then do they begin their process. Even if Tom is waiting on an external
+    response, the other client will have to wait their turn, while Tom idly chats
+    with the current client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tom effectively works synchronously and sequentially. There are lots of benefits
+    of this approach to working, namely, Tom (and his bosses) can always tell whether
+    he is serving a client or not, he always knows who his current client is, and
+    he can completely forget all the data about the client as soon as the client leaves,
+    knowing that they have been serviced completely. There are no issues with mixing
+    up documents from different clients. Any problems are easy to diagnose and easy
+    to fix. And since the queue never gets crowded, this setup works to everyone's
+    satisfaction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, so good. But what happens when the bank suddenly gets more clients?
+    As more and more clients arrive, we get a long queue, and everyone is waiting,
+    while Tom chats with the current client, waiting on a response from the credit
+    bureau. Tom's boss is, understandably, not happy with the situation. The current
+    system does not scale – at all. So, he wants to change the system somehow, to
+    be able to serve more clients. How can he do that? You will look at a couple of
+    solutions in the following section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Multi-Threaded Approach
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Basically, there are two different approaches. One is to have multiple Toms.
+    So, every single teller will still work in the exact same simple and synchronous
+    way as before – we just have lots of them. Of course, the boss will need to have
+    some kind of organization to know which teller is available and which is working,
+    whether there are separate queues for each teller, or a single large queue, along
+    with some kind of distribution mechanism (that is, a system where a number is
+    assigned to each customer). The boss might also get one of those big office printers,
+    instead of having one printer per teller, and have some kind of rule in order
+    to not mix up the print jobs. The organization will be complex, but the task of
+    every single teller will be straightforward.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By now, you know we're not really discussing banks. This is the usual approach
+    for server-side processing. Grossly simplified, the server process will have multiple
+    sub-processes (called threads) that will work in parallel, and the main process
+    will orchestrate everything. Each thread will execute synchronously, with a well-defined
+    beginning, middle, and end. Since servers are usually machines with lots of resources,
+    with heavy loads, this approach makes sense. It can accommodate low or high loads
+    nicely, and the code that processes each request can be relatively simple and
+    easy to debug. It even makes sense to have the thread wait for some external resource
+    (a file from the file system, or data from the network or database), since we
+    can always spin up new threads if we have more requests. This is not the case
+    with real live tellers. We cannot just clone a new one if more clients come. The
+    kind of waiting done by the threads (or by Tom) is usually referred to as *busy
+    waiting*. The thread is not doing anything, but it's not available for any work,
+    since it's busy doing something – it's busy waiting. Just like Tom was actually
+    busy chatting with the client while waiting for a response from the credit bureau.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have a system that can be massively parallel and concurrent, but still, each
+    part of it is run synchronously. The benefit of this approach is that we can serve
+    many, many clients at the same time. One obvious downside is the cost, both in
+    hardware and in complexity. While we managed to keep the client processing simple,
+    we'll need a huge infrastructure that takes care of everything else – adding tellers,
+    removing tellers, queueing customers, managing access to the office printer, and
+    similar tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This will use all the available resources of the bank (or the server), but that
+    is fine, since that's the whole point – to serve clients, as many and as fast
+    as possible, and nothing else.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, there is another approach – asynchronous execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Asynchronous Execution Approach
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The other approach, the one taken by the web and, by extension, JavaScript and
+    TypeScript, is to use just a single thread – so Tom is still on his own. But,
+    instead of Tom idly chatting with a waiting client, he could do something else.
+    If a situation arises where he needs some verification from the back office, he
+    just writes down what he was doing and how far he got on a piece of paper, gives
+    that paper to the client, and sends them to the back of the queue. Tom is now
+    ready to start serving the next client in line. If that client does not need external
+    resources, they are processed completely and are free to leave. If they need something
+    else that Tom needs to wait for, they too are sent to the back of the line. And
+    so on, and so forth. This way, if Tom has any clients at all, he's processing
+    their requests. He's never busy waiting, instead, he's busy working. If a client
+    needs to wait for a response, they do so separately from Tom. The only time Tom
+    is idle is when he has no clients at all.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The benefit of this approach is fairly obvious – before, Tom spent a lot of
+    his time chatting, now he is working all the time (of course, this benefit is
+    from Tom's boss' point of view – Tom liked the small talk). An additional benefit
+    is that we know our resource consumption up front. If we only have one teller,
+    we know the square footage that we will need for the office. However, there are
+    some downsides as well. The most important downside is that our clients now have
+    to know our process quite intimately. They will need to understand how to queue
+    and requeue, how to continue working from where they left off, and so on. Tom's
+    work also got a lot more complicated. He needs to know how to pause the processing
+    of a client, how to continue, how to behave if an external response is not received,
+    and so on. This model of working is usually called asynchronous and concurrent.
+    Doing his job, Tom will jump between multiple clients at the same time. More than
+    one client will have their process started but not finished. And there's no way
+    for a client to estimate how long it will take to process their task once it is
+    started – it depends on how many other clients Tom processes at the same time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From the early days, this model made much more sense for the web. For starters,
+    web applications are processed on the device of the client. We should not make
+    any technical assumptions about it – as we cannot be sure about the kind of device
+    that the client might be using. In essence, a web page is a guest on the client's
+    device – and it should behave properly. For example, using up all of a device's
+    resources to show what amounts to a fancy animation is not proper behavior at
+    all. Another important issue is security. If we think of web pages as applications
+    that contain some code, we're basically executing someone's code on our machine
+    whenever we enter a web address in the browser's address bar.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The browser needs to make sure that the code on the page, even if it's malicious,
+    is restricted in what it can do to our machine. The web would not have been as
+    popular as it is today if visiting a website could make your computer explode.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, since the browser cannot know in advance which pages it will be used for,
+    it was decided that each web page will only get access to a single thread. Also,
+    for security reasons, each web page will get a separate thread, so a running web
+    page cannot meddle in the execution of other pages that may execute at the same
+    time (with features such as web workers and Chrome applications, these restrictions
+    are somewhat loosened, but in principle, they still apply).
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is simply no way for a web page to spawn enough threads to swarm the system,
+    or for a web page to get the data from another web page. And, since a web page
+    needs to do lots of things at once, using the synchronous and sequential approach
+    was out of the question. That is why all the JavaScript execution environments
+    completely embraced the asynchronous, concurrent approach. This was done to such
+    an extent that some common synchronization techniques are, intentionally, just
+    not available in JavaScript.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, lots of other languages have a "wait some time" primitive, or
+    a library function that does that. For example, in the C# programming language,
+    we can have this code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code will write some text to the console, and 10 seconds later, write
+    some more text. During the 25 seconds of the wait, the thread this executes on
+    will be completely non-responsive, but the code written is simple and linear –
+    easily understood, easily changeable, and easily debuggable. JavaScript simply
+    does not have such a synchronous primitive, but it has an asynchronous variant
+    in the `setTimeout` function. The simplest equivalent code would be the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: It's obvious that this code is much more complex than the C# equivalent, but
+    the advantage that we get is that this code is non-blocking. In the 25 total seconds
+    that this code is executing, our web page can do everything it needs to do. It
+    can respond to events, the images can load and display, we can resize the window,
+    scroll the text – basically, the application will resume the normal and expected
+    functionalities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that while it''s possible to block the JavaScript execution with some
+    special synchronous code, it''s not easy to do it. When it does actually happen,
+    the browser can detect that it did happen and terminate the offending page:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 10.1: Unresponsive page'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B14508_10_01.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 10.1: Unresponsive page'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Executing JavaScript
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When a JavaScript execution environment, such as a node or a browser loads
+    a JavaScript file, it parses it and then runs it. All the functions that are defined
+    in a JavaScript file are registered, and all the code that is not in a function
+    is executed. The order of the execution is according to the code''s position in
+    the file. So, consider a file having the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The console will always display this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The order of the output cannot be changed, without changing the code itself.
+    This is because the line with `First` will be executed completely – always – and
+    then, and only then, will the line with `Second` begin to execute. This approach
+    is synchronous because the execution is synchronized by the environment. We are
+    guaranteed that the second line will not start executing, until and unless the
+    line above it is completely done. But what happens if the line calls some function?
+    Let''s take a look at the following piece of code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: When the code is parsed, the environment will detect that we have four functions
+    – `first`, `second`, `third`, and `sayHello`. It will also execute the line of
+    code that is not inside a function (`first();`), and that will start the execution
+    of the `first` function. But that function, while it's executing, calls the `second`
+    function. The runtime will then suspend the running of the `first` function, remember
+    where it was, and begin with the execution of the `second` function. This function,
+    in turn, calls the `third` function. The same thing happens again – the runtime
+    starts executing the `third` function, remembering that once that function is
+    done, it should resume with the execution of the `second` function, and that once
+    `second` is done, it should resume with the execution of the `first` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The structure the runtime uses to remember which function is active, and which
+    are waiting, is called a **stack**, specifically, *the call stack*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: The term "stack" is used in the sense of a stack of dishes, or a stack of pancakes.
+    We can only add to the top, and we can only remove from the top.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The executing functions are put one on top of the other, and the topmost function
+    is the one being actively executed, as shown in the following representation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 10.2: Stack'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B14508_10_02.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 10.2: Stack'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the example, the `third` function will call the `sayHello` function, which
+    will in turn call the `log` function of the `console` object. Once the `log` function
+    finishes executing, the stack will start unwinding. That means that once a certain
+    function finishes executing, it will be removed from the stack, and the function
+    below it will be able to resume executing. So, once the `sayHello` function finishes
+    executing, the `third` function will resume and finish in turn. This will trigger
+    the continuation of the `second` function, and when that function is done as well,
+    the `first` function will continue, and eventually finish. When the `first` function
+    finishes executing, the stack will become empty – and the runtime will stop executing
+    code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It's worth noting that all of this execution is done strictly synchronously
+    and deterministically. We can deduce the exact order and number of function calls
+    just from looking at the code. We can also use common debugging tools such as
+    breakpoints and stack traces.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Exercise 10.01: Stacking Functions'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this exercise, we''ll define few simple functions that call each other.
+    Each of the functions will log to the console when it starts executing and when
+    it''s about to finish executing. We will analyze when and in what order the output
+    is mapped to the console:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code files for this exercise can be found at [https://packt.link/X7QZQ](https://packt.link/X7QZQ).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create a new file, `stack.ts`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In `stack.ts`, define three functions called `inner`, `middle`, and `outer`.
+    None of them need to have parameters or return types:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'In the body of the `inner` function, add a single `log` statement, indented
+    by four spaces:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'In the body of the `middle` function, add a call to the `inner` function. Before
+    and after the call, add a `log` statement, indented by two spaces:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'In the body of the `outer` function, add a call to the `middle` function. Before
+    and after the call, add a `log` statement:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'After the function declaration, create a call only to the `outer` function:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Save the file, and compile it with the following command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Verify that the compilation ended successfully and that there is a `stack.js`
+    file generated in the same folder. Execute it in the `node` environment with this command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'You will see the output looks like this:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The output shows which function started executing first (`outer`), as that is
+    the first message displayed. It can also be noted that the `middle` function finished
+    executing after the `inner` function was already finished, but before the `outer`
+    function was finished.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Browsers and JavaScript
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When a web page is requested by the user, the browser needs to do lots of things.
+    We won't go into the details of each of them, but we'll take a look at how it
+    handles our code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First of all, the browser sends the request to the server and receives an HTML
+    file as a response. Within that HTML file, there are embedded links to resources
+    that are needed for the page, such as images, stylesheets, and JavaScript code.
+    The browser then downloads those as well and applies them to the downloaded HTML.
+    Images are displayed, elements are styled, and JavaScript files are parsed and
+    run.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The order in which the code is executed is according to the file''s order in
+    the HTML, then according to the code''s position in the file. But when are the
+    functions called? Let''s say we have the following code in our file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'First, the `sayHello` function is registered, and then when it''s called later,
+    the function actually executes and writes `Hello` to the console. Take a look
+    at the following code now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When the file with the preceding code is processed, it will register that it
+    has two functions, `sayHello` and `sayHi`. Then it will detect that it has three
+    invocations, that is, there are three tasks that need to be processed. The environment
+    has something that is called the **task queue**, where it will put all the functions
+    that need to be executed, one by one. So, our code will be transformed into three
+    tasks. Then, the environment will check if the stack is actually empty, and if
+    it is, it will take the first task off the queue and start executing it. The stack
+    will grow and shrink depending on the execution of the code of the first task,
+    and eventually, when the first task is finished, it will be empty. So, after the
+    first task is executed, the situation will be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The execution stack will be empty.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The task queue will contain two tasks.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The first task will be completely done.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Once the stack is empty, the next task is dequeued and executed, and so on,
+    until both the task queue and the stack are empty, and all the code is executed.
+    Again, this whole process is done synchronously, in a specified order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Events in the Browser
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Now, take a look at a different example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you have this code in a JavaScript file that is loaded by the browser, you
+    can see that the `sayHello` function is registered but not executed. However,
+    if you click anywhere on the page, you will see that the `Hello` string appears
+    on the console, meaning the `sayHello` function got executed. If you click multiple
+    times, you'll get multiple instances of `"Hello"` on the console. And this code
+    did not invoke the `sayHello` function even once; you don't have the `sayHello()`
+    invocation in the code at all.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What happened is, you *registered* our function as an event listener. Consider
+    that you don't call our function at all, but the browser's environment will call
+    it for us, whenever a certain event occurs – in this case, the `click` event on
+    the whole `document`. And since those events are generated by the user, we cannot
+    know if and when our code will execute. Event listeners are the principal way
+    that our code can communicate with the page that it's on, and they are called
+    asynchronously – you don't know when or if the function will be invoked, nor how
+    many times it will be invoked.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What the browser does, when an event occurs, is to look up its own internal
+    table of registered event handlers. In our case, if a `click` event occurs anywhere
+    on the `document` (that's the whole web page), the browser will see that you have
+    registered the `sayHello` function to respond to it. That function will not be
+    executed directly – instead, the browser will place an invocation of the function
+    in the task queue. After that, the regular behavior explained previously takes
+    effect. If the queue and stack are empty, the event handler will begin executing
+    immediately. Otherwise, our handler will wait for its turn.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is another core effect of asynchronous behavior – we simply cannot guarantee
+    that the event handler will execute immediately. It might be the case that it
+    does, but there is no way to know if the queue and stack are empty at a specific
+    moment. If they are, we'll get immediate execution, but if they're not, we'll
+    have to wait our turn.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Environment APIs
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Most of our interaction with the browser will be done in the same pattern –
+    you will define a function, and pass that function as a parameter to some browser
+    API. When and if that function will actually be scheduled for execution will depend
+    on the particulars of that API. In the previous case, you used the event handler
+    API, `addEventListener`, which takes two parameters, the name of an event, and
+    the code that will be scheduled when that event happens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can get a list of different possible events at [https://developer.mozilla.org/en-US/docs/Web/Events](https://developer.mozilla.org/en-US/docs/Web/Events).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the rest of this chapter, you will use two other APIs as well, the environment's
+    method to defer some code for later execution (`setTimeout`) and the ability to
+    call on external resources (popularly called AJAX). There are two different AJAX
+    implementations that we will be working with, the original `XMLHttpRequest` implementation,
+    and the more modern and flexible `fetch` implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: setTimeout
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As mentioned previously, the environment offers no possibility to pause the
+    execution of JavaScript for a certain amount of time. However, the need to execute
+    some code after some set amount of time has passed arises quite often. So, instead
+    of pausing the execution, we get to do something different that has the same outcome.
+    We get to schedule a piece of code to get executed after an amount of time has
+    passed. To do that we use the `setTimeout` function. This function takes two parameters:
+    A function that will need to be executed, and the time, in milliseconds, it should
+    defer the execution of that function by:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here it means that the anonymous function that is passed as a parameter will
+    be executed after 1,000 milliseconds, that is, one second.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Exercise 10.02: Exploring setTimeout'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this exercise, you''ll use the `setTimeout` environment API call to investigate
+    how asynchronous execution behaves and what it does:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code files for this exercise can be found at [https://packt.link/W0mlS](https://packt.link/W0mlS).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create a new file, `delays-1.ts`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In `delays-1.ts`, log some text at the beginning of the file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Add two calls to the `setTimeout` function:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Here, instead of creating a function and giving it to the `setTimeout` function
+    using its name, we have used an anonymous function that we have created in-place.
+    We can also use arrow functions instead of functions defined with the `function`
+    keyword.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Save the file, and compile it with the following command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Verify that the compilation ended successfully and that there is a `delays-1.js`
+    file generated in the same folder. Execute it in the `node` environment with this command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'You will see the output looks like this:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The second and third lines of the output should not appear immediately, but
+    after 1 and 2 seconds respectively.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'In the `delays-1.ts` file, switch the two calls to the `setTimeout` function:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Compile and run the code again, and verify that the output behaves identically.
+    Even if the former `setTimeout` was executed first, its `function` parameter is
+    not scheduled to run until 2 seconds have passed.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In the `delays-1.ts` file, move the initial `console.log` to the bottom:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Compile and run the code again, and verify that the output behaves identically.
+    This illustrates one of the most common problems with code that behaves asynchronously.
+    Even though the line was at the bottom of our file, it was executed first. It's
+    much harder to mentally trace code that does not follow the top-down paradigm
+    we're used to.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Create a new file, `delays-2.ts`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In `delays-2.ts`, add a single call to the `setTimeout` function, and set its
+    delay time to `0`. This will mean that our code needs to wait 0 milliseconds in
+    order to execute:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Add a `console.log` statement after the call to `setTimeout`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Save the file, and compile it with the following command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Verify that the compilation ended successfully and that there is a `delays-2.js`
+    file generated in the same folder. Execute it in the `node` environment with this command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'You will see the output looks like this:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Well, that looks unexpected. Both lines appear basically immediately, but the
+    one that was in the `setTimeout` block, and was first in the code, came after
+    the line at the bottom of the script. And we explicitly told `setTimeout` not
+    to wait, that is, to wait 0 milliseconds before the code got executed.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'To understand what happened, we need to go back to the call queue. When the
+    file was loaded, the environment detected that we had two tasks that needed to
+    be done, the call to `setTimeout` and the bottom call to `console.log` (#2). So,
+    those two tasks were put into the task queue. Since the stack was empty at that
+    time, the `setTimeout` call started executing, and #2 was left in the task queue.
+    The environment saw that it has a zero delay, so immediately took the function
+    (#1), and put it *at the end* of the task queue, after #2\. So, after the `setTimeout`
+    call was done, we were left with two `console.log` tasks in the queue, with #2
+    being the first, and #1 being the second.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'They got executed sequentially, and on our console, we got #2 first, and #1
+    second.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: AJAX (Asynchronous JavaScript and XML)
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the early days of the web, it was not possible to get data from a server
+    once the page was loaded. That was a huge inconvenience for developing dynamic
+    web pages, and it was solved by the introduction of an object called `XMLHttpRequest`.
+    This object enabled developers to get data from a server after the initial page
+    load – and since loading data from a server means using an external resource,
+    it had to be done in an asynchronous manner (even if it has XML right in the name,
+    currently, it will mostly be used for JSON data). To use this object, you'll need
+    to instantiate it and use a few of its properties.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To illustrate its usage, we'll try to get data about William Shakespeare from
+    the Open Library project. The URL that we'll use to retrieve that information
+    is [https://openlibrary.org/authors/OL9388A.json](https://openlibrary.org/authors/OL9388A.json),
+    and the access method that we will use is `GET`, as we will only be getting data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The data received is of a specific format, defined by Open Library, so you''ll
+    start by creating an interface for the data that you will actually use. You''ll
+    display only an image of the Bard (received as an array of photo IDs), and the
+    name, so you can define the interface like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, create the `XMLHttpRequest` object, and assign it to a variable called
+    `xhr`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now you need to `open` a connection to our URL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This call doesn''t actually send anything, but it prepares the system for accessing
+    the external resource. Lastly, you need to actually send the request, using the
+    `send` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Since the request is asynchronous, this call will execute and finish immediately.
+    In order to actually process the data once this request is done, you need to add
+    something to this object – a callback. That is a function that will not be executed
+    by us, but by the `xhr` object, once some event happens. This object has several
+    events, such as `onreadystatechange`, `onload`, `onerror`, `ontimeout`, and you
+    can set different functions to react to different events, but in this case, you
+    will just use the `onload` event. Create a function that will get the data from
+    the response and show it on the web page where our script is running:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this method, you will be using some properties of the `xhr` variable that
+    was defined previously, such as `status`, which gives us the HTTP status code
+    of the request, or `response`, which gives us the actual response. If we just
+    call the `showData` method by ourselves, we''ll most likely get empty fields or
+    an error, as the response will not have finished. So, we need to give this function
+    to the `xhr` object, and it will use it to call the `showData` back:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Save this code as `shakespeare.ts`, compile it, and add it to an HTML page
+    using the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You will get a result similar to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 10.3: Retrieved image of William Shakespeare'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B14508_10_03.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 10.3: Retrieved image of William Shakespeare'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Activity 10.01: Movie Browser Using XHR and Callbacks'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As a TypeScript developer, you have been tasked with creating a simple page
+    to view movie data. The web page will be simple, with a text input field and a
+    button. When you enter the name of a movie in the search input field and press
+    the button, general information about the movie will be displayed on the web page,
+    along with some images relevant to the movie.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can use *The Movie Database* ([https://www.themoviedb.org/](https://www.themoviedb.org/))
+    as a source of general data, specifically its API. You need to issue AJAX requests
+    using `XmlHttpRequest`, and use the data the site provides to format your own
+    object. When using an API the data will rarely, if ever, be in the format we actually
+    need. This means that you will need to use several API requests to get our data,
+    and piecemeal construct our object. A common TypeScript approach to this issue
+    is to use two sets of interfaces – one that exactly matches the format of the
+    API, and one that matches the data that you use in your application. In this activity,
+    you need to use the `Api` suffix to denote those interfaces that match the API
+    format.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another important thing to note is that this particular API does not allow completely
+    open access. You'll need to register for an API key and then send it in each API
+    request. In the setup code for this activity, three functions (`getSearchUrl`,
+    `getMovieUrl`, `getPeopleUrl`) will be provided that will generate the correct
+    URLs for the needed API requests, once the `apiKey` variable is set to the value
+    you will receive from The Movie Database. Also provided will be the base HTML,
+    styling, as well as the code used to actually display the data – all that is missing
+    is the data itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Those resources are listed here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`display.ts` – A TypeScript file that houses the `showResult` and `clearResults`
+    methods, which you will call to display a movie and clear the screen, respectively.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`interfaces.ts` – A TypeScript file that contains the interfaces that you will
+    use. All interfaces that have an `Api` suffix are objects that you will receive
+    from The Movie Database API, and the rest (`Movie` and `Character`) will be used
+    to display the data.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`script.ts` – A TypeScript file that has some boilerplate code that will start
+    the application. The `search` function is here, and that function will be the
+    main focus of this activity.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`index.html` – An HTML file that has the basic markup for our web page.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`styles.css` – A style sheet file that is used to style the results.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The following steps should help you with the solution:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code files for this activity can be found at [https://packt.link/Qo4dB](https://packt.link/Qo4dB).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the `script.ts` file, locate the `search` function and verify that it takes
+    a single string parameter and that its body is empty.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Construct a new `XMLHttpRequest` object.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Construct a new string for the search result URL using the `getSearchUrl` method.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Call the `open` and `send` methods of the `xhr` object.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Add an event handler for the `xhr` object's `onload` event. Take the response
+    and parse it as a JSON object. Store the result in a variable of the `SearchResultApi`
+    interface. This data will have the results of our search in a `results` field.
+    If you get no results, this means that our search failed.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: If the search returned no results, call the `clearResults` method.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: If the search returned some results, just take the first one and store it in
+    a variable, ignoring the other ones.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Inside the `onload` handler, in the successful search branch, create a new `XMLHttpRequest`
+    object.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Construct a new string for the search result URL using the `getMovieUrl` method.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Call the `open` and `send` method of the constructed `xhr` object.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Add an event handler for the `xhr` objects's `onload` event. Take the response,
+    and parse it as a JSON object. Store the result in a variable of the `MovieResultApi`
+    interface. This response will have the general data for our movie, specifically,
+    everything except the people who were involved in the movie. You will need to
+    have another call to the API to get the data about the people.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Inside the `onload` handler, in the successful search branch, create a new `XMLHttpRequest`
+    object.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Construct a new string for the search result URL using the `getPeopleUrl` method.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Call the `open` and `send` method of the constructed `xhr` object.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Add an event handler for the `xhr` object's `onload` event. Take the response,
+    and parse it as a JSON object. Store the result in a variable of the `PeopleResultApi`
+    interface. This response will have data about the people who were involved in
+    the movie.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Now you actually have all the data you need, so you can create your own object
+    inside the people `onload` handler, which is inside the movie `onload` handler,
+    which is inside the search `onload` handler.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The people data has `cast` and `crew` properties. You'll only take the first
+    six cast members, so first sort the `cast` property according to the `order` property
+    of the cast members. Then slice off the first six cast members into a new array.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Transform the cast data (which is `CastResultApi` objects) into our own `Character`
+    objects. You need to map the `character` field of `CastResultApi` to the `name`
+    field of `Character`, the `name` field to the `actor` name, and the `profile_path`
+    field to the `image` property.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: From the `crew` property of the people data, you'll only need the director and
+    the writer. Since there can be multiple directors and writers, you'll get the
+    names of all directors and writers and concatenate them, respectively. For the
+    directors, from the `crew` property, filter the people who have a `department`
+    of `Directing` and a `job` of `Director`. For those objects, take the `name` property,
+    and `join` it together with an `&` in between.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: For the writers, from the `crew` property, filter the people who have a `department`
+    of `Writing` and a `job` of `Writer`. For those objects, take the `name` property,
+    and `join` it together with an `&` in between.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Create a new `Movie` object (using object literal syntax). Fill in all the properties
+    of the `Movie` object using the data from the movie and people responses you prepared
+    so far.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Call the `showResults` function with the movie you constructed.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In your parent directory (`Activity01` in this case), install dependencies with `npm
+    i`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Compile the program using `tsc ./script.ts ./interfaces.ts ./display.ts`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Verify that the compilation ended successfully.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Open `index.html` using the browser of your choice.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'You should see the following in your browser:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '![Figure 10.4: The final web page'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '](img/B14508_10_04.jpg)'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Figure 10.4: The final web page'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: The solution to this activity can be found via [this link](B14508_Solution_ePub.xhtml#_idTextAnchor431).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will improve this application further in *Activity 10.02, Movie Browser using
+    fetch and Promises,* and *Activity 10.03, Movie Browser using fetch and async/await*.
+    However, before we do that, you need to learn about Promises and `async`/`await`
+    in TypeScript.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Promises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Using callbacks for asynchronous development gets the job done – and that is
+    great. However, in many applications, our code needs to use external or asynchronous
+    resources all the time. So, very quickly, we'll get to a situation where inside
+    our callback, there is another asynchronous call, which requires a callback inside
+    the callback, which in turn needs a callback on its own….
+  prefs: []
+  type: TYPE_NORMAL
+- en: It was (and in some cases, it still is) not uncommon to be a dozen levels deep
+    inside the callback hole.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Exercise 10.03: Counting to Five'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this exercise, we''ll create a function that, when executed, will output
+    the English words one through five. Each word will appear on the screen 1 second
+    after the last word was displayed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code files for this exercise can be found at [https://packt.link/zD7TT](https://packt.link/zD7TT).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create a new file, `counting-1.ts`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In `counting-1.ts`, add an array with the English number names up to and including
+    five:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Add a single call to the `setTimeout` function, and print out the first number
+    after a second:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Save the file, and compile it with the following command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Verify that the compilation ended successfully and that there is a `counting-1.js`
+    file generated in the same folder. Execute it in the `node` environment with this
+    command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'You will see the output looks like this:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The line should appear 1 second after the application was run.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'In the `counting-1.ts` file, inside the `setTimeout` function, below `console.log`,
+    add another, nested, call to the `setTimeout` function:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Compile and run the code again, and verify that the output has an extra line,
+    displayed 1 second after the first:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'In the `counting-1.ts` file, inside the nested `setTimeout` function, above
+    `console.log`, add another nested call to the `setTimeout` function:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'In the innermost `setTimeout` function, below `console.log`, add yet another
+    nested call to `setTimeout`, and repeat the process for the fifth number as well.
+    The code should look like this:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Compile and run the code again, and verify that the output appears in the correct
+    order as shown:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: In this simple example, we implemented a simple functionality – counting to
+    five. But as you can already see, the code is becoming extremely messy. Just imagine
+    if we needed to count to 20 instead of 5\. That would be a downright unmaintainable
+    mess. While there are ways to make this specific code look a bit better and more
+    maintainable, in general, that's not the case. The use of callbacks is intrinsically
+    connected with messy and hard-to-read code. And messy and hard-to-read code is
+    the best place for bugs to hide, so callbacks do have a reputation of being the
+    cause of difficult-to-diagnose bugs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An additional problem with callbacks is that there cannot be a unified API across
+    different objects. For example, we needed to explicitly know that in order to
+    receive data using the `xhr` object, we need to call the `send` method and add
+    a callback for the `onload` event. And we needed to know that in order to check
+    whether the request was successful or not, we have to check the `status` property
+    of the `xhr` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What are Promises?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Fortunately, we can promise you that there is a better way. That way was initially
+    done by third-party libraries, but it has proven to be so useful and so widely
+    adopted that it was included in the JavaScript language itself. The logic behind
+    this solution is rather simple. Each asynchronous call is basically a promise
+    that, sometime in the future, some task will be done and some result will be acquired.
+    As with promises in real life, we can have three different states for a promise:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A promise might not be resolved yet. This means that we need to wait some more
+    time before we get a result. In TypeScript, we call these promises "pending."
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A promise might be resolved negatively – the one who promised broke the promise.
+    In TypeScript, we call these promises "rejected" and usually we get some kind
+    of an error as a result.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A promise might be resolved positively – the one who promised fulfilled the
+    promise. In TypeScript, we call these promises "resolved" and we get a value out
+    of them – the actual result.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: And since promises are objects themselves, this means that promises can be assigned
+    to variables, returned from functions, passed as arguments into functions, and
+    lots of other things we're able to do with regular objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another great feature of promises is that it is relatively easy to write a promisified
+    wrapper around an existing callback-based function. Let's try to promisify the
+    Shakespeare example. We'll start by taking a look at the `showData` function.
+    This function needs to do a lot of things, and those things are sometimes not
+    connected to one another. It needs to both process the `xhr` variable to extract
+    the data, and it needs to know what to do with that data. So, if the API we're
+    using changes, we'll need to change our function. If the structure of our web
+    page changes, that is, if we need to display a `div` instead of an `h1` element,
+    we'll need to change our function. If we need to use the author data for something
+    else, we'll also need to change our function. Basically, if anything needs to
+    happen to the response, it needs to happen then and there. We have no way to somehow
+    defer that decision to another piece of code. This creates unnecessary coupling
+    inside our code, which makes it harder to maintain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s change that. We can create a new function that will return a promise,
+    which will provide the data about the author. It will have no idea what that data
+    will be used for:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: This function returns a `Promise` object, which was created using the `Promise`
+    constructor. This constructor takes a single argument, which is a function. That
+    function takes two arguments as well (also functions), which are by convention
+    called `resolve` and `reject`. You can see that the function inside the constructor
+    just creates an `xhr` object, calls its `open` and `send` methods, sets its `onload`
+    property, and returns. So, basically, nothing gets done, except that the request
+    is fired off.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A promise thus created will be in the pending state. And the promise stays in
+    this state until one of the `resolve` or `reject` functions is called inside the
+    body. If the `reject` function is called, it will transition to a rejected state,
+    and we'll be able to use the `catch` method of the `Promise` object to handle
+    the error, and if the `resolve` function is called, it will transition to the
+    resolved state, and we'll be able to use the `then` method of the `Promise` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One thing that we should note is that this method does nothing that is UI-related.
+    It does not print any errors on the console or change any DOM elements. It simply
+    promises us that it will get us an `OpenLibraryAuthor` object. Now, we''re free
+    to use this object however we want:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this piece of code, we call the `getShakespeareData` data function, and then
+    on its result, we're calling two methods, `then` and `catch`. The `then` method
+    only executes if the promise is in the resolved state and it takes in a function
+    that will get the result. The `catch` method only executes if the promise is in
+    the rejected state, and it will get the error as an argument to its function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One important note for the `then` and `catch` methods – they also return promises.
+    This means that `Promise` objects are chainable, so instead of going in depth,
+    as we did with callbacks, we can go in length, so to say. To illustrate that point,
+    let's count to five once again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: A more comprehensive discussion of Promises will be presented in *Chapter 12,
+    Guide to Promises in TypeScript*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Exercise 10.04: Counting to Five with Promises'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this exercise, we''ll create a function that, when executed, will output
+    the English words one through five. Each word will appear on the screen 1 second
+    after the last one was displayed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code files for this exercise can be found at [https://packt.link/nlge8](https://packt.link/nlge8).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create a new file, `counting-2.ts`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In `counting-2.ts`, add an array with the English number names up to and including
+    five:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Add a promisified wrapper of the `setTimeout` function. This wrapper will only
+    execute when the given timeout expires:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Since our promise will not return any meaningful result, instead just resolving
+    after a given amount of milliseconds, we have provided `void` as its type.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Call the `delay` method with a parameter of `1000`, and after its resolution,
+    print out the first number:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Save the file, and compile it with the following command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Verify that the compilation ended successfully and that there is a `counting-2.js`
+    file generated in the same folder. Execute it in the `node` environment with this
+    command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'You will see the output looks like this:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The line should appear 1 second after the application was run.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'In the `counting-2.ts` file, after the `then` line, add another `then` line.
+    Inside it, call the `delay` method again, with a timeout of 1 second:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: We can do this because the result of the `then` method is `Promise`, which has
+    its own `then` method.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'After the last `then` line, add another `then` line, inside which you print
+    out the second number:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Compile and run the code again, and verify that the output has an extra line,
+    displayed 1 second after the first.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In the `counting-2.ts` file, add two more `then` lines for the third, fourth,
+    and fifth numbers as well. The code should look like this:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Compile and run the code again, and verify that the output appears in the correct
+    order.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Let's compare this code with the code of the previous exercise. It's not the
+    cleanest code, but its function is relatively obvious. We can see how we could
+    expand this code to count to 20\. And the major benefit here is that this code,
+    while asynchronous, is still sequential. We can reason about it, and the lines
+    that are at the top will execute before the lines at the bottom. Furthermore,
+    since we have objects now, we can even refactor this code into an even simpler
+    and more extensible format – we can use a `for` loop.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'In the `counting-2.ts` file, remove the lines starting with `delay(1000)` until
+    the end of the file. Add a line that will define a resolved promise:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Add a `for` loop that, for each number of the `numbers` array, will add to
+    the `promise` chain a delay of 1 second, and print the number:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Compile and run the code again, and verify that the output appears in the correct
+    order as shown:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Activity 10.02: Movie Browser Using fetch and Promises'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this activity, we will be repeating the previous activity. The major difference
+    is that, instead of using `XMLHttpRequest` and its `onload` method, we'll be using
+    the `fetch` web API. In contrast to the `XMLHttpRequest` class, the `fetch` web
+    API returns a `Promise` object, so instead of nesting our callbacks to have multiple
+    API calls, we can have a chain of promise resolutions that will be far easier
+    to understand.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The activity has the same files and resources as the previous activity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following steps should help you with the solution:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the `script.ts` file, locate the `search` function and verify that it takes
+    a single string parameter and that its body is empty.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Above the `search` function, create a helper function called `getJsonData`.
+    This function will use the `fetch` API to get data from an endpoint and format
+    it as JSON. It should take a single string called `url` as a parameter, and it
+    should return a `Promise`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the body of the `getJsonData` function, add code that calls the `fetch` function
+    with the `url` parameter, and `then` call the `json` method on the returned response.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the `search` method, construct a new string for the search result URL using
+    the `getSearchUrl` method.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Call the `getJsonData` function with the `searchUrl` as a parameter.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Add a `then` handler to the promise returned from `getJsonData`. The handler
+    takes a single parameter of the type `SearchResultApi`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the body of the handler, check whether we have any results and if we don't,
+    throw an error. If we do have results, return the first item. Note that the handler
+    returns an object with `id` and `title` properties, but the `then` method actually
+    returns a `Promise` of that data. This means that after the handler, we can chain
+    other `then` calls.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Add another `then` call to the previous handler. This handler will take a `movieResult`
+    parameter that contains the `id` and `title` of the movie. Use the `id` property
+    to call the `getMovieUrl` and `getPeopleUrl` methods to, respectively, get the
+    correct URLs for the movie details and for the cast and crew.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: After getting the URLs, call the `getJsonData` function with both, and assign
+    the resulting values to variables. Note that the `getJsonData(movieUrl)` call
+    will return a `Promise` of `MovieResultApi`, and `getJsonData(peopleUrl)` will
+    return a `Promise` of `PeopleResultApi`. Assign those result values to variables
+    called `dataPromise` and `peoplePromise`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Call the static `Promise.all` method with `dataPromise` and `peoplePromise`
+    as parameters. This will create another promise based on those two values, and
+    this promise will be resolved successfully if and only if both (that is, all)
+    promises that are contained within resolve successfully. Its return value will
+    be a `Promise` of an array of results.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Return the promise generated by the `Promise.all` call from the handler.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Add another `then` handler to the chain. This handler will take the array returned
+    from `Promise.all` as a single parameter.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Deconstruct the parameter into two variables. The first element of the array
+    should be the `movieData` variable of type `MovieResultApi`, and the second element
+    of the array should be the `peopleData` variable of type `PeopleResultApi`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The people data has `cast` and `crew` properties. We'll only take the first
+    six cast members, so first sort the `cast` property according to the `order` property
+    of the cast members. Then slice off the first six cast members into a new array.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Transform the cast data (which is `CastResultApi` objects) into your own `Character`
+    objects. We need to map the `character` field of `CastResultApi` to the `name`
+    field of `Character`, the `name` field to the `actor` name, and the `profile_path`
+    field to the `image` property.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: From the `crew` property of the people data, we'll only need the director and
+    the writer. Since there can be multiple directors and writers, we'll get the names
+    of all directors and writers and concatenate them, respectively. For the directors,
+    from the `crew` property, filter the people who have a `department` of `Directing`
+    and a `job` of `Director`. For those objects, take the `name` property, and `join`
+    it together with an `&` in between.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: For the writers, from the `crew` property, filter the people who have a `department`
+    of `Writing` and a `job` of `Writer`. For those objects, take the `name` property,
+    and `join` it together with an `&` in between.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Create a new `Movie` object (using object literal syntax). Fill in all the properties
+    of the `Movie` object using the data from the movie and people responses we've
+    prepared so far.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Return the `Movie` object from the handler.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Note that we did not do any UI interactions in our code. We just received a
+    string, did some promise calls, and returned a value. The UI work can now be done
+    in UI-oriented code. In this case, that's in the `click` event handler of the
+    `search` button. We should simply add a `then` handler to the `search` call that
+    will call the `showResults` method, and a `catch` handler that will call the `clearResults`
+    method.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Although we used `fetch` and promises in this activity, and our code is now
+    much more efficient but complex, the basic function of the website will be the
+    same and you should see an output similar to the previous activity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code files for this activity can be found at [https://packt.link/IeDTF](https://packt.link/IeDTF).
+    The solution to this activity can be found via [this link](B14508_Solution_ePub.xhtml#_idTextAnchor433).
+  prefs: []
+  type: TYPE_NORMAL
+- en: async/await
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Promises solved the problem of callbacks quite nicely. However, often, they
+    carry with them lots of unneeded fluff. We need to write lots of `then` calls,
+    and we need to be careful not to forget to close any parentheses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next step is to add a piece of syntactic sugar to our TypeScript skills.
+    Unlike the other things in this chapter, this feature originated in TypeScript,
+    and was later adopted in JavaScript as well. I'm talking about the `async`/`await`
+    keywords. These are two separate keywords, but they are always used together,
+    so the whole feature became known as `async`/`await`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What we do is we can add the `async` modifier to a certain function, and then,
+    in that function, we can use the `await` modifier to execute promises easily.
+    Let''s go once more to our Shakespearean example, and let''s wrap the code we
+    used to call `getShakespeareData` inside another function, simply called `run`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code is functionally equivalent to the code we had previously. But now,
+    we have a function that we can mark as an `async` function, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we''re allowed to just get the result of a promise and put it inside of
+    a variable. So, the whole `then` invocation will become this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE62]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can see that we don''t have any wrapping function calls anymore. The `catch`
+    invocation can be replaced with a simple `try`/`catch` construct, and the final
+    version of the `run` function will look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE63]'
+  prefs: []
+  type: TYPE_PRE
+- en: You will notice that the amount of code that is deeply nested is drastically
+    reduced. Now we can look at the code, and have a good idea of what it does, just
+    from a quick glance. This is still the same, deeply asynchronous code, the only
+    difference is that it looks almost synchronous and definitely sequential.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Exercise 10.05: Counting to Five with async and await'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this exercise, we''ll create a function that, when executed, will output
+    the English words one through five. Each word will appear on the screen 1 second
+    after the last one was displayed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code files for this exercise can be found at [https://packt.link/TaH6b](https://packt.link/TaH6b).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create a new file, `counting-3.ts`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In `counting-3.ts`, add an array with the English number names up to and including
+    five:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE64]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Add a promisified wrapper of the `setTimeout` function. This wrapper will only
+    execute when the given timeout expires:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE65]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Since our promise will not return any meaningful results, instead of just resolving
+    after a given number of milliseconds, we have provided `void` as its type.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Create an empty `async` function called `countNumbers` and execute it on the
+    last line of the file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE66]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Inside the `countNumbers` function, await the `delay` method with a parameter
+    of `1000`, and after its resolution, print out the first number:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE67]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Save the file, and compile it with the following command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE68]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Verify that the compilation ended successfully and that there is a `counting-3.js`
+    file generated in the same folder. Execute it in the `node` environment with this
+    command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE69]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'You will see the output looks like this:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE70]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The line should appear 1 second after the application was run.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'In the `counting-3.ts` file, after the `console.log` line, add two more lines
+    for the rest of the numbers as well. The code should look like this:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE71]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Compile and run the code again, and verify that the output appears in the correct
+    order.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Since the code is completely identical for all the numbers, it's trivial to
+    replace it with a `for` loop.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'In the `counting-3.ts` file, remove the body of the `countNumbers` function,
+    and replace it with a `for` loop that, for each number of the `numbers` array,
+    will `await` a delay of a second, and then print the number:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE72]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Compile and run the code again, and verify that the output appears in the correct
+    order:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE73]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Activity 10.03: Movie Browser Using fetch and async/await'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this activity, we will be improving on the previous activity. The major difference
+    is that instead of using the `then` method of the `Promises` class, we'll use
+    the `await` keyword to do that for us magically. Instead of a chain of `then`
+    calls, we'll just have code that looks completely regular, with some `await` statements
+    peppered throughout.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The activity has the same files and resources as the previous activity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following steps should help you with the solution:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the `script.ts` file, locate the `search` function and verify that it takes
+    a single string parameter and that its body is empty. Note that this function
+    is now marked with the `async` keywords, which allows us to use the `await` operator.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Above the `search` function, create a helper function called `getJsonData`.
+    This function will use the `fetch` API to get data from an endpoint and format
+    it as JSON. It should take a single string called `url` as a parameter, and it
+    should return a promise.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the body of the `getJsonData` function, add code that calls the `fetch` function
+    with the `url` parameter, and `then` call the `json` method on the returned response.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the `search` method, construct a new string for the search result URL using
+    the `getSearchUrl` method.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Call the `getJsonData` function with `searchUrl` as a parameter, and `await`
+    the result. Place the result into the `SearchResultApi` variable.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Check whether we have any results and if we don't, throw an error. If we do
+    have results, set the first item of the `result` property into a variable called
+    `movieResult`. This object will contain the `id` and `title` properties of the movie.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Use the `id` property to call the `getMovieUrl` and `getPeopleUrl` methods to,
+    respectively, get the correct URLs for the movie details and for the cast and crew.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: After getting the URLs, call the `getJsonData` function with both, and assign
+    the resulting values to variables. Note that the `getJsonData(movieUrl)` call
+    will return a promise of `MovieResultApi`, and `getJsonData(peopleUrl)` will return
+    a promise of `PeopleResultApi`. Assign those result values to variables called
+    `dataPromise` and `peoplePromise`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Call the static `Promise.all` method with `dataPromise` and `peoplePromise`
+    as parameters. This will create another promise based on those two values, and
+    this promise will be resolved successfully if and only if both (that is, all)
+    promises that are contained within resolve successfully. Its return value will
+    be a promise of an array of results. `await` this promise, and place its result
+    into a variable of type `array`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Deconstruct that array into two variables. The first element of the array should
+    be the `movieData` variable of type `MovieResultApi`, and the second element of
+    the array should be the `peopleData` variable of type `PeopleResultApi`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The people data has `cast` and `crew` properties. We'll only take the first
+    six cast members, so first sort the `cast` property according to the `order` property
+    of the cast members. Then slice off the first six cast members into a new array.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Transform the cast data (which is `CastResultApi` objects) into our own `Character`
+    objects. We need to map the `character` field of `CastResultApi` to the `name`
+    field of `Character`, the `name` field to the `actor` name, and the `profile_path`
+    field to the `image` property.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: From the `crew` property of the people data, we'll only need the director and
+    the writer. Since there can be multiple directors and writers, we'll get the names
+    of all directors and writers and concatenate them, respectively. For the directors,
+    from the `crew` property, filter the people who have a `department` of `Directing`
+    and a `job` of `Director`. For those objects, take the `name` property, and `join`
+    it together with an `&` in between.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: For the writers, from the `crew` property, filter the people who have a `department`
+    of `Writing` and a `job` of `Writer`. For those objects, take the `name` property,
+    and `join` it together with an `&` in between.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Create a new `Movie` object (using object literal syntax). Fill in all the properties
+    of the `Movie` object using the data from the movie and people responses we've
+    prepared so far.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Return the `Movie` object from the function.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Note that we did not do any UI interactions in our code. We just received a
+    string, did some promise calls, and returned a value. The UI work can now be done
+    in UI-oriented code. In this case, that's in the `click` event handler of the
+    `search` button. We should simply add a `then` handler to the `search` call that
+    will call the `showResults` method, and a `catch` handler that will call the `clearResults`
+    method.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Although we used `fetch` and `async`/`await` in this activity, and our code
+    is now just as efficient but less complex compared with the previous activity,
+    the basic function of the website will be the same and you should see an output
+    similar to the previous activity.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: The code files for this activity can be found at [https://packt.link/fExtR](https://packt.link/fExtR).
+    The solution to this activity can be found via [this link](B14508_Solution_ePub.xhtml#_idTextAnchor435).
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we looked at the execution model that is used on the web, and
+    how we can use it to actually execute code. We glanced at the surface of the intricacies
+    of asynchronous development – and how we can use it to load data from external
+    resources. We showed the problems that arise when we get too deep into the hole
+    of callbacks and managed to exit it using promises. Finally, we were able to await
+    our asynchronous code, and have the best of both words – code that looks like
+    it's synchronous, but that executes asynchronously.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also tested the skills developed in the chapter by creating a movie data
+    viewer browser, first using XHR and callbacks, and then improved it progressively
+    using `fetch` and promises, and then using `fetch` and `async`/`await`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next chapter will teach you about higher-order functions and callbacks.
+  prefs: []
+  type: TYPE_NORMAL

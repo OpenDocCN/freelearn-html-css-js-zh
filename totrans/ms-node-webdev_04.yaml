@@ -1,0 +1,1440 @@
+- en: '4'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Understanding Node.js Concurrency
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Server-side web development is characterized by processing large volumes of
+    HTTP requests as quickly and efficiently as possible. JavaScript is different
+    from other languages and platforms because it has a single thread of execution,
+    which means that HTTP requests are processed one at a time. Behind the scenes,
+    however, there is a lot more going on, and in this chapter, I explain why the
+    JavaScript approach is unusual, how the Node.js API performs work on behalf of
+    JavaScript code, and how additional execution threads can be created to handle
+    computationally intense tasks. *Table 4.1* puts JavaScript concurrency in context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4.1: Putting Node.js concurrency in context'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Question | Answer |'
+  prefs: []
+  type: TYPE_TB
+- en: '| What is it? | Concurrency is the execution of multiple threads of code. Node.js
+    has support for concurrency, but it hides the details from the developer. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Why is it useful? | Concurrency allows servers to achieve greater throughput
+    by accepting and processing multiple HTTP requests simultaneously. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| How is it used? | Node.js has a single thread of execution for JavaScript
+    code called the main thread, and it relies on events to coordinate the work required
+    to process different threads of work. The Node.js API makes extensive use of concurrent
+    execution in its APIs, but this is largely hidden from the developer. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Are there any pitfalls or limitations? | Care must be taken not to block
+    the main thread; otherwise, performance will be impaired. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Are there any alternatives? | No. The concurrency model is core to Node.js
+    and understanding it is essential to create web applications that scale economically.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '*Table 4.2* summarizes the chapter.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4.2: Chapter summary'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Problem | Solution | Listing |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Perform tasks concurrently | Use the Node.js API and handle events with callback
+    functions or promises. | *10-15* |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wrap code as promises or callbacks | Use the `promisify` and `callbackify`
+    functions. | *16, 17* |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Avoid blocking the main thread for simple tasks | Break up work into smaller
+    chunks that can be interleaved with other work. | *21* |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Avoid blocking the main thread for complex tasks | Use worker threads. |
+    *22-27* |'
+  prefs: []
+  type: TYPE_TB
+- en: Preparing for this chapter
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To create the project for this chapter, open a new command prompt, navigate
+    to a convenient location, and create a folder named `webapp`. Run the command
+    shown in *Listing 4.1* in the `webapp` folder to create the `package.json` file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.1: Initializing the project'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Run the commands shown in *Listing 4.2* in the `webapp` folder to install the
+    packages that will be used to compile TypeScript files and monitor files for changes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Tip**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can download the example project for this chapter – and for all the other
+    chapters in this book – from [https://github.com/PacktPublishing/Mastering-Node.js-Web-Development](https://github.com/PacktPublishing/Mastering-Node.js-Web-Development).
+    See *Chapter 1* for how to get help if you have problems running the examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.2: Installing tool packages'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Run the commands shown in *Listing 4.3* in the `webapp` folder to add the packages
+    that will configure the TypeScript compiler for Node.js projects and describe
+    the types used by the Node.js API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Listing 4.3\. Adding the Compiler Configuration and Type Packages
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: To configure the TypeScript compiler, create a file named `tsconfig.json` in
+    the `webapp` folder with the contents shown in *Listing 4.4*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.4: The contents of the tsconfig.json file in the webapp folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: This configuration file extends the one provided by the TypeScript developers
+    for working with Node.js. The TypeScript files will be created in the `src` folder,
+    and the compiled JavaScript will be written to the `dist` folder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Open the `package.json` file and add the command shown in *Listing 4.5* to the
+    `script` section to define the command that will start the build tools.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.5: Adding a Script Command in the package.json File in the webapp
+    Folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Creating a simple web application
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: With the packages and build tools in place, it is time to create a simple web
+    application. Create the `webapp/src` folder and add to it a file named `handler.ts`
+    with the content shown in *Listing 4.6*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.6: The contents of the handler.ts file in the src Folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: This file defines the code that will process HTTP requests. I describe the HTTP
+    features that Node.js provides in *Chapter 5*, but for this chapter, it is enough
+    to know that the HTTP request is represented by an `IncomingMessage` object, and
+    the response is created using the `ServerResponse` object. The code in *Listing
+    4.6* responds to all requests with a simple `Hello World` message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, add a file named `server.ts` to the `src` folder with the content shown
+    in *Listing 4.7*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.7: The contents of the server.ts file in the src folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code creates a simple HTTP server that listens for HTTP requests on port
+    5000 and processes them using the function defined in the `handler.ts` file in
+    *Listing 4.6*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add a file named `data.json` to the `webapp` folder with the content shown in
+    *Listing 4.8*. This file will be used later in the chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.8: The contents of the data.json file in the webapp folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Run the commands shown in *Listing 4.9* in the `webapp` folder to start the
+    watcher that will monitor and compile TypeScript files and execute the JavaScript
+    that is produced.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.9: Starting the project'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `server.ts` file in the `src` folder will be compiled to produce a pure
+    JavaScript file named `server.js` in the `dist` folder, which will produce the
+    following output when it is executed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Open a web browser and navigate to `http://localhost:5000` to send a request
+    to the HTTP server, which will produce the response shown in *Figure 4.1*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_04_01.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4.1: Running the example application'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding (simplified) server code execution
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'A disclaimer is required: this chapter omits some details, is a little loose
+    with some explanations, and blurs the lines between some fine details.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The topics covered in this chapter are complex, with endless nuance and detail
+    and terminology that means different things on different platforms. And so, with
+    brevity in mind, I have focused on what’s important for JavaScript web application
+    development, even though that means glossing over some topics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Concurrency is a genuinely fascinating subject, and it can be a rewarding area
+    of research. But before digging into the details, bear in mind that to be an effective
+    JavaScript developer, you only need a basic overview of concurrency – like the
+    one in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding multi-threaded execution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Server-side web applications need to be able to process many HTTP requests simultaneously
+    to scale up economically so that a small amount of server capacity can be used
+    to support a large number of clients.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The conventional approach is to take advantage of the multi-threaded features
+    of modern server hardware by creating a pool of handler threads. When a new HTTP
+    request arrives, it is added to a queue where it waits until one of the threads
+    is available to process it. The thread processes the request, sends the response
+    back to the client, and then returns to the queue for the next request.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The server hardware can execute multiple threads simultaneously, as illustrated
+    in *Figure 4.2*, so that a large volume of requests can be received and processed
+    concurrently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_04_02.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4.2: Handling HTTP requests concurrently'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This approach makes full use of the server hardware, but it requires developers
+    to consider how requests might interfere with each other. A common problem is
+    that one handler thread modifies data as it is being read by another thread, producing
+    an unexpected result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To avoid this kind of issue, most programming languages include keywords that
+    are used to restrict interactions between threads. The details vary, but keywords
+    like `lock` and `synchronize` are used to ensure that threads safely use shared
+    resources and data by creating protected regions of code that can only be executed
+    by one thread at a time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing code that uses threads is a balance of safety and performance. Protected
+    regions of code are potential performance bottlenecks, and if protections are
+    applied too widely, then performance suffers and the number of requests that can
+    be processed concurrently falls. However, requests may interfere with one another
+    and produce unexpected results if protections are applied too sparsely.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding blocking and non-blocking operations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In most server-side applications, the thread processing an HTTP request spends
+    most of its time waiting. This can be waiting for a database to produce a result,
+    waiting for the next chunk of data from a file, or waiting for access to a protected
+    region of code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When a thread is waiting, it is said to be *blocked*. A blocked thread is unable
+    to do any other work until the operation it is waiting for has been completed,
+    during which time the capacity of the server to process requests is reduced. In
+    busy applications, there is a constant flow of new requests arriving, and having
+    threads tied up doing nothing leads to queues of requests waiting to be processed
+    and reduced overall throughput.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One solution is to use *non-blocking* operations, also known as *asynchronous*
+    operations. These terms can be confusing. The best way to understand them is with
+    a real-world example: a pizza restaurant.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Imagine that, after taking an order, an employee in the restaurant went into
+    the kitchen, assembled your pizza, put it in the oven, stood there waiting for
+    it to cook for 10 minutes, and then served it to you. This is the blocking – or
+    synchronous – approach to preparing pizza. Customers will be happy if they enter
+    the restaurant when there is an employee available to take an order because they
+    will get their pizza in the shortest amount of time. But no one else is happy.
+    The other customers in the queue aren’t happy because they have to wait in the
+    queue while pizzas for all of the customers ahead of them are assembled, cooked,
+    and served, at which point an employee will be available to make their pizza.
+    The restaurant owner is unhappy because the pizza throughput is equal to the number
+    of employees, who spend most of their time waiting for pizza to cook.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is a more sensible approach. One employee – let’s name them Bob – is given
+    the job of monitoring the oven. The other employees take orders, assemble the
+    pizzas, and put them in the oven just as before, but rather than waiting for them
+    to cook, they ask Bob to tell them when the pizza is cooked.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While Bob watches the pizzas in the oven, the employees can carry on working,
+    taking the order of the next customer in the queue, preparing the next pizza,
+    and so on. Bob can watch lots of pizzas, so the limit to the number of pizzas
+    that can be produced is the size of the oven and not the number of employees.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cooking a pizza has become a non-blocking operation for everyone except Bob.
+    There is no way around waiting for the oven, but the performance of the restaurant
+    is improved by making one person do all the waiting. Everyone is happy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Well, almost. The owner is happy because the restaurant produces more pizzas.
+    The customers in the queue are happy because employees can start working on their
+    pizza while Bob is watching earlier orders. But individual orders may take longer:
+    Bob may tell another employee that a pizza is ready, but they won’t be able to
+    serve it if they are busy with another customer. The overall restaurant performance
+    improves, but individual orders may take longer to complete.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The same approach can be taken with HTTP requests, as shown in *Figure 4.3*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_04_03.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4.3: Freeing request handlers from a blocking operation'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead of waiting for an operation to complete, handler threads rely on a monitor
+    thread while they continue to process requests from the queue. When the blocking
+    operation has finished, the monitor thread puts the request back in the queue
+    so that a handler thread can continue processing the request.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The process of handing off an operation for monitoring is usually integrated
+    into the API used to write web applications, so that performing a read from a
+    file, for example, automatically releases the handler thread so it can do other
+    work and can be trusted to put the request in the queue for processing when the
+    file read operation is complete.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is important to understand that the terms *non-blocking* and *asynchronous*
+    are from the perspective of the handler thread. The operations still take time
+    to complete, but the handler thread can do other work during that period. There
+    are still blocking threads, but they are not the ones responsible for processing
+    HTTP requests, which are the threads we care about the most.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding JavaScript code execution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: JavaScript’s origins as a browser-based language have shaped the way that JavaScript
+    code is written and executed. JavaScript was originally used to provide user interaction
+    with HTML elements. Each type of element defines *events* that describe the different
+    ways the user can interact with that element. A button element, for example, has
+    events for when the user clicks the button, moves the pointer over the button,
+    and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The programmer writes JavaScript functions, known as *callbacks*, and uses the
+    browser’s API to associate those functions with specific events on elements. When
+    the browser detects an event, it adds the callback to a queue so it can be executed
+    by the JavaScript runtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The JavaScript runtime has a single thread – called the *main thread* – that
+    is responsible for executing the callbacks. The main thread runs in a loop, taking
+    callbacks from the queue and executing them, which is referred to as the JavaScript
+    *event loop*. The event loop is how the native code of the browser, which is written
+    for a specific operating system, interacts with the JavaScript code, which runs
+    on any compatible runtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The event loop is more complicated but the idea of a queue of callbacks is close
+    enough for effective JavaScript web development. The details are worth exploring
+    if you, like me, find this sort of thing interesting. A good place to start is
+    [https://nodejs.org/en/docs/guides/event-loop-timers-and-nexttick](https://nodejs.org/en/learn/asynchronous-work/event-loop-timers-and-nexttick).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Events often occur in clusters, such as when the pointer moves across several
+    elements, and so the queue can contain multiple callbacks waiting to be executed,
+    as shown in *Figure 4.4*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_04_04.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4.4: The callback queue'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using a single thread means that any operation in a callback that takes time
+    to complete causes the application to freeze as callbacks queue up waiting to
+    be processed. To help manage this issue, many browser API features are non-blocking
+    and use the callback pattern to deliver their results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Over the years, features have been added to the JavaScript language and the
+    browser APIs, but the event loop and callback functions are used to execute JavaScript.
+    The API the browser provides for HTTP requests, for example, defines a series
+    of events that describe the request lifecycle, and these events are handled with
+    callback functions, as shown in *Figure 4.5*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_04_05.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4.5: Results from the browser API are processed with JavaScript callback
+    functions'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Behind the scenes, the browser uses native threads to perform the HTTP request
+    and wait for the response, which is then passed to the JavaScript runtime using
+    a callback.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The JavaScript runtime only ever executes one callback, so the JavaScript language
+    doesn’t need keywords like `lock` and `synchronize`. JavaScript code interacts
+    with the browser through an API that hides away the implementation details and
+    receives results consistently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding Node.js code execution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Node.js retains the main thread and the event loop, which means that server-side
+    code is executed in the same way as client-side JavaScript. For HTTP servers,
+    the main thread is the only request handler, and callbacks are used to handle
+    incoming HTTP connections. The example application demonstrates the use of a callback
+    to handle an HTTP request:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The callback function passed to the `createServer` function will be invoked
+    when Node.js receives an HTTP connection. The function defines parameters that
+    represent the request that has been received and the response that will be returned
+    to the client:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: I describe the API Node.js provides for HTTP in *Chapter 5*, but the callback
+    function uses its parameters to prepare the response that will be sent to the
+    client. The details of how Node.js receives HTTP requests and returns HTTP responses
+    are hidden away in native code, as shown in *Figure 4.6*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_04_06.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4.6: Handling HTTP requests in Node.js'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Node.js may only have a single handler thread, but the performance can be excellent
+    because modern server hardware is incredibly fast. Even so, a single thread doesn’t
+    take full advantage of the multi-core and multi-processor hardware to which most
+    applications are deployed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To scale up, multiple instances of Node.js are started. HTTP requests are received
+    by a load balancer (or ingress controller or primary node, depending on how the
+    application is deployed, as described in *Part 3*) and distributed to the Node.js
+    instances, as shown in *Figure 4.7*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_04_07.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4.7: Scaling up with multiple Node.js instances'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The individual Node.js instances still have a single JavaScript thread but collectively
+    they can process a higher volume of requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One important consequence of applying the JavaScript execution model to HTTP
+    requests is that blocking the main thread stops all requests from being processed
+    by that Node.js instance, creating the same kind of deadlock that can arise in
+    client-side JavaScript. Node.js helps programmers avoid blocking the main thread
+    in two ways: an API that performs many tasks asynchronously, known as the *worker
+    pool*, and support for starting extra threads to execute blocking JavaScript code,
+    known as *worker threads*. Both of these features are described in the sections
+    that follow.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the Node.js API
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Node.js replaces the API provided by the browser with one that supports common
+    server-side tasks, such as processing HTTP requests and reading files. Behind
+    the scenes, Node.js uses native threads, known as the worker pool, to perform
+    operations asynchronously.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To demonstrate, *Listing 4.10* uses the Node.js API to read the contents of
+    a file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.10: Using the Node.js API in the handler.ts File in the src Folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: As its name suggests, the `readFile` function reads the contents of a file.
+    Use a web browser to request `http://localhost:5000` and you will see the output
+    shown in *Figure 4.8*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_04_08.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4.8: Sending the contents of a file to the client'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The read operation is asynchronous and is implemented using a native thread.
+    The contents of the file are passed to a callback function, which sends them to
+    the HTTP client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are three callbacks in the code. The first callback is the one passed
+    to the `createServer` function, which is invoked when an HTTP request is received:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The second callback is the one passed to the `readFile` function, which is
+    invoked when the contents of the file have been read or if an error occurs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: I used type annotations to help describe the way the results from reading the
+    file are presented. The type of the first argument of the callback is `Error |
+    null` and is used to indicate the outcome. If the first argument is `null`, then
+    the operation has been completed successfully, and the contents of the file will
+    be available in the second argument, whose type is `Buffer`. (Buffers are how
+    Node.js represents arrays of bytes.) If the first argument isn’t `null`, then
+    the `Error` object will provide details of the problem that prevented the file
+    from being read.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You may see two messages written to the command prompt when you send an HTTP
+    request from a browser. Browsers often request the `favicon.ico` file to get an
+    icon that can be displayed in the tab header, and this is the reason why you will
+    sometimes see `File sent` appear twice in the output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The third callback is invoked when the data read from the file has been sent
+    to the client:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Breaking up the process of producing an HTTP response with callbacks means that
+    the JavaScript main thread doesn’t have to wait for the file system to read the
+    contents of the file, and this allows requests from other clients to be processed,
+    as illustrated in *Figure 4.9*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_04_09.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4.9: Breaking down request handling with multiple callbacks'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling events
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Events are used to provide notifications that the state of the application has
+    changed and provide an opportunity to execute a callback function to handle that
+    change. Events are used throughout the Node.js API, although there are often convenience
+    features that hide away the details. *Listing 4.11* revises the code that listens
+    for HTTP requests to use events directly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.11: Handling Events in the server.ts File in the src Folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Many of the objects created with the Node.js API extend the `EventEmitter` class,
+    which denotes a source of events. The `EventEmitter` class defines the methods
+    described in *Table 4.3* for receiving events.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4.3: Useful eventemitter methods'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Name | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This method registers a `callback` to be invoked whenever the specified event
+    is emitted. |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This method stops invoking the `callback` when the specific event is emitted.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This method registers a `callback` to be invoked the next time the specified
+    event is emitted but not thereafter. |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Classes that extend `EventEmitter` define events and specify when they will
+    be emitted. The `Server` class returned by the `createServer` method extends `EventEmitter`
+    and it defines two events that are used in *Listing 4.11*: the `request` and `listening`
+    events. The code in *Listing 4.7* and *Listing 4.11* has the same effect and the
+    only difference is that the `createServer` function registers its function argument
+    as a callback for the `request` event behind the scenes, while the `listen` method
+    registers its function argument as a callback for the `listening` event.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is important to understand that events are an integral part of the Node.js
+    API and that they can be used directly, with the methods described in *Table 4.3*,
+    or indirectly through other features.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Working with promises
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Promises are an alternative to callbacks and some parts of the Node.js API provide
+    features using both callbacks and promises. A promise serves the same purpose
+    as a callback, which is to define the code that will be executed when an asynchronous
+    operation is completed. The difference is that code written with promises can
+    often be simpler than the equivalent code using callbacks. One part of the API
+    where Node.js provides promises and callbacks is for working with files, as shown
+    in *Listing 4.12*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.12: Using a Promise in the handler.ts File in the src Folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This isn’t how promises are usually used, which is why the code looks more
+    complex than earlier examples. But this code emphasizes the way that promises
+    work. This is the statement that creates the promise:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `readFile` function has the same name as the function used for callbacks
+    but is defined in the `fs/promises` module. The result returned by the `readFile`
+    function is `Promise<Buffer>`, which is a promise that will produce a `Buffer`
+    object when its asynchronous operation is complete.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Understanding when synchronous methods are useful**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition to callbacks and promises, some parts of the Node.js API also offer
+    synchronous features that block the main thread until they are complete. One example
+    is the `readFileSync` function, which performs the same task as `readFile`, but
+    blocks execution until the file contents have been read.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In most cases, you should use the non-blocking features that Node.js provides
+    to maximize the number of requests that Node.js can handle, but there are two
+    situations when blocking operations make more sense. The first situation arises
+    when you know for certain that the operations will be completed so quickly that
+    it is quicker than setting up a promise or a callback. There is a resource and
+    time cost associated with performing an asynchronous operation and this can sometimes
+    be avoided. This situation doesn’t arise often, and you should carefully consider
+    the potential performance impact.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second situation is more common, and that’s when you know that the next
+    block of code that the main thread will execute will be the result of the operation
+    you are about to perform. You can see an example of this in *Chapter 6*, where
+    I read configuration files synchronously before Node.js starts listening for HTTP
+    requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Promises are either *resolved* or *rejected*. A promise that completes successfully
+    and produces its result is resolved. The `then` method is used to register the
+    function that will be invoked if the promise is resolved, meaning that the file
+    has been read successfully, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'A rejected promise is one where an error has occurred. The `catch` method is
+    used to register a function that handles the error produced by a rejected promise,
+    like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Notice that using a promise doesn’t change the data types used to describe
+    the outcomes: a `Buffer` is used to describe the data read from the file and an
+    `Error` is used to describe errors.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The use of the `then` and `catch` methods separates successful results from
+    errors, unlike the callback API, which presents both and requires the callback
+    function to work out what happened.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `then` and `catch` methods can be chained together, which is one small improvement
+    in simplifying the code, as shown in *Listing 4.13*, and is a more typical way
+    to use promises.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.13: Chaining promise methods in the handler.ts file in the src folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is a little neater, but the real improvement comes with the use of the
+    `async` and `await` keywords, which allow asynchronous operations to be performed
+    using syntax that doesn’t require nested functions or chained methods, as shown
+    in *Listing 4.14*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.14: Using the async and await Keywords in the handler.ts File in
+    the src Folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Using the `async` and `await` keywords flattens the code by removing the need
+    for the `then` method and its function. The `async` keyword is applied to the
+    function used to handle requests:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `await` keyword is applied to statements that return promises, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: These keywords don’t change the behavior of the `readFile` function, which still
+    reads a file asynchronously and still returns a `Promise<Buffer>`, but the JavaScript
+    runtime takes the result asynchronously produced by the promise, a `Buffer` object
+    in this case, assigns it to a constant named `data`, and then executes the statements
+    that follow. The result is the same – and the way that the result is obtained
+    is also the same – but the syntax is simpler and easier to read.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This isn’t the final version of the code. To support error handling, the `catch`
+    method used on `Promise` objects is replaced with a `try/catch` block when using
+    the `await` keyword, as shown in *Listing 4.15*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.15: Adding error handling in the handler.ts file in the src folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: The type of the value provided to the `catch` exception is `any`, not `Error`,
+    because JavaScript doesn’t restrict the types that can be used to represent errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Tip**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: One advantage of callbacks over promises is that callbacks can be invoked more
+    than once for the same operation, allowing a series of updates to be provided
+    while asynchronous work is being performed. Promises are intended to produce a
+    single result without any interim updates. You can see an example of this difference
+    at the end of the chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Wrapping callbacks and unwrapping promises
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Not every part of the Node.js API supports both promises and callbacks, and
+    that can lead to both approaches being mixed in the same code. You can see this
+    problem in the example, where the `readFile` function returns a promise, but the
+    `end` method, which sends data to the client and finishes the HTTP response, uses
+    a callback:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: The promise and callback APIs can be mixed without problems, but the result
+    can be awkward code. To help ensure consistency, the Node.js API includes two
+    useful functions in the `util` module, which are described in *Table 4.4*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4.4: The Functions for wrapping callbacks and unwrapping promises'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Name | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This function creates a `Promise` from a function that accepts a conventional
+    callback. The convention is that the arguments passed to the callback are an error
+    object and the result of the operation. There is support for other arrangements
+    of arguments using a custom symbol – see [https://nodejs.org/docs/latest/api/util.html#utilpromisifycustom](https://nodejs.org/docs/latest/api/util.html#utilpromisifycustom)
+    for details. |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This function accepts a `Promise` object and returns a function that will
+    accept a conventional callback. |'
+  prefs: []
+  type: TYPE_TB
+- en: The idea behind these functions is good, but they have limitations, especially
+    when trying to create promises from callbacks so that the `await` keyword can
+    be used. The biggest restriction is that the `promisify` function doesn’t work
+    seamlessly on class methods unless care is taken to deal with the way that JavaScript
+    handles the `this` keyword. There is also an issue specific to TypeScript, where
+    the compiler doesn’t correctly identify the types involved.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add a file named `promises.ts` to the `src` folder with the contents shown in
+    *Listing 4.16*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.16: The Contents of the promises.ts File in the src Folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The first step is to use `promisify` to create a function that returns a promise,
+    which I do by passing the `ServerResponse.prototype.end` function to `promisify`.
+    I use the `as` keyword to override the type inferred by the TypeScript compiler
+    with a description of the method parameters and result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: '*Listing 4.17* imports the function defined in *Listing 4.16* and uses the
+    promise it produces.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.17: Using a Promise in the handler.ts File in the src Folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'I have to use the `bind` method when using the `await` keyword on the function
+    that `promisify` creates, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `bind` method associates the `ServerResponse` object for which the function
+    is being invoked. The result is a new function, which is invoked by passing the
+    data that will be sent to the client:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: The result is that the `await` keyword can be used instead of the callback,
+    even though it is a slightly awkward process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Executing custom code
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: All JavaScript code is executed by the main thread, which means that any operation
+    that doesn’t use the non-blocking API provided by Node.js will block the thread.
+    For the sake of consistency, add the statement shown in *Listing 4.18* to the
+    `promises.ts` file to wrap the `write` method defined by the `ServerResponse`
+    class in a promise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.18: Adding a Function in the promises.ts File in the src Folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: '*Listing 4.19* filters out the requests for the `favicon.ico` file, which was
+    fine in earlier examples, but will add unwanted requests in this section.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.19: Filtering Requests in the server.ts File in the src Folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: '*Listing 4.20* demonstrates the problem of thread blocking by introducing a
+    time-consuming operation that is implemented entirely in JavaScript.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.20: A Blocking Operation in the handler.ts File in the src Folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: Two `for` loops repeatedly increment a number value and, since this operation
+    is written entirely in JavaScript, the main thread is blocked until both the loops
+    have completed. To see the effect of the blocked thread, open two browser tabs
+    and request [http://localhost:5000](http://localhost:5000) in both of them. You
+    need to start the request in the second tab before the first one has finished,
+    and you may need to adjust the `total` value to give yourself time. The `total`
+    value in *Listing 4.20* takes three or four seconds to complete on my system,
+    which is long enough to start requests in both browser tabs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Avoiding the browser cache problem**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some browsers, including Chrome, won’t make simultaneous requests for the same
+    URL. This means that the request from the second browser tab won’t be started
+    until the response from the first tab’s request has been received, which can make
+    it look like requests are always blocking.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Browsers do this to see if the result from the first request can be added to
+    their cache and used for subsequent requests. This is not usually an issue, but
+    it can be confusing, especially for features like the ones discussed in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can avoid this problem by disabling the browser cache (Chrome has a **Disable
+    Cache** checkbox on the **Network** tab in the *F12* developer tools window, for
+    example) or requesting different URLs, such as `http://localhost:5000?id=1` and
+    `http://localhost:5000?id=2`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You will see that both browser tabs get results, as shown in *Figure 4.10*.
+    Each request is identified by incrementing the `shared_counter` value, which makes
+    it easy to correlate the output displayed in the browser with the Node.js console
+    messages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_04_10.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4.10: Blocking the main thread'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Examine the Node.js console output and you will see that all of the iterations
+    from the first request were completed before the work for the second request was
+    started:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is a typical, albeit exaggerated, example of blocking the JavaScript thread,
+    so that requests queue up waiting for their turn to be handled and the overall
+    request throughput drops.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Yielding control of the main thread
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: One way to address blocking is to break up work into smaller chunks that are
+    interleaved with other requests. The work is still done entirely with the main
+    thread, but the blocking occurs in a series of shorter periods, which means that
+    access to the main thread is more equitable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Table 4.5* describes the functions that are available for telling Node.js
+    to invoke a function in the future. (As before, I am simplifying things here to
+    avoid getting into the low-level details of the Node.js event loop.)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4.5: The scheduling functions'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Name | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This function tells Node.js to add a function to the callback queue. |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This function tells Node.js to add a function to the callback queue that
+    should not be invoked for at least a specified number of milliseconds. |'
+  prefs: []
+  type: TYPE_TB
+- en: These are *global* functions, which means they can be used without a module
+    import. *Listing 4.21* uses the `setImmediate` function so that the counting operation
+    is broken up into smaller blocks of work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.21: Using the setImmediate Function in the handler.ts File in the
+    src Folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `iterate` function performs one block of counting and then uses the `setImmediate`
+    function to defer the next block. Use two browser tabs to request `http://localhost:5000`
+    (or `http://localhost:5000?id=1` and `http://localhost:5000?id=2` if you have
+    not disabled the browser cache) and you will see the console messages generated
+    by Node.js show that the work performed for the two requests has been interleaved:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: You may see a different sequence of iterations, but the important point is that
+    the work for HTTP requests is broken up and interleaved.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Avoiding the pure JavaScript promise pitfall**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A common mistake is to try and wrap blocking JavaScript code in a promise,
+    like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: There are two pitfalls for the unwary developer with this approach. The first
+    is that the *executor*, which is the function that performs the work, is performed
+    synchronously. This may seem odd, but remember that all JavaScript code is executed
+    synchronously, and the expectation is that the executor will be used to invoke
+    asynchronous API methods that will produce results in the future and be added
+    to the callback queue for eventual processing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second pitfall is that the *follow-on* *function*, passed to the `then`
+    method, is executed as soon as the executor completes, before the main thread
+    returns to the callback queue to get another function to execute, with the effect
+    that there is no interleaving of work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Promises are a useful way of consuming an API that uses native threads to perform
+    asynchronous work but they don’t help when executing pure JavaScript code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using worker threads
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The key limitation of the previous example is there is still only one main thread,
+    and it still has to do all the work, regardless of how equitably that work is
+    done.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Node.js supports *worker threads*, which are additional threads for executing
+    JavaScript code, albeit with restrictions. JavaScript doesn’t have the features
+    for coordinating threads that are found in other languages, such as C# or Java,
+    and trying to add them would be difficult. Instead, worker threads run in separate
+    instances of the Node.js engine, executing code in isolation from the main thread.
+    Communication between the main thread and worker threads is done using events,
+    as shown in *Figure 4.11*, which fits nicely into the JavaScript event loop, so
+    that the results produced by worker threads are processed by callback functions,
+    just like any other JavaScript code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_04_11.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4.11: The main thread and worker threads'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Worker threads are not the solution to every problem because there is overhead
+    in creating and managing them, but they provide an effective way to execute JavaScript
+    code without blocking the main thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Understanding worker threads versus the worker pool**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is a terminology overlap that can cause confusion because Node.js uses
+    two similar terms: *worker threads* and the *worker pool*. Worker threads are
+    the topic of this part of the chapter and are started by the programmer to perform
+    JavaScript code without blocking the main thread. The worker pool is the set of
+    threads that Node.js uses to implement the asynchronous features of its API, such
+    as the functions used in this chapter to read files and write HTTP responses.
+    You don’t interact directly with the worker pool, which is managed by Node.js
+    automatically.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Just to add to the confusion, worker threads are often grouped into a pool for
+    performance reasons, allowing individual worker threads to be reused instead of
+    used once and then discarded. I will explain how this is done in *Part 2*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing the worker code
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The code that worker threads execute is defined separately from the rest of
+    the JavaScript application. Add a file named `count_worker.ts` to the `src` folder
+    with the content shown in *Listing 4.22*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.22: The contents of the count_worker.ts file in the src folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Worker threads’ features are defined in the `worker_theads` module, and two
+    of those features are used in *Listing 4.22*. The first, `workerData`, is an object
+    or value used to pass configuration data from the main thread to the worker. In
+    this case, the worker receives three values through `workerData`, which specify
+    the request ID, the number of iterations, and the target value for each block
+    of counting work:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The other feature is `parentPort`, which is used to emit events that will be
+    received by the main thread, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `postMessage` method emits a message event and takes care of transferring
+    the argument value from the worker thread’s JavaScript runtime to the main thread.
+    The `parentPort` value may be `null`, which is why the `?` operator is required
+    when calling the `postMessage` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a worker thread
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The next step is to update the request-handling code so that it creates a worker
+    thread using the code defined in the previous section, as shown in *Listing 4.23*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.23: Using a worker thread in the handler.ts File in the src Folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Worker threads are created by instantiating the `Worker` class, which is defined
+    in the `worker_threads` module. The constructor arguments are the JavaScript code
+    file to execute and a configuration object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: Node.js provides two global values that provide path information about the current
+    module and are useful for specifying file paths, which are described in *Table
+    4.6* for quick reference. To specify the code file created in *Listing 4.22*,
+    I combine the `__dirname` value with the name of the compiled JavaScript file
+    (not the TypeScript file, which can’t be executed directly by Node.js).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4.6: The global values for the current module'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Name** | **Description** |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This value contains the file name of the current module. Remember this will
+    be the name of the JavaScript file and not the TypeScript file. |'
+  prefs: []
+  type: TYPE_TB
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: '| This value contains the name of the directory that contains the current module.
+    Remember this will be the directory that contains the compiled JavaScript file
+    and not the TypeScript file. |'
+  prefs: []
+  type: TYPE_TB
+- en: The configuration object passed to the `Worker` constructor supports configuration
+    settings for managing the way a worker thread is executed, but the only option
+    required for this example is `workerData`, which allows the data values used by
+    the worker thread to be defined.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Tip**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: See [https://nodejs.org/docs/latest/api/worker_threads.html#new-workerfilename-options](https://nodejs.org/docs/latest/api/worker_threads.html#new-workerfilename-options)
+    for the other worker configuration options, although the others are rarely required.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Worker threads communicate with the main thread by emitting events, which are
+    handled by functions registered by the `on` method, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first argument to the `on` method is a string that specifies the name of
+    the event that will be handled. This handler is for the `message` event, which
+    is emitted when the worker uses the `parentPort.postMessage` method. In this example,
+    the `message` event signals that the worker thread has completed one of its counting
+    iterations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are two other events handled in this example. The `exit` event is triggered
+    by Node.js when the worker thread finishes, and the event provides an exit code
+    that indicates whether the worker finished normally or was terminated with an
+    error. There is also an `error` event, which is sent if the JavaScript code executed
+    by the worker thread throws an uncaught exception.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Use two browser tabs to request `http://localhost:5000` (or `http://localhost:5000?id=1`
+    and `http://localhost:5000?id=2` if you have not disabled the browser cache) and
+    you will see Node.js console messages that show calculations performed for the
+    requests overlapping, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: The important difference from earlier examples is that work for requests is
+    being performed in parallel, rather than all of the work being performed on a
+    single thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Packaging worker threads into a callback
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The code in *Listing 4.23* can be wrapped up so that it is consistent with the
+    Node.js API, using a callback. For the callback, add a file named `counter_cb.ts`
+    to the `src` folder with the content shown in *Listing 4.24*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.24: The contents of the counter_cb.ts file in the src folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `Count` function accepts arguments that describe the work to be done, and
+    a callback function that will be invoked when there is an error, when an iteration
+    completes, and when all of the work is done. *Listing 4.25* updates the request-handling
+    code to use the `Count` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.25: Using a callback function in the handler.ts file in the src folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: This example produces the same results as the previous example but is more consistent
+    with the majority of the Node.js API, the key parts of which are described in
+    the chapters that follow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Packaging worker threads into a promise
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Worker threads can also be wrapped up in a promise, although promises are not
+    suited to receive interim updates in the way that callbacks are, and so using
+    a promise will only produce a result when all of the work has been completed or
+    when there is a problem. Add a file named `count_promise.ts` to the `src` folder
+    with the content shown in *Listing 4.26*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is possible to produce interim updates with promises, but it requires generating
+    a series of promises that have to be used with the `await` keyword in a loop.
+    The result is messy code that doesn’t behave the way that promises usually work
+    and is best avoided. Use a callback if you need interim updates from a worker
+    thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.26: The contents of the count_promise.ts file in the src folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `Count` function returns a `Promise<void>` whose executor starts a worker
+    thread and sets up handlers for the events it emits. The functions that handle
+    the `exit` and `error` events resolve or reject the promise, which will either
+    signal that the promise is complete or throw an exception. The handler function
+    for the `message` event writes out console messages to show progress but doesn’t
+    affect the outcome of the promise. *Listing 4.27* revises the request handler
+    to use the promise-based version of the `Count` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Listing 4.27: Using a promise in the handler.ts file in the src folder'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is similar to earlier examples, except the response sent to the client
+    doesn’t include any messages generated at the end of each block of work, as shown
+    in *Figure 4.12*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B21959_04_12.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4.12: The result from the promise-wrapped worker thread'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, I described the way that JavaScript code is executed and explained
+    the effect this has on HTTP request processing and why this approach is different
+    from other platforms. I explained that JavaScript code is executed on a single
+    main thread and demonstrated the features that Node.js provides for offloading
+    work on other threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: JavaScript code is executed on a single thread, known as the main thread
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The Node.js API uses native threads to perform many operations to avoid blocking
+    the main thread
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The Node.js API largely uses callbacks, but there is also some support for promises
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Node.js provides functions for converting callbacks and promises
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Node.js supports worker threads for executing JavaScript code without blocking
+    the main thread
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the next chapter, I will describe the features that Node.js provides for
+    working with HTTP requests.
+  prefs: []
+  type: TYPE_NORMAL

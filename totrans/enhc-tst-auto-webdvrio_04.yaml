@@ -1,0 +1,273 @@
+- en: '4'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Super Speed – Time-Travel Paradoxes and Broken Promises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we will discuss how we deal with issues that arise with multithreaded
+    execution in an event loop of a test framework. Then, we’ll look at a way to keep
+    the switches in a framework in a consistent location when we begin to add more
+    complex functionality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: JavaScript is an insanely fast programming language. Because its primary goal
+    is to build website pages as fast as possible, it executes lines of code in an
+    event loop with multiple threads. This is an advantage in building web pages as
+    fast as possible, but it can be a hindrance in test automation that needs events
+    executed in a particular order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In fact, this speedster is so fast it can time travel. Let us take a look at
+    an example in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before we do that, here''s a list of the topics we''ll cover in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The time-travel dilemma
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Schrödinger and the quantum mechanics of test automation
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Callbacks, promises, and async/await
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The death of fibers and synchronous mode
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'All test examples can be found at this GitHub repository: [https://github.com/PacktPublishing/Enhanced-Test-Automation-with-WebdriverIO](https://github.com/PacktPublishing/Enhanced-Test-Automation-with-WebdriverIO).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The time-travel dilemma
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Let’s begin with the most basic script – login. Open `login.page.ts` in the
+    `\pageobjects` folder. Note there is an `async` command in the `login()` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `async` keyword forces the function to always be asynchronous, returning
+    a `Promise` object representing the completion or failure of the function. There
+    is also an `await` keyword preceding the `.setValue` and `.click` commands, which
+    pauses the function until the `Promise` object is resolved or rejected. What would
+    happen if the `await` command were removed?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'From the Visual Studio Code shell, run the `wdio` test:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When the test is executed, it fails! It indicates that the username provided
+    was invalid in the following results, which leads us down a rabbit hole because
+    the password is in fact perfectly valid:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: So, what changed? The execution order of the lines of code! Without the `await`
+    keyword, Node.js will execute all the JavaScript commands simultaneously. So,
+    the `You are logged into a secure area!`. It fails because the `Username` field
+    was completely populated. It instead reports `Your username is invalid` because
+    the username was still blank when the **Submit** button was clicked.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Of course, the best superhero detectives need more evidence. No one thought
+    to take a picture at the scene of the crime. So, let’s add some debugging output
+    and try the test again:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This time, the results show the test passed. However, we have now encountered
+    a stale element:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Which element was stale? In order to find out, we need to change the `logLevel`
+    back to `info` in `wdio.conf.ts`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, when we rerun the test, we get a completely different error buried in
+    a lot of information:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: It looks like things have gotten out of hand. If we try to add more `debug`
+    statements, we’ll get differing results that might not be repeatable. Would you
+    believe this exact phenomenon is described in a book far more advanced than this
+    one?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Schrödinger and the quantum mechanics of test automation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This issue is similar to what is known as the *measurement problem* in quantum
+    mechanics. Putting it simply, measuring the outcome of an event at the quantum
+    level can change the outcome of the event. Imagine testing the temperature of
+    cold water with a warm thermometer. Over time, the measuring equipment warms the
+    cold water slightly and the equipment itself cools from the cold water. Thus,
+    readings over time become inconclusive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this case, sending details to the console window puts a little more overhead
+    on the system. The speed of execution of the statements changes slightly, and
+    so does the completion order, giving different results each time. This has a lot
+    to do with the prioritization of statement execution in the JavaScript event Loop,
+    as shown next:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 4.1 – A visualization of the execution order of promises and callbacks
+    in the JavaScript Event loop](img/B19395_04_1.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 4.1 – A visualization of the execution order of promises and callbacks
+    in the JavaScript Event loop
+  prefs: []
+  type: TYPE_NORMAL
+- en: JavaScript has an Event Loop with the main thread, with macro tasks and micro
+    tasks. The latter, which are promises, execute after the main thread statements.
+    `MacroTasks`, which include callbacks and the timeout statement, *can* execute
+    prior to the Main thread but after promises. When these tasks are completed in
+    an unexpected order, you can waste hours of time trying to isolate the issue during
+    debugging.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`MacroTasks` are usually related to I/O operations or UI rendering. Examples
+    of `MacroTasks` include `setTimeout`, `setInterval`, `setImmediate`, and I/O operations.
+    These tasks are executed by the event loop, and they can run before or after `MicroTasks`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`MicroTasks` are usually related to promises. They can also include mutation
+    observers. Developers use these in various scenarios, such as tracking changes
+    to attributes, detecting additions or removals of child elements, or even observing
+    changes to character data within an element. `MicroTasks` are executed after the
+    main thread statements and before the execution of the next `macroTask`. They
+    are used to handle callbacks and resolve promises.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When tasks complete in an unexpected order, it can lead to debugging challenges.
+    This is because the order of execution impacts the overall behavior of the test.
+    This is fine for optimizing the time spent building a web page on multiple threads,
+    but it causes havoc for SDETs trying to run script steps in a sequential order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Callbacks, promises, and async/await
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To resolve these issues, we need to force JavaScript to execute code in a linear
+    order. JavaScript provides three solutions – callbacks, promises, and `async`/`await`
+    keywords. JavaScript promises and callbacks are two ways of knowing when the asynchronous
+    call has a result. Callbacks allow you to execute a function once a response is
+    received. Promises do the same and allow you to specify an easily readable order
+    for multiple operations, as well as handle error cases. However, did you know
+    there was an even easier way to deal with promises called synchronous mode?
+  prefs: []
+  type: TYPE_NORMAL
+- en: The death of fibers and synchronous mode
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Promises were added to JavaScript to make asynchronous callbacks to functions
+    easier to implement. Functions were passed without parenthesis, making them visibly
+    similar to variables and objects. Then, the `node-fibers` package project, which
+    implicitly wrapped statements as callbacks in the background.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Up until version 7.0, WebdriverIO leveraged the `node-fibers` package as part
+    of the `@wdio/sync` feature. This meant all browser methods would execute synchronously
+    without callbacks, promises, or **await**. This was a brilliant trade-off for
+    WebdriverIO framework architects! It avoided the time travel issues while making
+    the code less complex.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unfortunately, the `node-fibers` project was discontinued in 2021\. WebdriverIO
+    was forced to notify users of two solutions – they could lock Node to the last
+    supported version that was compatible with `node-fibers`, missing out on new features
+    as JavaScript added more functionality defined by the evolving ECMAScript standard.
+    Alternatively, they could refactor the code base to include `async` in functions
+    and `await` in browser methods. Most chose the latter and faced a large amount
+    of time refactoring code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 4.2 – Packages looking for funding](img/B19395_04_2.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 4.2 – Packages looking for funding
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That said, let us look at how we solve this time crisis. In our previous chapter,
+    we simulated an error by passing a `promise` object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: What happens if we remove the `await` keyword?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that when `await` is missing from the code, all that happens is the custom
+    `WARN` message appears after the error detail, instead of before it. This relates
+    to JavaScript executing in multiple threads. We have proof of the effect of events
+    executing out of sequence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keep it simple with async and await
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Every custom method in this book will execute asynchronously. In theory, we
+    might think it would be clever to populate fields and drop-down lists concurrently
+    for speed. However, often choosing a value from a list will kick off an `Ajax`
+    method that will update the web page. This would then have fields generating errors
+    if the elements do not yet exist because the code executed while the page was
+    built anew.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we learned about the impact synchronous code execution can
+    have on our framework. While callbacks and promises are ways to keep code running
+    in sequential order, it is best to use async and await to keep it consistent.
+    We also upgraded global values to a single `switchboard` object that can be viewed
+    during debugging sessions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will combine everything so far to enhance our first
+    method wrapper function.
+  prefs: []
+  type: TYPE_NORMAL
