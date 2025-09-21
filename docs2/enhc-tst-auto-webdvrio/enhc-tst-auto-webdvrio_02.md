@@ -1,6 +1,6 @@
 
 
-# 独立堡垒 – 配置 WebdriverIO
+# 第二章：独立堡垒 – 配置 WebdriverIO
 
 在本章中，我们将安装 WebdriverIO 及其依赖项。有两种方法，我们将讨论每种方法的优点。同时，保持依赖项的版本更新也很重要。为此，我们将使用 Yarn 来保持我们的 package.json 和 yarn.lock 文件更新。
 

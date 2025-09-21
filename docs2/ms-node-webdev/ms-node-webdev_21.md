@@ -1,6 +1,6 @@
 
 
-# SportsStore：身份验证
+# 第十九章：SportsStore：身份验证
 
 在本章中，我将使用 OAuth 协议允许用户使用他们的 Google 账户来识别他们自己到*SportsStore*应用程序，而不是手动输入他们的联系信息。
 

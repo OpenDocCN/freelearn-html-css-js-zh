@@ -1,4 +1,4 @@
-# TypeScript 实战工作坊
+# 第一章：TypeScript 实战工作坊
 
 自信、有效的 TypeScript 编程实用指南
 

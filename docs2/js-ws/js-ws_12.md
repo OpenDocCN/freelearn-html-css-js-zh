@@ -1,4 +1,4 @@
-# 12. 使用下一代 JavaScript
+# 第十二章：12. 使用下一代 JavaScript
 
 概述
 

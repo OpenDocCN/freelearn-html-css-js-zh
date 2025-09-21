@@ -1,6 +1,6 @@
 
 
-# JavaScript 和 TypeScript 入门
+# 第三章：JavaScript 和 TypeScript 入门
 
 开发者通过多种途径进入网络应用程序开发的世界，并不总是基于网络应用程序所依赖的基本技术。在本章中，我介绍了 JavaScript 和 TypeScript 的基本功能。这并不是这两种语言的全面指南，但它涵盖了关键内容，并会为你提供开始所需的知识。
 

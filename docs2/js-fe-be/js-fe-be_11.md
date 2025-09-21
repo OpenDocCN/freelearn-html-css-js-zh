@@ -1,4 +1,4 @@
-# *第八章*：使用 Node.js 与 MongoDB
+# 第八章：*第八章*：使用 Node.js 与 MongoDB
 
 **MongoDB** 是传统上与 Node.js 关联的数据库。它是一种 NoSQL 类型的数据库，这意味着不会使用 SQL 来访问其中包含的信息。
 

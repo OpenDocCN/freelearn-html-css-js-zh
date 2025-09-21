@@ -1,4 +1,4 @@
-# 1. 了解 JavaScript
+# 第一章：1. 了解 JavaScript
 
 概述
 

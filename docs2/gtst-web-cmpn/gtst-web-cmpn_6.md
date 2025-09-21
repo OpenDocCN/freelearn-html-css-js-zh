@@ -1,4 +1,4 @@
-# 使用 Web Components 构建单页应用
+# 第六章：使用 Web Components 构建单页应用
 
 到目前为止，我们一直将 Web Components 作为一个独立实体来使用。但 Web Components 可以用来构建更复杂的东西。在本章中，我们将使用 Web Components 来构建一个单页网络应用。
 

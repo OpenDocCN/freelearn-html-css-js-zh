@@ -1,4 +1,4 @@
-# *第九章*：集成 Vue.js 与 Node.js
+# 第九章：*第九章*：集成 Vue.js 与 Node.js
 
 在本章中，我们将学习如何使用 Express（根据 MVC 模型）来结构化服务器代码并将 Vue.js 应用程序集成到 Node.js 服务器中，并使用 MongoDB 来存储信息。
 

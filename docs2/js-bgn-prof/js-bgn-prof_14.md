@@ -1,6 +1,6 @@
 
 
-# HTML5、Canvas 和 JavaScript
+# 第十四章：HTML5、Canvas 和 JavaScript
 
 HTML5 于 2012 年发布，并于 2014 年成为标准，这导致浏览器支持各种新功能。HTML5 的引入影响了通过 JavaScript 可用的可能性领域。自从 HTML5 引入以来，JavaScript 在图形、视频、图形交互等方面的选项大大增加，并且变革如此之大，以至于实际上导致了浏览器对 Flash 的支持终止。
 

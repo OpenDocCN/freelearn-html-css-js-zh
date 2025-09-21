@@ -1,4 +1,4 @@
-# 运行时 —— 事件循环和 this 操作符
+# 第四章：运行时 —— 事件循环和 this 操作符
 
 在接下来的两章中，我们将学习一些与 TypeScript 运行时密切相关的概念。TypeScript 仅在设计时使用；TypeScript 代码随后被编译成 JavaScript，并在运行时执行。JavaScript 运行时负责 JavaScript 代码的执行。我们必须理解，我们永远不会执行 TypeScript 代码，我们总是执行 JavaScript 代码；因此，当我们提到 TypeScript 运行时，我们实际上是在谈论 JavaScript 运行时。
 

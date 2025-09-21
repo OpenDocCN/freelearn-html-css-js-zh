@@ -1,6 +1,6 @@
 
 
-# SportsStore：部署
+# 第二十一章：SportsStore：部署
 
 在本章中，我完成了 SportsStore 应用程序，并为其部署到容器平台做准备。作为准备的一部分，我将从基于文件的 SQLite 数据库迁移到传统的数据库服务器，并引入 HTTPS 代理，这将允许多个 SportsStore 应用程序实例接收请求并分担负载。
 

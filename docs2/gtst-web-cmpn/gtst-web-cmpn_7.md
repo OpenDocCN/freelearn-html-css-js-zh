@@ -1,4 +1,4 @@
-# 使用 Polymer 和 Stencil 实现 Web Components
+# 第七章：使用 Polymer 和 Stencil 实现 Web Components
 
 到目前为止，我们使用纯 JavaScript 和没有依赖项构建了组件。但有时，公司会做出决定使用可以帮助简化工作流程的库。在本章中，我们将探讨两个不同的库：Polymer 和 Stencil。在幕后，这两个库都使用了 Web Components，但它们都带有自己的特性。让我们深入了解这些库。
 

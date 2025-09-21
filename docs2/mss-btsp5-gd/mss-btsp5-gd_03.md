@@ -1,4 +1,4 @@
-# *第二章*: 使用和编译 Sass
+# 第二章：*第二章*: 使用和编译 Sass
 
 本章是 Sass 的介绍。如果你是 Sass 的初学者，你绝对应该阅读这一章来学习 Sass 的基础知识，Bootstrap 样式就是用 Sass 编写的。如果你已经熟悉 Sass，你可以跳过这一章，但我仍然建议你查看 *Bootstrap 使用的 Sass 功能* 和 *Bootstrap 开发者最重要的 Sass 功能* 部分。这将为你开始下一章关于自定义 Bootstrap 做好准备。
 

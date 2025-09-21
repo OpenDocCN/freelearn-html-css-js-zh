@@ -1,4 +1,4 @@
-# TypeScript 函数式编程库目录
+# 第十二章：TypeScript 函数式编程库目录
 
 在本附录中，您将找到按以下类别分组的与 TypeScript 兼容的函数式编程库列表：
 

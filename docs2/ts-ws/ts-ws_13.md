@@ -1,4 +1,4 @@
-# 12. TypeScript 中 Promise 的指南
+# 第十三章：12. TypeScript 中 Promise 的指南
 
 概述
 

@@ -1,6 +1,6 @@
 
 
-# 探索 Clip Studio Assets 和动画
+# 第十八章：探索 Clip Studio Assets 和动画
 
 两个最令人兴奋的 Clip Studio Paint 功能是 Clip Studio Assets，它允许快速轻松地下载新的画笔和其他资产，以及能够在程序中创建动画的能力。在本章中，我们将探讨这两个选项以及如何使用它们。
 

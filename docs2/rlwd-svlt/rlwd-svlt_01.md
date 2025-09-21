@@ -1,6 +1,6 @@
 
 
-# Svelte 中的生命周期
+# 第一章：Svelte 中的生命周期
 
 Svelte 是一个前端框架。你可以使用 Svelte 来构建网站和 Web 应用程序。一个 Svelte 应用程序由组件组成。你可以在具有`.svelte`扩展名的文件中编写 Svelte 组件。每个`.svelte`文件都是一个 Svelte 组件。
 

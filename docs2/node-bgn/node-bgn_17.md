@@ -1,6 +1,6 @@
 
 
-# 将 Node.js 应用 Docker 化
+# 第十七章：将 Node.js 应用 Docker 化
 
 在本章中，我们将学习如何使用 Docker 将我们的应用部署到公共互联网。我们将探讨如何使用 GitHub Actions 确保我们的 Docker 镜像在**持续集成**（**CI**）管道中运行良好。
 

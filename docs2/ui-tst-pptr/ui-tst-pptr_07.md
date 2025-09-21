@@ -1,4 +1,4 @@
-# *第七章*: 使用 Puppeteer 生成内容
+# 第七章：*第七章*: 使用 Puppeteer 生成内容
 
 当我在 2019 年推出 Puppeteer-Sharp (https://github.com/hardkoded/puppeteer-sharp) 时，我惊讶地发现，两个主要的使用场景是内容生成和网页抓取。
 

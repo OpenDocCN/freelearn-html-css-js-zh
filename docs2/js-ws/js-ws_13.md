@@ -1,4 +1,4 @@
-# 13. JavaScript 编程范式
+# 第十三章：13. JavaScript 编程范式
 
 概述
 

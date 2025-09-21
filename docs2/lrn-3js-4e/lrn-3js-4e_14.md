@@ -1,6 +1,6 @@
 
 
-# Three.js 与 React、TypeScript 和 Web-XR 一起使用
+# 第十四章：Three.js 与 React、TypeScript 和 Web-XR 一起使用
 
 在本章的最后，我们将深入探讨两个额外的主题。首先，我们将探讨如何将 Three.js 与 TypeScript 和 React 结合使用。本章的第二部分将展示一些示例，说明您如何将 3D 场景与 Web-XR 集成。使用 Web-XR，您可以增强场景以与 VR 和 AR 技术一起工作。
 

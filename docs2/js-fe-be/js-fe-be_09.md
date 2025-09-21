@@ -1,4 +1,4 @@
-# *第六章*：创建和使用 Node.js 模块
+# 第六章：*第六章*：创建和使用 Node.js 模块
 
 模块是 Node.js 的核心。它们对应于 JavaScript 文件，并可以在我们的应用程序中使用。Node.js 服务器的程序将包含一组模块，即 JavaScript 文件。
 

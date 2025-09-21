@@ -1,4 +1,4 @@
-# *第十一章*: 使用 Bootstrap 5 的高级 JavaScript 特性
+# 第十一章：*第十一章*: 使用 Bootstrap 5 的高级 JavaScript 特性
 
 在本章中，我们将学习一些可以与 Bootstrap 5 交互式组件一起使用的 JavaScript 高级特性。首先，我们将快速概述交互式组件，并查看它们在依赖项和初始化方面的共同要求。然后，我们将看到如何使用数据属性或 JavaScript 初始化交互式组件。接着，我们将看到如何使用数据属性或 JavaScript 定义选项，最后，我们将更详细地探讨如何使用 JavaScript 进行方法和事件处理。
 

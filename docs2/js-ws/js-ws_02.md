@@ -1,4 +1,4 @@
-# 2. 使用 JavaScript
+# 第二章：2. 使用 JavaScript
 
 概述
 

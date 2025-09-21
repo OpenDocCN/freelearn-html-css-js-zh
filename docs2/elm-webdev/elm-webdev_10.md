@@ -1,4 +1,4 @@
-# 将 Elm 与 Rails 集成
+# 第十章：将 Elm 与 Rails 集成
 
 欢迎来到第十章，*将 Elm 与 Rails 集成*。本章的目标是在前端使用 Elm 实现简单的用户认证。对于后端，我们将使用 Ruby on Rails 5.1.5。
 

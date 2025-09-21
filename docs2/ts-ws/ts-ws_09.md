@@ -1,4 +1,4 @@
-# 8. TypeScript 中的依赖注入
+# 第九章：8. TypeScript 中的依赖注入
 
 概述
 

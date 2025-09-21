@@ -1,6 +1,6 @@
 
 
-# 使用 Blender 和 Three.js 一起工作
+# 第十三章：使用 Blender 和 Three.js 一起工作
 
 在本章中，我们将更深入地探讨如何使用 Blender 和 Three.js 一起工作。我们将在本章中解释以下概念：
 

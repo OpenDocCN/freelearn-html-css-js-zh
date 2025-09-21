@@ -1,6 +1,6 @@
 
 
-# 安装 Clip Studio Paint Pro 和界面基础
+# 第二章：安装 Clip Studio Paint Pro 和界面基础
 
 在本章中，我们将直接深入主题，开始了解 Clip Studio Paint。首先，我们将查看运行 Clip Studio Paint 的推荐系统规格以及如何安装程序。我们还将讨论绘图板的重要性以及如何获取一个绘图板。
 
