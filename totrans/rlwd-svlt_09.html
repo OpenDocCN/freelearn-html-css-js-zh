@@ -1,0 +1,401 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer031">
+<h1 class="chapter-number" id="_idParaDest-134"><a id="_idTextAnchor135"/><a id="_idTextAnchor136"/>9</h1>
+<h1 id="_idParaDest-135"><a id="_idTextAnchor137"/>Implementing Custom Stores</h1>
+<p>In the last chapter, we learned that a Svelte store is any object that follows a Svelte store contract, and encapsulating data within a Svelte store allows the data to be shared and used across multiple Svelte components reactively. The Svelte component keeps the DOM up to date with the data, even though the data is modified outside of the <span class="No-Break">Svelte component.</span></p>
+<p>We learned about two of Svelte’s built-in methods for creating a Svelte store—namely <strong class="source-inline">readable()</strong> and <strong class="source-inline">writable()</strong>, which create a readable and writable store. The two methods follow the Svelte contract and create a very basic Svelte store. However, besides using a Svelte store to encapsulate data, we can also encapsulate logic with the data, making the Svelte store modular and <span class="No-Break">highly reusable.</span></p>
+<p>In this chapter, we will be creating custom Svelte stores—Svelte stores that encapsulate custom data logic. We will go through three distinct examples; each example will serve as a guide, brimming with tips and tricks for creating your own custom <span class="No-Break">Svelte stores.</span></p>
+<p>First up, we’ll examine how to turn user events into store values, specifically turning click counts into a <span class="No-Break">Svelte store.</span></p>
+<p>Second, we’ll explore a custom store that goes beyond the basic <strong class="source-inline">set</strong> method to modify its value. We’ll look at an undo/redo store, which incorporates additional methods for reverting or redoing changes to <span class="No-Break">its value.</span></p>
+<p>Lastly, we’ll turn our attention to higher-order stores. While not a custom store in itself, a higher-order store is a function that accepts a Svelte store as input and returns an enhanced version of it. This chapter includes sections on the <span class="No-Break">following topics:</span></p>
+<ul>
+<li>Creating a Svelte store from <span class="No-Break">user events</span></li>
+<li>Creating an <span class="No-Break">undo/redo store</span></li>
+<li>Creating a debounced higher-order <span class="No-Break">Svelte store</span></li>
+</ul>
+<p>So, without further ado, let’s dive into creating our first custom <span class="No-Break">Svelte store.</span></p>
+<h1 id="_idParaDest-136"><a id="_idTextAnchor138"/>Technical requirements</h1>
+<p>All the code in this chapter can be found on <span class="No-Break">GitHub: </span><a href="https://github.com/PacktPublishing/Real-World-Svelte/tree/main/Chapter09"><span class="No-Break">https://github.com/PacktPublishing/Real-World-Svelte/tree/main/Chapter09</span></a><a href="https://github.com/PacktPublishing/Practical-Svelte/tree/main/Chapter09%20"/></p>
+<h1 id="_idParaDest-137"><a id="_idTextAnchor139"/>Creating a Svelte store from user events</h1>
+<p>A Svelte store stores data, but where does the data <span class="No-Break">come from?</span></p>
+<p>It could be <a id="_idIndexMarker332"/>from user interaction or user input, which calls an event handler that updates the store value by <span class="No-Break">calling </span><span class="No-Break"><strong class="source-inline">store.set()</strong></span><span class="No-Break">.</span></p>
+<p>What if we can encapsulate the user events and event handler logic into the store so that we do not need to call <span class="No-Break"><strong class="source-inline">store.set()</strong></span><span class="No-Break"> manually?</span></p>
+<p>For example, we are going to have a Svelte store to calculate how many times the user clicks on the screen. Instead of manually adding an event listener on the document, if there’s a way to create a Svelte store and update it every time there’s a new click, how would that look? In short, how about having a custom Svelte store that can do all of that <span class="No-Break">for us?</span></p>
+<p>It would be great if we could reuse this Svelte store the next time we have a similar need, instead of having to manually set it <span class="No-Break">up again.</span></p>
+<p>So, let’s try to implement this click counter custom <span class="No-Break">Svelte store.</span></p>
+<p>Let's first scaffold the <span class="No-Break">Svelte store:</span></p>
+<pre class="source-code">
+const subscribers = [];
+let clickCount = 0;
+const store = {
+  subscribe: (fn) =&gt; {
+    fn(clickCount);
+    subscribers.push(fn);
+    return () =&gt; {
+      subscribers.splice(subscribers.indexOf(fn), 1);
+    }
+  },
+}</pre> <p>In the <a id="_idIndexMarker333"/>preceding code snippet, we created a basic Svelte store based on the Svelte store contract with just a <strong class="source-inline">subscribe()</strong> method. The value of the store is stored in a variable called <strong class="source-inline">clickCount</strong>, and in the <strong class="source-inline">subscribe()</strong> method, we keep track of all the subscribers using the <span class="No-Break"><strong class="source-inline">subscribers</strong></span><span class="No-Break"> array.</span></p>
+<p>Notice that we need to synchronously call <strong class="source-inline">fn</strong> in the <strong class="source-inline">subscribe()</strong> method with the value of the store; this lets the subscriber know the current value of <span class="No-Break">the store.</span></p>
+<p>If you use this store in a Svelte component right now (as shown in the following code snippet), you will see <strong class="source-inline">0</strong> on the screen. That is the current value of the store at <span class="No-Break">this point:</span></p>
+<pre class="source-code">
+&lt;script&gt;
+  import { store } from './store.js';
+&lt;/script&gt;
+{$store}</pre> <p>In the preceding code snippet, we import <strong class="source-inline">store</strong> into a Svelte component and display the <strong class="source-inline">store</strong> value using <strong class="source-inline">$store</strong>. Now, let’s listen to the <strong class="source-inline">click</strong> events to update the <strong class="source-inline">count</strong> value of the store. Instead of listening to the <strong class="source-inline">click</strong> events at the start of our program, we should start subscribing only when there’s <span class="No-Break">a subscriber.</span></p>
+<p>Here’s the <span class="No-Break">updated code:</span></p>
+<pre class="source-code">
+const store = {
+  subscribe: (fn) =&gt; {
+    // ...
+    <strong class="bold">document.addEventListener('click', () =&gt; {</strong>
+      <strong class="bold">clickCount++;</strong>
+      <strong class="bold">// notify subscribers</strong>
+      <strong class="bold">subscribers.forEach(subscriber =&gt;</strong> <strong class="bold">subscriber(clickCount));</strong>
+<strong class="bold">    });</strong>
+  },
+};</pre> <p>In the <a id="_idIndexMarker334"/>preceding code snippet, we add the <strong class="source-inline">click</strong> event listener inside the <strong class="source-inline">subscribe</strong> method, and whenever the <strong class="source-inline">document</strong> is clicked, we increment the <strong class="source-inline">clickCount</strong> value by <strong class="source-inline">1</strong> and notify all the subscribers of the latest value <span class="No-Break">of </span><span class="No-Break"><strong class="source-inline">clickCount</strong></span><span class="No-Break">.</span></p>
+<p>If you try to use this Svelte store in multiple Svelte components right now, you will realize that every time you click, the store value increments by more <span class="No-Break">than one.</span></p>
+<h2 id="_idParaDest-138"><a id="_idTextAnchor140"/>Ensuring the event listener is only added once</h2>
+<p>Why is the<a id="_idIndexMarker335"/> store value incremented more than once when it is only <span class="No-Break">clicked once?</span></p>
+<p>If you look at the current implementation closely, you will realize that we call <strong class="source-inline">document.addEventListener</strong> on every <strong class="source-inline">subscribe</strong> method call. When you use the Svelte store in multiple Svelte components, each Svelte component subscribes to the store changes individually. If there are five components subscribed to the store, then five <strong class="source-inline">click</strong> event listeners will be added to <strong class="source-inline">document</strong>. As a result, a single click on <strong class="source-inline">document</strong> will trigger five event listeners, causing the <strong class="source-inline">clickCount</strong> value to increase by five each time. This means the <strong class="source-inline">store</strong> value will go up by more than one for every click. To fix this behavior, we can still call <strong class="source-inline">addEventListener</strong> within the <strong class="source-inline">subscribe</strong> method, but we need to only call <strong class="source-inline">addEventListener</strong> once, even though the <strong class="source-inline">subscribe</strong> method could be called more <span class="No-Break">than once.</span></p>
+<p>We can use a flag to indicate if we have already called <strong class="source-inline">addEventListener</strong>, and make sure not to call <strong class="source-inline">addEventListener</strong> again when the flag is set to <strong class="source-inline">true</strong>, as <span class="No-Break">shown here:</span></p>
+<pre class="source-code">
+<strong class="bold">let called = false;</strong>
+const store = {
+  subscribe: (fn) =&gt; {
+    // ...
+    <strong class="bold">if (!called) {</strong>
+      <strong class="bold">called = true;</strong>
+      document.addEventListener('click', () =&gt; {... });
+    <strong class="bold">}</strong>
+  },
+};</pre> <p>In the<a id="_idIndexMarker336"/> preceding code snippet, we add a variable named <strong class="source-inline">called</strong> and use it to prevent <strong class="source-inline">document</strong> from adding click event listeners more <span class="No-Break">than once.</span></p>
+<p>This works, but there’s a better way to <span class="No-Break">implement this.</span></p>
+<p>Instead of having a new flag to indicate whether we have called <strong class="source-inline">addEventListener</strong>, we can use any existing variables to determine if we should call <strong class="source-inline">addEventListener</strong>. We know that we should call <strong class="source-inline">addEventListener</strong> once the <strong class="source-inline">subscribe</strong> method is being called, and it should not be called subsequently when we are adding more subscribers; we can use the length of the <strong class="source-inline">subscribers</strong> array to determine if we should call the <span class="No-Break"><strong class="source-inline">addEventListener</strong></span><span class="No-Break"> method.</span></p>
+<p>If there are no subscribers currently, then we know this is the first time the <strong class="source-inline">subscribe</strong> method is being called. In this case, we should call <strong class="source-inline">addEventListener</strong>. On the other hand, if there are existing subscribers—that is, the length of <strong class="source-inline">subscribers</strong> is more than zero, we know that the <strong class="source-inline">subscribe</strong> method has been called before, and therefore we should not call <span class="No-Break"><strong class="source-inline">addEventListener</strong></span><span class="No-Break"> again.</span></p>
+<p>So, here’s the updated code to use the length of the <strong class="source-inline">subscribers</strong> array instead of the variable called to determine if the document should add click <span class="No-Break">event listeners:</span></p>
+<pre class="source-code">
+const store = {
+  subscribe: (fn) =&gt; {
+    // ...
+    <strong class="bold">if (subscribers.length === 0) {</strong>
+      document.addEventListener('click', () =&gt; {... });
+    <strong class="bold">}</strong>
+  },
+};</pre> <p>In the preceding code snippet , we replaced the <strong class="source-inline">!called</strong> condition with <strong class="source-inline">subscribers.length === </strong><span class="No-Break"><strong class="source-inline">0</strong></span><span class="No-Break">.</span></p>
+<p>Now <a id="_idIndexMarker337"/>that we have added a click event listener when a subscriber is subscribing to our Svelte store, we need to clean it up when all subscribers have unsubscribed from the <span class="No-Break">Svelte store.</span></p>
+<p>To clean it up, we are going to call <strong class="source-inline">removeEventListener</strong> to remove the <strong class="source-inline">click</strong> event listeners from <strong class="source-inline">document</strong>. The <strong class="source-inline">unsubscribe</strong> function can be called multiple times, but we should only call <strong class="source-inline">removeEventListener</strong> when there are no more subscribers in the <span class="No-Break"><strong class="source-inline">subscribers</strong></span><span class="No-Break"> array:</span></p>
+<pre class="source-code">
+const store = {
+  subscribe: (fn) =&gt; {
+    return () =&gt; {
+      subscribers.splice(subscribers.indexOf(fn), 1);
+<strong class="bold">      if (subscribers.length === 0) {</strong>
+<strong class="bold">        document.removeEventListener('click', () =&gt; {...});</strong>
+<strong class="bold">      }</strong>
+    };
+  },
+};</pre> <p>In the preceding code snippet, the <strong class="source-inline">return</strong> function of the <strong class="source-inline">subscribe</strong> method is used for unsubscribing the store. In the function, we added a check to see if the number of <strong class="source-inline">subscribers</strong> has dropped to zero; if so, we will remove the <strong class="source-inline">click</strong> event listeners <span class="No-Break">from </span><span class="No-Break"><strong class="source-inline">document</strong></span><span class="No-Break">.</span></p>
+<p>It is common that when you are creating a Svelte store, you need to keep track of the <strong class="source-inline">subscribers</strong> list, ensure that you only set up the event listeners once, and clean it up only after there are no <span class="No-Break">more subscribers.</span></p>
+<p>As you’ve<a id="_idIndexMarker338"/> seen in this and the previous section, we've been through a lot of steps to create a Svelte store from user events, manage a <strong class="source-inline">subscribers</strong> array, and decide when to add or remove click event listeners from document. In the next section, we’ll explore a simpler way to achieve the same goal using Svelte’s built-in methods and using Svelte’s built-in <span class="No-Break"><strong class="source-inline">readable()</strong></span><span class="No-Break"> function.</span></p>
+<p>Svelte provides built-in methods such as <strong class="source-inline">readable()</strong> to make our lives easier when creating a <span class="No-Break">Svelte store.</span></p>
+<p>Since the store value is only updated from <strong class="source-inline">click</strong> events, and not from elsewhere, <strong class="source-inline">readable()</strong>, out of the two most important methods—<strong class="source-inline">readable()</strong> and <strong class="source-inline">writable()</strong>—is good enough for our <span class="No-Break">use case.</span></p>
+<p>We will use the <strong class="source-inline">readable()</strong> function to create our click event store. There are two arguments for the <strong class="source-inline">readable()</strong> function. The first argument is for the initial value of the store. The second argument of the <strong class="source-inline">readable()</strong> function takes in a function that will be called when there’s a first subscriber and not be called for the subsequent subscribers. If the function returns another function, the returned function will be called when the last subscriber unsubscribes from the store. This is perfect for us to add and remove <strong class="source-inline">click</strong> event listeners <span class="No-Break">on </span><span class="No-Break"><strong class="source-inline">document</strong></span><span class="No-Break">.</span></p>
+<p>Let’s take a look at the updated code rewritten <span class="No-Break">using </span><span class="No-Break"><strong class="source-inline">readable</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+let clickCount = 0;
+const store = readable(clickCount, (set) =&gt; {
+  const onClick = () =&gt; set(++clickCount);
+  document.addEventListener('click', onClick);
+  return () =&gt; {
+    document.removeEventListener('click', onClick);
+  };
+});</pre> <p>In the preceding code snippet, we utilize <strong class="source-inline">readable()</strong> to handle both the creation and the cleanup of the <strong class="source-inline">click</strong> event listener, making our code cleaner and <span class="No-Break">more efficient.</span></p>
+<p>Comparing it with<a id="_idIndexMarker339"/> our implementation in the last section, where we managed the <strong class="source-inline">subscribers</strong> list ourselves, you can see how using <strong class="source-inline">readable()</strong> allows us to declutter away from maintaining the <strong class="source-inline">subscribers</strong> array manually and focus on implementing <span class="No-Break">the logic.</span></p>
+<p>It is good to know the Svelte contract and how to implement a Svelte store from scratch. But in most real-world scenarios, it is easier to create a Svelte store out of <strong class="source-inline">readable()</strong> or <strong class="source-inline">writable()</strong> and leave the nitty-gritty detail to the <span class="No-Break">built-in function.</span></p>
+<p>Now that you have learned how to create a Svelte store out of click events, let's practice with <span class="No-Break">an exercise.</span></p>
+<h2 id="_idParaDest-139"><a id="_idTextAnchor141"/>Exercise</h2>
+<p>Let’s begin our exercise, where <a id="_idIndexMarker340"/>we will implement a Svelte store in which the value of the store comes from the scroll position of <span class="No-Break">the document:</span></p>
+<pre class="source-code">
+&lt;script&gt;
+  const scrollPosition = createStore();
+  function createStore() {
+    // Your code here
+  }
+&lt;/script&gt;
+Scroll position {$scrollPosition}</pre> <p>In the code snippet, a <strong class="source-inline">scrollPosition</strong> store is set up using a function called <strong class="source-inline">createStore()</strong>. Your task is to implement the <strong class="source-inline">createStore()</strong> function to actually create a <span class="No-Break"><strong class="source-inline">scrollPosition</strong></span><span class="No-Break"> store.</span></p>
+<p>You can find the solution at the following <span class="No-Break">link: </span><a href="https://github.com/PacktPublishing/Real-World-Svelte/tree/main/Chapter09/02-exercise-scroll-position"><span class="No-Break">https://github.com/PacktPublishing/Real-World-Svelte/tree/main/Chapter09/02-exercise-scroll-position</span></a><a href="https://github.com/PacktPublishing/Practical-Svelte/tree/main/Chapter09/02-exercise-scroll-position%0D"/></p>
+<p>Now that we have seen how to create a Svelte store where the store value comes from an event, let’s take a look at a different kind of <span class="No-Break">Svelte store.</span></p>
+<h1 id="_idParaDest-140"><a id="_idTextAnchor142"/>Creating an undo/redo store</h1>
+<p>Typically, we <a id="_idIndexMarker341"/>change a store’s value using the <strong class="source-inline">set</strong> method. However, the next custom Svelte store we’ll explore provides additional custom methods to update its store value. The next custom Svelte store that we are going to look at is an undo/redo store. It is similar to a writable store where you can subscribe to and set a new store value. But an undo/redo store also comes with two more methods, <strong class="source-inline">undo</strong> and <strong class="source-inline">redo</strong>, which revert the store value backward or forward, based on the history of the <span class="No-Break">store value.</span></p>
+<p>Here’s a snippet of how you would use an <span class="No-Break">undo/redo store:</span></p>
+<pre class="source-code">
+&lt;script&gt;
+  let value = createUndoRedoStore();
+  $value = 123;
+  $value = 456;
+  $value = 789;
+  value.undo(); // $value now goes back to 456
+  value.undo(); // $value now goes back to 123
+  value.redo(); // $value now turns to 456
+&lt;/script&gt;
+Value: {$value}</pre> <p>In the provided code snippet, the <strong class="source-inline">createUndoRedoStore()</strong> function generates an undo/redo store. Initially, we set the store’s value to <strong class="source-inline">123</strong>, followed by updates to <strong class="source-inline">456</strong> and then <strong class="source-inline">789</strong>. When we call the store’s <strong class="source-inline">undo</strong> method, the value reverts to <strong class="source-inline">456</strong> and then to <strong class="source-inline">123</strong>. Subsequently, using the <strong class="source-inline">redo</strong> method takes the store’s value back to <strong class="source-inline">456</strong>. Now that we understand how undo/redo store functions, how do we go about creating one <span class="No-Break">in Svelte?</span></p>
+<p>Firstly, the undo/redo store is going to have four methods: <strong class="source-inline">subscribe</strong>, <strong class="source-inline">set</strong>, <strong class="source-inline">undo</strong>, and <strong class="source-inline">redo</strong>. The <strong class="source-inline">subscribe</strong> and <strong class="source-inline">set</strong> methods are based on the Svelte store contract and are the reason an undo/redo store is considered a Svelte store. The <strong class="source-inline">undo</strong> and <strong class="source-inline">redo</strong> methods, on the other hand, are two additional methods that <span class="No-Break">we define.</span></p>
+<p>A <a id="_idIndexMarker342"/>JavaScript object can contain different methods and properties, but as long as it has the <strong class="source-inline">subscribe</strong> and <strong class="source-inline">set</strong> methods, with the method signature following the Svelte store contract, we consider the object a Svelte store. You can use a <strong class="source-inline">$</strong>-prefixed variable to auto-subscribe to the Svelte store and reference the Svelte <span class="No-Break">store value.</span></p>
+<p>Now, to implement this undo/redo store, we know that without the undo/redo feature, the store behaves just like a writable store. So, we are going to implement the undo/redo store based on a writable store, as shown in the following <span class="No-Break">code snippet:</span></p>
+<pre class="source-code">
+function createUndoRedoStore() {
+  const store = writable();
+  return store;
+}</pre> <p>In the preceding code snippet, we set the stage for our <strong class="source-inline">createUndoRedoStore()</strong> function. We start by using Svelte’s <strong class="source-inline">writable()</strong> function to create a writable store, which will be the base for our <span class="No-Break">undo/redo store.</span></p>
+<p>But as we are setting a new value into the undo/redo store, we need to keep track of the history of store values so that we can undo or <span class="No-Break">redo them.</span></p>
+<p>To do that, we are going to intercept the <strong class="source-inline">set</strong> method of the writable store, <span class="No-Break">like so:</span></p>
+<pre class="source-code">
+function createUndoRedoStore() {
+  const store = writable();
+<strong class="bold">  function set(value) {</strong>
+<strong class="bold">    store.set(value);</strong>
+<strong class="bold">  }</strong>
+  return {
+    subscribe: store.subscribe,
+<strong class="bold">    set: set,</strong>
+  };
+}</pre> <p>In the <a id="_idIndexMarker343"/>preceding code, I return a new object. While the <strong class="source-inline">subscribe</strong> method is the same as the original writable store’s <strong class="source-inline">subscribe</strong> method, the <strong class="source-inline">set</strong> method is now a new function. We still call the writable store’s <strong class="source-inline">set</strong> method in the <strong class="source-inline">set</strong> function, so the behavior has not <span class="No-Break">changed much.</span></p>
+<p>But now, when we call the <strong class="source-inline">set</strong> method of the undo/redo store, we are calling the <strong class="source-inline">set</strong> function first, before relaying this to the <strong class="source-inline">set</strong> method of the underlying writable store. This allows us to add additional logic into the <strong class="source-inline">set</strong> function that will be run whenever we are setting a new value to the <span class="No-Break">undo/redo store.</span></p>
+<p>Before we get ahead of ourselves, let’s not forget that we also need to add two more methods, <strong class="source-inline">undo</strong> and <strong class="source-inline">redo</strong>, into the undo/redo store. Here’s how we <span class="No-Break">do this:</span></p>
+<pre class="source-code">
+function createUndoRedoStore() {
+  const store = writable();
+  function set(value) { store.set(value); }
+<strong class="bold">  function undo() {}</strong>
+<strong class="bold">  function redo() {}</strong>
+  return {
+    subscribe: store.subscribe,
+    set: set,
+<strong class="bold">    undo: undo,</strong>
+<strong class="bold">    redo: redo,</strong>
+  };
+}</pre> <p>In the preceding code snippet, we add two additional methods, <strong class="source-inline">undo</strong> and <strong class="source-inline">redo</strong>, to the object returned by <strong class="source-inline">createUndoRedoStore()</strong>. We will go ahead and implement these methods in the next steps. And now, we have the basic structure of our <span class="No-Break">undo/redo store.</span></p>
+<p>You can treat<a id="_idIndexMarker344"/> the preceding code as a template for creating custom Svelte stores. We use a writable store as a base and return a new object. The returned object is considered a Svelte store because, by having the <strong class="source-inline">subscribe</strong> and <strong class="source-inline">set</strong> methods, it adheres to the Svelte store contract. If we want to add logic to the <strong class="source-inline">subscribe</strong> or <strong class="source-inline">set</strong> method, we can build a new function based on the original <strong class="source-inline">subscribe</strong> and <strong class="source-inline">set</strong> methods from the writable store. In addition to that, we can also add more methods to the <span class="No-Break">returned object.</span></p>
+<h2 id="_idParaDest-141"><a id="_idTextAnchor143"/>Implementing the undo/redo logic</h2>
+<p>Now, to<a id="_idIndexMarker345"/> implement the undo/redo logic, we are creating two arrays, <strong class="source-inline">undoHistory</strong> and <strong class="source-inline">redoHistory</strong>, to record the history of values that we can replay when we call <strong class="source-inline">undo()</strong> <span class="No-Break">or </span><span class="No-Break"><strong class="source-inline">redo()</strong></span><span class="No-Break">.</span></p>
+<p>Whenever the <strong class="source-inline">set</strong> function is called, we will add the value as a new entry to <strong class="source-inline">undoHistory</strong> so that we can replay it later on when <strong class="source-inline">undo()</strong> is called. When <strong class="source-inline">undo()</strong> is called, we will push the latest entry in <strong class="source-inline">undoHistory</strong> into <strong class="source-inline">redoHistory</strong> so that we can redo what we’ve <span class="No-Break">just undone.</span></p>
+<p>Let’s go ahead and implement the logic we’ve <span class="No-Break">just described:</span></p>
+<pre class="source-code">
+function createUndoRedoStore() {
+  const store = writable();
+<strong class="bold">  const undoHistory = [];</strong>
+<strong class="bold">  const redoHistory = [];</strong>
+  function set(value) {
+<strong class="bold">    undoHistory.push(value);</strong>
+<strong class="bold">    redoHistory.length = 0; // resets redoHistory</strong>
+    store.set(value);
+  }
+  function undo() {
+<strong class="bold">    if (undoHistory.length &lt;= 1) return;</strong>
+<strong class="bold">    redoHistory.push(undoHistory.pop());</strong>
+<strong class="bold">    store.set(undoHistory[undoHistory.length – 1]);</strong>
+  }
+  function redo() {
+<strong class="bold">    if (redoHistory.length === 0) return;</strong>
+<strong class="bold">    const value = redoHistory.pop();</strong>
+<strong class="bold">    undoHistory.push(value);</strong>
+<strong class="bold">    store.set(value);</strong>
+  }
+  // ...
+}</pre> <p>In the<a id="_idIndexMarker346"/> preceding code snippet, we’ve implemented the <strong class="source-inline">undo</strong> and <strong class="source-inline">redo</strong> function using two arrays: <strong class="source-inline">undoHistory</strong> and <strong class="source-inline">redoHistory</strong>. We’ve also added checks to see if there are any values in these arrays before performing an undo or redo action. This ensures that we don’t attempt to undo or redo when there’s no history to revert to or advance from. So, you have now learned how to create a custom Svelte store that extends from a writable store and adds new behavior to the original <strong class="source-inline">set</strong> method, as well as adding new methods to <span class="No-Break">the store.</span></p>
+<p>It’s time to have <span class="No-Break">an exercise.</span></p>
+<h2 id="_idParaDest-142"><a id="_idTextAnchor144"/>Exercise</h2>
+<p>Now that we’ve learned how to create a custom store that provides custom methods to manipulate the underlying store values, let’s have an exercise to build another such custom store, a tweened store. A tweened store is a Svelte store that can contain only numeric values. When you set the value of a tweened Svelte store, the tweened Svelte store takes a fixed duration to update its store value to the <span class="No-Break">set value.</span></p>
+<p>For example, let’s suppose the tweened Svelte store is set to <span class="No-Break"><strong class="source-inline">0</strong></span><span class="No-Break"> initially:</span></p>
+<pre class="source-code">
+const store = createTweenedStore(0); // $store = 0</pre> <p>Then, you set the value of the store <span class="No-Break">to </span><span class="No-Break"><strong class="source-inline">10</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+$store = 10;</pre> <p>The store value is not set to <strong class="source-inline">10</strong> directly but increases from <strong class="source-inline">0</strong> to <strong class="source-inline">10</strong> over a configurable fixed duration—say, <span class="No-Break">1 second.</span></p>
+<p>Now you’ve learned the behavior of a tweened store, let’s implement a tweened Svelte store. You can find the code for the tweened store on GitHub <span class="No-Break">at </span><a href="https://github.com/PacktPublishing/Real-World-Svelte/tree/main/Chapter09/04-exercise-tweened-store"><span class="No-Break">https://github.com/PacktPublishing/Real-World-Svelte/tree/main/Chapter09/04-exercise-tweened-store</span></a><span class="No-Break">.</span></p>
+<p>Now that we’ve learned how to create a custom store, let’s turn our attention to another concept, a higher-order store—a function that takes in a Svelte store as an input and returns a more specialized, custom store based on <span class="No-Break">that input.</span></p>
+<h1 id="_idParaDest-143"><a id="_idTextAnchor145"/>Creating a debounced higher-order Svelte store</h1>
+<p>The <a id="_idIndexMarker347"/>two preceding sections that we’ve seen so far each created a new Svelte store. In this section, we are going to look at how we can create a <span class="No-Break">higher-order store.</span></p>
+<p>The concept of a higher-order store is inspired by a higher-order function, where functions are treated just like any other data. This means that you can pass functions as arguments to other functions or return them <span class="No-Break">as values.</span></p>
+<p>In a similar concept, we are going to create a function that treats stores just like any data, taking a Svelte store as an argument and then returning a <span class="No-Break">Svelte store.</span></p>
+<p>The idea of a higher-order Svelte store is to create a function that enhances an existing Svelte store. A higher-order Svelte store is a function that takes in a Svelte store and returns a new Svelte store, an enhanced version of the input <span class="No-Break">Svelte store.</span></p>
+<p>The example that we are going to use to illustrate this idea will create a <strong class="source-inline">debounce</strong> higher-order <span class="No-Break">Svelte store.</span></p>
+<p>The <strong class="source-inline">debounce</strong> function that I am going to create will take in a Svelte store and return a new Svelte store that has its store value debounced based on the input Svelte <span class="No-Break">store value:</span></p>
+<pre class="source-code">
+&lt;script&gt;
+  function debounce(store) { ... }
+  const store = writable();
+  const debouncedStore = debounce(store);
+&lt;/script&gt;
+Store value: {$store}
+Debounced store value: {$debouncedStore}</pre> <p>In the <a id="_idIndexMarker348"/>preceding code snippet, in the fourth line, I demonstrated how to use the <strong class="source-inline">debounce</strong> function that we’re going to implement in this section. This <strong class="source-inline">debounce</strong> function accepts a Svelte store as an argument and returns an enhanced version of it, which we’ll call <strong class="source-inline">debouncedStore</strong>. To showcase the debounce functionality, the values of both the original <strong class="source-inline">store</strong> and <strong class="source-inline">debouncedStore</strong> arguments are displayed side <span class="No-Break">by side.</span></p>
+<p>Before we start implementing the <strong class="source-inline">debounce</strong> function, let’s talk about what <span class="No-Break">debounce is.</span></p>
+<h2 id="_idParaDest-144"><a id="_idTextAnchor146"/>Debouncing store value changes</h2>
+<p>In engineering, debounce<a id="_idIndexMarker349"/> is the process of removing unwanted input noises from user input. In web development, debounce is used when there are too many user events, and we want to trigger an event handler or process the event only after the user <span class="No-Break">event settles.</span></p>
+<p>Here’s an example of debounce. When implementing an autocomplete search, we wouldn’t want to trigger the search for an autocomplete result on every character the user types; rather, we’d only start searching after the user stops typing. This saves resources as the autocomplete result may no longer be usable as soon as the user types the <span class="No-Break">next character.</span></p>
+<p>Applying the concept of debounce to a Svelte store, we are going to create a new debounced Svelte store based on an input Svelte store. When the input Svelte store value updates, the debounced Svelte store only updates after the Svelte store <span class="No-Break">updates settle.</span></p>
+<p>If we are going to create a debounced Svelte store from scratch, we can build it up based on a writable store. I showed you how to create a custom Svelte store from a writable store in the last section, so I hope you know how to do that. Do try it out yourself; when you are done, compare it with my implementation <span class="No-Break">at </span><a href="https://github.com/PacktPublishing/Real-World-Svelte/tree/main/Chapter09/05-debounce-store"><span class="No-Break">https://github.com/PacktPublishing/Real-World-Svelte/tree/main/Chapter09/05-debounce-store</span></a><span class="No-Break">.</span></p>
+<p>But in this section, we are going to create a higher-order store. We already have a Svelte store. It could be a writable store or an undo/redo store. Our debounce function is going to take in the Svelte store and return a debounced version of the <span class="No-Break">Svelte store.</span></p>
+<p>Let’s start with the basic structure of a <strong class="source-inline">debounce</strong> <span class="No-Break">higher-order store.</span></p>
+<p>The <strong class="source-inline">debounce</strong> function<a id="_idIndexMarker350"/> is going to return a new Svelte store. It is still much easier to build a new Svelte store based on a writable store than to implement it from scratch, create a subscribe function, and maintain an array <span class="No-Break">of subscribers.</span></p>
+<p>Here’s the basic outline of the <span class="No-Break"><strong class="source-inline">debounce</strong></span><span class="No-Break"> function:</span></p>
+<pre class="source-code">
+function debounce(store) {
+  const debounced = writable();
+  return {
+    subscribe: debounced.subscribe,
+    set: store.set,
+  };
+}</pre> <p>In the preceding code snippet, the returned Svelte store is going to be based on the writable store, so the <strong class="source-inline">subscribe</strong> method is going to be the writable store’s <span class="No-Break"><strong class="source-inline">subscribe</strong></span><span class="No-Break"> method.</span></p>
+<p>The <strong class="source-inline">set</strong> method is going to be the original store’s <strong class="source-inline">set</strong> method, instead of a new <strong class="source-inline">set</strong> function. We are not going to create a separate <strong class="source-inline">set</strong> function where it sets the original store and tries to set out a debounced store with the <span class="No-Break">debounce logic.</span></p>
+<p>We are not going to do like it’s done in <span class="No-Break">this snippet:</span></p>
+<pre class="source-code">
+function debounce(store) {
+  const debounced = writable();
+<strong class="bold">  function set(value) {</strong>
+<strong class="bold">    store.set(value);</strong>
+<strong class="bold">    // some debounce logic and call debounce.set(value);</strong>
+<strong class="bold">  }</strong>
+  return {
+    subscribe: debounced.subscribe,
+<strong class="bold">    set: set,</strong>
+  };
+}</pre> <p>In the <a id="_idIndexMarker351"/>preceding code snippet, we intercepted the <strong class="source-inline">set</strong> method and relayed it to both the original store and the debounced store. We are not going to do that because we want to preserve the original Svelte store logic. When a value is passed to the <strong class="source-inline">set</strong> method, it may undergo transformations, especially if the store is a custom Svelte store. The <strong class="source-inline">value</strong> argument in the <strong class="source-inline">set</strong> method may not be the same as the final store value. So instead, we let the original store handle these potential transformations and subscribe to the original Svelte store to get the final store value. We use the final store value and update the debounced store as the original store value changes, as illustrated in the following <span class="No-Break">code snippet:</span></p>
+<pre class="source-code">
+function debounce(store) {
+  const debounced = writable();
+<strong class="bold">  store.subscribe(value =&gt; {</strong>
+<strong class="bold">    // some debounce logic and call debounce.set(value);</strong>
+<strong class="bold">  });</strong>
+  // ...
+}</pre> <p>In the preceding code snippet, I show how to subscribe to the original Svelte store rather than intercepting its <strong class="source-inline">set</strong> method. This approach allows us to keep the original store’s logic intact while still benefiting from its features. It also takes care of situations when the original Svelte store value could change by other methods. An example of this is the <strong class="source-inline">undo()</strong> and <strong class="source-inline">redo()</strong> methods of the undo/redo store. If we only intercepted the value from the <strong class="source-inline">set</strong> function, as in the preceding code snippet, then the debounced Svelte store would not change when the original undo/redo store was being undone <span class="No-Break">or redone.</span></p>
+<p>To<a id="_idIndexMarker352"/> implement the debounce logic, we are going to use a timeout to update the debounced Svelte store. If there are new changes to the original Svelte store within the timeout, then we are going to cancel the previous timeout and set a new timeout. If not, then we assume the changes have settled, and we update the <span class="No-Break"><strong class="source-inline">debounced</strong></span><span class="No-Break"> store.</span></p>
+<p>Here’s the updated code snippet with the <span class="No-Break">debounce logic:</span></p>
+<pre class="source-code">
+function debounce(store) {
+  const debounced = writable();
+<strong class="bold">  let timeoutId = null;</strong>
+  store.subscribe(value =&gt; {
+<strong class="bold">    if (timeoutId !== null) clearTimeout(timeoutId);</strong>
+<strong class="bold">    timeoutId = setTimeout(() =&gt; {</strong>
+<strong class="bold">      timeoutId = null;</strong>
+<strong class="bold">      debounced.set(value);</strong>
+<strong class="bold">    }, 200);</strong>
+  });
+  // ...
+}</pre> <p>In the preceding code snippet, we use the <strong class="source-inline">setTimeout</strong> function within the <strong class="source-inline">subscribe</strong> callback to set a timeout for 200 ms. During this time, if the original store’s value changes again, the existing timeout will be cleared, and a new one will be set. But if there’s a new value within the 200 ms time period, we will update the <strong class="source-inline">debounced</strong> store with the latest value from the <span class="No-Break">original store.</span></p>
+<p>Try <a id="_idIndexMarker353"/>out the <strong class="source-inline">debounced</strong> store and see that the store value is now debounced from <span class="No-Break">the changes.</span></p>
+<p>One thing you might notice is that we subscribed to the original Svelte store but haven’t unsubscribed from it. Let’s address <span class="No-Break">that next.</span></p>
+<h2 id="_idParaDest-145"><a id="_idTextAnchor147"/>Subscribing and unsubscribing original store on demand</h2>
+<p>Before<a id="_idIndexMarker354"/> we wrap up, there’s one small issue with the <strong class="source-inline">debounced</strong> store that we’ve implemented so far. We subscribed to the original Svelte store at the creation of the <strong class="source-inline">debounced</strong> Svelte store and we <a id="_idIndexMarker355"/>never unsubscribed from it, even though the <strong class="source-inline">debounced</strong> Svelte store may no longer be in use. We should only start subscribing to the original Svelte store when there’s already a subscriber to the <strong class="source-inline">debounced</strong> Svelte store and unsubscribe when there is no longer <span class="No-Break">any subscriber.</span></p>
+<p>We could intercept the <strong class="source-inline">subscribe</strong> method and attempt to unsubscribe from the original Svelte store when the debounced Svelte store is being unsubscribed, <span class="No-Break">like so:</span></p>
+<pre class="source-code">
+function debounce(store) {
+  const debounced = writable();
+<strong class="bold">  function subscribe(fn) {</strong>
+<strong class="bold">    const debouncedUnsubscribe = debounced.subscribe(fn);</strong>
+<strong class="bold">    const unsubscribe = store.subscribe(...);</strong>
+<strong class="bold">    return () =&gt; {</strong>
+<strong class="bold">      debouncedUnsubscribe();</strong>
+<strong class="bold">      unsubscribe();</strong>
+<strong class="bold">    };</strong>
+<strong class="bold">  }</strong>
+  // ...
+  return {
+<strong class="bold">    subscribe: subscribe,</strong>
+    set: store.set,
+  };
+}</pre> <p>In the updated code snippet, the <strong class="source-inline">subscribe</strong> method now subscribes to both the <strong class="source-inline">debounced</strong> store and the original Svelte store. In the <strong class="source-inline">return</strong> function, which is used to unsubscribe from the <strong class="source-inline">debounced</strong> store, we also make sure to unsubscribe from the original <span class="No-Break">Svelte store.</span></p>
+<p>However, this<a id="_idIndexMarker356"/> is not quite right. Doing it this way means that we subscribe to the original store every time we <a id="_idIndexMarker357"/>subscribe to the debounced store and unsubscribe from the original store every time we unsubscribe from the <span class="No-Break">debounced store.</span></p>
+<p>We should aim to subscribe to the original store just once, regardless of how many subscribers there are. Similarly, we should unsubscribe from it only when there are no subscribers left. Does this <span class="No-Break">sound familiar?</span></p>
+<p>We ran into a similar conundrum in the previous section when we were trying to implement a click-counter Svelte store. We tried to maintain a list of subscribers before we found out that Svelte provides a built-in <strong class="source-inline">writable()</strong> function that neatly takes care of that <span class="No-Break">for us.</span></p>
+<p>So, is there a built-in function that allows us to only subscribe to another store once a store is being subscribed, and only unsubscribe from that store once there are no more subscribers in <span class="No-Break">a store?</span></p>
+<p>Yes—this is where <strong class="source-inline">derived()</strong> comes <span class="No-Break">into play.</span></p>
+<h2 id="_idParaDest-146"><a id="_idTextAnchor148"/>Deriving a new Svelte store with the derived() function</h2>
+<p><strong class="source-inline">derived()</strong> is a<a id="_idIndexMarker358"/> built-in function from Svelte that takes in one or multiple Svelte stores and returns a new Svelte store whose store value is based on the input <span class="No-Break">Svelte stores.</span></p>
+<p>For example, you can use <strong class="source-inline">derived()</strong> to define a Svelte store whose store value is always double that of another Svelte store, as seen in the following <span class="No-Break">code snippet:</span></p>
+<pre class="source-code">
+import { writable, derived } from 'svelte/store';
+const store = writable(1);
+const double = derived(store, value =&gt; value * 2);</pre> <p>Or, this could be a Svelte store whose store value is the sum of two Svelte stores, as <span class="No-Break">shown here:</span></p>
+<pre class="source-code">
+const store1 = writable(1);
+const store2 = writable(2);
+const sum = derived(
+  [store1, store2],
+  ([$store1, $store2]) =&gt; $store1 + $store2
+);</pre> <p class="callout-heading">Note</p>
+<p class="callout">You may notice that we are using a <strong class="source-inline">$</strong>-prefixed variable in the callback function of the <strong class="source-inline">derived()</strong> function; for example, <strong class="source-inline">$store1</strong> and <strong class="source-inline">$store2</strong>. However, it does not work the same way as the <strong class="source-inline">$</strong>-prefixed variable at the top level of the script, where it auto-subscribes to the store and is referenced as the <span class="No-Break">store value.</span></p>
+<p class="callout">In this case, it is merely a convention that some people use to denote that the variable is used to reference the value of a store. It is the same as any other variable name and <span class="No-Break">nothing more.</span></p>
+<p>When <a id="_idIndexMarker359"/>using <strong class="source-inline">derived()</strong>, Svelte only subscribes to the input Svelte stores—for example, <strong class="source-inline">store1</strong> and <strong class="source-inline">store2</strong>—only when the returned Svelte store—for example, <strong class="source-inline">sum</strong>—is being subscribed to, and will unsubscribe from the input Svelte stores when there are no more subscribers to the returned <span class="No-Break">Svelte store.</span></p>
+<p>Before we rewrite our <strong class="source-inline">debounce</strong> higher-order store using <strong class="source-inline">derived()</strong>, let’s dive a little bit more into the <strong class="source-inline">derived()</strong> <span class="No-Break">function first.</span></p>
+<p>The <strong class="source-inline">derived()</strong> function provides two approaches to determine the store value of the returned Svelte store: synchronous <span class="No-Break">or asynchronous.</span></p>
+<p>The synchronous approach means that as soon as any of the input Svelte store’s values change, the store value of the returned Svelte store is determined synchronously. By the same token, the asynchronous approach means it is determined asynchronously, which means the store value can be set later after the input Svelte store’s value <span class="No-Break">has changed.</span></p>
+<p>The two examples that I showed at the beginning of this section use the synchronous approach, where the store value of the returned Svelte store is synchronously calculated and set right after the input Svelte store <span class="No-Break">has changed.</span></p>
+<p>The <a id="_idIndexMarker360"/>asynchronous approach can be useful when the store value of the returned Svelte store is determined through some <span class="No-Break">asynchronous operations.</span></p>
+<p>To determine whether the derived store is using the synchronous or asynchronous approach, the <strong class="source-inline">derived()</strong> method looks at the function signature of the callback function. If it takes in one parameter, then it is considered a synchronous approach. If it takes in two, then it is an asynchronous approach. To get a better idea, check out the following <span class="No-Break">code snippet:</span></p>
+<pre class="source-code">
+derived(store, ($store) =&gt; ...) // synchronous
+derived(store, ($store, set) =&gt; ...) // asynchronous</pre> <p>In both cases, the callback function will be called every time any of the input Svelte store <span class="No-Break">values change.</span></p>
+<p>If the derived store uses the synchronous approach, the returned value of the callback function is used as the new store value of the returned <span class="No-Break">Svelte store.</span></p>
+<p>If the derived store uses the asynchronous approach, then the second parameter of the callback function is a <strong class="source-inline">set</strong> function. The <strong class="source-inline">set</strong> function can be used to set the value of the returned store at any time. The returned value of the callback function, however, will be treated as a cleanup function that will be called right before the callback function is <span class="No-Break">called again.</span></p>
+<p>Now that we are more familiar with the <strong class="source-inline">derived()</strong> function, let's rewrite our <strong class="source-inline">debounce</strong> higher-order store <span class="No-Break">using </span><span class="No-Break"><strong class="source-inline">derived()</strong></span><span class="No-Break">.</span></p>
+<h2 id="_idParaDest-147"><a id="_idTextAnchor149"/>Using the derived method</h2>
+<p>Here is the <a id="_idIndexMarker361"/>updated code for our <strong class="source-inline">debounced</strong> store rewritten using the <span class="No-Break"><strong class="source-inline">derived()</strong></span><span class="No-Break"> method:</span></p>
+<pre class="source-code">
+function debounce(store) {
+<strong class="bold">  const debounced = derived(store, (value, set) =&gt; {</strong>
+<strong class="bold">    let timeoutId = setTimeout(() =&gt; {</strong>
+<strong class="bold">      timeoutId = null;</strong>
+<strong class="bold">      set(value);</strong>
+<strong class="bold">    }, 200);</strong>
+<strong class="bold">    return () =&gt; {</strong>
+<strong class="bold">      if (timeoutId !== null) clearTimeout(timeoutId);</strong>
+<strong class="bold">    };</strong>
+  });
+  return {
+    subscribe: debounced.subscribe,
+    set: store.set,
+  };
+}</pre> <p>Instead <a id="_idIndexMarker362"/>of creating a new <strong class="source-inline">debounced</strong> store using <strong class="source-inline">writable()</strong>, we derived it from the original store using the <strong class="source-inline">derived()</strong> method. We shifted the <strong class="source-inline">setTimeout</strong> function into the <strong class="source-inline">derived()</strong> method callback. When there’s a new value from the original Svelte store, we will clear the timeout and set a <span class="No-Break">new timeout.</span></p>
+<p>The <strong class="source-inline">derived()</strong> function will subscribe to the original Svelte store once only when the <strong class="source-inline">debounced</strong> store is being subscribed to and unsubscribe from the original Svelte store when there are no more subscribers for the <span class="No-Break"><strong class="source-inline">debounced</strong></span><span class="No-Break"> store.</span></p>
+<p>Since we are only going to update the <strong class="source-inline">debounced</strong> store asynchronously after a timeout, we pass a callback function with two parameters into the <strong class="source-inline">derived()</strong> function. We call the <strong class="source-inline">set</strong> function to set the value of the <strong class="source-inline">debounced</strong> store after the timeout. If the value of the original Svelte store changes before the timeout, then the returned function of the callback function will be called first before the callback function is called again with the updated store value of the original Svelte store. In the returned function, we clear the timeout since we no longer need <span class="No-Break">it anymore.</span></p>
+<p>One last<a id="_idIndexMarker363"/> thing before we conclude—sometimes, the original Svelte store may contain additional methods, such as the <strong class="source-inline">undo()</strong> and <strong class="source-inline">redo()</strong> methods in the case of an undo/redo store. These methods should also be defined in the debounced store returned by our higher-order function. This ensures that the enhanced store maintains all the same methods and behaviors as the input store while adding the debouncing feature. You can see an illustration of this in the following <span class="No-Break">code snippet:</span></p>
+<pre class="source-code">
+const value = createUndoRedoStore();
+const debouncedValue = debounce(value);
+$debouncedValue = 123;
+$debouncedValue = 456;
+debouncedValue.undo(); // $debouncedValue reverts to 123</pre> <p>To return all the methods from the original Svelte store, we use the spread operator (<strong class="source-inline">...</strong>) to spread all the methods from the original <span class="No-Break">Svelte store:</span></p>
+<pre class="source-code">
+function debounce(store) {
+  const debounced = derived(...);
+  return {
+    <strong class="bold">...store,</strong>
+    subscribe: debounced.subscribe,
+  };
+}</pre> <p>In this case, we do not even need to have <strong class="source-inline">set: store.set</strong> since the <strong class="source-inline">set</strong> method will be spread into the returned Svelte <span class="No-Break">store too!</span></p>
+<p>That’s it! In this section, you’ve learned another trick—creating a higher-order store, a function that takes in an existing Svelte store and returns a new Svelte store enhanced with new behavior. Instead of building a custom Svelte store with all the logic in it, we can now create smaller well-encapsulated higher-order stores and put them into a custom Svelte store <a id="_idIndexMarker364"/>that <span class="No-Break">you need.</span></p>
+<h2 id="_idParaDest-148"><a id="_idTextAnchor150"/>Exercise</h2>
+<p>Now, it’s time for <span class="No-Break">an exercise.</span></p>
+<p>The undo/redo store in the previous section is created as a custom Svelte store. Can you create an undo/redo higher-order store that turns any Svelte store into an undo/redo store with two additional methods, <strong class="source-inline">undo()</strong> <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">redo()</strong></span><span class="No-Break">?</span></p>
+<p>Here’s an example of how the undo/redo higher-order store would <span class="No-Break">be used:</span></p>
+<pre class="source-code">
+import { writable } from 'svelte/store';
+const originalStore = writable(100);
+const undoRedoStore = undoRedo(originalStore);
+$undoRedoStore = 42;
+undoRedoStore.undo(); // store value now goes back to 5</pre> <p>The preceding code snippet shows how we use the undo/redo higher-order store, <strong class="source-inline">undoRedo</strong>. The <strong class="source-inline">undoRedo</strong> function takes in a store, named <strong class="source-inline">originalStore</strong>, and returns a new store based on <strong class="source-inline">originalStore</strong> that has the undo/redo capability. For example, if we set a new value and then call the <strong class="source-inline">undo</strong> method, the store value will revert to its original state, which is <strong class="source-inline">5</strong> in <span class="No-Break">this case.</span></p>
+<p>You can find the solution for this exercise on <span class="No-Break">GitHub here:</span></p>
+<p><a href="https://github.com/PacktPublishing/Real-World-Svelte/tree/main/Chapter09/07-exercise-undo-redo-higher-order-store%0D"><span class="No-Break">https://github.com/PacktPublishing/Real-World-Svelte/tree/main/Chapter09/07-exercise-undo-redo-higher-order-store</span></a></p>
+<p>In this section, we’ve explored the process of creating a <strong class="source-inline">debounce</strong> higher-order Svelte store using the <strong class="source-inline">derived()</strong> method. I look forward to you applying this knowledge in <span class="No-Break">real-world scenarios.</span></p>
+<h1 id="_idParaDest-149"><a id="_idTextAnchor151"/>Summary</h1>
+<p>In this chapter, we looked at three different examples and learned three different techniques with a <span class="No-Break">Svelte store.</span></p>
+<p>We explored how to turn any user events into a data source for a Svelte store, learned how to create a Svelte store from scratch, and also learned how to use the built-in <strong class="source-inline">readable()</strong> function to make the process <span class="No-Break">much simpler.</span></p>
+<p>After that, we explored making a custom Svelte store with additional methods, building a new Svelte store based on the built-in <span class="No-Break">writable store.</span></p>
+<p>Lastly, we learned to create a higher-order store, a function that takes in a Svelte store and returns an enhanced version of the input store. In the example, we see how we can turn any Svelte store into a debounced version <span class="No-Break">of itself.</span></p>
+<p>By understanding these techniques, you’re now equipped to manage state in Svelte more effectively to craft more scalable and <span class="No-Break">maintainable applications.</span></p>
+<p>In the next chapter, we will look at state management in Svelte—namely, how to do state management with <span class="No-Break">Svelte stores.</span></p>
+</div>
+</div></body></html>

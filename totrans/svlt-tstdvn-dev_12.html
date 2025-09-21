@@ -1,0 +1,338 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer039">
+<h1 class="chapter-number" id="_idParaDest-135"><a id="_idTextAnchor134"/>12</h1>
+<h1 id="_idParaDest-136"><a id="_idTextAnchor135"/>Using Component Mocks to Clarify Tests</h1>
+<p>The preceding chapter introduced the concept of a test double and showed how <strong class="source-inline">vi.fn</strong> can be used to swap out unwanted behavior within your Vitest test suites. The same technique can be used for Svelte components, but it’s a little <span class="No-Break">more complicated.</span></p>
+<p>Imagine you’re writing unit tests for a component named <strong class="source-inline">Parent</strong>, and that component itself renders another developer-defined component, named <strong class="source-inline">Child</strong>. By default, when your tests render <strong class="source-inline">Parent</strong>, <strong class="source-inline">Child</strong> is rendered too. But using a component mock can stop that from happening. It swaps out the real <strong class="source-inline">Child</strong> for a <span class="No-Break">test double.</span></p>
+<p>There are various reasons why you’d want to <span class="No-Break">do this:</span></p>
+<ul>
+<li>The <strong class="source-inline">Child</strong> component already has its own unit test suite, and you don’t want to repeat yourself (a form of overtesting, described in detail in the <em class="italic">Avoiding component </em><span class="No-Break"><em class="italic">mocks</em></span><span class="No-Break"> section)</span></li>
+<li>The <strong class="source-inline">Child</strong> component has behavior on mount, such as fetching data via the Fetch API, that you’d rather avoid running within <span class="No-Break">your test</span></li>
+<li>The <strong class="source-inline">Child</strong> component comes from a third-party library and it’s more important that you verify the props it is rendered with, rather than verifying the behavior of the third-party <span class="No-Break">component itself</span></li>
+</ul>
+<p>The downside of using component mocks is that they’re complex, and if you’re not careful, they can become <span class="No-Break">a burden.</span></p>
+<p class="callout-heading">Staying safe with test doubles</p>
+<p class="callout">The number-one rule when using component mocks, and test doubles in general, is to avoid building any control logic (<strong class="source-inline">if</strong> statements and loops) into them. Instead, when you use <strong class="source-inline">mockReturnValue</strong> or <strong class="source-inline">mockResolvedValue</strong> to specify the value that is returned, always prefer to return <span class="No-Break">fixed values.</span></p>
+<p class="callout">An easy way to ensure that happens is to ensure that each unit test gets its own test double instance. In other words, avoid setting up a test double in a <strong class="source-inline">beforeEach</strong> block and reusing it across <span class="No-Break">all tests.</span></p>
+<p class="callout">If you’re struggling to keep test doubles simple, that can be a sign that the application code design is too complex. Try reconfiguring the object under test, perhaps by splitting it out into a number of <span class="No-Break">separate objects.</span></p>
+<p>This chapter covers the <span class="No-Break">following topics:</span></p>
+<ul>
+<li>Avoiding component mocks <span class="No-Break">when possible</span></li>
+<li>Using hand-rolled <span class="No-Break">component stubs</span></li>
+<li>Using a component <span class="No-Break">mock library</span></li>
+</ul>
+<p>By the end of the chapter, you will be confident with using component mocking techniques and know when to <span class="No-Break">use them.</span></p>
+<h1 id="_idParaDest-137"><a id="_idTextAnchor136"/>Technical requirements</h1>
+<p>The code for the chapter can be found online <span class="No-Break">at </span><a href="https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter12/Start"><span class="No-Break">https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter12/Start</span></a><span class="No-Break">.</span></p>
+<h1 id="_idParaDest-138"><a id="_idTextAnchor137"/>Avoiding component mocks</h1>
+<p>This section<a id="_idIndexMarker402"/> covers how to build your application without using component mocks. Of course, the application we’ve built up to this point hasn’t used any, so you already know <span class="No-Break">it’s possible.</span></p>
+<p>The SvelteKit application we’ve built has a page route component that renders a list of <strong class="source-inline">Birthday</strong> components and a <strong class="source-inline">BirthdayForm</strong> component. Both of these components are covered by their own test suites, so they are certainly candidates for using component mocks. The page route component would simply check that it renders <strong class="source-inline">Birthday</strong> and <strong class="source-inline">BirthdayForm</strong> in the right way, and avoid testing any of the <span class="No-Break">birthdays themselves.</span></p>
+<p>But there’s not much point in doing this. Neither of these components has any behavior on mount, so there’s no trouble in letting <span class="No-Break">them render.</span></p>
+<p>The biggest risk you<a id="_idIndexMarker403"/> have in not using component mocks is that of <strong class="bold">overtesting</strong>. This is <a id="_idIndexMarker404"/>when you repeat the tests of a child component in the tests for the parent component. In our example application, it would be like taking all the tests in the <strong class="source-inline">Birthday</strong> component test suite and repeating them in the page route <span class="No-Break">test suite.</span></p>
+<p><span class="No-Break"><em class="italic">Figure 12</em></span><em class="italic">.1</em> shows how the test suites for a <strong class="source-inline">Parent</strong> and <strong class="source-inline">Child</strong> component can be developed without overtesting. The <strong class="source-inline">Parent</strong> test suite only needs to test a single flow to <strong class="source-inline">Child</strong> to prove the connection. If there are any interesting return flows of data back from <strong class="source-inline">Child</strong> into <strong class="source-inline">Parent</strong> (such as component event bindings), then they should be <span class="No-Break">tested too.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer038">
+<img alt="Figure 12.1 – Overtesting caused by repeated tests at two levels in a component hierarchy" height="598" src="image/Figure_12.1_B19611.jpg" width="1491"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 12.1 – Overtesting caused by repeated tests at two levels in a component hierarchy</p>
+<p>Thankfully, TDD has a couple of rules that avoid the problem <span class="No-Break">of overtesting.</span></p>
+<h2 id="_idParaDest-139"><a id="_idTextAnchor138"/>Avoiding overtesting using TDD</h2>
+<p>Imagine first that you’re<a id="_idIndexMarker405"/> building your <a id="_idIndexMarker406"/>application using a bottom-up approach, which is the approach this book has followed. That means that you write the <strong class="source-inline">Child</strong> component and its test suite before writing the <strong class="source-inline">Parent</strong> component and its <span class="No-Break">test suite.</span></p>
+<p>When you begin test-driving <strong class="source-inline">Parent</strong>, you write a test that will bring in the <strong class="source-inline">Child</strong> component. (The test description might be something such as <em class="italic">displays the birthday information</em>.) Recall the TDD rule of <em class="italic">make the simplest change that could possibly work</em>. Since you’ve already written the <strong class="source-inline">Child</strong> component at your disposal, then the simplest change is to simply bring in the <span class="No-Break"><strong class="source-inline">Child</strong></span><span class="No-Break"> component.</span></p>
+<p>Then, the rule of the <em class="italic">Red</em> test comes into play, and this is the crucial one that avoids overtesting. You can’t work on a <a id="_idIndexMarker407"/>test unless you see it fail. But if your first test brought in the <strong class="source-inline">Child</strong> component, you <a id="_idIndexMarker408"/>suddenly get all the behavior of <strong class="source-inline">Child</strong> for free. So, if you’re following TDD, it’s impossible to write a <em class="italic">Red</em> test for all the behavior of <strong class="source-inline">Child</strong>, because it will <span class="No-Break">already pass.</span></p>
+<p>Now imagine that you started by building the <strong class="source-inline">Parent</strong> component and at some point felt the urge to extract a <strong class="source-inline">Child</strong> component (you might think of this as a top-down approach). How do you go about extracting <strong class="source-inline">Child</strong>? If you’re being strict, you might start by rewriting the tests for <strong class="source-inline">Child</strong>, as we did in <a href="B19611_09.xhtml#_idTextAnchor111"><span class="No-Break"><em class="italic">Chapter 9</em></span></a>, <em class="italic">Extracting Logic Out of the Framework</em>, when we extracted the birthday repository. But generally, you wouldn’t stop there: you’d want to go back and delete those extra tests <span class="No-Break">from </span><span class="No-Break"><strong class="source-inline">Parent</strong></span><span class="No-Break">.</span></p>
+<p>You could view this as part of the <em class="italic">Refactor</em> step of the TDD cycle. In fact, we did this in the preceding chapter when we ended up deleting a bunch of tests as we changed out the <span class="No-Break">system functionality.</span></p>
+<p>To repeat the message of this section: you don’t always need to use mocks. If you have a single test to prove the connection between <strong class="source-inline">Parent</strong> and <strong class="source-inline">Child</strong>, that’s often enough. Moreover, using TDD can naturally lead to you using <span class="No-Break">this approach.</span></p>
+<h1 id="_idParaDest-140"><a id="_idTextAnchor139"/>Using hand-rolled component stubs</h1>
+<p>In this section, we’ll look at a simple <a id="_idIndexMarker409"/>but effective way of mocking components, by building hand-rolled component stubs. This isn’t as clever as using a component mock library, but it’s simpler and easier to understand. Often, the simplest approach is the <span class="No-Break">best choice.</span></p>
+<p>To recap what we’re trying to do: we have a child component that we want to avoid rendering, perhaps because it has mount behavior or it’s a complex <span class="No-Break">third-party component.</span></p>
+<p>Hand-rolled component stubs rely on Vitest’s <strong class="source-inline">vi.mock</strong> function combined with a special <strong class="source-inline">__mocks__</strong> directory. You create a stub component with the same name as your component, but inside a <strong class="source-inline">__mocks__</strong> directory at the same level as the component itself. Then, you<a id="_idIndexMarker410"/> instruct Vitest to use the mock using the <strong class="source-inline">vi.mock</strong> statement placed at the top of your test file. This will mean the entire test suite uses <span class="No-Break">the mock.</span></p>
+<p>We can demonstrate this using the page route component test suite, building mocks for the <strong class="source-inline">Birthday</strong> and <strong class="source-inline">BirthdayForm</strong> components. These components don’t have any side effects on mount, and they aren’t third party, but they do have their own test suites. So, even though it doesn’t feel necessary to make this change, it’s not unsafe to <span class="No-Break">do so.</span></p>
+<p>Since this work isn’t necessary, we’ll build an example test suite in a test file named <strong class="source-inline">page.mocks.test.js</strong>. Although this isn’t how I’d do this in the real world, it does highlight how you can have both mocked and non-mocked unit tests within the same <span class="No-Break">code base.</span></p>
+<p>We’ll start with a look at how to verify props using a stub component. Then, we’ll look at checking the ordering of instances, followed by dealing with complex prop verification, and finishing with a look at how to dispatch <span class="No-Break">component events.</span></p>
+<h2 id="_idParaDest-141"><a id="_idTextAnchor140"/>Rendering all props within a component stub</h2>
+<p>In the preceding chapter, you<a id="_idIndexMarker411"/> saw that it’s important to verify the props that are passed into a test double. Component stubs are no different. The way we do this is to ensure that the component stub renders all the props and then use standard DOM matchers to verify <span class="No-Break">their presence.</span></p>
+<p>Let’s begin by creating a hand-rolled component stub for the <span class="No-Break"><strong class="source-inline">Birthday</strong></span><span class="No-Break"> component:</span></p>
+<ol>
+<li>Create a new directory named <strong class="source-inline">src/routes/birthdays/__mocks__</strong>. The special name is picked up automatically by Vitest as a location for <span class="No-Break">your mocks.</span></li>
+<li>Create a new file named <strong class="source-inline">src/routes/birthdays/__mocks__/Birthday.svelte</strong> with the following content. It does nothing but render out all the props that are <span class="No-Break">passed in:</span><pre class="source-code">
+&lt;script&gt;
+  export let name;
+  export let dob;
+&lt;/script&gt;
+&lt;div&gt;
+  {name}
+  {dob}
+&lt;/div&gt;</pre></li>
+<li>Now create a new test file named <strong class="source-inline">src/routes/birthdays/page.mock.test.js</strong> and start with the usual <strong class="source-inline">import</strong> statements. Notice<a id="_idIndexMarker412"/> how <strong class="source-inline">vi</strong> is included; we’ll use that in the <span class="No-Break">next step:</span><pre class="source-code">
+import {
+  describe,
+  it,
+  expect,
+  vi
+} from 'vitest';
+import {
+  render,
+  screen
+} from '@testing-library/svelte';
+import { click } from '@testing-library/user-event';
+import {
+  createBirthday
+} from 'src/factories/birthday.js';
+import Page from './+page.svelte';</pre></li>
+<li>Next, just below the <strong class="source-inline">import</strong> statements, add a call to <strong class="source-inline">vi.mock</strong>. The path given must match <a id="_idIndexMarker413"/>the path to the <em class="italic">actual</em> <strong class="source-inline">Birthday</strong> component. Vitest will pick up the mock and load <span class="No-Break">that instead:</span><pre class="source-code">
+vi.mock('./Birthday.svelte');</pre></li>
+<li>Now, start a new <strong class="source-inline">describe</strong> block, together with a sample <strong class="source-inline">birthdays</strong> array. All our tests will <span class="No-Break">use this:</span><pre class="source-code">
+describe('/birthdays', () =&gt; {
+  const birthdays = [
+    createBirthday('Hercules', '1994-02-02', {
+      id: '123'
+    }),
+    createBirthday('Athena', '1989-01-01', {
+      id: '234'
+    })
+  ];
+});</pre></li>
+<li>Time for the first test. This is going to check that given the two birthdays defined previously, each of the correct bits of information is displayed <span class="No-Break">on screen:</span><pre class="source-code">
+it('displays a Birthday component for each birthday', () =&gt; {
+  render(Page, { data: { birthdays } });
+  expect(
+    screen.queryByText(/Hercules/)
+  ).toBeVisible();
+  expect(
+    screen.queryByText(/1994-02-02/)
+  ).toBeVisible();
+  expect(
+    screen.queryByText(/Athena/)
+  ).toBeVisible();
+  expect(
+    screen.queryByText(/1989-01-01/)
+  ).toBeVisible();
+});</pre></li>
+</ol>
+<p class="callout-heading">Testing lists of components</p>
+<p class="callout">This test checks <em class="italic">two</em> birthdays, not one: since <a id="_idIndexMarker414"/>we’re interested in the listing behavior – one <strong class="source-inline">Birthday</strong> component per entry – it’s important to test that a list of birthdays does in fact give a list of <strong class="source-inline">Birthday</strong> components. A single birthday isn’t enough to prove <span class="No-Break">a list.</span></p>
+<ol>
+<li value="7">Because our<a id="_idIndexMarker415"/> implementation already exists, this test should already pass. But it’s important to prove the test works, and this time we want to also verify that the mock has been picked up. So, first delete the contents of the <em class="italic">actual</em> <strong class="source-inline">Birthday</strong> component (not the mock). The test should <em class="italic">still</em> pass. (Make sure you use the <strong class="source-inline">v src/routes/birthdays/page.mocks.test.js</strong> command to run your tests, otherwise you’ll see all the failures from other test suites.) This should convince you that the mock is being <span class="No-Break">picked up.</span></li>
+<li>Undo your changes to the <strong class="source-inline">Birthday</strong> component, and now let’s make a change to make the test fail. In the page route component at <strong class="source-inline">src/routes/birthday/+page.svelte</strong>, comment out the rendering of the <strong class="source-inline">Birthday</strong> component, <span class="No-Break">like this:</span><pre class="source-code">
+&lt;<strong class="bold">!--</strong>Birthday
+  name={birthday.name}
+  dob={birthday.dob}
+/<strong class="bold">--</strong>&gt;</pre></li>
+<li>Run the tests with <strong class="source-inline">v src/routes/birthdays/page.mocks.test.js</strong> and verify the test now fails. Then, undo <span class="No-Break">your change.</span></li>
+</ol>
+<p>You’ve now learned <a id="_idIndexMarker416"/>about the basic usage of <span class="No-Break">component stubs.</span></p>
+<h2 id="_idParaDest-142"><a id="_idTextAnchor141"/>Checking the ordering of component instances</h2>
+<p>Sometimes, when <a id="_idIndexMarker417"/>we are dealing with lists of components, we want to check the ordering of instances. We can check that using the <strong class="source-inline">data-testid</strong> attribute to get hold of each <span class="No-Break">specific instance.</span></p>
+<p>There is a general piece of advice to avoid using <strong class="source-inline">data-testid</strong> in tests. This is good advice, but your component stubs are a part of your test suite, not the application code, so it’s safe to use <span class="No-Break">them here.</span></p>
+<p class="callout-heading">When to use list ordering tests</p>
+<p class="callout">The test in this section isn’t very TDD-like; it proves what I’d consider the <em class="italic">default</em> ordering of lists. If you already <a id="_idIndexMarker418"/>have a test that checks that data is listed, like the one in <em class="italic">step 6</em> of the preceding section, then the simplest way to make that pass is to implement the default ordering. So, writing a test like the one in <em class="italic">writing a test like the one your'e about to see</em> will likely pass by default, and is therefore an <span class="No-Break">invalid test.</span></p>
+<p><span class="No-Break">Let’s start:</span></p>
+<ol>
+<li>Update the component stub to add a <strong class="source-inline">data-testid</strong> attribute, <span class="No-Break">like this:</span><pre class="source-code">
+&lt;script&gt;
+  export let name;
+  export let dob;
+&lt;/script&gt;
+&lt;div <strong class="bold">data-testid="Birthday"</strong>&gt;
+  {name}
+  {dob}
+&lt;/div&gt;</pre></li>
+<li>Now, write a test that proves the ordering. It uses <strong class="source-inline">queryAllByTestId</strong> to return a list of <a id="_idIndexMarker419"/>elements that match a specific <strong class="source-inline">data-testid</strong> attribute <a id="_idIndexMarker420"/>value, in the order they are listed in <span class="No-Break">the document:</span><pre class="source-code">
+it('displays the Birthdays in the same order as the props passed in', () =&gt; {
+  render(Page, { data: { birthdays } });
+  const birthdayEls =
+    screen.queryAllByTestId('Birthday');
+  expect(birthdayEls[0]).toHaveTextContent(
+    /Hercules/
+  );
+  expect(birthdayEls[1]).toHaveTextContent(
+    /Athena/
+  );
+});</pre></li>
+<li>This will pass, but make sure you verify it doesn’t pass by using the same commenting-out trick <span class="No-Break">from previously.</span></li>
+</ol>
+<p>It’s also worth pointing out that there is another way to write an ordering test that doesn’t involve<a id="_idIndexMarker421"/> using the <strong class="source-inline">data-testid</strong> attribute. You could<a id="_idIndexMarker422"/> instead get hold of the <strong class="source-inline">ol</strong> element on the page, then map each of the <strong class="source-inline">li</strong> elements to their text content and check that it is an array in the order that <span class="No-Break">you expect.</span></p>
+<h2 id="_idParaDest-143"><a id="_idTextAnchor142"/>Dealing with complex props</h2>
+<p>Sometimes, the props to your <a id="_idIndexMarker423"/>component are objects or arrays, and if you were to render them all out within the component stub, you’d end up with a whole bunch of code in the stub. There’s a shorter way of outputting prop values, which is to use the <span class="No-Break"><strong class="source-inline">JSON.stringify</strong></span><span class="No-Break"> function.</span></p>
+<p>Let’s do that now for the <span class="No-Break"><strong class="source-inline">BirthdayForm</strong></span><span class="No-Break"> component:</span></p>
+<ol>
+<li>Create a new file named <strong class="source-inline">src/routes/birthdays/__mocks__/BirthdayForm.svelte</strong> with the <span class="No-Break">following content:</span><pre class="source-code">
+&lt;script&gt;
+  export let form;
+&lt;/script&gt;
+&lt;div&gt;
+  Editing {JSON.stringify(form)}
+&lt;/div&gt;</pre></li>
+<li>In your test suite, add a new call to <strong class="source-inline">vi.mock</strong> that pulls in this component, next to the previous call <span class="No-Break">to </span><span class="No-Break"><strong class="source-inline">vi.mock</strong></span><span class="No-Break">:</span><pre class="source-code">
+vi.mock('./BirthdayForm.svelte');</pre></li>
+<li>Next, add the following helper function at the top of the <span class="No-Break">test suite:</span><pre class="source-code">
+const firstEditButton = () =&gt;
+  screen.queryAllByRole('button', {
+    name: 'Edit'
+  })[0];</pre></li>
+<li>Then, add the next test, as<a id="_idIndexMarker424"/> shown; it also calls <strong class="source-inline">JSON.stringify</strong>. This should pass, but make sure to verify it <span class="No-Break">before finishing:</span><pre class="source-code">
+it('passes the currently edited birthday to the BirthdayForm component', async () =&gt; {
+  render(Page, { data: { birthdays } });
+  await click(firstEditButton());
+  expect(
+    screen.queryByText(
+      `Editing ${JSON.stringify(birthdays[0])}`
+    )
+  ).toBeInTheDocument();
+});</pre></li>
+</ol>
+<p>You will note the coupling between the component stub and the test suite. This component stub is quite awkward. What I find is that this technique of utilising <strong class="source-inline">JSON.stringify</strong> is generally fine as long as it’s the single pattern you use to check complex props and is used consistently <span class="No-Break">between developers.</span></p>
+<h2 id="_idParaDest-144"><a id="_idTextAnchor143"/>Dispatching component events</h2>
+<p>The final <a id="_idIndexMarker425"/>component stub technique we will look at is the mechanism to dispatch component events. As in the last section, this is awkward, because it’s impossible to raise a component event on a hand-rolled stub without having a dispatcher object defined within the <span class="No-Break">stub itself.</span></p>
+<p>One way to deal with this is to just stick a button into the stub and use that to dispatch <span class="No-Break">the event:</span></p>
+<p class="callout-heading">Warning</p>
+<p class="callout">The following example doesn’t make a huge amount of sense in the context of our application: the actual <strong class="source-inline">BirthdayForm</strong> component doesn’t have this <em class="italic">cancel</em> behavior, and if this feature <em class="italic">did</em> exist, it would probably make more sense to have the <strong class="bold">Cancel</strong> button within the page route, avoiding the need for a <span class="No-Break">component event.</span></p>
+<ol>
+<li>Update the <strong class="source-inline">BirthdayForm</strong> component <a id="_idIndexMarker426"/>stub to include a <strong class="source-inline">button</strong> element that dispatches a <span class="No-Break"><strong class="source-inline">cancel</strong></span><span class="No-Break"> event:</span><pre class="source-code">
+&lt;script&gt;
+  import { createEventDispatcher } from 'svelte';
+  <strong class="bold">const dispatcher = createEventDispatcher();</strong>
+  <strong class="bold">export let form;</strong>
+&lt;/script&gt;
+&lt;div<strong class="bold"> data-testid="BirthdayForm"</strong>&gt;
+  Editing {JSON.stringify(form)}
+  <strong class="bold">&lt;button on:click={() =&gt; dispatcher('cancel')} /&gt;</strong>
+&lt;/div&gt;</pre></li>
+<li>Now, you can add a test that checks what happens when the <strong class="source-inline">cancel</strong> event <span class="No-Break">is dispatched:</span><pre class="source-code">
+it('cancels editing', async () =&gt; {
+  render(Page, { data: { birthdays } });
+  await click(firstEditButton());
+  const button = screen
+    .getByTestId('BirthdayForm')
+    .querySelector('button');
+  await click(button);
+  expect(
+    screen.queryByText(
+      `Editing ${JSON.stringify(birthdays[0])}`
+    )
+  ).not.toBeInTheDocument();
+});</pre></li>
+<li>To make this <a id="_idIndexMarker427"/>pass, update the <strong class="source-inline">page</strong> component to respond to the <span class="No-Break"><strong class="source-inline">cancel</strong></span><span class="No-Break"> event:</span><pre class="source-code">
+&lt;BirthdayForm
+  form={editing}
+  <strong class="bold">on:cancel={() =&gt; (editing = null)}</strong>
+/&gt;</pre></li>
+</ol>
+<p>Remember, the <em class="italic">real</em> <strong class="source-inline">BirthdayForm</strong> component doesn’t have this behavior, and this exposes a big problem with mocking components: it’s challenging to keep the mock aligned with <span class="No-Break">real implementations.</span></p>
+<p>Avoiding hand-rolled mocks and using a library is one way to deal with this problem, as we’ll see in the <span class="No-Break">next section.</span></p>
+<h1 id="_idParaDest-145"><a id="_idTextAnchor144"/>Using a component mock library</h1>
+<p>In the last chapter, you saw how you <a id="_idIndexMarker428"/>can use <strong class="source-inline">vi.fn</strong> to spy on functions. The <strong class="source-inline">svelte-component-double</strong> npm package can be used in a similar fashion, achieving the same effect as the hand-rolled mocks you’ve just <span class="No-Break">learned about.</span></p>
+<p>The package includes matchers such as <strong class="source-inline">toBeRendered</strong> and <strong class="source-inline">toBeRenderedWithProps</strong> to check that the component is indeed rendered in the way <span class="No-Break">you wanted.</span></p>
+<p>Let’s split this into a couple of parts: installing the library and <span class="No-Break">writing tests.</span></p>
+<h2 id="_idParaDest-146"><a id="_idTextAnchor145"/>Installing the library</h2>
+<p>The library requires a<a id="_idIndexMarker429"/> bit of setup to get the relevant matchers <span class="No-Break">into place:</span></p>
+<ol>
+<li>Run the following command to install <span class="No-Break">the package:</span><pre class="source-code">
+<strong class="bold">npm install --save-dev svelte-component-double</strong></pre></li>
+<li>Then, create a new file named <strong class="source-inline">src/vitest/registerSvelteComponentDouble.js</strong> with the following content. It registers the matchers and also gives us global access to the <strong class="source-inline">componentDouble</strong> function, which is not required but makes mock <span class="No-Break">setup easier:</span><pre class="source-code">
+import { expect } from 'vitest';
+import
+  as matchers
+from 'svelte-component-double/vitest';
+expect.extend(matchers);
+import {
+  componentDouble
+} from 'svelte-component-double';
+globalThis.componentDouble = componentDouble;</pre></li>
+<li>Then, update your <strong class="source-inline">vite.config.js</strong> file to include the new <span class="No-Break">setup file:</span><pre class="source-code">
+setupFiles: [
+  ...<strong class="bold">,</strong>
+  <strong class="bold">'./src/vitest/registerSvelteComponentDouble.js'</strong>
+],</pre></li>
+</ol>
+<p>You’re now ready to <a id="_idIndexMarker430"/>use the library in <span class="No-Break">your tests.</span></p>
+<h2 id="_idParaDest-147"><a id="_idTextAnchor146"/>Writing tests using the componentDouble function</h2>
+<p>Now, we will<a id="_idIndexMarker431"/> rewrite the mock test suite to<a id="_idIndexMarker432"/> use the library rather than hand-rolled <span class="No-Break">component stubs:</span></p>
+<ol>
+<li>Start by redefining the two calls to <strong class="source-inline">vi.mock</strong> with the following definitions. Each call to <strong class="source-inline">componentDouble</strong> gets a string identifier. This appears in your DOM output and is used in <span class="No-Break">expectation failures:</span><pre class="source-code">
+vi.mock('./Birthday.svelte', async () =&gt; ({
+  default: componentDouble('Birthday')
+}));
+vi.mock('./BirthdayForm.svelte', async () =&gt; ({
+  default: componentDouble('BirthdayForm')
+}));</pre></li>
+<li>You’ll also need to add two <strong class="source-inline">import</strong> statements at the top of the file so that you can access the mock object. Although it looks like you’re importing the actual components, you’ll actually get the <span class="No-Break">component doubles:</span><pre class="source-code">
+import Birthday from './Birthday.svelte';
+import BirthdayForm from './BirthdayForm.svelte';</pre></li>
+<li>It’s also important to reset the component doubles between each test. That’s because <strong class="source-inline">vi.mock</strong> will only<a id="_idIndexMarker433"/> generate a double once per test suite. Add the following two calls to <strong class="source-inline">beforeEach</strong> at the top of the <span class="No-Break"><strong class="source-inline">describe</strong></span><span class="No-Break"> block:</span><pre class="source-code">
+describe('/birthdays', () =&gt; {
+  <strong class="bold">beforeEach(Birthday.reset);</strong>
+  <strong class="bold">beforeEach(BirthdayForm.reset);</strong>
+  ...
+});</pre></li>
+<li>You’ll also <a id="_idIndexMarker434"/>need to update the <strong class="source-inline">import</strong> statement to pull in the <span class="No-Break"><strong class="source-inline">beforeEach</strong></span><span class="No-Break"> function:</span><pre class="source-code">
+import {
+  ...<strong class="bold">,</strong>
+  <strong class="bold">beforeEach</strong>
+} from 'vitest';</pre></li>
+<li>Now for the first test. The makes use of the matcher <strong class="source-inline">toBeRendered</strong>, which checks that the component appears somewhere in the document. Update the first test to look like <span class="No-Break">the following:</span><pre class="source-code">
+it('displays a Birthday component for each birthday, () =&gt; {
+  render(Page, { data: { birthdays } });
+  <strong class="bold">expect(Birthday).toBeRendered();</strong>
+});</pre></li>
+<li>To run this test, mark it as <strong class="source-inline">it.only</strong> and then run Vitest on this test suite. You should see it passing; you can verify it in the usual way, by commenting out the <strong class="source-inline">Birthday</strong> component instance in the page route component. This time, you’ll see a failure printed <span class="No-Break">as follows:</span><pre class="source-code">
+Error: Expected "Birthday" component double to be rendered but it was not</pre></li>
+<li>Undo that change so the test is <span class="No-Break">passing again.</span></li>
+<li>We know that <a id="_idIndexMarker435"/>not just one <strong class="source-inline">Birthday</strong> is displayed, but two. We can use the <strong class="source-inline">toBeRenderedWithProps</strong> matcher to check for individual instances of the component. Update<a id="_idIndexMarker436"/> the same test to use that matcher, <span class="No-Break">like this:</span><pre class="source-code">
+it('displays a Birthday component for each birthday', () =&gt; {
+  render(Page, { data: { birthdays } });
+  <strong class="bold">expect(Birthday).toBeRenderedWithProps({</strong>
+  <strong class="bold">  name: 'Hercules',</strong>
+  <strong class="bold">  </strong><strong class="bold">dob: '1994-02-02'</strong>
+  <strong class="bold">});</strong>
+  <strong class="bold">expect(Birthday).toBeRenderedWithProps({</strong>
+  <strong class="bold">  name: 'Athena',</strong>
+  <strong class="bold">  dob: '1989-01-01'</strong>
+  <strong class="bold">});</strong>
+});</pre></li>
+</ol>
+<p>Notice how the calls to <strong class="source-inline">toBeRenderedWithProps</strong> do not need to specify the full set of props. If the given subset matches, the expectation passes. That means we can avoid checking the <strong class="source-inline">id</strong> field, which is unnecessary detail for the purposes of <span class="No-Break">this test.</span></p>
+<ol>
+<li value="9">If you comment out the rendering of <strong class="source-inline">Birthday</strong> in the component, you’ll see what a failure for<a id="_idIndexMarker437"/> this matcher <span class="No-Break">looks like:</span><pre class="source-code">
+Error: Expected "Birthday" component double to have been rendered once with props but it was not
+Expected: Object {
+  "dob": "1994-02-02",
+  "name": "Hercules",
+}
+Received:</pre></li>
+<li>The second test in this test suite checks the ordering of components. We can do that with the library<a id="_idIndexMarker438"/> by using the <strong class="source-inline">propsOfAllInstances</strong> function that exists on the double. Update the test to read <span class="No-Break">as follows:</span><pre class="source-code">
+it('displays the Birthdays in the same order as the props passed in', () =&gt; {
+  render(Page, { data: { birthdays } });
+  <strong class="bold">expect(Birthday.propsOfAllInstances()).toEqual([</strong>
+  <strong class="bold">  expect.objectContaining({ name: 'Hercules' }),</strong>
+  <strong class="bold">  expect.objectContaining({ name: 'Athena' })</strong>
+  <strong class="bold">]);</strong>
+});</pre></li>
+<li>The first test for <strong class="source-inline">BirthdayForm</strong> no longer needs any <strong class="source-inline">JSON.stringify</strong> magic. We can just test the object prop directly. Update the test <span class="No-Break">as follows:</span><pre class="source-code">
+it('passes the currently edited birthday to the BirthdayForm component', async () =&gt; {
+  render(Page, { data: { birthdays } });
+  await click(firstEditButton());
+  <strong class="bold">expect(BirthdayForm).toBeRenderedWithProps({</strong>
+  <strong class="bold">  form: birthdays[0]</strong>
+  <strong class="bold">});</strong>
+});</pre></li>
+<li>And finally, the last test <a id="_idIndexMarker439"/>can make use of the <strong class="source-inline">dispatch</strong> double function to dispatch an event to<a id="_idIndexMarker440"/> the parent component. Note how much simpler this is than the <span class="No-Break">hand-rolled mock:</span><pre class="source-code">
+it('cancels editing', async () =&gt; {
+  render(Page, { data: { birthdays } });
+  await click(firstEditButton());
+  <strong class="bold">await BirthdayForm.dispatch('cancel');</strong>
+  <strong class="bold">expect(BirthdayForm).not.toBeRenderedWithProps({</strong>
+  <strong class="bold">  form: birthdays[0]</strong>
+  <strong class="bold">});</strong>
+});</pre></li>
+</ol>
+<p>These last two tests show how much simpler it can be to use a component mock library over hand-rolled mocks. That completes this section. You’ve now discovered all there is to using the <strong class="source-inline">svelte-component-double</strong> library to simplify your <span class="No-Break">test suites.</span></p>
+<h1 id="_idParaDest-148"><a id="_idTextAnchor147"/>Summary</h1>
+<p>This chapter has taken a very detailed look at component mocks. We started by looking at how it’s often possible to avoid using component mocks in the majority of cases, which is important because component mocks are a big cause of complexity in <span class="No-Break">test suites.</span></p>
+<p>You then saw how to use hand-rolled mocks that take advantage of Vitest’s <strong class="source-inline">vi.mock</strong> function together with component stubs in the specially named <strong class="source-inline">__mocks__</strong> directory. You also saw how they can quickly <span class="No-Break">become complex.</span></p>
+<p>Finally, we looked at using the <strong class="source-inline">svelte-component-double</strong> library to avoid using hand-rolled mocks. This provides a couple of simple matchers together with some helper functions to assist you in <span class="No-Break">writing tests.</span></p>
+<p>That completes all the unit testing topics within this book. The next chapter adds one more testing technique: using Cucumber.js to write <strong class="bold">Behavior-Driven Development</strong> (<strong class="bold">BDD</strong>) style tests for <span class="No-Break">your team.</span></p>
+</div>
+</div></body></html>

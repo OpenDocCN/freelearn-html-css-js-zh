@@ -1,0 +1,398 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer031">
+<h1 class="chapter-number" id="_idParaDest-101"><a id="_idTextAnchor100"/>8</h1>
+<h1 id="_idParaDest-102"><a id="_idTextAnchor101"/>Creating Matchers to Simplify Tests</h1>
+<p>This chapter introduces another method for simplifying tests: building custom matchers. Most of the time, it makes sense to stick to the built-in matchers. For instance, the powerful combination of the <strong class="source-inline">toEqual</strong> matcher with the <strong class="source-inline">expect.objectContaining</strong> and <strong class="source-inline">expect.arrayContaining</strong> functions make it easy to build <span class="No-Break">expressive expectations.</span></p>
+<p>But sometimes it makes sense to build a matcher that can scoop up a number of different checks into one single check. This not only shortens tests but can make them more <span class="No-Break">readable, too.</span></p>
+<p>In <a href="B19611_05.xhtml#_idTextAnchor070"><span class="No-Break"><em class="italic">Chapter 5</em></span></a>, <em class="italic">Validating Form Data</em>, each of the form validation rules was tested by a <strong class="source-inline">describe</strong> context with four tests, <span class="No-Break">like this:</span></p>
+<pre class="source-code">
+describe('when the date of birth is in the wrong format')
+  it('does not save the birthday', ...)
+  it('returns a 422', ...)
+  it('returns a useful message', ...)
+  it('returns the other data back including the incorrect
+      value', ...)
+});</pre>
+<p>Since all the validation rules have the same format, it seems like a good candidate for abstracting some shared code. The matcher we’ll create will scoop three of these tests into a custom matcher – the <strong class="source-inline">toBeUnprocessableEntity</strong> matcher – that can be used to replace them all with a <span class="No-Break">single test:</span></p>
+<pre class="source-code">
+it('returns a complete error response', async () =&gt; {
+  const result = await performFormAction(
+    createBirthday('Hercules', 'unknown')
+  );
+  expect(result).toBeUnprocessableEntity({
+    error:
+      'Please provide a date of birth in the YYYY-MM-DD
+       format.',
+    name: 'Hercules',
+    dob: 'unknown'
+  });
+});</pre>
+<p>There’s one final important point: the custom matcher requires its own set of unit tests. That’s so you can be sure that the matcher does the right thing: it passes when it’s meant to pass, and it fails when it’s meant to fail. Just like how you want to be sure that your application code does the <span class="No-Break">right thing.</span></p>
+<p class="callout-heading">Testing test code</p>
+<p class="callout">The general rule I have is this: if your code contains any kind of control structure or branching logic, such as <strong class="source-inline">if</strong> statements or loop constructs, then it <span class="No-Break">needs tests.</span></p>
+<p>This chapter covers <span class="No-Break">the following:</span></p>
+<ul>
+<li>Test-driving the pass or failure of <span class="No-Break">an expectation</span></li>
+<li>Providing extra information in <span class="No-Break">failure messages</span></li>
+<li>Implementing the <span class="No-Break">negated matcher</span></li>
+<li>Updating existing tests to use <span class="No-Break">the matcher</span></li>
+</ul>
+<p>By the end of the chapter, you’ll understand how to build a matcher and how to write tests <span class="No-Break">for it.</span></p>
+<h1 id="_idParaDest-103"><a id="_idTextAnchor102"/>Technical requirements</h1>
+<p>The code for the chapter can be found online <span class="No-Break">at </span><a href="https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter08/Start"><span class="No-Break">https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter08/Start</span></a><span class="No-Break">.</span></p>
+<h1 id="_idParaDest-104"><a id="_idTextAnchor103"/>Test-driving the pass or failure of an expectation</h1>
+<p>In this <a id="_idIndexMarker254"/>section, you’ll build the basic functionality of the <strong class="source-inline">toBeUnprocessableEntity</strong> matcher, ensuring <a id="_idIndexMarker255"/>that it will correctly pass or fail your test. But first, we’ll look at the structure of a matcher and then the approach to unit <span class="No-Break">testing matchers.</span></p>
+<h2 id="_idParaDest-105"><a id="_idTextAnchor104"/>Understanding matcher structure</h2>
+<p>Let’s look at the<a id="_idIndexMarker256"/> basic structure of a matcher and how we can <span class="No-Break">test it:</span></p>
+<pre class="source-code">
+export function toTestSomething(received, expected) {
+  const pass = ...
+  const message = () =&gt; "..."
+  return {
+   pass,
+   message
+  };
+}</pre>
+<p>The <strong class="source-inline">received</strong> parameter value is the object passed to the <strong class="source-inline">expect</strong> call. The <strong class="source-inline">expected</strong> value is the value passed to the matcher. So, in the example from the introduction, the result is the received object, and the object containing the <strong class="source-inline">error</strong>, <strong class="source-inline">name</strong>, and <strong class="source-inline">dob</strong> properties is the <span class="No-Break">expected object.</span></p>
+<p>The <strong class="source-inline">return</strong> value has two important properties: <strong class="source-inline">pass</strong> and <strong class="source-inline">message</strong>. The <strong class="source-inline">pass</strong> boolean should be <strong class="source-inline">true</strong> if your matcher passes the check, and <strong class="source-inline">false</strong> otherwise. However, for a negated matcher, the opposite happens: a <strong class="source-inline">true</strong> value for <strong class="source-inline">pass</strong> means that the <span class="No-Break">expectation fails.</span></p>
+<p>The <strong class="source-inline">message</strong> property <a id="_idIndexMarker257"/>is a function that returns a string. This string is what the test runner displays in the event that your test fails. The contents of the string should be enough for the developer to pinpoint what error occurs. The property itself is defined as a function so that it can be lazily evaluated: there’s no point running this code if the <span class="No-Break">test passes.</span></p>
+<p>Unlike other code samples in this book, the matcher function will be defined using the standard <strong class="source-inline">function</strong> keyword. This means it gains access to the <strong class="source-inline">this</strong> <span class="No-Break">bound variable.</span></p>
+<p>Vitest primes <strong class="source-inline">this</strong> with a number of useful utility functions that the matcher can use. We’ll use a couple of them in this chapter: <strong class="source-inline">this.equals</strong> and <strong class="source-inline">this.utils.diff</strong>. Another useful property is <strong class="source-inline">this.isNot</strong>, which is <strong class="source-inline">true</strong> if your matcher was invoked in its <span class="No-Break">negated form.</span></p>
+<h2 id="_idParaDest-106"><a id="_idTextAnchor105"/>Testing a matcher</h2>
+<p>There are a <a id="_idIndexMarker258"/>couple of ways to test a matcher. One way is to test the function return values, as you would with any other function. The difficulty with this approach is that you’ll need to set up the <strong class="source-inline">this</strong> variable, and that’s <span class="No-Break">not straightforward.</span></p>
+<p>Another approach, and the approach we’ll use this in this chapter, is to use the <strong class="source-inline">toThrowError</strong> matcher to wrap the matcher under test, <span class="No-Break">like this:</span></p>
+<pre class="source-code">
+expect(() =&gt;
+  expect(response).toBeUnprocessableEntity()
+).toThrowError(
+  'Expected 422 status code but got 500'
+);</pre>
+<p>The <strong class="source-inline">toThrowError</strong> matcher takes a function as the parameter to expect; this is then executed within a <strong class="source-inline">try</strong> block. The caught <strong class="source-inline">Error</strong> object then has its <strong class="source-inline">message</strong> value checked against the <span class="No-Break">expected value.</span></p>
+<p>For this approach to work, we’ll need to ensure <strong class="source-inline">toBeUnprocessableEntity</strong> is registered with the<a id="_idIndexMarker259"/> Vitest test runner. We can do that with the <strong class="source-inline">beforeAll</strong> function that runs once at the very beginning <span class="No-Break">test suite.</span></p>
+<p>With all that knowledge, we’re ready to begin writing <span class="No-Break">the matcher.</span></p>
+<h2 id="_idParaDest-107"><a id="_idTextAnchor106"/>Writing the toBeUnprocessableEntity matcher</h2>
+<p>Let’s get started<a id="_idIndexMarker260"/> with the <span class="No-Break">test suite:</span></p>
+<ol>
+<li>Create a new file named <strong class="source-inline">src/matchers/toBeUnprocessableEntity.test.js</strong>, and start with the <a id="_idIndexMarker261"/>following imports. They include all the Vitest imports, which we’ll use in the next step. We’ll also import the <strong class="source-inline">fail</strong> SvelteKit function, which we’ll use in <span class="No-Break">our tests:</span><pre class="source-code">
+import {
+  describe,
+  it,
+  expect,
+  beforeAll
+} from 'vitest';
+import { fail } from '@sveltejs/kit';
+import {
+  toBeUnprocessableEntity
+} from './toBeUnprocessableEntity.js';</pre></li>
+<li>Next, create a new <strong class="source-inline">describe</strong> block with a <strong class="source-inline">beforeAll</strong> block at the start. This ensures that the new matcher is registered before our tests run. This only needs to be <span class="No-Break">done once:</span><pre class="source-code">
+describe('toBeUnprocessableEntity', () =&gt; {
+  beforeAll(() =&gt; {
+    expect.extend({ toBeUnprocessableEntity });
+  });
+});</pre></li>
+<li>Our first <a id="_idIndexMarker262"/>test will cause the expectation <a id="_idIndexMarker263"/>to fail. Add the following test code, which creates a failure reason with a <strong class="source-inline">500</strong> error code rather than a <strong class="source-inline">422</strong>, and then use the <strong class="source-inline">toThrowError</strong> matcher to check that the <span class="No-Break">expectation fails:</span><pre class="source-code">
+it('throws if the status is not 422', () =&gt; {
+  const response = fail(500);
+  expect(() =&gt;
+    expect(response).toBeUnprocessableEntity()
+  ).toThrowError();
+});</pre></li>
+<li>To make that test pass, all we need to do is build a matcher that returns a <strong class="source-inline">pass</strong> value of <strong class="source-inline">false</strong>. Create a new file named <strong class="source-inline">src/matchers/toBeUnprocessableEntity.js</strong> with the following content. As mentioned previously, this uses the <strong class="source-inline">function</strong> keyword syntax so that we gain access to Vitest’s matcher utility functions that are attached to the <span class="No-Break"><strong class="source-inline">this</strong></span><span class="No-Break"> variable:</span><pre class="source-code">
+export function toBeUnprocessableEntity(
+  received, expected
+) {
+  return { pass: false };
+}</pre></li>
+<li>With the first test passing, add the second. This one checks the opposite – that the matcher does not throw if the response has a <strong class="source-inline">422</strong> <span class="No-Break">error code:</span><pre class="source-code">
+it('does not throw if the status is 422', () =&gt; {
+  const response = fail(422);
+  expect(() =&gt;
+    expect(response).toBeUnprocessableEntity()
+  ).not.toThrowError();
+});</pre></li>
+<li>To make <a id="_idIndexMarker264"/>that pass, wrap the original <a id="_idIndexMarker265"/>code in a conditional so that it becomes a guard clause, and if that condition isn’t met, then return a <strong class="source-inline">pass</strong> value of <strong class="source-inline">true</strong>, <span class="No-Break">as shown:</span><pre class="source-code">
+export function toBeUnprocessableEntity(
+  received, expected
+) {
+  <strong class="bold">if (received.status !== 422) {</strong>
+    return { pass: false };
+  <strong class="bold">}</strong>
+  <strong class="bold">return { pass: true };</strong>
+}</pre></li>
+<li>If a failure occurs, we want the test runner to display a helpful message about why the expectation failed. To do that, you can pass a string value to the <strong class="source-inline">toThrowError</strong> matcher that defines the error message. This is what the Vitest test runner will display on the screen. Add the <span class="No-Break">following test:</span><pre class="source-code">
+it('returns a message that includes the actual error code', () =&gt; {
+  const response = fail(500);
+  expect(() =&gt;
+    expect(response).toBeUnprocessableEntity()
+  ).toThrowError(
+    'Expected 422 status code but got 500'
+  );
+});</pre></li>
+<li>Making <a id="_idIndexMarker266"/>that pass involves sending<a id="_idIndexMarker267"/> back the <strong class="source-inline">message</strong> property. The value of this property is a function that is only invoked if the test fails. It’s a form of lazy evaluation, allowing the test runner to avoid doing unnecessary work. Update the guard clause to include the <strong class="source-inline">message</strong> property, <span class="No-Break">as shown:</span><pre class="source-code">
+if (received.status !== 422) {
+  return {
+    pass: false,
+    <strong class="bold">message: () =&gt;</strong>
+      <strong class="bold">`Expected 422 status code but got</strong>
+<strong class="bold">        ${received.status}`</strong>
+  };
+}</pre></li>
+<li>Next, we also need to check the <strong class="source-inline">response</strong> body. In our application code, any <strong class="source-inline">422</strong> result returns an <strong class="source-inline">error</strong> property along with the original form values. We want the matcher to fail the test if the actual response doesn’t match the <span class="No-Break">expected value:</span><pre class="source-code">
+it('throws error if the provided object does not match', () =&gt; {
+  const response = fail(422, { a: 'b' });
+  expect(() =&gt;
+    expect(response).toBeUnprocessableEntity({
+      c: 'd'
+    })
+  ).toThrowError();
+});</pre></li>
+<li>To make<a id="_idIndexMarker268"/> that pass, all we need is to add<a id="_idIndexMarker269"/> a very simple second guard clause. If an argument is passed to the matcher, then we fail the test. This implementation isn’t even close to a correct implementation, but it’s enough to make the test pass. We’ll need to triangulate with more tests. But for now, you can start with <span class="No-Break">this code:</span><pre class="source-code">
+export function toBeUnprocessableEntity(
+  received,
+  expected
+) {
+  if (received.status !== 422) {
+    ...
+  }
+  <strong class="bold">if (expected) {</strong>
+    <strong class="bold">return {</strong>
+      <strong class="bold">pass: false</strong>
+    <strong class="bold">};</strong>
+  <strong class="bold">}</strong>
+  ...
+}</pre></li>
+<li>The next test is very similar, but this time, the two response bodies <em class="italic">do</em> match. This case<a id="_idIndexMarker270"/> shouldn’t cause a <span class="No-Break">failure error:</span><pre class="source-code">
+it('does not throw error if the provided object does match', () =&gt; {
+  const response = fail(422, { a: 'b' });
+  expect(() =&gt;
+    expect(response).toBeUnprocessableEntity({
+      a: 'b'
+    })
+  ).not.toThrowError();
+});</pre></li>
+<li>Update<a id="_idIndexMarker271"/> the second guard clause to use the <strong class="source-inline">this.equals</strong> function to perform a deep equality check on the <strong class="source-inline">received.data</strong> value and the <strong class="source-inline">expected</strong> parameter. This is enough to make the <span class="No-Break">test pass:</span><pre class="source-code">
+export function toBeUnprocessableEntity(
+  received,
+  expected
+) {
+  if (received.status !== 422) {
+    ...
+  }
+  if (<strong class="bold">!this.equals(received.data, expected)</strong>) {
+    return {
+      pass: false
+    };
+  }
+  ...
+};</pre></li>
+<li>The final<a id="_idIndexMarker272"/> test is a check that partial <a id="_idIndexMarker273"/><span class="No-Break">objects match:</span><pre class="source-code">
+it('does not throw error if the provide object is a partial match', () =&gt; {
+  const response = fail(422, { a: 'b', c: 'd' });
+  expect(() =&gt;
+    expect(response).toBeUnprocessableEntity({
+      a: 'b'
+    })
+  ).not.toThrowError();
+});</pre></li>
+<li>To make that pass, we will use the <strong class="source-inline">expect.objectContaining</strong> constraint function, which can be passed into the call to <strong class="source-inline">this.equals</strong>. Start by importing the <strong class="source-inline">expect</strong> object at the top of the <span class="No-Break">test file:</span><pre class="source-code">
+import { expect } from 'vitest';</pre></li>
+<li>Then, update the guard class to wrap the <strong class="source-inline">expected</strong> value in a call to <strong class="source-inline">expect.objectContaining</strong>, <span class="No-Break">as shown:</span><pre class="source-code">
+if (
+  !this.equals(
+    received.data,
+    <strong class="bold">expect.objectContaining(expected)</strong>
+  )
+) {
+  ...
+}</pre></li>
+<li>Finally, if<a id="_idIndexMarker274"/> you run tests now, you’ll find the <a id="_idIndexMarker275"/>very first test fails because the value of <strong class="source-inline">expected</strong> is <strong class="source-inline">undefined</strong>, and <strong class="source-inline">expect.objectContaining</strong> doesn’t like that. To fix the issue, set a default value for the <strong class="source-inline">expected</strong> argument, <span class="No-Break">like this:</span><pre class="source-code">
+export function toBeUnprocessableEntity(
+  received,
+  expected<strong class="bold"> = {}</strong>
+) {
+  ...
+}</pre></li>
+</ol>
+<p>You’ve now seen how to test-drive a matcher function. The next section focuses on improving the error messages that are displayed when a <span class="No-Break">failure occurs.</span></p>
+<h1 id="_idParaDest-108"><a id="_idTextAnchor107"/>Providing extra information in failure messages</h1>
+<p>This <a id="_idIndexMarker276"/>section improves the detailed information that is presented to the developer when a test fails. The purpose of this extra information is to help pinpoint the issue with the application code so that the developer isn’t left scratching their head about what <span class="No-Break">went wrong.</span></p>
+<p><span class="No-Break">Let’s begin:</span></p>
+<ol>
+<li>Add the next test, which checks that a basic message is shown when the response bodies do <span class="No-Break">not match:</span><pre class="source-code">
+it('returns a message if the provided object does not match', () =&gt; {
+  const response = fail(422, { a: 'b' });
+  expect(() =&gt;
+    expect(response).toBeUnprocessableEntity({
+      c: 'd'
+    })
+  ).toThrowError(/Response body was not equal/);
+});</pre></li>
+<li>To make<a id="_idIndexMarker277"/> that pass, add the <strong class="source-inline">message</strong> property to the second guard clause <strong class="source-inline">return</strong> value. We’ll expand on this in the <span class="No-Break">next test:</span><pre class="source-code">
+if (!this.equals(...)) {
+  return {
+    pass: false<strong class="bold">,</strong>
+    <strong class="bold">message: () =&gt; 'Response body was not equal'</strong>
+  };
+}</pre></li>
+<li>Vitest includes a built-in object <strong class="source-inline">diff</strong> helper that will print out a colorful diff. Colors are added into the text string using ANSI color codes, which the Terminal will decipher and use to switch on and off colors. The presence of these codes means that checking the text content within the <strong class="source-inline">toThrowError</strong> matcher is not straightforward. The following test shows a pragmatic way of checking the same thing in a simpler way, by checking that both the <strong class="source-inline">c</strong> and <strong class="source-inline">a</strong> properties appear somewhere in <span class="No-Break">the output:</span><pre class="source-code">
+it('includes a diff if the provided object does not match', () =&gt; {
+  const response = fail(422, { a: 'b' });
+  expect(() =&gt;
+    expect(response).toBeUnprocessableEntity({
+      c: 'd'
+    })
+  ).toThrowError('c:');
+  expect(() =&gt;
+    expect(response).toBeUnprocessableEntity({
+      c: 'd'
+    })
+  ).toThrowError('a:');
+});</pre></li>
+<li>To make<a id="_idIndexMarker278"/> that pass, we’ll append the diff onto the end of <strong class="source-inline">message</strong> that we’re already printing. First, import the <strong class="source-inline">EOL</strong> constant from Node.js’s <strong class="source-inline">os</strong> module, which gives us the current <span class="No-Break">platform’s line-ending:</span><pre class="source-code">
+import { EOL } from 'os';</pre></li>
+<li>In the matcher code, update the second guard clause’s <strong class="source-inline">message</strong> property to use the <strong class="source-inline">this.utils.diff</strong> function to print the diff of the <strong class="source-inline">expected</strong> and <span class="No-Break"><strong class="source-inline">received.data</strong></span><span class="No-Break"> objects:</span><pre class="source-code">
+return {
+  pass: false,
+  message: () =&gt;
+    `Response body was not equal:` + EOL +
+    this.utils.diff(expected, received.data)
+};</pre></li>
+</ol>
+<p>That completes <a id="_idIndexMarker279"/>the display of detailed error information. We’ll finish off our matcher in the next section by ensuring it works nicely when used in a <span class="No-Break">negated sense.</span></p>
+<h1 id="_idParaDest-109"><a id="_idTextAnchor108"/>Implementing the negated matcher</h1>
+<p>Negating a matcher<a id="_idIndexMarker280"/> is a tricky business, mainly because negated <a id="_idIndexMarker281"/>matchers can have confusing meanings. For example, what does the following <span class="No-Break">expectation mean?</span></p>
+<pre class="source-code">
+expect(result).not.toBeUnprocessableEntity({
+  error: 'An unknown ID was provided.'
+});</pre>
+<p>Presumably, it should fail if the response is <strong class="source-inline">422</strong> and the response body matches the object provided. But should it also fail if the response is, say, a <strong class="source-inline">500</strong> or <strong class="source-inline">200</strong> response? If that was what was expected, wouldn’t it be enough to <span class="No-Break">write this?</span></p>
+<pre class="source-code">
+expect(result).not.toBeUnprocessableEntity();</pre>
+<p>I find that when writing matchers for domain-specific ideas, negated matchers are best avoided, or at least restricted in their use. However, to show how it’s done, let’s carry on with <span class="No-Break">the matcher.</span></p>
+<p>When we negate the matcher, the Vitest test runner will fail the test if the matcher returns a <strong class="source-inline">pass</strong> value of <strong class="source-inline">true</strong>. We have exactly one scenario where this occurs, as all our guard clauses return a <strong class="source-inline">pass</strong> value of <strong class="source-inline">false</strong>. So, all these remaining tests simply check the <strong class="source-inline">message</strong> property in <span class="No-Break">this case.</span></p>
+<p>Let’s start by creating a nested <span class="No-Break"><strong class="source-inline">describe</strong></span><span class="No-Break"> block:</span></p>
+<ol>
+<li>Add a nested <strong class="source-inline">describe</strong> block named simply <strong class="source-inline">not</strong>, and add the <span class="No-Break">first test:</span><pre class="source-code">
+describe('not', () =&gt; {
+  it('returns a message if the status is 422 with the
+  same body', () =&gt; {
+    const response = fail(422, { a: 'b' });
+    expect(() =&gt;
+      expect(response).not.toBeUnprocessableEntity({
+        a: 'b'
+      })
+    ).toThrowError(
+      /Expected non-422 status code but got 422/
+    );
+  });
+});</pre></li>
+<li>To make that <a id="_idIndexMarker282"/>pass, head to the bottom of the matcher and add the basic <strong class="source-inline">message</strong> property value to the last <strong class="source-inline">return</strong> value in the function, <span class="No-Break">as shown:</span><pre class="source-code">
+return {
+  pass: true<strong class="bold">,</strong>
+  <strong class="bold">message: () =&gt; 'Expected non-422 status code but got 422'</strong>
+};</pre></li>
+<li>We can improve upon that by ensuring that the actual <strong class="source-inline">response</strong> body is returned in the message. Add the <span class="No-Break">next test:</span><pre class="source-code">
+it('includes with the received response body in the message', () =&gt; {
+  const response = fail(422, { a: 'b' });
+  expect(() =&gt;
+    expect(response).not.toBeUnprocessableEntity({
+      a: 'b'
+    })
+  ).toThrowError(/"a": "b"/);
+});</pre></li>
+<li>To make<a id="_idIndexMarker283"/> that pass, you can make use of the <strong class="source-inline">this.utils.stringify</strong> utility function, which does all the hard work <span class="No-Break">for you:</span><pre class="source-code">
+return {
+  pass: true,
+  <strong class="bold">message: () =&gt;</strong>
+    <strong class="bold">`Expected non-422 status code but got 422 with</strong>
+<strong class="bold">      </strong><strong class="bold">body:` + EOL +</strong>
+    <strong class="bold">this.utils.stringify(received.data)</strong>
+};</pre></li>
+<li>Finally, we need to be careful about the case when no expected object is passed in. When this happens, the actual body isn’t relevant for the developer since, by omitting it from the expectation, they have expressed that they aren’t interested <span class="No-Break">in it:</span><pre class="source-code">
+it('returns a negated message for a non-422 status with no body', () =&gt; {
+  const response = fail(422);
+  expect(() =&gt;
+    expect(response).not.toBeUnprocessableEntity()
+  ).toThrowError(
+    'Expected non-422 status code but got 422'
+  );
+});</pre></li>
+<li>To make <a id="_idIndexMarker284"/>that pass, add a third guard clause, <span class="No-Break">as shown:</span><pre class="source-code">
+if (!received.data) {
+  return {
+    pass: true,
+    message: () =&gt;
+      'Expected non-422 status code but got 422'
+  };
+}</pre></li>
+</ol>
+<p>You’ve now test-driven a complete matcher, with useful error messages and support for the negated form. Next, it’s time to make use of it in our existing <span class="No-Break">test suites.</span></p>
+<h1 id="_idParaDest-110"><a id="_idTextAnchor109"/>Updating existing tests to use the matcher</h1>
+<p>In this final section, we’ll <a id="_idIndexMarker285"/>use the matcher we’ve<a id="_idIndexMarker286"/> just built to simplify the form validation error <span class="No-Break">test suite.</span></p>
+<p>Let’s <span class="No-Break">get started:</span></p>
+<ol>
+<li>First, register the matcher for our test runs by adding an <strong class="source-inline">import</strong> statement and call to <strong class="source-inline">expect.extend</strong> in the <span class="No-Break"><strong class="source-inline">src/vitest/registerMatchers.js</strong></span><span class="No-Break"> file:</span><pre class="source-code">
+...
+import {
+  toBeUnprocessableEntity
+} from './src/matchers/toBeUnprocessableEntity.js';
+...
+expect.extend({ toBeUnprocessableEntity });</pre></li>
+<li>Then, in <strong class="source-inline">src/routes/birthdays/page.server.test.js</strong>, find the nested <strong class="source-inline">describe</strong> block with the description <strong class="source-inline">when the name is not provided</strong>. It contains<a id="_idIndexMarker287"/> four tests. Leave the<a id="_idIndexMarker288"/> first one in place, and replace the last three tests with the <span class="No-Break">following test:</span><pre class="source-code">
+describe('when the name is not provided', () =&gt; {
+  ...
+  it('does not save the birthday', ...);
+  <strong class="bold">it('returns a complete error response', () =&gt; {</strong>
+  <strong class="bold">  expect(result).toBeUnprocessableEntity({</strong>
+  <strong class="bold">    error: 'Please provide a name.',</strong>
+  <strong class="bold">    </strong><strong class="bold">dob: '2009-02-02'</strong>
+  <strong class="bold">  });</strong>
+  });
+});</pre></li>
+<li>Then, do the same for the nested <strong class="source-inline">describe</strong> block with the description <strong class="source-inline">when the date of birth is in the wrong format</strong>, replacing the last three tests with <a id="_idIndexMarker289"/>the <span class="No-Break">test shown:</span><pre class="source-code">
+describe('when the date of birth is in the wrong format', () =&gt; {
+  ...
+  it('does not save the birthday', ...);
+  <strong class="bold">it('returns a complete error response', () =&gt; {</strong>
+  <strong class="bold">  expect(result).toBeUnprocessableEntity({</strong>
+  <strong class="bold">    error:</strong>
+  <strong class="bold">      </strong><strong class="bold">'Please provide a date of birth in the YYYY-</strong>
+<strong class="bold">          MM-DD format.',</strong>
+  <strong class="bold">    name: 'Hercules',</strong>
+  <strong class="bold">    dob: 'unknown'</strong>
+    });
+  });
+});</pre></li>
+<li>Do<a id="_idIndexMarker290"/> exactly the same thing with the <strong class="source-inline">when the id is </strong><span class="No-Break"><strong class="source-inline">unknown</strong></span><span class="No-Break"> context:</span><pre class="source-code">
+describe('when the id is unknown', () =&gt; {
+  ...
+  it('does not save the birthday', ...);
+  <strong class="bold">it('returns a complete error message', () =&gt; {</strong>
+  <strong class="bold">  expect(result).toBeUnprocessableEntity({</strong>
+  <strong class="bold">    </strong><strong class="bold">error: 'An unknown ID was provided.'</strong>
+  <strong class="bold">  });</strong>
+  <strong class="bold">});</strong>
+});</pre></li>
+<li>Next, there <a id="_idIndexMarker291"/>are a couple of tests <a id="_idIndexMarker292"/>specifically for ensuring <strong class="source-inline">id</strong> is returned. Update the expectations for them both, <span class="No-Break">as shown:</span><pre class="source-code">
+it('returns the id when an empty name is provided', async () =&gt; {
+  ...
+  <strong class="bold">expect(result).toBeUnprocessableEntity({</strong>
+    <strong class="bold">id: storedId()</strong>
+  <strong class="bold">});</strong>
+});
+...
+it('returns the id when an empty date of birth is provided', async () =&gt; {
+  ...
+  <strong class="bold">expect(result).toBeUnprocessableEntity({</strong>
+    <strong class="bold">id: storedId()</strong>
+  <strong class="bold">});</strong>
+});</pre></li>
+</ol>
+<p>And that completes the changes. Make sure to run all tests and check that everything is passing. Take a step back <a id="_idIndexMarker293"/>and look at how much <a id="_idIndexMarker294"/>clearer and simpler your tests <span class="No-Break">have become.</span></p>
+<h1 id="_idParaDest-111"><a id="_idTextAnchor110"/>Summary</h1>
+<p>This chapter has shown you how to build a custom matcher to simplify your test expectations. It also discussed the importance of test-driving <span class="No-Break">matcher code.</span></p>
+<p>Your unit test files act as a specification of your software. It’s imperative that these files are clear and concise so that the specifications are clear. Sometimes, writing custom matchers can help you achieve <span class="No-Break">that clarity.</span></p>
+<p>Why do we test-drive matcher implementations? Because almost all matchers have branching logic – sometimes they’ll pass and sometimes they’ll fail – and you want to be sure that the right branches are used at the <span class="No-Break">right times.</span></p>
+<p>In the next chapter, we’ll switch back to refactoring our application code, with the intention of improving <span class="No-Break">its testability.</span></p>
+</div>
+</div></body></html>

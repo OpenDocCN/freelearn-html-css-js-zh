@@ -1,0 +1,431 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer021">
+<h1 class="chapter-number" id="_idParaDest-71"><a id="_idTextAnchor070"/>5</h1>
+<h1 id="_idParaDest-72"><a id="_idTextAnchor071"/>Validating Form Data</h1>
+<p>Now that our system is accepting new birthdays, we need to validate the data coming in. In this chapter, we’ll see how we can test-drive the SvelteKit <strong class="source-inline">fail</strong> function to return useful information to the user so that they can correct <span class="No-Break">any errors.</span></p>
+<p><span class="No-Break"><em class="italic">Figure 5</em></span><em class="italic">.1</em> shows what is displayed to the user after the server has deemed their date of birth invalid. Notice how the invalid form data is maintained so that the user has a chance to <span class="No-Break">correct it:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer020">
+<img alt="Figure 5.1 – A validation error is shown when entering an invalid date" height="828" src="image/Figure_5.1_B19611.jpg" width="1094"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 5.1 – A validation error is shown when entering an invalid date</p>
+<p>This chapter covers the following <span class="No-Break">key topics:</span></p>
+<ul>
+<li>Adding a Playwright test for validating <span class="No-Break">form errors</span></li>
+<li>Displaying SvelteKit <span class="No-Break">form errors</span></li>
+<li>Validating data in the <span class="No-Break">form action</span></li>
+<li>Clearing the data store <span class="No-Break">between tests</span></li>
+</ul>
+<p>By the end of the chapter, you’ll have a good understanding of how to implement form validation using a <span class="No-Break">test-driven approach.</span></p>
+<h1 id="_idParaDest-73"><a id="_idTextAnchor072"/>Technical requirements</h1>
+<p>The code for the chapter can be found online <span class="No-Break">at </span><a href="https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter05/Start"><span class="No-Break">https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter05/Start</span></a><span class="No-Break">.</span></p>
+<h1 id="_idParaDest-74"><a id="_idTextAnchor073"/>Adding a Playwright test for validating form errors</h1>
+<p>In this section we’ll write <a id="_idIndexMarker136"/>another Playwright test and then do some <a id="_idIndexMarker137"/>up-front planning for the Vitest unit tests <span class="No-Break">we’ll need.</span></p>
+<p>Here’s the next end-to-end test, which you can now add to <strong class="source-inline">tests/birthdays.test.js</strong>. It fills in the birthday form, just as in the previous chapter, but this time, the <strong class="bold">Date of birth</strong> field value is <strong class="source-inline">invalid</strong>: it is, literally, the word <strong class="source-inline">invalid</strong>, which is not a valid date <span class="No-Break">of birth:</span></p>
+<pre class="source-code">
+test('does not save a birthday if there are validation errors', async ({
+  page
+}) =&gt; {
+  await page.goto('/birthdays');
+  await page.getByLabel('Name').fill('Demeter');
+  await page
+    .getByLabel('Date of birth')
+    .fill('invalid');
+  await page.getByRole('button').click();
+  await expect(
+    page.getByText('Demeter')
+  ).not.toBeVisible();
+  await expect(
+    page.getByText(
+      'Please provide a date of birth in the YYYY-MM-DD
+       format.'
+    )
+  ).toBeVisible();
+});</pre>
+<p>Let’s think about the error message for a second: <strong class="source-inline">Please provide a date of birth in the YYYY-MM-DD format</strong>. In the interest of brevity, we’re not going fully test-drive this; rather, we’ll just accept anything that can be parsed by the in-built <strong class="source-inline">Date.parse</strong> function. It turns <a id="_idIndexMarker138"/>out that a lot of strings can be parsed by <span class="No-Break">this function.</span></p>
+<p>Beyond that, what else will be <a id="_idIndexMarker139"/>needed to make this work? Our form action should use SvelteKit’s <strong class="source-inline">fail</strong> function to signal to SvelteKit that the form needs to be<a id="_idIndexMarker140"/> re-evaluated. We call it with an <strong class="bold">HTTP response code</strong>, such as <strong class="source-inline">422</strong> – the <em class="italic">Unprocessable entity</em> error code – meaning the request data <span class="No-Break">was invalid.</span></p>
+<p>The <strong class="source-inline">fail</strong> function can also return an object that is passed back to the client. It is given to our page component as a <strong class="source-inline">form</strong> prop. The object is a plain JavaScript object that we control. We can return whatever we want in it: all we have to do is call SvelteKit’s <strong class="source-inline">fail</strong> function with the object, and it will return that to <span class="No-Break">the client.</span></p>
+<p class="callout-heading">Valid return objects</p>
+<p class="callout">The return object is only valid if it can be serialized into a string and reconstructed in the browser. Functions can’t be serialized, so they can’t be <span class="No-Break">passed back.</span></p>
+<p>We can include an <strong class="source-inline">error</strong> property that returns an error message. We can also return the <strong class="source-inline">name</strong> and <strong class="source-inline">dob</strong> properties so that they can be presented to the <span class="No-Break">user again.</span></p>
+<p>An example object looks <span class="No-Break">like this:</span></p>
+<pre class="source-code">
+{
+  name: 'Demeter',
+  dob: 'invalid',
+  error: 'Please provide a date of birth in the YYYY-MM-DD
+          format.'
+}</pre>
+<p>In the remaining sections, we’ll <a id="_idIndexMarker141"/>start by updating the <strong class="source-inline">BirthdayForm</strong> component <a id="_idIndexMarker142"/>to make use of this new <strong class="source-inline">form</strong> prop. Then, we’ll update the form action to return the validation errors for two different validation errors: an empty name and an invalid date <span class="No-Break">of birth.</span></p>
+<h1 id="_idParaDest-75"><a id="_idTextAnchor074"/>Displaying SvelteKit form errors</h1>
+<p>In this section, we’ll add tests<a id="_idIndexMarker143"/> and functionality to support passing in a new <strong class="source-inline">form</strong> prop into the <span class="No-Break"><strong class="source-inline">BirthayForm</strong></span><span class="No-Break"> component.</span></p>
+<p>Let’s start with a <span class="No-Break">new test:</span></p>
+<ol>
+<li>In the <strong class="source-inline">src/routes/birthdays/BirthdayForm.test.js</strong> file, add a new nested <strong class="source-inline">describe</strong> block with a single test, as shown in the following code snippet. It checks that if the <strong class="source-inline">error</strong> property is set on the <strong class="source-inline">form</strong> prop, then that error must be displayed somewhere on <span class="No-Break">the page:</span><pre class="source-code">
+describe('validation errors', () =&gt; {
+  it('displays a message', () =&gt; {
+    render(BirthdayForm, {
+      form: {
+        error: 'An error'
+      }
+    });
+    expect(
+      screen.queryByText('An error')
+    ).toBeVisible();
+  });
+});</pre></li>
+<li>Make that pass in <strong class="source-inline">src/routes/birthdays/BirthdayForm.svelte</strong>, first by adding an <strong class="source-inline">export</strong> statement for the new <strong class="source-inline">form</strong> prop and then by adding a new <strong class="source-inline">p</strong> element with<a id="_idIndexMarker144"/> the error text. You can also add the <strong class="source-inline">&lt;style&gt;</strong> element at the bottom, although this isn’t necessary for the test <span class="No-Break">to pass:</span><pre class="source-code">
+&lt;script&gt;
+  export let form;
+&lt;/script&gt;
+&lt;p class="error"&gt;{form.error}&lt;/p&gt;
+&lt;form&gt;
+  ...
+&lt;/form&gt;
+&lt;style&gt;
+  .error {
+    color: red;
+  }
+&lt;/style&gt;</pre></li>
+<li>If you run tests now, you’ll see we’ve broken a bunch of other tests by requiring the <strong class="source-inline">form</strong> prop to have an object value. But for the <em class="italic">create</em> mode of this component, the <strong class="source-inline">form</strong> prop should remain undefined. Update the <strong class="source-inline">BirthdayForm</strong> component <a id="_idIndexMarker145"/>as shown in the following <span class="No-Break">code block:</span><pre class="source-code">
+&lt;script&gt;
+  export let form<strong class="bold"> = undefined;</strong>
+&lt;/script&gt;
+<strong class="bold">{#if form?.error}</strong>
+  &lt;p class="error"&gt;{form.error}&lt;/p&gt;
+<strong class="bold">{/if}</strong>
+...</pre></li>
+<li>Let’s add the next test in the same <strong class="source-inline">describe</strong> block. This test checks that if an error occurs, we re-populate the <strong class="source-inline">name</strong> text field with the same value as was <span class="No-Break">passed in:</span><pre class="source-code">
+describe('validation errors', () =&gt; {
+  ...
+  it('keeps the previous name value when an error
+  occurs', () =&gt; {
+    render(BirthdayForm, {
+      form: {
+        name: 'Hercules',
+        error: 'Some awful error message'
+      }
+    });
+    expect(
+      screen.queryByLabelText('Name')
+    ).toHaveValue('Hercules');
+  });
+});</pre></li>
+<li>To make that pass, simply add a <strong class="source-inline">value</strong> attribute value to the <span class="No-Break"><strong class="source-inline">input</strong></span><span class="No-Break"> field:</span><pre class="source-code">
+&lt;input type="text" name="name" <strong class="bold">value={form?.name}</strong> /&gt;</pre></li>
+<li>Now repeat that<a id="_idIndexMarker146"/> for the <span class="No-Break"><strong class="source-inline">dob</strong></span><span class="No-Break"> field:</span><pre class="source-code">
+describe('validation errors', () =&gt; {
+  ...
+  it('keeps the previous dob value when an error
+  occurs', () =&gt; {
+    render(BirthdayForm, {
+      form: {
+        dob: '1994-01-01',
+        error: 'Some awful error message'
+      }
+    });
+    expect(
+      screen.queryByLabelText('Date of birth')
+    ).toHaveValue('1994-01-01');
+  });
+});</pre></li>
+<li>Make that pass by adding the <strong class="source-inline">value</strong> attribute on the <span class="No-Break"><strong class="source-inline">dob</strong></span><span class="No-Break"> field:</span><pre class="source-code">
+&lt;input type="text" name="dob" <strong class="bold">value={form?.dob}</strong> /&gt;</pre></li>
+<li>If you run the app now, you’ll see that in <em class="italic">create</em> mode, the <strong class="source-inline">undefined</strong> string value now appears for the <strong class="bold">Name</strong> and <strong class="bold">Date of birth</strong> fields. That’s because <strong class="source-inline">form</strong> is <strong class="source-inline">undefined</strong> in <em class="italic">create</em> mode, and therefore <strong class="source-inline">value</strong> is <strong class="source-inline">undefined</strong>. And the browser converts that to a string, giving <strong class="source-inline">undefined</strong> in the text box. To fix that, we need to specify an initial value for the fields. In the <strong class="source-inline">BirthdayForm</strong> test<a id="_idIndexMarker147"/> suite, find the <strong class="source-inline">describe</strong> block for the <strong class="source-inline">name</strong> field and add a second test into it, as shown in the following <span class="No-Break">code block:</span><pre class="source-code">
+describe('name field', () =&gt; {
+  ...
+  it('initially has a blank value', () =&gt; {
+    render(BirthdayForm);
+    expect(
+      screen.getByLabelText('Name')
+    ).toHaveValue('');
+  });
+});</pre></li>
+<li>To make that pass, update the <strong class="source-inline">value</strong> attribute, <span class="No-Break">like this:</span><pre class="source-code">
+&lt;input
+  type="text"
+  name="name"
+  <strong class="bold">value={form?.name || ''}</strong>
+/&gt;</pre></li>
+<li>Then, repeat that for <strong class="source-inline">date of birth field</strong>, starting with the test <span class="No-Break">shown here:</span><pre class="source-code">
+describe('date a birth field', () =&gt; {
+  ...
+  it('initially has a blank value', () =&gt; {
+    render(BirthdayForm);
+    expect(
+      screen.getByLabelText('Name')
+    ).toHaveValue('');
+  });
+});</pre></li>
+<li>Finally, make that test <a id="_idIndexMarker148"/>pass by setting the <strong class="source-inline">value</strong> attribute on the <strong class="source-inline">dob</strong> field in the <span class="No-Break">same way:</span><pre class="source-code">
+&lt;input
+  type="text"
+  name="dob"
+  <strong class="bold">value={form?.dob || ''}</strong>
+/&gt;</pre></li>
+</ol>
+<p>That completes the <strong class="source-inline">BirthdayForm</strong> component changes. Next, we need to get the <strong class="source-inline">form</strong> prop into <strong class="source-inline">BirthdayForm</strong> from the <span class="No-Break">page component.</span></p>
+<h2 id="_idParaDest-76"><a id="_idTextAnchor075"/>Passing the form data through the page component</h2>
+<p>The <strong class="source-inline">BirthdayForm</strong> component<a id="_idIndexMarker149"/> is not the <em class="italic">root</em> route component: it is<a id="_idIndexMarker150"/> instantiated as a child component from the component <span class="No-Break">in </span><span class="No-Break"><strong class="source-inline">+page.svelte</strong></span><span class="No-Break">.</span></p>
+<p>Follow these steps to ensure that the <strong class="source-inline">form</strong> prop is received by the <strong class="source-inline">page</strong> component and passed into the <span class="No-Break"><strong class="source-inline">BirthdayForm</strong></span><span class="No-Break"> component:</span></p>
+<ol>
+<li>In <strong class="source-inline">src/routes/birthdays/page.test.js</strong>, add a new test at the bottom of the test suite, as<a id="_idIndexMarker151"/> shown in the following code snippet. It checks that if the <strong class="source-inline">form</strong> prop is sent with the <strong class="source-inline">error</strong> prop, the <strong class="source-inline">error</strong> text <span class="No-Break">appears onscreen:</span><pre class="source-code">
+it('passes any form information to the BirthdayForm', () =&gt; {
+  render(Page, {
+    data: { birthdays },
+    form: { error: 'An error' }
+  });
+  expect(
+    screen.queryByText('An error')
+  ).toBeVisible();
+});</pre></li>
+<li>Because the page<a id="_idIndexMarker152"/> component is already<a id="_idIndexMarker153"/> rendering <strong class="source-inline">BirthdayForm</strong>, it turns out the simplest way to make this test pass is to pass the <strong class="source-inline">form</strong> prop into <strong class="source-inline">BirthdayForm</strong>. In <a href="B19611_12.xhtml#_idTextAnchor134"><span class="No-Break"><em class="italic">Chapter 12</em></span></a><em class="italic">, Using Component Mocks </em><em class="italic">to</em><em class="italic"> Clarify Tests</em>, we’ll see how this test can be rewritten using component mocks. For now, though, in <strong class="source-inline">src/routes/birthdays/+page.svelte</strong>, update the component to declare the <strong class="source-inline">form</strong> prop, and then pass it directly <span class="No-Break">into </span><span class="No-Break"><strong class="source-inline">BirthdayForm</strong></span><span class="No-Break">:</span><pre class="source-code">
+&lt;script&gt;
+  ...
+<strong class="bold">  export let form = undefined;</strong>
+&lt;/script&gt;
+...
+&lt;BirthdayForm <strong class="bold">{form}</strong> /&gt;</pre></li>
+</ol>
+<p>You’ve now learned how to use automated tests to drive the display of <span class="No-Break">form errors.</span></p>
+<p>In the next section, we’ll write tests for the form action that occurs on the <span class="No-Break">server side.</span></p>
+<h1 id="_idParaDest-77"><a id="_idTextAnchor076"/>Validating data in the form action</h1>
+<p>Now we’re all set up for errors on the<a id="_idIndexMarker154"/> client, but we need the server code to actually do the validation checks. We’ll add two checks: one to check that the name is not empty, and one to check that the date can be parsed into a valid <span class="No-Break"><strong class="source-inline">Date</strong></span><span class="No-Break"> object.</span></p>
+<p>Each of these checks needs four unit tests: the first to ensure we break early without adding the birthday; the next to check the <strong class="source-inline">422</strong> error code; then one to check the error message text; and finally, one to check that the original data is passed back. (In <a href="B19611_08.xhtml#_idTextAnchor100"><span class="No-Break"><em class="italic">Chapter 8</em></span></a>, <em class="italic">Creating Matchers to Simplify Tests</em>, you’ll see how to build a matcher that will roll up three of these tests into one <span class="No-Break">single test.)</span></p>
+<p class="callout-heading">The beforeEach function</p>
+<p class="callout">This section introduces the <strong class="source-inline">beforeEach</strong> function, which is used to run setup code before each of the tests within the <strong class="source-inline">describe</strong> block. It is a useful tool for reducing duplication within your test suites. You can consider it as<a id="_idIndexMarker155"/> part of the <strong class="bold">Arrange</strong> phase of <span class="No-Break">your tests.</span></p>
+<p class="callout">The <strong class="source-inline">beforeAll</strong>, <strong class="source-inline">afterEach</strong>, and <strong class="source-inline">afterAll</strong> functions do similar jobs but are used less frequently. We used the <strong class="source-inline">afterEach</strong> function for initialization in <a href="B19611_01.xhtml#_idTextAnchor015"><span class="No-Break"><em class="italic">Chapter 1</em></span></a>,<em class="italic"> </em><em class="italic">Setting up for Testing</em>, and we’ll use <strong class="source-inline">beforeAll</strong> in <a href="B19611_08.xhtml#_idTextAnchor100"><span class="No-Break"><em class="italic">Chapter 8</em></span></a>, <em class="italic">Creating Matchers to </em><span class="No-Break"><em class="italic">Simplify Tests</em></span><span class="No-Break">.</span></p>
+<p>Let’s <span class="No-Break">get started:</span></p>
+<ol>
+<li>In <strong class="source-inline">src/routes/birthdays/page.server.test.js</strong>, add a new import for the <strong class="source-inline">beforeEach</strong> function. We’ll use this to perform the setup for an entire set <span class="No-Break">of tests:</span><pre class="source-code">
+import {
+  describe,
+  it,
+  expect,
+<strong class="bold">  beforeEach</strong>
+} from 'vitest';</pre></li>
+</ol>
+<p>Then add a nested <strong class="source-inline">'validation errors'</strong> describe block, together with another nested describe<a id="_idIndexMarker156"/> block entitled <strong class="source-inline">'when the name is not provided'</strong>, as shown here. This includes the first <span class="No-Break">test, too:</span></p>
+<pre class="source-code">
+describe('/birthdays - default action', () =&gt; {
+  ...
+  describe('validation errors', () =&gt; {
+    describe('when the name is not provided', () =&gt; {
+      let result;
+      beforeEach(async () =&gt; {
+        const request = createFormDataRequest({
+          name: '',
+          dob: '2009-02-02'
+        });
+        result = await actions.default({
+          request
+        });
+      });
+      it('does not save the birthday', () =&gt; {
+        expect(load().birthdays).not.toContainEqual(
+          expect.objectContaining({
+            name: '',
+            dob: '2009-02-02'
+          })
+        );
+      });
+    });
+  });
+});</pre>
+<p class="callout-heading">The when… context</p>
+<p class="callout">The <strong class="source-inline">when</strong> style of naming the <strong class="source-inline">describe</strong> contexts is common when a group of tests belongs to a specific starting scenario, such as the one shown in the preceding scenario. They often have a <strong class="source-inline">beforeEach</strong> block that contains a setup that is common to all <span class="No-Break">the tests.</span></p>
+<p class="callout">It can sometimes be tempting to have multiple levels of nesting, but for simplicity, it’s best to keep a single level of the <strong class="source-inline">when...</strong> context blocks. The preceding example shows an outer block named <strong class="source-inline">'validation errors'</strong>, but that is for organization only and contains none of its <span class="No-Break">own setup.</span></p>
+<ol>
+<li value="2">Then, in the <strong class="source-inline">src/routes/birthdays/+page.server.js</strong> file, update <strong class="source-inline">actions</strong> with a<a id="_idIndexMarker157"/> new <strong class="bold">guard clause</strong> that returns from<a id="_idIndexMarker158"/> the function early if the <strong class="source-inline">name</strong> field <span class="No-Break">is empty:</span><pre class="source-code">
+export const actions = {
+   default: async ({ request }) =&gt; {
+     const data = await request.formData();
+<strong class="bold">    const name = data.get('name');</strong>
+<strong class="bold">    if (empty(name)) {</strong>
+<strong class="bold">      return;</strong>
+<strong class="bold">    }</strong>
+    ...
+  }
+};</pre></li>
+<li>For that to work, you’ll <a id="_idIndexMarker159"/>need a definition of the <strong class="source-inline">empty</strong> function, which you can define <span class="No-Break">as shown:</span><pre class="source-code">
+const empty = (value) =&gt;
+  value === undefined ||
+  value === null ||
+  value.trim() === '';</pre></li>
+</ol>
+<p class="callout-heading">Taking shortcuts</p>
+<p class="callout">You might observe that we haven’t fully tested the <strong class="source-inline">empty</strong> function, such as what happens if a line of spaces is sent in. To avoid having to write even more tests within this chapter, I’ve not written out those tests. If this were a real application, I’d move <strong class="source-inline">empty</strong> to a file of its own and then provide a whole bunch of unit tests that run directly <span class="No-Break">against it.</span></p>
+<ol>
+<li value="4">For the next test, we’ll write a test that ensures the form returns a <strong class="source-inline">422</strong> response. Add this test into the same nested <span class="No-Break"><strong class="source-inline">describe</strong></span><span class="No-Break"> block:</span><pre class="source-code">
+it('returns a 422', () =&gt; {
+  expect(result.status).toEqual(422);
+});</pre></li>
+<li>To make that pass, first add the following <strong class="source-inline">import</strong> statement in the <span class="No-Break"><strong class="source-inline">src/routes/birthdays/+page.server.js</strong></span><span class="No-Break"> file:</span><pre class="source-code">
+import { fail } from '@sveltejs/kit';</pre></li>
+<li>Then update the guard clause to return a value <span class="No-Break">using </span><span class="No-Break"><strong class="source-inline">fail</strong></span><span class="No-Break">:</span><pre class="source-code">
+if (empty(name)) {
+  return <strong class="bold">fail(422);</strong>
+}</pre></li>
+<li>Now, still in the same nested <strong class="source-inline">describe</strong> block, add a test for the <span class="No-Break">error message:</span><pre class="source-code">
+it('returns a useful message', () =&gt; {
+  expect(result.data.error).toEqual(
+    'Please provide a name.'
+  );
+});</pre></li>
+<li>Make that pass by<a id="_idIndexMarker160"/> adding a <strong class="source-inline">return</strong> object as the second parameter to the <span class="No-Break"><strong class="source-inline">fail</strong></span><span class="No-Break"> call:</span><pre class="source-code">
+if (empty(name)) {
+<strong class="bold">  return fail(422, {</strong>
+<strong class="bold">   error: 'Please provide a name.'</strong>
+<strong class="bold">  });</strong>
+}</pre></li>
+<li>Then add the final test for this name check, which is that we continue to pass the <strong class="source-inline">dob</strong> field value <span class="No-Break">back, too:</span><pre class="source-code">
+it('returns the data back', () =&gt; {
+  expect(result.data).toContain({
+    dob: '2009-02-02'
+  });
+});</pre></li>
+<li>Complete the guard <a id="_idIndexMarker161"/>clause, as shown in the following code snippet. For this, you’ll need to pull out the <strong class="source-inline">dob</strong> field in the same way you did <span class="No-Break">with </span><span class="No-Break"><strong class="source-inline">name</strong></span><span class="No-Break">:</span><pre class="source-code">
+const name = data.get('name');
+<strong class="bold">const dob = data.get('dob');</strong>
+...
+if (empty(name)) {
+  return fail(422, {
+<strong class="bold">    dob,</strong>
+    error: 'Please provide a name.'
+  });
+}</pre></li>
+<li>Now let’s start on the second check for a <strong class="source-inline">date</strong> value that can’t be parsed. This behaves exactly the same as the previous check, just with different values for the <span class="No-Break">form data:</span><pre class="source-code">
+describe('/birthdays - default action', () =&gt; {
+  ...
+  describe('validation errors', () =&gt; {
+    ...
+    describe('when the date of birth is in the wrong
+    format', () =&gt; {
+      let result;
+      beforeEach(async () =&gt; {
+        const request = createFormDataRequest({
+          name: 'Hercules',
+          dob: 'unknown'
+        });
+        result = await actions.default({
+          request
+        });
+      });
+      it('does not save the birthday', () =&gt; {
+        expect(load().birthdays).not.toContainEqual(
+          expect.objectContaining({
+            name: '',
+            dob: '2009-02-02'
+          })
+        );
+      });
+    });
+  });
+});</pre></li>
+<li>To make that pass, first define an <strong class="source-inline">invalidDob</strong> helper next to the <span class="No-Break"><strong class="source-inline">empty</strong></span><span class="No-Break"> helper:</span><pre class="source-code">
+const invalidDob = (dob) =&gt; isNaN(Date.parse(dob));</pre></li>
+<li>Then, update the <a id="_idIndexMarker162"/>form action with a new <span class="No-Break">guard clause:</span><pre class="source-code">
+export const actions = {
+   default: async ({ request }) =&gt; {
+     ...
+<strong class="bold">     if (invalidDob(dob)) {</strong>
+<strong class="bold">       return;</strong>
+<strong class="bold">     }</strong>
+  }
+};</pre></li>
+<li>Then, repeating the motions from <em class="italic">step 4</em> onwards, add a test to ensure that a <strong class="source-inline">422</strong> response <span class="No-Break">is returned:</span><pre class="source-code">
+it('returns a 422', () =&gt; {
+  expect(result.status).toEqual(422);
+});</pre></li>
+<li>To make that pass, update the <strong class="source-inline">return</strong> statement <span class="No-Break">like this:</span><pre class="source-code">
+if (invalidDob(dob)) {
+  return <strong class="bold">fail(422);</strong>
+}</pre></li>
+<li>Next, add a test for a useful message to <span class="No-Break">be returned:</span><pre class="source-code">
+it('returns a useful message', () =&gt; {
+  expect(result.data.error).toEqual(
+    'Please provide a date of birth in the YYYY-MM-DD
+     format.'
+  );
+});</pre></li>
+<li>Update the guard clause to display <span class="No-Break">that message:</span><pre class="source-code">
+if (invalidDob(dob)) {
+<strong class="bold">  return fail(422, {</strong>
+<strong class="bold">    error:</strong>
+<strong class="bold">      'Please provide a date of birth in the YYYY-MM-</strong>
+<strong class="bold">       </strong><strong class="bold">DD format.'</strong>
+<strong class="bold">  });</strong>
+}</pre></li>
+<li>For the final test, we <a id="_idIndexMarker163"/>check that <em class="italic">all</em> the data is returned, including the invalid date. This is so that the user has the opportunity to correct <span class="No-Break">the data:</span><pre class="source-code">
+it('returns all data back, including the incorrect value', () =&gt; {
+  expect(result.data).toContain({
+    name: 'Hercules',
+    dob: 'unknown'
+  });
+});</pre></li>
+<li>And make that pass by passing in the <strong class="source-inline">name</strong> and <strong class="source-inline">dob</strong> properties to the failure object. At this point, all your tests should <span class="No-Break">be passing:</span><pre class="source-code">
+if (invalidDob(dob)) {
+  return fail(422, {
+<strong class="bold">    name,</strong>
+<strong class="bold">    dob,</strong>
+    error:
+        'Please provide a date of birth in the YYYY-
+         MM-DD format.'
+  });
+}</pre></li>
+<li>Now, as a final, tiny <em class="italic">refactor</em> step, you <a id="_idIndexMarker164"/>can update the call to <strong class="source-inline">addNew</strong> so that it uses the form data values that you’ve already pulled out from <span class="No-Break">previous steps:</span><pre class="source-code">
+addNew({
+  name,
+  dob
+});</pre></li>
+</ol>
+<p>That completes test-driving the server-side validation. Your Vitest tests and the Playwright test will now pass. You can also try out the app by running the dev server (with the <strong class="source-inline">npm run dev</strong> command) and opening <span class="No-Break">your browser.</span></p>
+<p>In the final section of this chapter, we’ll fix a bug that’s crept into our <span class="No-Break">test suites.</span></p>
+<h1 id="_idParaDest-78"><a id="_idTextAnchor077"/>Clearing the data store between tests</h1>
+<p>It turns out our tests are not independent: changes<a id="_idIndexMarker165"/> to the <strong class="source-inline">db</strong> object in one test affect the other tests, too. We have to clear down our test database between each run. We can solve that by creating a <strong class="source-inline">clear</strong> function that will clear the database object, and we’ll use a <strong class="source-inline">beforeEach</strong> block to call it before <span class="No-Break">every test.</span></p>
+<p>What we need is the <strong class="source-inline">clear</strong> function that we can call directly in our tests. However, if you try to add this function to the <strong class="source-inline">+page.server.js</strong> file, you’ll get a warning from SvelteKit when you run your <span class="No-Break">Playwright tests:</span></p>
+<pre class="source-code">
+Error: Invalid export 'clear' in /birthdays (valid exports are load, prerender, csr, ssr, actions, trailingSlash, or anything with a '_' prefix)</pre>
+<p>Why does this error <a id="_idIndexMarker166"/>appear only in the Playwright tests and not the Vitest tests? Your Vitest tests do not run through the SvelteKit server code, so the framework has no opportunity to check for invalid exports. It’s only when you run tests via Playwright that you’ll see runtime issues such <span class="No-Break">as this.</span></p>
+<p>SvelteKit only wants a <strong class="source-inline">load</strong> export and an <strong class="source-inline">actions</strong> export and absolutely nothing else. So, we need to move things out of the action and into their <span class="No-Break">own file:</span></p>
+<ol>
+<li>Create a new file, <strong class="source-inline">src/lib/server/birthdayRepository.js</strong>, with the <span class="No-Break">following content:</span><pre class="source-code">
+let db = [];
+export const addNew = (item) =&gt; db.push(item);
+export const getAll = () =&gt; Array.from(db);
+export const clear = () =&gt; (db = []);</pre></li>
+<li>In <strong class="source-inline">src/routes/birthdays/+page.server.js</strong>, you can now import those, as shown in the following code block. Note the use of the <strong class="source-inline">$</strong> symbol in front of the file path, which is used to make a location that is relative to the <strong class="source-inline">src</strong> folder, which avoids us having to write <strong class="source-inline">../../</strong> before <span class="No-Break">the filename:</span><pre class="source-code">
+import {
+  addNew,
+  getAll
+} from '$lib/server/birthdayRepository.js';</pre></li>
+<li>Then delete the <strong class="source-inline">db</strong> and <strong class="source-inline">addNew</strong> functions and update the <strong class="source-inline">load</strong> function to read as follows. At this point, all your tests (except for the skipped one) should still <span class="No-Break">be passing:</span><pre class="source-code">
+export const load = () =&gt; ({
+  birthdays: <strong class="bold">getAll()</strong>
+});</pre></li>
+<li>Now you can<a id="_idIndexMarker167"/> add this new <strong class="source-inline">import</strong> statement <span class="No-Break">in </span><span class="No-Break"><strong class="source-inline">src/routes/birthdays/page.server.test.js</strong></span><span class="No-Break">:</span><pre class="source-code">
+import
+  as birthdayRepository
+from '$lib/server/birthdayRepository.js';</pre></li>
+<li>Add in the <strong class="source-inline">beforeEach</strong> statement, as shown in the following <span class="No-Break">code block:</span><pre class="source-code">
+describe('/birthdays - default action', () =&gt; {
+  <strong class="bold">beforeEach(birthdayRepository.clear);</strong>
+  ...
+});</pre></li>
+<li>Finally, in the action <strong class="source-inline">describe</strong> block, you can now also replace the use of <strong class="source-inline">load</strong> with <strong class="source-inline">birthdayRepository.getAll</strong>, which makes the test a little clearer as to what’s actually being tested: that the form action causes a new birthday to be inserted into the <span class="No-Break"><strong class="source-inline">birthdayRepository</strong></span><span class="No-Break"> object:</span><pre class="source-code">
+it('adds a new birthday into the list', async () =&gt; {
+  ...
+  expect(<strong class="bold">birthdayRepository.getAll()</strong>).toContainEqual(
+    ...
+  );
+});</pre></li>
+</ol>
+<p>In the last step, take care not to replace <em class="italic">all</em> the occurrences of <strong class="source-inline">load</strong>. In the second <strong class="source-inline">describe</strong> block, it’s the <strong class="source-inline">load</strong> function that is the function under test. Therefore, we keep those tests exactly as <span class="No-Break">they are.</span></p>
+<p>That completes all the <a id="_idIndexMarker168"/>work involved in extracting the repository module. Doing so has enabled us to introduce a <strong class="source-inline">clear</strong> function that can be used to keep our tests independent of each other. The <strong class="source-inline">beforeEach</strong> block ensures that each test starts from a <span class="No-Break">clean slate.</span></p>
+<h1 id="_idParaDest-79"><a id="_idTextAnchor078"/>Summary</h1>
+<p>This chapter has involved writing many more unit tests than previous chapters. Sometimes, unit tests need to be very detailed, particularly when it comes to testing very specific return values. In <a href="B19611_08.xhtml#_idTextAnchor100"><span class="No-Break"><em class="italic">Chapter 8</em></span></a>, <em class="italic">Creating Matchers to Simplify Tests</em>, we’ll look at ways of reducing the number of <span class="No-Break">tests required.</span></p>
+<p>You’ve also seen why it’s important for unit tests to run independently and how to ensure your SvelteKit route tests clear their data between each test using the <span class="No-Break"><strong class="source-inline">beforeEach</strong></span><span class="No-Break"> function.</span></p>
+<p>In the next chapter, you’ll learn how to extend the current <strong class="source-inline">BirthdayForm</strong> component to handle editing existing birthdays in addition to adding <span class="No-Break">new birthdays.</span></p>
+</div>
+</div></body></html>

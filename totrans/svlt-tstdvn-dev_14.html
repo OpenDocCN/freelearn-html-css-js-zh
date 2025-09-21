@@ -1,0 +1,264 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer045">
+<h1 class="chapter-number" id="_idParaDest-157"><a id="_idTextAnchor156"/>14</h1>
+<h1 id="_idParaDest-158"><a id="_idTextAnchor157"/>Testing Authentication</h1>
+<p>Many web applications will involve authenticating users. This chapter shows how you can write tests for this functionality. These tests cover logging in, logging out, and ensuring that your application is only accessible to <span class="No-Break">logged-in users.</span></p>
+<p>This chapter is not a walkthrough and only includes a small amount of detail on the application code required to implement authentication. The book repository uses the <strong class="bold">Auth.js</strong> library, but the same testing techniques will work regardless of the <span class="No-Break">implementation approach.</span></p>
+<p>The chapter covers the following <span class="No-Break">key topics:</span></p>
+<ul>
+<li>Testing authentication <span class="No-Break">with Playwright</span></li>
+<li>Testing authentication <span class="No-Break">with Vitest</span></li>
+</ul>
+<p>By the end of the chapter, you’ll have seen how to write tests that cover all aspects <span class="No-Break">of authentication.</span></p>
+<h1 id="_idParaDest-159"><a id="_idTextAnchor158"/>Technical requirements</h1>
+<p>The code for the chapter can be found online <span class="No-Break">at </span><a href="https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter14/Complete"><span class="No-Break">https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter14/Complete</span></a><span class="No-Break">.</span></p>
+<p>If you want to run the code in this sample, you’ll need to create a <strong class="source-inline">.env</strong> file with some environment variables. There’s an example file named <strong class="source-inline">.env.example</strong> that you can copy and save as <strong class="source-inline">.env</strong>, which should work, but if you want to try the GitHub OAuth integration, you’ll need to do some configuration <span class="No-Break">within GitHub.</span></p>
+<p>You’ll find more detailed information in the repository’s <span class="No-Break"><strong class="source-inline">README.md</strong></span><span class="No-Break"> file.</span></p>
+<h1 id="_idParaDest-160"><a id="_idTextAnchor159"/>Testing authentication with Playwright</h1>
+<p>This section <a id="_idIndexMarker460"/>details the groundwork required for effective testing with your Playwright tests. First, we look at how to provide hard-coded authentication credentials for your end-to-end tests. Then we use this to verify that users can log in and log out of the application. Finally, we’ll update the existing tests so that they ensure the user is logged in before attempting to test the <span class="No-Break">application functionality.</span></p>
+<p class="callout-heading">What about Cucumber?</p>
+<p class="callout">If you’re using Cucumber tests with Playwright, then the same techniques presented here will also work <span class="No-Break">for you.</span></p>
+<h2 id="_idParaDest-161"><a id="_idTextAnchor160"/>Creating an auth profile for dev and test modes</h2>
+<p>It’s fairly typical <a id="_idIndexMarker461"/>to<a id="_idIndexMarker462"/> use<a id="_idIndexMarker463"/> OAuth authentication strategies that delegate authentication responsibilities to a third-party provider, such as Google or GitHub. However, when it comes to writing end-to-end tests, it’s impractical to maintain user accounts with these third parties just for the purposes of testing. For one thing, account passwords expire and need to be reset periodically. And that kind of work needs to be documented, tracked <span class="No-Break">and scheduled.</span></p>
+<p>Another solution is to provide a special hard-coded credential that can be used to log in when the application server is run in a specific test mode. Your Playwright tests can then use this credential to <span class="No-Break">log in.</span></p>
+<p>Our solution does this in the <span class="No-Break">following way:</span></p>
+<ol>
+<li>Playwright starts the server with an additional environment variable, <strong class="source-inline">VITE_ALLOW_CREDENTIALS</strong>, that is set <span class="No-Break">to </span><span class="No-Break"><strong class="source-inline">true</strong></span><span class="No-Break">.</span></li>
+<li>The <strong class="source-inline">Auth.js</strong> initialization code looks for this credential, and, if it is found, enables login via its credentials mechanism. There is a single user, <strong class="source-inline">api</strong>, which has no password associated <span class="No-Break">with it.</span></li>
+<li>This user can then be used by both the API tests and your application <span class="No-Break">dev mode.</span></li>
+</ol>
+<p>To ensure Playwright starts with the right environment variable, the <strong class="source-inline">playwright.config.js</strong> file changes <span class="No-Break">like this:</span></p>
+<pre class="source-code">
+webServer: {
+  command:
+    'npm run build &amp;&amp; npm run preview',
+  port: 4173<strong class="bold">,</strong>
+  <strong class="bold">env: {</strong>
+  <strong class="bold">  PATH: process.env.PATH,</strong>
+  <strong class="bold">  VITE_ALLOW_CREDENTIALS: true</strong>
+  <strong class="bold">}</strong>
+},</pre>
+<p>Then, the application has a file named <strong class="source-inline">src/authProviders.js</strong> that checks for the credential, shown in the following code snippet. This sample is specific to <strong class="source-inline">Auth.js</strong>, but other <a id="_idIndexMarker464"/>authentication libraries <a id="_idIndexMarker465"/>can<a id="_idIndexMarker466"/> be initialized similarly. The key point is that the expected <strong class="source-inline">authProviders</strong> is an array that may or may not contain the special credentials provider, depending on the value of the <span class="No-Break">environment variable:</span></p>
+<pre class="source-code">
+import GitHubProvider from '@auth/core/providers/github';
+import CredentialsProvider from '@auth/core/providers/credentials';
+import {
+  GITHUB_ID,
+  GITHUB_SECRET
+} from '$env/static/private';
+const allowCredentials =
+  import.meta.env.VITE_ALLOW_CREDENTIALS === 'true';
+const GitHub = GitHubProvider({
+  clientId: GITHUB_ID,
+  clientSecret: GITHUB_SECRET
+});
+const credentials = CredentialsProvider({
+  credentials: {
+    username: { label: 'Username', type: 'text' }
+  },
+  async authorize({ username }, req) {
+    if (username === 'api')
+      return { id: '1', name: 'api' };
+  }
+});
+const devAuthProviders = {
+  GitHub,
+  credentials
+};
+const prodAuthProviders = { GitHub };
+export const authProviders = allowCredentials
+  ? devAuthProviders
+  : prodAuthProviders;</pre>
+<p>With<a id="_idIndexMarker467"/> the application<a id="_idIndexMarker468"/> primed, it’s ready to be used in <span class="No-Break">our tests.</span></p>
+<h2 id="_idParaDest-162"><a id="_idTextAnchor161"/>Writing tests for login</h2>
+<p>It’s important<a id="_idIndexMarker469"/> to have one test for a successful login flow and one for an unsuccessful one. Having these tests ensures you have automated test coverage of <span class="No-Break">these pages.</span></p>
+<p>Here’s an example of a successful login test. It can be found in the <strong class="source-inline">tests/login.test.js</strong> repository file. It navigates to the usual <strong class="source-inline">/birthdays</strong> route, then looks for a button named <strong class="bold">credentials</strong>. It clicks that, fills in the magic <strong class="source-inline">api</strong> user, and clicks the button again (which, this time, acts to submit the login information). It then checks that the user has been redirected to the main page and can see the <strong class="bold">Birthday </strong><span class="No-Break"><strong class="bold">list</strong></span><span class="No-Break"> heading:</span></p>
+<pre class="source-code">
+import { expect, test } from '@playwright/test';
+test('logs in and returns to the application', async ({
+  page
+}) =&gt; {
+  await page.goto('/birthdays');
+  await page.waitForLoadState('networkidle');
+  await page
+    .getByRole('button', { name: /Sign in with
+      credentials/i })
+    .click();
+  await page.getByRole('textbox').fill('api');
+  await page
+    .getByRole('button', { name: /Sign in with
+      credentials/i })
+    .click();
+  await expect(
+    page.getByText('Birthday list')
+  ).toBeVisible();
+});</pre>
+<p>Note the use of the <strong class="source-inline">page.waitForLoadState</strong> Playwright function. This is necessary to ensure that all the relevant <strong class="source-inline">Auth.js</strong> code has run and eventually renders the <span class="No-Break">sign-in button.</span></p>
+<p>Next is the test for an unsuccessful login. For this, we can give any username other than <strong class="source-inline">api</strong>, so this test<a id="_idIndexMarker470"/> supplies the <strong class="source-inline">unknown user</strong> text, which gives the data some <span class="No-Break">useful context:</span></p>
+<pre class="source-code">
+test('does not log in if log in fails', async ({
+  page
+}) =&gt; {
+  await page.goto('/birthdays');
+  await expect(
+    page.getByText('Please login')
+  ).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  await page
+    .getByRole('button', { name: /Sign in with
+      credentials/i })
+    .click();
+  await page
+    .getByRole('textbox')
+    .fill('unknown user');
+  await page
+    .getByRole('button', { name: /Sign in with
+      credentials/i })
+    .click();
+  await expect(
+    page.getByText(
+      'Sign in failed. Check the details you provided are
+        correct.'
+    )
+  ).toBeVisible();
+});</pre>
+<p>That covers the<a id="_idIndexMarker471"/> tests for the new login functionality. Next, we need to update existing tests to ensure they continue <span class="No-Break">to work.</span></p>
+<h2 id="_idParaDest-163"><a id="_idTextAnchor162"/>Updating existing tests to authenticate the user</h2>
+<p>The existing<a id="_idIndexMarker472"/> tests we have in <strong class="source-inline">tests/birthdays.test.js</strong> need to be updated so that each test starts with a logged-in user. We can do this using a <strong class="source-inline">beforeEach</strong> block, which has the advantage that the original tests doesn’t need to <span class="No-Break">be modified.</span></p>
+<p>Auth.js provides a neat API-like endpoint that we can call directly. This means that we don’t need to navigate through the web form for each test, which reduces the amount of work each test needs <span class="No-Break">to do.</span></p>
+<p>The <strong class="source-inline">login</strong> function is defined in the following code snippet. It mimics the action of clicking the <strong class="bold">Sign in</strong> button that submits the login form. First, it retrieves a <strong class="bold">Cross-Site Request Forgery</strong> (<strong class="bold">CSRF</strong>) token<a id="_idIndexMarker473"/> and then submits a form response with the CSRF token attached and a <strong class="source-inline">username</strong> field value of <strong class="source-inline">api</strong>. It’s also important to send the <strong class="source-inline">origin</strong> header <a id="_idIndexMarker474"/>with this request; otherwise, it will <span class="No-Break">be rejected:</span></p>
+<pre class="source-code">
+const login = async ({ context, baseURL }) =&gt; {
+  const response = await context.request.get(
+    '/auth/csrf'
+  );
+  const { csrfToken } = await response.json();
+  const response2 = await context.request.post(
+    '/auth/callback/credentials',
+    {
+      form: {
+        username: 'api',
+        csrfToken
+      },
+      headers: {
+        origin: baseURL
+      }
+    }
+  );
+};</pre>
+<p>That can then be triggered for each test in <strong class="source-inline">tests/birthday.test.js</strong> by sending it to <strong class="source-inline">test.beforeEach</strong>, <span class="No-Break">like this:</span></p>
+<pre class="source-code">
+test.beforeEach(login);</pre>
+<p>That completes the Playwright tests. You’ll note I’ve left out any test to check what happens when you go to the <strong class="source-inline">/birthday</strong> route in an unauthenticated state. We’ll cover that <a id="_idIndexMarker475"/>in the Vitest tests in the <span class="No-Break">next section.</span></p>
+<h1 id="_idParaDest-164"><a id="_idTextAnchor163"/>Testing authentication with Vitest</h1>
+<p>Now we drop <a id="_idIndexMarker476"/>down a level and get into specifics. Our tests will focus on the <strong class="source-inline">/birthdays</strong> route and how it is presented given <span class="No-Break">authentication data.</span></p>
+<p>The Auth.js library utilizes SvelteKit’s session mechanism for passing authentication information into components, so what we do is harness that via the <strong class="source-inline">parent.session</strong> object and the <strong class="source-inline">locals.getSession</strong> function. All we have to do is use test doubles to mimic the responses <span class="No-Break">we want.</span></p>
+<p>We start by defining a session factory that can be used to set up these session test doubles. Then we’ll update page load tests with new authentication functionality, and finally, we’ll end with updating the form <span class="No-Break">action tests.</span></p>
+<h2 id="_idParaDest-165"><a id="_idTextAnchor164"/>Defining a session factory</h2>
+<p>Here’s the <a id="_idIndexMarker477"/>definition of <strong class="source-inline">src/factories/session.js</strong>, which <a id="_idIndexMarker478"/>defines four exports that are used in the <span class="No-Break">subsequent tests:</span></p>
+<pre class="source-code">
+import { vi } from 'vitest';
+const validSession = { user: 'api ' };
+export const loggedInSession = () =&gt; ({
+  session: validSession
+});
+export const loggedOutSession = () =&gt; ({
+  session: null
+});
+export const loggedInLocalsSession = () =&gt; ({
+  getSession: vi.fn().mockResolvedValue(validSession)
+});
+export const loggedOutLocalsSession = () =&gt; ({
+  getSession: vi.fn().mockResolvedValue(null)
+});</pre>
+<p>A <strong class="source-inline">loggedInSession</strong> object can be used as the <strong class="source-inline">parent</strong> property that’s passed to your page<a id="_idIndexMarker479"/> load. The Auth.js authentication<a id="_idIndexMarker480"/> process will run before your route is loaded and merged into this <strong class="source-inline">parent</strong> value. So, <strong class="source-inline">loggedInSession</strong> is just a dummy object: in the context of our tests, any value at all constitutes a valid, <span class="No-Break">logged-in user.</span></p>
+<p>The <strong class="source-inline">loggedOutSession</strong> object is similar: this time, a <strong class="source-inline">null</strong> value for <strong class="source-inline">session</strong> means that the user is <span class="No-Break">not authenticated.</span></p>
+<p>The <strong class="source-inline">loggedInLocalsSession</strong> and <strong class="source-inline">loggedOutLocalsSession</strong> values are to be used in place of SvelteKit’s <strong class="source-inline">locals</strong> property that is passed to your form action. This property is a collection of functions that the form action can make <span class="No-Break">use of.</span></p>
+<p>Next, we’ll see how to make use of <span class="No-Break">these tests.</span></p>
+<h2 id="_idParaDest-166"><a id="_idTextAnchor165"/>Updating existing tests for page load functions</h2>
+<p>Now let’s<a id="_idIndexMarker481"/> update <a id="_idIndexMarker482"/>the page load function so that it has the necessary load function. We’ll also write a test to ensure that the page does <em class="italic">not</em> load any data if the user is <span class="No-Break">not authenticated.</span></p>
+<p>There’s a new import needed in <strong class="source-inline">src/routes/birthdays/page.server.test.js</strong>, shown in the following code block. These are the two factories that will be used to provide values for the <strong class="source-inline">parent</strong> property passed to the <span class="No-Break"><strong class="source-inline">load</strong></span><span class="No-Break"> function:</span></p>
+<pre class="source-code">
+import {
+  loggedInSession,
+  loggedOutSession,
+} from 'src/factories/session.js';</pre>
+<p>Then, the <strong class="source-inline">describe</strong> block is updated to create a <strong class="source-inline">parent</strong> variable that is defaulted to a <span class="No-Break">logged-in user:</span></p>
+<pre class="source-code">
+describe('/birthdays - load', () =&gt; {
+  <strong class="bold">const parent = vi.fn();</strong>
+  <strong class="bold">beforeEach(() =&gt; {</strong>
+    <strong class="bold">parent.mockResolvedValue(loggedInSession());</strong>
+  <strong class="bold">});</strong>
+  ...
+});</pre>
+<p>Each of the tests also needs to be updated to pass this new <strong class="source-inline">parent</strong> property into the <span class="No-Break"><strong class="source-inline">load</strong></span><span class="No-Break"> function:</span></p>
+<pre class="source-code">
+it('calls fetch with /api/birthdays', async () =&gt; {
+  const fetch = vi.fn();
+  fetch.mockResolvedValue(fetchResponseOk());
+  const result = await load({ fetch<strong class="bold">, parent</strong> });
+  expect(fetch).toBeCalledWith('/api/birthdays');
+});</pre>
+<p>You’ll also want to add a test to check that the endpoint won’t work without the correct authentication. In the following example, we override the default <strong class="source-inline">parent</strong> property with <strong class="source-inline">loggedOutSession</strong> and then test that the returned page has a <strong class="source-inline">303</strong> status, meaning the browser is being redirected. It also checks the page being redirected to is the <strong class="source-inline">/</strong><span class="No-Break"><strong class="source-inline">login</strong></span><span class="No-Break"> route:</span></p>
+<pre class="source-code">
+it('redirects if the request is not authorised', async () =&gt; {
+  parent.mockResolvedValue(loggedOutSession());
+  expect.hasAssertions();
+  try {
+    await load({ parent });
+  } catch (error) {
+    expect(error.status).toEqual(303);
+    expect(error.location).toEqual('/login');
+  }
+});</pre>
+<p>That<a id="_idIndexMarker483"/> completes <a id="_idIndexMarker484"/>the tests for the <span class="No-Break"><strong class="source-inline">load</strong></span><span class="No-Break"> function.</span></p>
+<h2 id="_idParaDest-167"><a id="_idTextAnchor166"/>Updating existing tests for form actions</h2>
+<p>For the form <a id="_idIndexMarker485"/>action<a id="_idIndexMarker486"/> tests, the <strong class="source-inline">import</strong> statement is updated with the remaining two <span class="No-Break">factory functions:</span></p>
+<pre class="source-code">
+import {
+  loggedInSession,
+  loggedOutSession,
+  <strong class="bold">loggedInLocalsSession,</strong>
+  <strong class="bold">loggedOutLocalsSession</strong>
+} from 'src/factories/session.js';</pre>
+<p>Then, the <strong class="source-inline">describe</strong> block is updated to include a <strong class="source-inline">locals</strong> variable that is set within <strong class="source-inline">beforeEach</strong>. Note that this time the variable is defined as <strong class="source-inline">let</strong> because the <strong class="source-inline">loggedInLocalsSession</strong> factory is<a id="_idIndexMarker487"/> responsible<a id="_idIndexMarker488"/> for setting up the <strong class="source-inline">vi.fn</strong> <span class="No-Break">spy function:</span></p>
+<pre class="source-code">
+describe('/birthdays - default action', () =&gt; {
+  const fetch = vi.fn();
+  let locals;
+  beforeEach(() =&gt; {
+    fetch.mockResolvedValue(fetchResponseOk());
+    <strong class="bold">locals = loggedInLocalsSession();</strong>
+  });
+  ...
+});</pre>
+<p>Then <strong class="source-inline">performFormAction</strong> changes to include the <strong class="source-inline">locals</strong> property. Since this is the function that our tests call to invoke the form action, none of the tests themselves need <span class="No-Break">to change:</span></p>
+<pre class="source-code">
+  const performFormAction = (formData) =&gt;
+    actions.default({
+      request: createFormDataRequest(formData),
+      fetch<strong class="bold">,</strong>
+      <strong class="bold">locals</strong>
+    });</pre>
+<p>Finally, we need a test to check what happens if the form is submitted when the user is not authenticated. In this case, we return a <strong class="source-inline">300</strong> status code rather than a redirect, but you could choose to go back to the previous form page, as you would with a validation error. That would help in the scenario where the user’s session has expired. Here’s the <span class="No-Break">simpler version:</span></p>
+<pre class="source-code">
+describe('when not authorised', () =&gt; {
+  beforeEach(() =&gt; {
+    locals = loggedOutLocalsSession();
+  });
+  it('returns a failure', async () =&gt; {
+    const result = await performFormAction({});
+    expect(result.status).toEqual(300);
+  });
+});</pre>
+<p>That completes <a id="_idIndexMarker489"/>the Vitest changes <a id="_idIndexMarker490"/>required to support our <span class="No-Break">authentication implementation.</span></p>
+<h1 id="_idParaDest-168"><a id="_idTextAnchor167"/>Summary</h1>
+<p>This chapter briefly looked at the kinds of tests you’ll need for <span class="No-Break">testing authentication.</span></p>
+<p>Playwright end-to-end tests should check the login flows, both successful and unsuccessful. They should also make use of fake credentials where possible and ensure that any routes are accessible only by authenticated users who are logged in using a <span class="No-Break"><strong class="source-inline">test.beforeEach</strong></span><span class="No-Break"> call.</span></p>
+<p>Vitest tests for authenticated routes work differently. They focus on the <strong class="source-inline">session</strong> object that SvelteKit returns: does it have a valid value <span class="No-Break">or not?</span></p>
+<p>While this covers the basics, most applications will have much more complex needs: for example, your application might have individual data stores for each user, not just one global data store such as our <span class="No-Break">Birthdays application.</span></p>
+<p>The Playwright website contains good documentation on how to test specific patterns, such as having multiple user roles interact within one test. That can be found <span class="No-Break">at </span><a href="https://playwright.dev/docs/auth"><span class="No-Break">https://playwright.dev/docs/auth</span></a><span class="No-Break">.</span></p>
+<p>In the next chapter, we’ll look at testing <span class="No-Break">Svelte Stores.</span></p>
+</div>
+</div></body></html>

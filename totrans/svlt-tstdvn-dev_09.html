@@ -1,0 +1,425 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer033">
+<h1 class="chapter-number" id="_idParaDest-112"><a id="_idTextAnchor111"/>9</h1>
+<h1 id="_idParaDest-113"><a id="_idTextAnchor112"/>Extracting Logic Out of the Framework</h1>
+<p>An important property of maintainable software is its <strong class="bold">testability</strong>. This is the idea that all parts of the application should be straightforward to test. More specifically, the design of the application code should make it easy to write automated <span class="No-Break">unit tests.</span></p>
+<p>In this chapter, we’ll look at one technique for improving testability: moving domain logic out of the framework and into plain JavaScript. Plain JavaScript code is simpler to test because there are no complex framework objects that interact with <span class="No-Break">your code.</span></p>
+<p>The following diagram shows how to think about a SvelteKit code base in <span class="No-Break">this way.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer032">
+<img alt="Figure 9.1 – Keeping application code outside of framework components to aid testability" height="928" src="image/Figure_9.1_B19611.jpg" width="1000"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 9.1 – Keeping application code outside of framework components to aid testability</p>
+<p>In <a href="B19611_07.xhtml#_idTextAnchor093"><span class="No-Break"><em class="italic">Chapter 7</em></span></a>, <em class="italic">Tidying up Test Suites</em>, we took a step toward moving the storage of birthday data items into a <strong class="source-inline">birthdayRepository</strong> module. We’ll continue that process by pushing data validation out of the SvelteKit form action and into <strong class="source-inline">birthdayRepository</strong> That means we can test complex validation rules without having to set up the complex SvelteKit form request objects, and without having to test the form response <span class="No-Break">objects either.</span></p>
+<p>And since the repository has no asynchronous behavior, the moved tests no longer need to be littered with <strong class="source-inline">async</strong> and <span class="No-Break"><strong class="source-inline">await</strong></span><span class="No-Break"> keywords.</span></p>
+<p>The following topics are covered in <span class="No-Break">this chapter:</span></p>
+<ul>
+<li>Migrating tests with a test <span class="No-Break">to-do list</span></li>
+<li>Porting tests from the <span class="No-Break">form action</span></li>
+<li>Duplicating form validation behavior in <span class="No-Break">the repository</span></li>
+<li>Extracting <span class="No-Break">common methods</span></li>
+</ul>
+<p>By the end of the chapter, you’ll have used a test-driven approach to move domain logic out of <span class="No-Break">the framework.</span></p>
+<h1 id="_idParaDest-114"><a id="_idTextAnchor113"/>Technical requirements</h1>
+<p>The code for the chapter can be found online <span class="No-Break">at </span><a href="https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter09/Start"><span class="No-Break">https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter09/Start</span></a><span class="No-Break">.</span></p>
+<h1 id="_idParaDest-115"><a id="_idTextAnchor114"/>Migrating tests with a test todo list</h1>
+<p>The task at hand is <a id="_idIndexMarker295"/>moving the validation logic out of the SvelteKit form action we completed in <a href="B19611_05.xhtml#_idTextAnchor070"><span class="No-Break"><em class="italic">Chapter 5</em></span></a>, <em class="italic">Validating Form Data</em>, and into the <strong class="source-inline">birthdayRepository</strong> module. And in this section, we’ll plan that task using a <span class="No-Break">new technique.</span></p>
+<p>You might remember that the <strong class="source-inline">birthdayRepository</strong> module already exists but has no tests. That’s a situation that we often find ourselves in when we extract modules during refactoring. And it’s often perfectly okay to leave these modules untested. The issue comes when we want to modify the behavior of these modules: where do we add <span class="No-Break">the tests?</span></p>
+<p>There’s no clear answer to that, but in this case, we’ll use the opportunity to duplicate all the tests from the form action in the <strong class="source-inline">birthdayRepository</strong> module, in addition to adding some new <span class="No-Break">tests too.</span></p>
+<p class="callout-heading">Deleting tests in the original location</p>
+<p class="callout">We won’t delete the original tests, but that is something you should consider doing so that you’re not at risk of over-testing. (The only thing worse than over-testing <span class="No-Break">is under-testing!)</span></p>
+<p>There’s a special modifier of the <strong class="source-inline">it</strong> test function that can be used for planning a test suite: the <strong class="source-inline">it.todo</strong> modifier. As a form of up-front planning, it’s useful when you already have a concrete idea of the tests you’ll need in a <span class="No-Break">test suite.</span></p>
+<p>The <strong class="source-inline">birthdayRepository</strong> module has two exported functions that we’re interested in <a id="_idIndexMarker296"/>testing: the <strong class="source-inline">addNew</strong> and <strong class="source-inline">replace</strong> functions. We will split the existing form action tests between the two new functions. The tests for validation errors will need to be duplicated for both functions. In this way, each function will be <span class="No-Break">fully specified.</span></p>
+<p>Go ahead and create the <strong class="source-inline">src/lib/server/birthdayRepository.test.js</strong> file with the following content. This gets all the imports in place and primes the <strong class="source-inline">birthdayRepository</strong> test suite with a call to <strong class="source-inline">clear</strong> so that each test starts from a <span class="No-Break">blank slate.</span></p>
+<p>There’s also a definition of <strong class="source-inline">storedId</strong> – we can use the same technique for verifying data that we used in the form action tests. And we also add an empty test for checking the <span class="No-Break">initial state:</span></p>
+<pre class="source-code">
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  createBirthday
+} from 'src/factories/birthday.js';
+import {
+  addNew, clear, getAll, replace
+} from './birthdayRepository.js';
+describe('birthdayRepository', () =&gt; {
+  beforeEach(clear);
+  const storedId = () =&gt; getAll()[0].id;
+  it.todo('is initially empty');
+});</pre>
+<p>Now, add a nested <strong class="source-inline">describe</strong> block for the <strong class="source-inline">addNew</strong> function. This takes the original test <a id="_idIndexMarker297"/>descriptions from the <strong class="source-inline">src/routes/birthdays/page.server.test.js</strong> file and morphs them into a more <span class="No-Break">appropriate form:</span></p>
+<pre class="source-code">
+describe('addNew', () =&gt; {
+  it.todo('adds a new birthday into the list');
+  it.todo('saves unique ids onto each new birthday');
+  it.todo('returns the added birthday with its id');
+  describe('validation errors', () =&gt; {
+    describe.todo('when the name is not provided');
+    describe.todo(
+      'when the date of birth in the right format'
+    );
+  });
+});</pre>
+<p>It’s time to look at the tests for the <strong class="source-inline">replace</strong> function. You’ll see that the validation errors are repeated from the <strong class="source-inline">addNew</strong> context. That highlights a difference when splitting a single <strong class="source-inline">entrypoint</strong> (the form action) into two (the <strong class="source-inline">addNew</strong> and <span class="No-Break"><strong class="source-inline">replace</strong></span><span class="No-Break"> functions):</span></p>
+<pre class="source-code">
+describe('replace', () =&gt; {
+  it.todo('updates an entry that shares the same id');
+  it.todo('returns the updated birthday');
+  describe('validation errors', () =&gt; {
+    describe.todo('when the name is not provided');
+    describe.todo(
+      'when the date of birth in the right format'
+    );
+    it.todo(
+      'returns the id when an empty date of birth is
+       provided'
+    );
+  });
+});</pre>
+<p>The plan <a id="_idIndexMarker298"/>is complete. The remaining sections in this chapter will complete the test suite, starting with the <em class="italic">happy path</em> tests, which already pass, and then going back to complete the <span class="No-Break">validation errors.</span></p>
+<h1 id="_idParaDest-116"><a id="_idTextAnchor115"/>Porting tests from the form action</h1>
+<p>In this section, we’ll write <a id="_idIndexMarker299"/>out tests for the behavior that already <a id="_idIndexMarker300"/>exists in the <strong class="source-inline">birthdayRepository</strong> module, together with ensuring that the functions return values for the form action <span class="No-Break">to reuse.</span></p>
+<p>The <strong class="source-inline">src/lib/server/birthdayRepository.js</strong> file already contains the working code that you last touched on in <a href="B19611_06.xhtml#_idTextAnchor079"><span class="No-Break"><em class="italic">Chapter 6</em></span></a>, <em class="italic">Editing Form Data</em>. Here’s <span class="No-Break">a reminder:</span></p>
+<pre class="source-code">
+import { randomUUID } from 'crypto';
+const db = new Map();
+export const addNew = (item) =&gt; {
+  const id = randomUUID();
+  db.set(id, { ...item, id });
+};
+export const getAll = () =&gt; Array.from(db.values());
+export const clear = () =&gt; db.clear();
+export const replace = (id, item) =&gt;
+  db.set(id, { ...item, id });
+export const has = (id) =&gt; db.has(id);</pre>
+<p>Most of this <a id="_idIndexMarker301"/>functionality is tested by way of the form action. We need to <a id="_idIndexMarker302"/>add tests and then double-check that <span class="No-Break">they work.</span></p>
+<p class="callout-heading">Always requiring a failing test</p>
+<p class="callout">When porting tests, you’ll be writing tests that already pass. You skip the <em class="italic">Red</em> step and pass directly to <em class="italic">Green</em>. However, it’s still important to verify that your tests check the correct thing, and the way to do that is to delete or comment out the application code under test so that you can see the <span class="No-Break">test fail.</span></p>
+<p>Let’s start on <span class="No-Break">that now:</span></p>
+<ol>
+<li>In <strong class="source-inline">src/lib/server/birthdayRepository.test.js</strong>, remove the <strong class="source-inline">.todo</strong> modifier from the first test, and add the following <span class="No-Break">test content:</span><pre class="source-code">
+it('is initially empty', () =&gt; {
+  expect(getAll()).toHaveLength(0);
+});</pre></li>
+<li>You’ll see that the test already passed. Verify that it tests the right thing by replacing the <strong class="source-inline">getAll</strong> implementation with a <strong class="source-inline">null</strong> return value, and then re-run the test to check that it’s red. An easy way to do this is to comment out the rest of the line, <span class="No-Break">like this:</span><pre class="source-code">
+export const getAll = () =&gt;
+  <strong class="bold">null; //</strong>Array.from(db.values());</pre></li>
+<li>After checking that the test fails, bring the original implementation back and verify that <span class="No-Break">it’s green.</span></li>
+<li>Fill out the body <a id="_idIndexMarker303"/>of the next test, as shown in the following code. This is <a id="_idIndexMarker304"/>now a simpler test than the form action test we’re porting, for a couple of reasons. First, there’s no longer any asynchronous behavior, and second, we use a single factory method of <strong class="source-inline">createBirthday</strong> and avoid the more complex <strong class="source-inline">performFormAction</strong> <span class="No-Break">helper method:</span><pre class="source-code">
+describe('addNew', () =&gt; {
+  it('adds a new birthday into the list', () =&gt; {
+    addNew(createBirthday('Zeus', '2009-02-02'));
+    expect(getAll()).toContainEqual(
+      expect.objectContaining({
+        name: 'Zeus',
+        dob: '2009-02-02'
+      })
+    );
+  });
+});</pre></li>
+<li>Although this will already pass, it’s important to check that it’s red. You can do that by using the same technique of commenting out the relevant line of code, <span class="No-Break">like this:</span><pre class="source-code">
+export const addNew = (item) =&gt; {
+  const id = randomUUID();
+  <strong class="bold">//</strong>db.set(id, { ...item, id });
+};</pre></li>
+<li>After verifying <a id="_idIndexMarker305"/>that the test fails, undo the commented code <a id="_idIndexMarker306"/>and get the test back <span class="No-Break">to green.</span></li>
+<li>Next, fill out the <span class="No-Break">third test:</span><pre class="source-code">
+it('saves unique ids onto each new birthday', () =&gt; {
+  const birthday = createBirthday(
+    'Zeus',
+    '2009-02-02'
+  );
+  addNew(birthday);
+  addNew(birthday);
+  expect(getAll()[0].id).not.toEqual(
+    getAll()[1].id
+  );
+});</pre></li>
+<li>To verify that, you can comment out the <span class="No-Break"><strong class="source-inline">id</strong></span><span class="No-Break"> value:</span><pre class="source-code">
+export const addNew = (item) =&gt; {
+  const id = <strong class="bold">null; //</strong>randomUUID();
+  db.set(id, { ...item, id });
+};</pre></li>
+<li>Now, we come on to the test for new behavior, checking that the object is returned <a id="_idIndexMarker307"/>together with its new <strong class="source-inline">id</strong> property. This uses the <strong class="source-inline">storedId</strong> function <a id="_idIndexMarker308"/>defined at the top of the <span class="No-Break">test suite:</span><pre class="source-code">
+it('returns the added birthday with its id', () =&gt; {
+  expect(
+    addNew(createBirthday('Zeus', '2009-02-02'))
+  ).toEqual({
+    id: storedId(),
+    name: 'Zeus',
+    dob: '2009-02-02'
+  });
+});</pre></li>
+<li>To make that pass, introduce a variable named <strong class="source-inline">itemWithId</strong> and <span class="No-Break">return it:</span><pre class="source-code">
+export const addNew = (item) =&gt; {
+  ...
+  <strong class="bold">const itemWithId = { ...item, id };</strong>
+  <strong class="bold">db.set(id, itemWithId);</strong>
+  <strong class="bold">return itemWithId;</strong>
+};</pre></li>
+<li>Now, let’s move on to the <strong class="source-inline">replace</strong> tests. We’ll start with the migration of the <strong class="source-inline">beforeEach</strong> block and the <span class="No-Break"><strong class="source-inline">storedId</strong></span><span class="No-Break"> method:</span><pre class="source-code">
+describe('replace', () =&gt; {
+  beforeEach(() =&gt;
+    addNew(createBirthday('Hercules', '1991-05-06'))
+  );
+  const storedId = () =&gt; getAll()[0].id;
+  ...
+});</pre></li>
+<li>Then, we’ll move <a id="_idIndexMarker309"/>on to the first test for the <strong class="source-inline">replace</strong> function. You <a id="_idIndexMarker310"/>can verify that in the same way you verified the first test for <strong class="source-inline">getAll</strong>, by giving it a <span class="No-Break"><strong class="source-inline">null</strong></span><span class="No-Break"> implementation:</span><pre class="source-code">
+it('updates an entry that shares the same id', () =&gt; {
+  replace(
+    storedId(),
+    createBirthday('Zeus Ex', '2007-02-02')
+  );
+  expect(getAll()).toHaveLength(1);
+  expect(getAll()).toContainEqual({
+    id: storedId(),
+    name: 'Zeus Ex',
+    dob: '2007-02-02'
+  });
+});</pre></li>
+<li>The final test in this section ensures that we returned the <span class="No-Break">updated item:</span><pre class="source-code">
+it('returns the updated birthday', () =&gt; {
+  expect(
+    replace(
+      storedId(),
+      createBirthday('Zeus Ex', '2007-02-02')
+    )
+  ).toEqual({
+    id: storedId(),
+    name: 'Zeus Ex',
+    dob: '2007-02-02'
+  });
+});</pre></li>
+<li>To make that <a id="_idIndexMarker311"/>pass, make exactly the same change that you <a id="_idIndexMarker312"/>made in the <span class="No-Break"><strong class="source-inline">addNew</strong></span><span class="No-Break"> function:</span><pre class="source-code">
+export const replace = (id, item) =&gt; {
+  ...
+  <strong class="bold">const itemWithId = { ...item, id };</strong>
+  <strong class="bold">db.set(id, itemWithId);</strong>
+  <strong class="bold">return itemWithId;</strong>
+};</pre></li>
+</ol>
+<p>That’s all the tests that prove the existing behavior. In the next section, we’ll need to port across the implementation in addition to the <span class="No-Break">test cases.</span></p>
+<h1 id="_idParaDest-117"><a id="_idTextAnchor116"/>Duplicating form validation behavior in the repository</h1>
+<p>In this <a id="_idIndexMarker313"/>section, we’ll continue porting <a id="_idIndexMarker314"/>across tests from the <strong class="source-inline">src/routes/birthdays/page.server.test.js</strong> file, but now we’re going to duplicate the validation behavior within the form <span class="No-Break">action itself.</span></p>
+<p class="callout-heading">Repetition as a design signal</p>
+<p class="callout">The following steps contain a fair amount of repetition. First, the tests are very similar to tests you’ve already written in the form action. Second, the same checks are repeated for both the <strong class="source-inline">addNew</strong> and <span class="No-Break"><strong class="source-inline">replace</strong></span><span class="No-Break"> functions.</span></p>
+<p class="callout">This kind of <em class="italic">forced repetition</em> (where you feel the pain of repeated work) can help you to figure out what (if any) shared logic you’d like to <span class="No-Break">pull out.</span></p>
+<p><span class="No-Break">Let’s begin:</span></p>
+<ol>
+<li>Start by filling in the <strong class="source-inline">validation errors</strong> nested <strong class="source-inline">describe</strong> block and the tests within it. I’m electing to copy two tests at once because these tests are very simple, and we already have a good idea of where we’re going to end up with <span class="No-Break">the implementation:</span><pre class="source-code">
+describe('addNew', () =&gt; {
+  ...
+    describe('validation errors', () =&gt; {
+      describe('when the name is not provided', () =&gt; {
+        let result;
+        beforeEach(() =&gt; {
+          result = addNew(
+            createBirthday('', '1991-05-06')
+          );
+        });
+        it('does not save the birthday', () =&gt; {
+          expect(getAll()).toHaveLength(0);
+        });
+        it('returns an error', () =&gt; {
+          expect(result).toEqual({
+            error: 'Please provide a name.'
+          });
+        });
+      });
+    });
+  });
+});</pre></li>
+<li>To make <a id="_idIndexMarker315"/>that pass in <strong class="source-inline">src/lib/server/birthdayRepository.js</strong>, start by defining the <strong class="source-inline">empty</strong> function <a id="_idIndexMarker316"/>at the bottom of <span class="No-Break">the file:</span><pre class="source-code">
+const empty = (value) =&gt;
+  value === undefined ||
+  value === null ||
+  value.trim() === '';</pre></li>
+<li>Then, update the <strong class="source-inline">addNew</strong> method to include a guard class that uses the <strong class="source-inline">empty</strong> function. After this change, both tests <span class="No-Break">should pass:</span><pre class="source-code">
+export const addNew = (item) =&gt; {
+  <strong class="bold">if (empty(item.name)) {</strong>
+    <strong class="bold">return { error: 'Please provide a name.' };</strong>
+  <strong class="bold">}</strong>
+  ...
+};</pre></li>
+<li>Now, we’ll <a id="_idIndexMarker317"/>move on to the next <a id="_idIndexMarker318"/>nested <strong class="source-inline">describe</strong> block, for checking the date of <span class="No-Break">birth format:</span><pre class="source-code">
+describe('when the date of birth is in the wrong format', () =&gt; {
+  let result;
+  beforeEach(() =&gt; {
+    result = addNew(
+      createBirthday('Hercules', 'unknown')
+    );
+  });
+  it('does not save the birthday', () =&gt; {
+    expect(getAll()).toHaveLength(0);
+  });
+  it('returns an error', () =&gt; {
+    expect(result).toEqual({
+      error:
+        'Please provide a date of birth in the YYYY-
+          MM-DD format.'
+    });
+  });
+});</pre></li>
+<li>To make <a id="_idIndexMarker319"/>that pass, start <a id="_idIndexMarker320"/>by duplicating the <strong class="source-inline">invalidDob</strong> helper from the <span class="No-Break">form action:</span><pre class="source-code">
+const invalidDob = (dob) =&gt; isNaN(Date.parse(dob));</pre></li>
+<li>Then, add the guard clause, which should cause both tests <span class="No-Break">to pass:</span><pre class="source-code">
+if (invalidDob(item.dob)) {
+  return {
+    error:
+      'Please provide a date of birth in the YYYY-MM-
+        DD format.'
+  };
+}</pre></li>
+<li>Now, let’s repeat the validation checks for the <strong class="source-inline">replace</strong> function. In the original form action tests, this wasn’t necessary because we implemented the <em class="italic">edit form</em> functionality by building on the top of the original action for creating birthdays, so the validations were already there. But now, both operations are separated. Fill out the new nested <span class="No-Break"><strong class="source-inline">describe</strong></span><span class="No-Break"> block:</span><pre class="source-code">
+describe('replace', () =&gt; {
+  ...
+  describe('validation errors', () =&gt; {
+    describe('when the name is not provided', () =&gt; {
+      let result;
+      beforeEach(() =&gt; {
+        result = replace(
+          storedId(),
+          createBirthday('', '1991-05-06')
+        );
+      });
+      it('does not update the birthday', () =&gt; {
+        expect(getAll()[0].name).toEqual(
+          'Hercules'
+        );
+      });
+      it('returns an error', () =&gt; {
+        expect(result).toEqual({
+          error: 'Please provide a name.'
+        });
+      });
+    });
+  });
+});</pre></li>
+<li>To make <a id="_idIndexMarker321"/>that pass, start by <a id="_idIndexMarker322"/>duplicating the same guard clause from <strong class="source-inline">addNew</strong>. We’ll remove this <span class="No-Break">duplication later:</span><pre class="source-code">
+export const replace = (id, item) =&gt; {
+  <strong class="bold">if (empty(item.name)) {</strong>
+    <strong class="bold">return { error: 'Please provide a name.' };</strong>
+  <strong class="bold">}</strong>
+  ...
+};</pre></li>
+<li>Now, move on to the date <span class="No-Break">of birth:</span><pre class="source-code">
+describe('when the date of birth is in the wrong format', () =&gt; {
+  let result;
+  beforeEach(() =&gt; {
+    result = replace(
+      storedId(),
+      createBirthday('Hercules', 'unknown')
+    );
+  });
+  it('does not update the birthday', () =&gt; {
+    expect(getAll()[0].dob).toEqual(
+      '1991-05-06'
+    );
+  });
+  it('returns an error', () =&gt; {
+    expect(result).toEqual({
+      error:
+        'Please provide a date of birth in the YYYY-
+          MM-DD format.'
+    });
+  });
+});</pre></li>
+<li>Make that <a id="_idIndexMarker323"/>pass by adding in the <a id="_idIndexMarker324"/>second guard clause, by repeating <em class="italic">step 6</em> but, this time, adding code within the <span class="No-Break"><strong class="source-inline">replace</strong></span><span class="No-Break"> function:</span><pre class="source-code">
+if (invalidDob(item.dob)) {
+  return {
+    error:
+      'Please provide a date of birth in the YYYY-MM-
+        DD format.'
+  };
+}</pre></li>
+<li>Then onto the final test. This one doesn’t need a <strong class="source-inline">describe</strong> block since it’s only <span class="No-Break">one test:</span><pre class="source-code">
+it('requires an id of a birthday that exists in the store', () =&gt; {
+  expect(
+    replace(
+      '234',
+      createBirthday('Hercules', '2009-01-02')
+    )
+  ).toEqual({
+    error: 'An unknown ID was provided.'
+  });
+});</pre></li>
+<li>This time, put the guard clause right at the top. It seems to make sense that this guard should <a id="_idIndexMarker325"/>take precedence over <a id="_idIndexMarker326"/>the name and date of birth checks – notice, for example, how the argument comes first in the <span class="No-Break">argument list:</span><pre class="source-code">
+export const replace = (id, item) =&gt; {
+  <strong class="bold">if (!has(id))</strong>
+    <strong class="bold">return { error: 'An unknown ID was provided.' };</strong>
+  ...
+}</pre></li>
+</ol>
+<p>That completes all the new functionality. All the <strong class="source-inline">birthdayRepository</strong> behavior is complete. Next, we’ll stop to refactor to <span class="No-Break">remove duplication.</span></p>
+<h1 id="_idParaDest-118"><a id="_idTextAnchor117"/>Extracting common methods</h1>
+<p>In this section, we’ll <a id="_idIndexMarker327"/>pull out the validation clauses that are duplicated in the <strong class="source-inline">addNew</strong> and <strong class="source-inline">replace</strong> functions, moving them into a shared <span class="No-Break"><strong class="source-inline">validate</strong></span><span class="No-Break"> function.</span></p>
+<p>Let’s start now with the <span class="No-Break"><strong class="source-inline">validate</strong></span><span class="No-Break"> function:</span></p>
+<ol>
+<li>Below the definitions of <strong class="source-inline">addNew</strong> and <strong class="source-inline">replace</strong>, add the following function named <strong class="source-inline">validate</strong>. This contains the two guard clauses that appeared in each of the original functions. As a simplification, the <strong class="source-inline">item</strong> argument has been destructured into <strong class="source-inline">name</strong> and <span class="No-Break"><strong class="source-inline">dob</strong></span><span class="No-Break"> arguments:</span><pre class="source-code">
+const validate = ({ name, dob }) =&gt; {
+  if (empty(name)) {
+    return { error: 'Please provide a name.' };
+  }
+  if (invalidDob(dob)) {
+    return {
+      error:
+        'Please provide a date of birth in the YYYY-
+          MM-DD format.'
+    };
+  }
+};</pre></li>
+<li>Then, <a id="_idIndexMarker328"/>update <strong class="source-inline">addNew</strong> to replace its guard clauses with a call to <strong class="source-inline">validate</strong>. The result is stored in <strong class="source-inline">validationResult</strong>, which can then be returned if it has <span class="No-Break">a value:</span><pre class="source-code">
+export const addNew = (item) =&gt; {
+  <strong class="bold">const validationResult = validate(item);</strong>
+  <strong class="bold">if (validationResult) {</strong>
+    <strong class="bold">return validationResult;</strong>
+  <strong class="bold">}</strong>
+  const id = randomUUID();
+  const itemWithId = { ...item, id };
+  db.set(id, itemWithId);
+  return itemWithId;
+};</pre></li>
+<li>Next, do the same for the <span class="No-Break"><strong class="source-inline">replace</strong></span><span class="No-Break"> function:</span><pre class="source-code">
+export const replace = (id, item) =&gt; {
+  if (!has(id))
+    return { error: 'An unknown ID was provided.' };
+  <strong class="bold">const validationResult = validate(item);</strong>
+  <strong class="bold">if (validationResult) {</strong>
+    <strong class="bold">return validationResult;</strong>
+  <strong class="bold">}</strong>
+  const itemWithId = { ...item, id };
+  db.set(id, itemWithId);
+  return itemWithId;
+};</pre></li>
+<li>Now, how <a id="_idIndexMarker329"/>about we pull out the last bit of each function? Add the <span class="No-Break"><strong class="source-inline">set</strong></span><span class="No-Break"> function:</span><pre class="source-code">
+const set = (id, item) =&gt; {
+  const itemWithId = { ...item, id };
+  db.set(id, itemWithId);
+  return itemWithId;
+};</pre></li>
+<li>Then, use that <span class="No-Break">in </span><span class="No-Break"><strong class="source-inline">addNew</strong></span><span class="No-Break">:</span><pre class="source-code">
+export const addNew = (item) =&gt; {
+  const validationResult = validate(item);
+  if (validationResult) {
+    return validationResult;
+  }
+  <strong class="bold">return set(randomUUID(), item);</strong>
+};</pre></li>
+<li>And finally, add <a id="_idIndexMarker330"/>the same call at the end of the <span class="No-Break"><strong class="source-inline">replace</strong></span><span class="No-Break"> function:</span><pre class="source-code">
+export const replace = (id, item) =&gt; {
+  if (!has(id))
+    return { error: 'An unknown ID was provided.' };
+  const validationResult = validate(item);
+  if (validationResult) {
+    return validationResult;
+  }
+  <strong class="bold">return set(id, item);</strong>
+};</pre></li>
+</ol>
+<p>That completes the <strong class="source-inline">birthdayRepository</strong> implementation – a straightforward but <span class="No-Break">satisfying refactoring.</span></p>
+<h1 id="_idParaDest-119"><a id="_idTextAnchor118"/>Summary</h1>
+<p>This chapter has covered techniques for porting existing behavior from one place to another. In particular, it’s shown how worthwhile it can be to move business logic out of framework objects – such as form actions – and into plain JavaScript objects. Doing so makes the <span class="No-Break">tests simpler.</span></p>
+<p>In this case, our tests were no longer asynchronous, and no longer needed to use the complex <span class="No-Break"><strong class="source-inline">performFormAction</strong></span><span class="No-Break"> helper.</span></p>
+<p>Another benefit is that <strong class="source-inline">birthdayRepository</strong>, along with its validation, can be reused in other places. That’s exactly what we’ll do in the next chapter, when we introduce new API endpoints that interact with <span class="No-Break">the repository.</span></p>
+</div>
+</div></body></html>

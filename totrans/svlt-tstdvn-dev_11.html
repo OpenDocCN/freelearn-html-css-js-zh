@@ -1,0 +1,360 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer037">
+<h1 class="chapter-number" id="_idParaDest-128"><a id="_idTextAnchor127"/>11</h1>
+<h1 id="_idParaDest-129"><a id="_idTextAnchor128"/>Replacing Behavior with a Side-By-Side Implementation</h1>
+<p>In the previous two chapters you built out a fully formed repository and an API for accessing it. Now it’s time to complete the story arc by updating both the SvelteKit loader and form actions to use the API instead of <span class="No-Break">the repository.</span></p>
+<p>It’s worth pointing out that this isn’t a necessary step: it would be perfectly acceptable to keep the SvelteKit server pieces pointing directly at <span class="No-Break">the repository.</span></p>
+<p>But reworking our existing code to point at the new API endpoints will introduce you to two ideas: first, that of a <strong class="bold">side-by-side implementation</strong>, which is a way to use tests to replace the existing code while ensuring the test suite remains on <em class="italic">Green</em>. The second is the use of a test double to shield the unit tests from SvelteKit. The test double takes the place of the framework code, avoiding a real network call out to the API – which wouldn’t work anyway since the API isn’t running within our Vitest <span class="No-Break">test suite.</span></p>
+<p><span class="No-Break"><em class="italic">Figure 11</em></span><em class="italic">.1</em> shows two views of our code base. The left side shows how the new architecture of our application code will look, with the SvelteKit route loaders and form actions pointing to the API endpoints. The right side shows how the unit tests for the router loaders and form actions will see the world. In this setup, the API endpoints are not accessed <span class="No-Break">at all.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer036">
+<img alt="Figure 11.1 – Using a test double to plug SvelteKit behavior within unit test suites" height="638" src="image/Figure_11.1_B19611.jpg" width="1495"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 11.1 – Using a test double to plug SvelteKit behavior within unit test suites</p>
+<p>After updating our SvelteKit components, we’ll wrap things up by updating the Playwright test to use the new API and stop the database seed data from appearing in test environments (both Playwright <span class="No-Break">and Vitest).</span></p>
+<p>This chapter covers the following <span class="No-Break">key topics:</span></p>
+<ul>
+<li>Updating the route loader to use <span class="No-Break">the API</span></li>
+<li>Updating the page form action to use <span class="No-Break">the API</span></li>
+<li>Using a server hook to seed <span class="No-Break">sample data</span></li>
+</ul>
+<p>By the end of the chapter, you’ll have seen how to use a <strong class="bold">spy</strong> (a form of test double) and the process of building a <span class="No-Break">side-by-side implementation.</span></p>
+<h1 id="_idParaDest-130"><a id="_idTextAnchor129"/>Technical requirements</h1>
+<p>The code for the chapter can be found online <span class="No-Break">at </span><a href="https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter11/Start"><span class="No-Break">https://github.com/PacktPublishing/Svelte-with-Test-Driven-Development/tree/main/Chapter11/Start</span></a><span class="No-Break">.</span></p>
+<h1 id="_idParaDest-131"><a id="_idTextAnchor130"/>Updating the route loader to use the API</h1>
+<p>In this section, you’ll introduce <a id="_idIndexMarker362"/>a call to the <strong class="source-inline">GET</strong> <strong class="source-inline">/api/birthdays</strong> endpoint <a id="_idIndexMarker363"/>using the SvelteKit fetch function. That will involve using <span class="No-Break">a spy.</span></p>
+<p class="callout-heading">What is a test spy?</p>
+<p class="callout">A spy is a function that keeps a record of each time it is called, together with the arguments it is called <a id="_idIndexMarker364"/>with. It can then be inspected later to verify that it was called with the correct arguments. The spy is almost always a <em class="italic">stub</em> as well, meaning it avoids calling the real function entirely, instead returning a hardcoded – stubbed – value. The spy acts as a substitute for a <span class="No-Break">real function.</span></p>
+<p class="callout">In Vitest, a spy is created by calling the <span class="No-Break"><strong class="source-inline">vi.fn</strong></span><span class="No-Break"> function.</span></p>
+<p>When we use a test spy, you’ll have at least one test that checks the arguments passed to the spy. Then you’ll have at least one more test for each stubbed return value that the <span class="No-Break">spy returns.</span></p>
+<p>We will use a spy for the <strong class="source-inline">fetch</strong> function that mimics retrieving birthdays via the <strong class="source-inline">GET</strong> <strong class="source-inline">/</strong><span class="No-Break"><strong class="source-inline">api/birthdays</strong></span><span class="No-Break"> endpoint.</span></p>
+<p class="callout-heading">Understanding the SvelteKit fetch function</p>
+<p class="callout">SvelteKit provides a <strong class="source-inline">fetch</strong> parameter to the user-defined <strong class="source-inline">load</strong> function and to the form actions. The value <a id="_idIndexMarker365"/>of this parameter is a function that has the same semantics as the standard Fetch API provided by browsers. The difference is in mechanics: SvelteKit’s <strong class="source-inline">fetch</strong> function is able to short-cut calls made on the server so that they don’t cause an HTTP request but instead feed directly into the <strong class="source-inline">GET</strong> function that matches the <span class="No-Break">route specified.</span></p>
+<p>Let’s begin with a new factory <span class="No-Break">method definition:</span></p>
+<ol>
+<li>Create a new file named <strong class="source-inline">src/factories/fetch.js</strong> and add the following definition. We will use this to build stub <strong class="source-inline">Response</strong> objects that the test spy <span class="No-Break">will return:</span><pre class="source-code">
+export const fetchResponseOk = (response = {}) =&gt; ({
+  status: 'ok',
+  json: () =&gt; Promise.resolve(response)
+});</pre></li>
+<li>Now open the test file at <strong class="source-inline">src/routes/birthdays/page.server.test.js</strong> and add an <strong class="source-inline">import</strong> statement to <span class="No-Break">that function:</span><pre class="source-code">
+import {
+  fetchResponseOk
+} from 'src/factories/fetch.js';</pre></li>
+<li>Next, update <a id="_idIndexMarker366"/>the Vitest <strong class="source-inline">import</strong> statement <a id="_idIndexMarker367"/>to include an import for <strong class="source-inline">vi</strong>, <span class="No-Break">like this:</span><pre class="source-code">
+import {
+  describe,
+  it,
+  expect,
+  beforeEach<strong class="bold">,</strong>
+  <strong class="bold">vi</strong>
+} from 'vitest';</pre></li>
+<li>Add the following test at the bottom of the <strong class="source-inline">describe</strong> block with the title <strong class="source-inline">/birthdays - load</strong>. In addition to creating a test spy with a call to <strong class="source-inline">vi.fn()</strong>, this also uses the <strong class="source-inline">mockResolvedValue</strong> function to specify that the spy should return a value wrapped in a <strong class="source-inline">Promise</strong> object. The test concludes with the <strong class="source-inline">toBeCalledWith</strong> matcher to verify that the spy is called in the <span class="No-Break">right way:</span><pre class="source-code">
+describe('/birthdays - load', () =&gt; {
+  ...
+  it('calls fetch with /api/birthdays', async () =&gt; {
+    const fetch = vi.fn();
+    fetch.mockResolvedValue(fetchResponseOk());
+    const result = await load({ fetch });
+    expect(fetch).toBeCalledWith('/api/birthdays');
+  });
+});</pre></li>
+<li>To make that pass, we’ll start with a side-by-side implementation. That means the <a id="_idIndexMarker368"/>previous implementation remains in place <a id="_idIndexMarker369"/>alongside the new implementation. In the <strong class="source-inline">src/routes/birthdays/+page.server.js</strong> file, modify the <strong class="source-inline">load</strong> function so that it takes a <strong class="source-inline">fetch</strong> argument and then invokes it as the first thing it does, <span class="No-Break">like this:</span><pre class="source-code">
+export const load = (<strong class="bold">{ fetch }</strong>) =&gt; <strong class="bold">{</strong>
+  <strong class="bold">fetch('/api/birthdays');</strong>
+  <strong class="bold">return</strong> {
+    birthdays: getAll()
+  }
+<strong class="bold">}</strong>;</pre></li>
+</ol>
+<p>This will cause the original test case to fail due to a missing value for <strong class="source-inline">fetch</strong>. We are about to delete this test, but for now, let’s humor ourselves by fixing <span class="No-Break">the test.</span></p>
+<ol>
+<li value="6">Update the test case to use a very simple stub value for <strong class="source-inline">fetch</strong>, as shown in the following code. This highlights the fact that a Vitest spy created by <strong class="source-inline">vi.fn</strong> is not always necessary. If you’re not checking the spy, then a plain stub <span class="No-Break">is enough:</span><pre class="source-code">
+describe('/birthdays - load', () =&gt; {
+  it('returns a fixture of two items', () =&gt; {
+    const result = load(<strong class="bold">{ fetch: () =&gt; {} }</strong>);
+    ...
+  });
+});</pre></li>
+<li>Continue by <a id="_idIndexMarker370"/>writing the second test, which checks <a id="_idIndexMarker371"/>that the <strong class="source-inline">load</strong> function returns whatever data came back from <strong class="source-inline">fetch</strong>. This time, we need to pass an actual value to <strong class="source-inline">fetchResponseOk</strong>, and compare that to the <span class="No-Break"><strong class="source-inline">return</strong></span><span class="No-Break"> value:</span><pre class="source-code">
+describe('/birthdays - load', () =&gt; {
+  ...
+  it('returns the response body', async () =&gt; {
+    const birthdays = [
+      createBirthday('Hercules', '1994-02-02'),
+      createBirthday('Athena', '1989-01-01')
+    ];
+    const fetch = vi.fn();
+    fetch.mockResolvedValue(
+      fetchResponseOk({ birthdays })
+    );
+    const result = await load({ fetch });
+    expect(result).toEqual({ birthdays });
+  });
+});</pre></li>
+<li>Go ahead and update the <strong class="source-inline">load</strong> function to return <span class="No-Break">this value:</span><pre class="source-code">
+export const load = async ({ fetch }) =&gt; {
+  const result = await fetch('/api/birthdays');
+  return <strong class="bold">result.json();</strong>
+};</pre></li>
+<li>You might have noticed this is in direct conflict with the original test we wrote. When we build <a id="_idIndexMarker372"/>a side-by-side implementation, the <a id="_idIndexMarker373"/>final step is often switching out the return value. When that happens, it’s time to delete the original test. So, go ahead and delete the original test – the only one titled <em class="italic">returns a fixture of two items</em> – since it no <span class="No-Break">longer applies.</span></li>
+<li>Finally, remove the <strong class="source-inline">getAll</strong> import from the <strong class="source-inline">+</strong><span class="No-Break"><strong class="source-inline">page.server.js</strong></span><span class="No-Break"> file:</span><pre class="source-code">
+import {
+  addNew,
+  replace
+} from '$lib/server/birthdayRepository.js';</pre></li>
+</ol>
+<p>You’ve now seen how to use <strong class="source-inline">vi.fn</strong> to create a test spy for testing <strong class="source-inline">fetch</strong> calls and a basic side-by-side implementation. The next section repeats the same process for the page form action, but this time the implementation is <span class="No-Break">more complex.</span></p>
+<h1 id="_idParaDest-132"><a id="_idTextAnchor131"/>Updating the page form action to use the API</h1>
+<p>In the section, we <a id="_idIndexMarker374"/>will update the page form action to <a id="_idIndexMarker375"/>use the new <strong class="source-inline">POST</strong> and <strong class="source-inline">PUT</strong> methods on the API endpoints instead of the <strong class="source-inline">addNew</strong> and <strong class="source-inline">replace</strong> functions of <span class="No-Break">the repository.</span></p>
+<p>This will be done using the same side-by-side technique of the previous section, but this time it’s more involved. We still need tests to verify that the spy is called with the right parameters and that the return value is given. But now we also need to verify that errors are converted to SvelteKit form failures, since the form action has separate handling <span class="No-Break">for errors.</span></p>
+<p>Another important change here is that we will use two tests for checking the parameters passed to the <strong class="source-inline">fetch</strong> call. This is a powerful technique when faced with complex arguments where there are <em class="italic">clumps</em> of arguments that have <span class="No-Break">separate meanings.</span></p>
+<p>In the case of fetch, the <a id="_idIndexMarker376"/>URL and the HTTP verb are one <em class="italic">clump</em>: we <a id="_idIndexMarker377"/>can have a single test that verifies, for example, that we’re calling the <strong class="source-inline">POST</strong> <strong class="source-inline">/api/birthdays</strong> endpoint. But there’s also the <strong class="source-inline">body</strong> property, and since that isn’t static data – it changes depending on the form action input parameters – it seems sensible to give that a test of <span class="No-Break">its own.</span></p>
+<p>Finally, since the API endpoints are performing data validation, we no longer need that functionality. So we’ll finish by deleting that implementation and its <span class="No-Break">related tests.</span></p>
+<p>Let’s get started by updating the existing <strong class="source-inline">describe</strong> block with some <span class="No-Break">new setup:</span></p>
+<ol>
+<li>Find the <strong class="source-inline">describe</strong> block named <strong class="source-inline">/birthdays - default action</strong> and add the following three pieces of setup: a <strong class="source-inline">fetch</strong> variable that can be accessed in all tests; a new <strong class="source-inline">beforeEach</strong> block to set up the <strong class="source-inline">fetch</strong> response; and an updated <strong class="source-inline">performFormAction</strong> method that passes in the <span class="No-Break"><strong class="source-inline">fetch</strong></span><span class="No-Break"> argument:</span><pre class="source-code">
+describe('/birthdays - default action', () =&gt; {
+  <strong class="bold">const fetch = vi.fn();</strong>
+  <strong class="bold">beforeEach(() =&gt; {</strong>
+  <strong class="bold">  fetch.mockResolvedValue(fetchResponseOk());</strong>
+  <strong class="bold">});</strong>
+  const performFormAction = (formData) =&gt;
+    actions.default({
+      request: createFormDataRequest(formData)<strong class="bold">,</strong>
+<strong class="bold">      fetch</strong>
+    });
+  ...
+});</pre></li>
+<li>Then, add this <a id="_idIndexMarker378"/>new nested <strong class="source-inline">describe</strong> block <a id="_idIndexMarker379"/>with its single test below all the existing tests. It checks that the <strong class="source-inline">fetch</strong> spy has been called with the correct URL and <strong class="source-inline">method</strong> <span class="No-Break">of </span><span class="No-Break"><strong class="source-inline">POST</strong></span><span class="No-Break">:</span><pre class="source-code">
+describe('when adding a new birthday', () =&gt; {
+  it('requests data from POST /api/birthdays', async
+  () =&gt; {
+    await performFormAction(
+      createBirthday('Zeus', '2009-02-02')
+    );
+    expect(fetch).toBeCalledWith(
+      '/api/birthdays',
+      expect.objectContaining({ method: 'POST' })
+    );
+  });
+});</pre></li>
+<li>To make that pass, start by adding the <strong class="source-inline">fetch</strong> argument into the <span class="No-Break">form action:</span><pre class="source-code">
+export const actions = {
+  default: async ({ request<strong class="bold">, fetch</strong> }) =&gt; {
+  ...
+}</pre></li>
+<li>Then, make a start on the side-by-side implementation. Find the call to <strong class="source-inline">addNew</strong>, and just below it, add a new call to <strong class="source-inline">fetch</strong>, as <span class="No-Break">shown here:</span><pre class="source-code">
+let result;
+if (id) {
+  ...
+} else {
+  result = addNew({ name, dob });
+  <strong class="bold">await fetch('/api/birthdays', {</strong>
+  <strong class="bold">  method: 'POST'</strong>
+  <strong class="bold">});</strong>
+}</pre></li>
+<li>For the next test, we <a id="_idIndexMarker380"/>have a very similar test which is <a id="_idIndexMarker381"/>still testing the arguments to the <strong class="source-inline">fetch</strong> spy, but this time checking the varying portion of it: the <strong class="source-inline">body</strong> property. Add that <span class="No-Break">test now:</span><pre class="source-code">
+it('sends the birthday as the request body', async () =&gt; {
+  await performFormAction(
+    createBirthday('Zeus', '2009-02-02')
+  );
+  expect(fetch).toBeCalledWith(
+    expect.anything(),
+    expect.objectContaining({
+      body: JSON.stringify({
+        name: 'Zeus',
+        dob: '2009-02-02'
+      })
+    })
+  );
+});</pre></li>
+</ol>
+<p>The preceding code sample makes use of a helper function called <strong class="source-inline">expect.anything</strong>, which you also saw in <a href="B19611_10.xhtml#_idTextAnchor119"><span class="No-Break"><em class="italic">Chapter 10</em></span></a>, <em class="italic">Test-Driving API Endpoints</em>. Since we already have a previous test that checks the value of the first argument, we can avoid repeating ourselves by checking it here and simultaneously relax the expectation so that the tests are kept independent of <span class="No-Break">each other.</span></p>
+<p>Using this helper <a id="_idIndexMarker382"/>also aids with the readability of the <a id="_idIndexMarker383"/>test by focusing the reader’s attention on what’s specifically of interest: the second argument, not <span class="No-Break">the first.</span></p>
+<ol>
+<li value="6">To make that pass, update the <strong class="source-inline">fetch</strong> call from <em class="italic">step 4</em> to include the <span class="No-Break"><strong class="source-inline">body</strong></span><span class="No-Break"> property:</span><pre class="source-code">
+await fetch('/api/birthdays', {
+  method: 'POST'<strong class="bold">,</strong>
+  <strong class="bold">body: JSON.stringify({ name, dob })</strong>
+});</pre></li>
+<li>Now let’s handle the error case. For this, we need a new factory for an error response. In <strong class="source-inline">src/factories/fetch.js</strong>, add the following definition <span class="No-Break">for </span><span class="No-Break"><strong class="source-inline">fetchResponseError</strong></span><span class="No-Break">:</span><pre class="source-code">
+export const fetchResponseError = (errorMessage) =&gt; ({
+  status: 'error',
+  json: () =&gt;
+    Promise.resolve({ message: errorMessage })
+});</pre></li>
+<li>Then import it into your <span class="No-Break">test suite:</span><pre class="source-code">
+import {
+  fetchResponseOk<strong class="bold">,</strong>
+<strong class="bold">  fetchResponseError</strong>
+} from 'src/factories/fetch.js';</pre></li>
+<li>We’re ready for the next test. This test checks what happens when an error occurs. Since our spy has no real logic, we don’t care about the <em class="italic">specifics</em> of the error. We just <a id="_idIndexMarker384"/>need it to trigger the same behavior <a id="_idIndexMarker385"/>as the real code. That means having a non-<strong class="source-inline">ok</strong> status message, just like the <strong class="source-inline">fetchResponseError</strong> factory gives us. To make it clear that it’s not real logic, I’ve used an <strong class="source-inline">error message</strong> string as opposed to a real <span class="No-Break">error message:</span><pre class="source-code">
+it('returns a 422 if the POST request returns an error', async () =&gt; {
+  fetch.mockResolvedValue(
+    fetchResponseError('error message')
+  );
+  const result = await performFormAction(
+    createBirthday('Zeus', '2009-02-02')
+  );
+  expect(result).toBeUnprocessableEntity({
+    error: 'error message',
+    name: 'Zeus',
+    dob: '2009-02-02'
+  });
+});</pre></li>
+<li>To make this pass, start by saving the response from the <strong class="source-inline">fetch</strong> call in the <span class="No-Break">form action:</span><pre class="source-code">
+let result;
+<strong class="bold">let response;</strong>
+if (id) {
+  ...
+} else {
+  result = addNew({ name, dob });
+<strong class="bold">  response = </strong>await fetch('/api/birthdays', {
+    method: 'POST',
+    body: JSON.stringify({ name, dob })
+  });
+}</pre></li>
+<li>Then, add the <a id="_idIndexMarker386"/>following return clause <em class="italic">after</em> the <a id="_idIndexMarker387"/>existing error clause for the original <strong class="source-inline">result</strong> value. This is a trick of the side-by-side implementation. It ensures that the original implementation won’t fail <span class="No-Break">on us:</span><pre class="source-code">
+if (!response.ok) {
+  const { message } = await response.json();
+  return fail(422, {
+    id,
+    name,
+    dob,
+    error: message
+  });
+}</pre></li>
+<li>All right, let’s do the same for the <strong class="source-inline">replace</strong> call. Add the following new nested <strong class="source-inline">describe</strong> block with a <span class="No-Break">single test:</span><pre class="source-code">
+describe('when replacing an existing birthday', () =&gt; {
+  it('requests data from PUT /api/birthday/{id}',
+  async () =&gt; {
+    await performFormAction(
+      createBirthday('Zeus', '2009-02-02', {
+        id: '123'
+      })
+    );
+    expect(fetch).toBeCalledWith(
+      '/api/birthday/123',
+      expect.objectContaining({ method: 'PUT' })
+    );
+  });
+});</pre></li>
+<li>In the application <a id="_idIndexMarker388"/>code, find the call to <strong class="source-inline">replace</strong>, and <a id="_idIndexMarker389"/>just below it, add a new call to <strong class="source-inline">fetch</strong>. After this, the test <span class="No-Break">should pass:</span><pre class="source-code">
+if (id) {
+  result = replace(id, { name, dob });
+  <strong class="bold">await fetch(`/api/birthday/${id}`, {</strong>
+  <strong class="bold">  method: 'PUT'</strong>
+  <strong class="bold">});</strong>
+} else {
+ ...
+}</pre></li>
+<li>Next, we’ll <a id="_idIndexMarker390"/>test the body of the <strong class="source-inline">PUT</strong> request. Because <a id="_idIndexMarker391"/>we’re not actually calling into the repository, it no longer matters whether the item exists or not. It’s all down to the test <span class="No-Break">double setup:</span><pre class="source-code">
+it('sends the birthday as the request body', async () =&gt; {
+  await performFormAction(
+    createBirthday('Zeus', '2009-02-02', {
+      id: '123'
+    })
+  );
+  expect(fetch).toBeCalledWith(
+    expect.anything(),
+    expect.objectContaining({
+      body: JSON.stringify({
+        name: 'Zeus',
+        dob: '2009-02-02'
+      })
+    })
+  );
+});</pre></li>
+<li>To make that pass, add the <strong class="source-inline">body</strong> property to the <span class="No-Break"><strong class="source-inline">fetch</strong></span><span class="No-Break"> call:</span><pre class="source-code">
+await fetch(`/api/birthday/${id}`, {
+  method: 'PUT'<strong class="bold">,</strong>
+  <strong class="bold">body: JSON.stringify({ name, dob })</strong>
+});</pre></li>
+<li>For the <a id="_idIndexMarker392"/>final test, repeat the same process used <a id="_idIndexMarker393"/>for the <strong class="source-inline">POST</strong> request. We use <strong class="source-inline">mockResolvedValue</strong> combined with the <strong class="source-inline">fetchResponseError</strong> factory to make the spy trigger our <span class="No-Break">error flow:</span><pre class="source-code">
+it('returns a 422 if the POST request returns an error', async () =&gt; {
+  fetch.mockResolvedValue(
+    fetchResponseError('error message')
+  );
+  const result = await performFormAction(
+    createBirthday('Zeus', '2009-02-02', {
+      id: '123'
+    })
+  );
+  expect(result).toBeUnprocessableEntity({
+    error: 'error message',
+    name: 'Zeus',
+    dob: '2009-02-02',
+    id: '123'
+  });
+});</pre></li>
+<li>To make that pass, simply save the result in the <strong class="source-inline">response</strong> variable. The code will then rely on the same return clause from <span class="No-Break"><em class="italic">step 11</em></span><span class="No-Break">:</span><pre class="source-code">
+if (id) {
+  result = replace(id, { name, dob });
+  <strong class="bold">response = </strong>await fetch('/api/birthdays', {
+    method: 'POST',
+    body: JSON.stringify({ name, dob })
+  });
+} ...</pre></li>
+<li>Now comes the <a id="_idIndexMarker394"/>satisfying bit. You can go ahead and <a id="_idIndexMarker395"/>delete the original implementation, first by deleting the tests, then by deleting the code itself. Delete all <span class="No-Break">these tests:</span><ul><li><strong class="source-inline">adds a new birthday into </strong><span class="No-Break"><strong class="source-inline">the list</strong></span></li><li><strong class="source-inline">saves unique ids onto each </strong><span class="No-Break"><strong class="source-inline">new birthday</strong></span></li><li><strong class="source-inline">updates an entry that shares the </strong><span class="No-Break"><strong class="source-inline">same id</strong></span></li><li><strong class="source-inline">when the name is </strong><span class="No-Break"><strong class="source-inline">not provided...</strong></span></li><li><strong class="source-inline">when the date of birth in the </strong><span class="No-Break"><strong class="source-inline">wrong format...</strong></span></li><li><strong class="source-inline">when the id </strong><span class="No-Break"><strong class="source-inline">is unknown...</strong></span></li><li><strong class="source-inline">returns the id when an empty name </strong><span class="No-Break"><strong class="source-inline">is provided</strong></span></li><li><strong class="source-inline">returns the id when an empty date of birth </strong><span class="No-Break"><strong class="source-inline">is provided</strong></span></li></ul></li>
+</ol>
+<p class="callout-heading">Using the online code repository</p>
+<p class="callout">This is a lot of code change. You can use the online repository to cross-check your changes as you <span class="No-Break">go along.</span></p>
+<ol>
+<li value="19">You can delete the import for <strong class="source-inline">birthayRepository</strong>, since you’re no longer using that, and the <strong class="source-inline">storedId</strong> method too. If you run your tests now, you should find they <span class="No-Break">still pass.</span></li>
+<li>Go ahead and <a id="_idIndexMarker396"/>delete all the bits from the <a id="_idIndexMarker397"/>implementation that reference the <span class="No-Break">birthday repository:</span><ul><li>The calls to <strong class="source-inline">addNew</strong> <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">replace</strong></span></li><li>The <strong class="source-inline">result</strong> variable and the <span class="No-Break">error handling</span></li><li>The <strong class="source-inline">import</strong> statement for the <strong class="source-inline">replace</strong> function (although the <strong class="source-inline">addNew</strong> function is still needed; we’ll remove it in the <span class="No-Break">next section)</span></li></ul></li>
+</ol>
+<p>That completes the new version of the page form actions. But before finishing, we need to do something about our <span class="No-Break">seed data.</span></p>
+<h1 id="_idParaDest-133"><a id="_idTextAnchor132"/>Using a server hook to seed sample data</h1>
+<p>In the early chapters <a id="_idIndexMarker398"/>of the book, we added seed data into the <strong class="source-inline">/birthdays</strong> route in the <strong class="source-inline">src/routes/birthdays/+page.server.js</strong> file. At the top, there are two calls to <strong class="source-inline">addNew</strong> to create two fake birthdays. We relied on this data within our Playwright tests. It’s now time to <span class="No-Break">clean up.</span></p>
+<p class="callout-heading">Creating repeated data in the development environment</p>
+<p class="callout">If you’ve been running the dev server while you edited files, you will have noticed that as SvelteKit reloaded your files, the fake birthdays were repeatedly created, resulting in many birthday objects in the system. This was because of those <strong class="source-inline">addNew</strong> calls at the top of the route’s <strong class="source-inline">+page.server.js</strong> file. Another problem caused by our seed data will now <span class="No-Break">be fixed.</span></p>
+<p>First, we’ll update the Playwright tests to create all their test data via the API. Then we’ll remove the hardcoded seed data from our system. Finally, we will bring the seed data back when loading the <span class="No-Break">development environment.</span></p>
+<p>That means the seed data is available using the <strong class="source-inline">npm run dev</strong> command but won’t be there when running the automated tests or when launching in <span class="No-Break">production mode.</span></p>
+<p>Let’s start with the <span class="No-Break">Playwright tests:</span></p>
+<ol>
+<li>Add the following to the top of <strong class="source-inline">tests/birthdays.test.js</strong>, which is a new <a id="_idIndexMarker399"/>function to make a <strong class="source-inline">POST /api/birthdays</strong> request to insert a birthday into <span class="No-Break">the repository:</span><pre class="source-code">
+const addBirthday = async (request, { name, dob }) =&gt; {
+  await request.post('/api/birthdays', {
+    data: { name, dob }
+  });
+};</pre></li>
+<li>Then, update the <strong class="source-inline">list all birthdays</strong> test so that it begins with two calls to <strong class="source-inline">addBirthday</strong>, <span class="No-Break">like this:</span><pre class="source-code">
+test('lists all birthday', async ({ page, request }) =&gt; {
+  <strong class="bold">await addBirthday(request, {</strong>
+  <strong class="bold">  </strong><strong class="bold">name: 'Hercules',</strong>
+  <strong class="bold">  dob: '1995-02-03'</strong>
+  <strong class="bold">});</strong>
+  <strong class="bold">await addBirthday(request, {</strong>
+  <strong class="bold">  name: 'Athena',</strong>
+  <strong class="bold">  dob: '1995-02-03'</strong>
+  <strong class="bold">});</strong>
+  ...
+});</pre></li>
+<li>Next, update the <strong class="source-inline">edits a birthday</strong> test in the <span class="No-Break">same way:</span><pre class="source-code">
+test('edits a birthday', async ({ page, request }) =&gt; {
+  <strong class="bold">await addBirthday(request, {</strong>
+  <strong class="bold">  name: 'Ares',</strong>
+  <strong class="bold">  dob: '1985-01-01'</strong>
+  <strong class="bold">});</strong>
+  ...
+});</pre></li>
+<li>Before running the Playwright tests, we need to remove the seed data. In <strong class="source-inline">src/routes/birthdays/+page.server.js</strong>, delete the two calls to <strong class="source-inline">addNew</strong> and the <strong class="source-inline">addNew</strong> <span class="No-Break">import statement.</span></li>
+<li>Run the Playwright tests and verify <span class="No-Break">they’ve passed.</span></li>
+<li>All that’s left is <a id="_idIndexMarker400"/>to add a server hook for that data so that when you run the server in dev mode, you get some data. Create a new file named <strong class="source-inline">src/hooks.server.js</strong> with the following content. SvelteKit will automatically load this file when the web server <span class="No-Break">is launched:</span><pre class="source-code">
+import {
+  addNew
+} from '$lib/server/birthdayRepository.js';
+if (import.meta.env.MODE === 'development') {
+  addNew({ name: 'Hercules', dob: '1994-02-02' });
+  addNew({ name: 'Athena', dob: '1989-01-01' });
+}</pre></li>
+</ol>
+<p>That completes <a id="_idIndexMarker401"/>the removal of the hardcoded <span class="No-Break">seed data.</span></p>
+<h1 id="_idParaDest-134"><a id="_idTextAnchor133"/>Summary</h1>
+<p>This chapter introduced you to the concept of a test double that can be used to block out unwanted framework behavior. In our case, that was the <strong class="source-inline">fetch</strong> call that, at runtime, will be magically hooked up to the API endpoints. But since we don’t have access to the SvelteKit runtime environment within a Vitest unit test, we stubbed <span class="No-Break">it out.</span></p>
+<p>You also learned how a side-by-side implementation is used to keep your test suites on <em class="italic">Green</em> while you systematically replace the internals of <span class="No-Break">a function.</span></p>
+<p>The next chapter continues the theme of test doubles with a detailed look at <span class="No-Break">component mocks.</span></p>
+</div>
+</div></body></html>
