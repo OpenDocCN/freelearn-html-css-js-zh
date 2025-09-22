@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# AlexaSkill 聊天机器人开发实用指南
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/21ba3c60d34dd9d22a6cd85e93119fca`](https://zh.annas-archive.org/md5/21ba3c60d34dd9d22a6cd85e93119fca)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

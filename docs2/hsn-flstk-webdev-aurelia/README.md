@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Aurelia 全栈 Web 开发实用指南
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/064b16cc0926ccc480bf7467d26aa77e`](https://zh.annas-archive.org/md5/064b16cc0926ccc480bf7467d26aa77e)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
