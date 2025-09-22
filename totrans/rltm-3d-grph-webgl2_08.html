@@ -1,0 +1,743 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Picking</h1>
+                </header>
+            
+            <article>
+                
+<p>In the previous chapter, we covered how to use textures to add more detail to our 3D application. In this chapter, we'll learn how to interact with our WebGL application through a technique called <strong>picking</strong>. Picking refers to the ability to select objects in a 3D scene. The most common device used for picking is a computer mouse. However, picking can also be performed using other human computer interfaces, such as tactile screens and haptic devices. In this chapter, we will learn how picking can be implemented in WebGL.</p>
+<p>In this chapter, you will:</p>
+<ul>
+<li>Learn how to select objects in a WebGL scene using the mouse.</li>
+<li>Create and use offscreen framebuffers.</li>
+<li>Learn what renderbuffers are and how they are used by framebuffers.</li>
+<li>Read pixels from framebuffers.</li>
+<li>Use color labels to perform object selection based on color.</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Picking</h1>
+                </header>
+            
+            <article>
+                
+<p>Virtually any 3D computer-graphics application needs to provide mechanisms for the user to interact with the scene. For instance, in a game, you may want to point at your target and perform an action upon it. Or in a CAD system, you may want to be able to select an object in your scene and modify its properties. In this chapter, we’ll learn the basics of implementing these kinds of interactions in WebGL.</p>
+<p>To start, we should point out that we can select objects by casting a ray (vector) from the camera position (also known as the eye position) into the scene and calculate the objects that lie along its path. This is known as <strong>ray-casting</strong> and involves detecting intersections between the ray and object surfaces in the scene.</p>
+<div class="packt_infobox"><strong><span class="packt_screen">Ray-Casting</span></strong><br/>
+<br/>
+Ray-casting is the use of ray–surface intersection tests to solve a variety of problems in computer graphics and computational geometry. The term was first used in computer graphics in a 1982 paper by Scott Roth to describe a method for rendering constructive solid geometry models. If you're interested in learning more, check out <a href="https://en.wikipedia.org/wiki/Ray_casting">https://en.wikipedia.org/wiki/Ray_casting</a>.</div>
+<p>That being said, in this chapter, we’ll implement picking based on object colors in an offscreen framebuffer, as it is a simpler and more foundational technique to help you understand how to interact with objects in a 3D application. If you're interested in ray-casting, you’ll find a section dedicated to this technique in <a href="7100b7e4-1a63-43f4-93ea-f109ca911607.xhtml">Chapter 10</a>, <em>Advanced Techniques</em>.</p>
+<p>The basic idea behind picking is to assign a different identifier to every object in the scene and render the scene to an offscreen framebuffer. We will start by identifying objects with a unique color. When the user clicks on <kbd>canvas</kbd>, we go to the offscreen framebuffer and read the color of the pixel at the location of the click action. Since we assigned a unique color to each object in the offscreen buffer, we can use this color to identify the object that has been selected and perform an action upon it. The following diagram illustrates this concept:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/8e4b2ac5-0b64-464c-a786-6fe9a9c219c0.png"/></p>
+<p>An interesting example that may help explain picking is Duck Hunt, the popular Nintendo game from the 90s, where players used a physical plastic gun controller to hunt ducks:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/0519b7af-6de7-43d2-9924-896a8fa9424d.png" style="width:28.92em;height:20.92em;"/></p>
+<p>Can you guess how the game determined whether the player hit a duck? That's right, picking! When the player points at a duck and pulls the trigger, the computer in the NES blacks out the screen and the Zapper diode in the gun begins reception. Then, the computer flashes a solid white block around the targets you’re supposed to be shooting at. The photodiode in the Zapper detects the change in light intensity and tells the computer that it’s pointed at a lit target block—in other words, you should receive a point because you hit the target. Of course, when you’re playing the game, you don’t notice the blackout and the targets flashing because it all happens in a fraction of a second. Pretty clever, right?</p>
+<p>Let's break down the steps for implementing our own form of picking in WebGL.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Setting up an Offscreen Framebuffer</h1>
+                </header>
+            
+            <article>
+                
+<p>As shown in <a href="d2019a49-9e84-448c-8799-e296187476d1.xhtml" target="_blank">Chapter 2</a>, <em>Rendering</em>, the framebuffer is the final rendering destination in WebGL. The results of the rendering on your screen are the contents of the framebuffer. Assuming that <kbd>gl</kbd> is our WebGL context, every call to <kbd>gl.drawArrays</kbd>, <kbd>gl.drawElements</kbd>, and <kbd>gl.clear</kbd> will change the contents of the framebuffer.</p>
+<p>Instead of rendering to the default framebuffer, we can also render to a scene that is offscreen <span>–</span> we call this the offscreen framebuffer. This is the first step in implementing picking. To do so, we need to set up a new framebuffer and tell WebGL that we want to use it instead of the default one. Let's see how we can do that.</p>
+<p>To set up a framebuffer, we need to create storage for at least two things: colors and depth information. We need to store the color for every fragment that is rendered in the framebuffer so we can create an image. Additionally, we need depth information to make sure that we have a scene where overlapping objects look consistent. If we do not have depth information, then we would not be able to tell, in the case of two overlapping objects, which object is at front and which one is at the back.</p>
+<p>To store colors, we will use a WebGL texture; to store depth information, we will use a renderbuffer.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Creating a Texture to Store Colors</h1>
+                </header>
+            
+            <article>
+                
+<p>The code to create a texture should be pretty straightforward after reading <a href="1455f0ba-ecbd-463d-bd1b-6c91fa910b26.xhtml" target="_blank">Chapter 7</a>, <em>Textures</em>:</p>
+<div>
+<pre>const canvas = document.getElementById('webgl-canvas');<br/>const { width, height } = canvas;<br/><br/>const texture = gl.createTexture();<br/>gl.bindTexture(gl.TEXTURE_2D, texture);<br/>gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);</pre></div>
+<p>The only difference is that we do not have an image to bind to the texture, so when we call <kbd>gl.texImage2D</kbd>, the last argument is <kbd>null</kbd>. This is because we are allocating space to store colors for the offscreen framebuffer.</p>
+<p>It's important to note that the <kbd>width</kbd> and <kbd>height</kbd> of the texture are set to the <kbd>canvas</kbd> size. This is because we want to ensure that the offscreen framebuffer resembles the dimensions of our 3D scene.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Creating a Renderbuffer to Store Depth Information</h1>
+                </header>
+            
+            <article>
+                
+<p>Renderbuffers are used to provide storage for the individual buffers used in a framebuffer. The depth buffer (z-buffer) is an example of a renderbuffer. It is always attached to the screen framebuffer, which is the default rendering destination in WebGL.</p>
+<p>The code to create a renderbuffer looks like the following code:</p>
+<div>
+<pre>const renderbuffer = gl.createRenderbuffer();<br/>gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer);<br/>gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);</pre></div>
+<p>The first line of code creates the renderbuffer. Similar to other WebGL buffers, the renderbuffer needs to be bound before we can operate on it. The third line of code determines the storage size of the renderbuffer.</p>
+<p>Please note that the size of the storage is the same as with the texture. Similar to before, we need to ensure that for every fragment (pixel) in the framebuffer, we have a color (stored in the texture) and a depth value (stored in the renderbuffer).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Creating a Framebuffer for Offscreen Rendering</h1>
+                </header>
+            
+            <article>
+                
+<p>We need to create a framebuffer and attach the texture and the renderbuffer that we created in the previous example. Let's see how this works in code.</p>
+<p>First, we need to create a new framebuffer:</p>
+<div>
+<pre>const framebuffer = gl.createFramebuffer();</pre></div>
+<p>Similar to the VBO manipulation, we tell WebGL that we’re going to operate on this framebuffer by making it the currently bound framebuffer. We do so with the following instruction:</p>
+<div>
+<pre>gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);</pre></div>
+<p>With the framebuffer bound, the texture is attached by calling the following method:</p>
+<div>
+<pre>gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);</pre></div>
+<p>Then, the renderbuffer is attached to the bound framebuffer using the following:</p>
+<div>
+<pre>gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffer);</pre></div>
+<p>Finally, we clean up the bound buffers as usual with the following code:</p>
+<div>
+<pre>gl.bindTexture(gl.TEXTURE_2D, null);<br/>gl.bindRenderbuffer(gl.RENDERBUFFER, null);<br/>gl.bindFramebuffer(gl.FRAMEBUFFER, null);</pre></div>
+<p>When the previously created framebuffer is unbound, the WebGL state machine goes back to rendering into the default screen framebuffer.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Assigning One Color per Object in the Scene</h1>
+                </header>
+            
+            <article>
+                
+<p>To keep things simple, we will pick an object based on its primitive color. That is, we discard the shiny reflections or shadows, and render the object with its uniform color. This is important, because to pick an object based on a color, we need to make sure that the color is constant per object and that each object has a different unique color.</p>
+<p>We achieve constant coloring by telling the fragment shader to use only the material diffuse property to set the ESSL output color variable. We are assuming that each object has a unique diffuse property.</p>
+<p>In situations where objects may share the same diffuse color, we can create a new ESSL uniform to store the picking color and make it unique for every object that's rendered into the offscreen framebuffer. This way, the objects will look the same when they are rendered on the screen, but their colors will be unique every time they are rendered into the offscreen framebuffer. Later in this chapter, we will implement this strategy along with other approaches for uniquely identifying objects.</p>
+<p>For now, let's assume that the objects in our scene have unique diffuse colors, as shown in the following diagram:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/782a5cbf-3790-45b8-a185-9ba22c6a21b8.png" style="width:41.58em;height:26.08em;"/></p>
+<p>Let's see how to render the scene offscreen by using the framebuffer we just set up.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Rendering to an Offscreen Framebuffer</h1>
+                </header>
+            
+            <article>
+                
+<p>In order to perform object selection using the offscreen framebuffer, we need to ensure that both framebuffers are synchronized. If the onscreen framebuffer and the offscreen framebuffer are not synchronized, we could miss crucial data, which may make our picking strategy inconsistent.</p>
+<p>A lack of consistency will limit the ability to read colors from the offscreen framebuffer and use them to identify objects in the scene.</p>
+<p>To ensure that the buffers are synchronized, we will create a custom <kbd>render</kbd> function. This function calls the <kbd>draw</kbd> function twice. First, when the offscreen buffer is bound, and a second time when the onscreen default framebuffer is bound. The code looks like this:</p>
+<div>
+<pre><span>function </span><span>render</span>() {<br/>  <span>// off-screen rendering<br/></span><span>  </span>gl.<span>bindFramebuffer</span>(gl.<span>FRAMEBUFFER</span><span>, </span>framebuffer)<span>;<br/></span><span>  </span><span>// we set the uniform to true because of an offscreen render<br/></span><span>  </span>gl.<span>uniform1i</span>(program.uOffscreen<span>, </span><span>true</span>)<span>;<br/></span><span>  </span><span>draw</span>()<span>;<br/></span><span><br/></span><span>  </span><span>// on-screen rendering<br/></span><span>  </span>gl.<span>bindFramebuffer</span>(gl.<span>FRAMEBUFFER</span><span>, </span><span>null</span>)<span>;<br/></span><span>  </span><span>// we set the uniform to false because of the default render<br/></span><span>  </span>gl.<span>uniform1i</span>(program.uOffscreen<span>, </span><span>false</span>)<span>;<br/></span><span>  </span><span>draw</span>()<span>;<br/></span>}</pre></div>
+<p>We tell our ESSL program to use only diffuse colors when rendering into the offscreen framebuffer using the <kbd>uOffscreen</kbd> uniform. The fragment shader contains the following code:</p>
+<div>
+<pre><span>void </span>main(<span>void</span>) {<br/> <br/>  <span>if </span>(uOffscreen) {<br/>    fragColor = uMaterialDiffuse<span>;<br/></span><span>    </span><span>return</span><span>;<br/></span><span>  </span>}<br/> <br/>  <span>// ...<br/></span>}</pre></div>
+<p>The following diagram shows the behavior of the <kbd>render</kbd> function:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/a1e526e4-2fb8-4cd7-a463-630d3ec909f5.png"/></p>
+<p>Therefore, every time the scene updates, the <kbd>render</kbd> function is called instead of calling the <kbd>draw</kbd> function.</p>
+<p>We change this in the <kbd>init</kbd> function:</p>
+<div>
+<pre><span>function </span><span>init</span>() {<span><br/></span><span>  </span><span>configure</span>()<span>;<br/></span><span>  </span><span>load</span>()<span>;<br/></span><span><br/>  // instead of calling 'draw', we are now calling 'render'<br/></span><span>  </span>clock.<span>on</span>(<span>'tick'</span><span>, </span>render)<span>;</span><span><br/></span>}</pre></div>
+<p>This way, the <kbd>scene</kbd> will be periodically updated using the <kbd>render</kbd> function instead of the original <kbd>draw</kbd> function.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Clicking on the Canvas</h1>
+                </header>
+            
+            <article>
+                
+<p>The next step is to capture and read the mouse coordinates of a user click from the offscreen framebuffer. We can use the standard <kbd>onmouseup</kbd> event from the <kbd>canvas</kbd> element in our webpage:</p>
+<div>
+<pre>const canvas = document.getElementById('webgl-canvas');<br/> <br/>canvas.onmouseup = event =&gt; {<br/>  // capture coordinates from the `event`<br/>};</pre></div>
+<p>Since the given <kbd>event</kbd> returns the mouse coordinates (<kbd>clientX</kbd> and <kbd>clientY</kbd>) from the top-left rather than the coordinates with respect to the <kbd>canvas</kbd>, we need to leverage the DOM hierarchy to know the total offset that we have around the <kbd>canvas</kbd> element.</p>
+<p>We can do this with a code fragment inside the <kbd>canvas.onmouseup</kbd> function:</p>
+<div>
+<pre><span>let </span>top = <span>0</span><span>,<br/></span><span>  </span>left = <span>0</span><span>;<br/></span><span><br/></span><span>while </span>(canvas &amp;&amp; canvas.<span>tagName </span>!== <span>'BODY'</span>) {<br/>  top += canvas.<span>offsetTop</span><span>;<br/></span><span>  </span>left += canvas.<span>offsetLeft</span><span>;<br/></span><span>  </span>canvas = canvas.<span>offsetParent</span><span>;<br/></span>}</pre></div>
+<p>The following diagram shows how we use the offset calculation to obtain the clicked <kbd>canvas</kbd> coordinates:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/aa7b4f9f-bf5b-47db-9d26-bf7bfa9c39a3.png" style="width:40.00em;height:27.33em;"/></p>
+<pre>const x = ev.clientX - (a + b + c);<br/>const y = canvasHeight - (ev.clientY - (d + e + f));</pre>
+<p>Also, we should take any possible page offset into account. The page offset is the result of scrolling, which affects the calculation of the coordinates. We want to obtain the same coordinates for the <kbd>canvas</kbd> every time, regardless of any scrolling. To do so, we add the following two lines of code just before calculating the clicked <kbd>canvas</kbd> coordinates:</p>
+<div>
+<pre>left += window.<span>pageXOffset</span><span>;<br/></span>top -= window.<span>pageYOffset</span><span>;</span></pre></div>
+<p>Then, we calculate the <kbd>canvas</kbd> coordinates:</p>
+<div>
+<pre><span>x = </span>ev.<span>clientX </span>- left;<span><br/></span><span>y = </span>canvas.<span>height </span>- (ev.<span>clientY </span>- top);</pre></div>
+<p>Remember that unlike the browser window, the <kbd>canvas</kbd> coordinates (and also the framebuffer coordinates for this purpose) start in the lower-left corner.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Reading Pixels from the Offscreen Framebuffer</h1>
+                </header>
+            
+            <article>
+                
+<p>We can now go to the offscreen buffer and read the color from the appropriate coordinates:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/bf13007d-f3f2-452c-bdc7-9b4d40ad0772.png"/></p>
+<p>WebGL allows us to read back from a framebuffer using the <kbd>readPixels</kbd> function. As usual, having <kbd>gl</kbd> as the WebGL context variable within our context:</p>
+<table border="1" style="border-collapse: collapse;width: 100%;border-color: #000000">
+<tbody>
+<tr>
+<td><strong>Function</strong></td>
+<td><strong>Description</strong></td>
+</tr>
+<tr>
+<td><kbd><span>gl.readPixels(x, y, width, height, format, type, pixels)</span></kbd></td>
+<td>
+<ul>
+<li><kbd>x</kbd> and <kbd>y</kbd>: Starting coordinates.</li>
+<li><kbd>width</kbd> and<span> </span><kbd>height</kbd>: The extent of pixels to read from the framebuffer. In our example, we are just reading one pixel (where the user clicks), so this will be <kbd>1</kbd>,<span> </span><kbd>1</kbd>.</li>
+<li><kbd>format</kbd>: Supports the<span> </span><kbd>gl.RGBA</kbd> format.</li>
+<li><kbd>type:</kbd>: Supports the <kbd>gl.UNSIGNED_BYTE</kbd> type.</li>
+<li><kbd>pixels</kbd>: A typed array that will contain the results of querying the framebuffer. It needs to have sufficient space to store the results depending on the extent of the query (<kbd>x</kbd>,<span> </span><kbd>y</kbd>,<span> </span><kbd>width</kbd>,<span> </span><kbd>height</kbd>). It supports the <kbd>Uint8Array</kbd> type.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<p>Remember that WebGL works as a state machine; thus, many operations depend on the validity of its state. In this case, we need to ensure that the offscreen framebuffer that we want to read from is the currently bound one. To do so, we bind it by using <kbd>bindFramebuffer</kbd>. Putting everything together, the code looks like this:</p>
+<div>
+<pre><span>// read one pixel<br/></span><span>const </span>readout = <span>new </span>Uint8Array(<span>1 </span>* <span>1 </span>* <span>4</span>)<span>;<br/></span>gl.<span>bindFramebuffer</span>(gl.<span>FRAMEBUFFER</span><span>, </span>framebuffer)<span>;<br/></span>gl.<span>readPixels</span>(coords.<span>x</span><span>, </span>coords.<span>y</span><span>, </span><span>1</span><span>, </span><span>1</span><span>, </span>gl.<span>RGBA</span><span>, </span>gl.<span>UNSIGNED_BYTE</span><span>, </span>readout)<span>;<br/></span>gl.<span>bindFramebuffer</span>(gl.<span>FRAMEBUFFER</span><span>, </span><span>null</span>)<span>;</span></pre></div>
+<p>Here, the size of the readout array is <kbd>1 * 1 * 4</kbd>. This means that it has one pixel of width times one pixel height times four channels, since the format is RGBA. You do not need to specify the size this way; this was done to demonstrate why the size is <kbd>4</kbd> when we are just retrieving one pixel.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Looking for Hits</h1>
+                </header>
+            
+            <article>
+                
+<p>Now, we will check whether the color obtained from the offscreen framebuffer matches any of the objects in our scene. Remember here that we are using colors as object labels. If the color matches one of the objects, then we call it a <strong>hit</strong>. If it does not, we call it a <strong>miss</strong>.</p>
+<p>When looking for hits, we compare each object's diffuse color with the label obtained from the offscreen framebuffer. There is, however, an additional step to consider: each color channel comes back in a <kbd>[0, 255]</kbd> range while the object diffuse colors are in a <kbd>[0, 1]</kbd> range. We need to update this before we check for any possible hits. We can do so with a compare function:</p>
+<div>
+<pre><span>function </span><span>compare</span>(readout<span>, </span>color) {<br/><span>  return </span>(<br/>    Math.<span>abs</span>(Math.<span>round</span>(color[<span>0</span>] * <span>255</span>) - readout[<span>0</span>]) &lt;= <span>1 </span>&amp;&amp;<br/>    Math.<span>abs</span>(Math.<span>round</span>(color[<span>1</span>] * <span>255</span>) - readout[<span>1</span>]) &lt;= <span>1 </span>&amp;&amp;<br/>    Math.<span>abs</span>(Math.<span>round</span>(color[<span>2</span>] * <span>255</span>) - readout[<span>2</span>]) &lt;= <span>1<br/></span>  )<span>;<br/>}</span></pre></div>
+<p>In the preceding code, we scale the diffuse property to a <kbd>[0, 255]</kbd> range and then compare each channel individually. We do not need to compare the alpha channel. If we had two objects with the same color but a different alpha channel, we could use the alpha channel in the comparison, but this is not the case in our example.</p>
+<p>Also, it’s important to note that the comparison is not precise, as we are dealing with decimal values in the <kbd>[0, 1]</kbd> range. Because of that, we introduce a fudge factor by assuming that we have a hit after rescaling the colors and subtract the readout (object label) <span>–</span> the difference is less than one. </p>
+<p>Then, we just iterate through the object list in our <kbd>scene</kbd> and check whether we have a hit or miss with the following code:</p>
+<div>
+<pre><span>let </span>pickedObject<span>;<br/></span><span><br/></span>scene.<span>traverse</span>(object =&gt; {<br/>  <span>if </span>(compare(readout<span>, </span>object.<span>diffuse</span>)) {<br/>    // Returning any value from the 'scene.traverse' method breaks the loop<br/>    <span>return </span>pickedObject = object<span>;<br/></span><span>  </span>}<br/>})<span>;</span></pre></div>
+<p>This code iterates through every object in our <kbd>scene</kbd> and assigns <kbd>pickedObject</kbd> to the matching object if we have a hit.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Processing Hits</h1>
+                </header>
+            
+            <article>
+                
+<p>Processing a hit is a large concept that heavily depends on the type of application you’re using. For instance, if your application is a CAD system, you may want to retrieve the properties of the selected object so that you can edit or delete it. In contrast, if you’re developing a game, selecting an object may involve setting it as a target your character should fight next. As you would expect, this part needs to be adaptable to a variety of uses. That being said, we will soon cover a practical example where you can drag and drop objects in our scene. But first, we need to review some of the architectural updates of our application.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Architectural Updates</h1>
+                </header>
+            
+            <article>
+                
+<p>We have replaced the <kbd>draw</kbd> function with the <kbd>render</kbd> function, as described earlier in this chapter.</p>
+<p>There is now a new class: <strong>Picker</strong>. The source code for this class can be obtained from <kbd>common/js/Picker.js</kbd>. This class encapsulates the offscreen framebuffer and the code necessary to create, configure, and read from it. We’ve also updated the <kbd>Controls</kbd> class to notify the picker when the user clicks on the <kbd>canvas</kbd>. </p>
+<p>Now, let's see picking in action!</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Time for Action: Picking</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's cover an example of this technique in action:</p>
+<ol>
+<li>Open the <kbd>ch08_01_picking.html</kbd> file using your browser. You will see a screen similar to this:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/0f499544-cff5-4e56-b5c5-da397d1bb492.png"/></p>
+<ol start="2">
+<li>Here, you have a set of objects, each one of which has a unique diffuse color property. As was the case in previous examples, you can move the camera around the scene. Also, note that the cube has a texture and that the flat disk is translucent. As you may expect, the code in the <kbd>draw</kbd> function handles textures, coordinates, and also transparencies, so it looks a bit more complex than before (you can check it out in the source code). This is a more realistic <kbd>draw</kbd> function. In a real application, you will have to handle these cases.</li>
+</ol>
+<ol start="3">
+<li>Click on the sphere and drag it around the scene. Notice that the object becomes translucent. Also, note that the displacement occurs along the axis of the camera. To make this evident, please go to your web browser's <kbd>console</kbd> and type in the following:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px">camera.setElevation(0);</pre></div>
+<ol start="4">
+<li>Once you resume the clock by clicking inside of the scene, you will see that the camera updates its position to an elevation of zero degrees, as shown in the following screenshot:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/099b8e82-7e3e-4a57-926e-98feb259148b.png"/></p>
+<div class="packt_tip"><span class="packt_screen">JavaScript Console</span><br/>
+<br/>
+Firefox: <span class="packt_screen">Tools</span> | <span class="packt_screen">WebDeveloper</span> | <span class="packt_screen">WebConsole</span><br/>
+Safari: <span class="packt_screen">Develop</span> | <span class="packt_screen">Show Web Inspector</span><br/>
+Chrome: <span class="packt_screen">Tools</span> | <span class="packt_screen">Javascript Console</span></div>
+<ol start="5">
+<li>When you click and drag objects in the scene from this perspective, you will see that they change their position according to the camera's axis. In this case, the up axis of the camera is aligned with the scene's y-axis. If you move an object up and down, you will see that they change their position in the <kbd>y</kbd> coordinate. If you change the camera position (by clicking on the background and dragging the mouse around), and then move a different object, you will see that the object moves according to the camera’s new y-axis.</li>
+<li>Try different camera angles and see what happens.</li>
+</ol>
+<ol start="7">
+<li>Let's see what the offscreen framebuffer looks like. Click on the <span class="packt_screen">Show Picking Image</span><strong> </strong>button. Here, we are instructing the fragment shader to use each of the object diffuse properties to color the fragments. You can also rotate the scene and pick objects in this mode. If you want to go back to the original shading method, click on <span class="packt_screen">Show Picking Image</span> again to deactivate it.</li>
+<li>To reset the scene, click on <strong><span class="packt_screen">Reset Scene</span></strong>.</li>
+</ol>
+<p><em><strong>What just happened?</strong></em></p>
+<p>We have seen an example of picking in action. The source code uses the <kbd>Picker</kbd> class that we previously described in the <em>Architectural Updates</em> section. Let's examine it a bit closer.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Picker Architecture</h1>
+                </header>
+            
+            <article>
+                
+<p><span>As you may have noticed, every picker state has a callback function associated with it. </span>The following process outlines what happens in the <kbd>Picker</kbd> class when the user clicks the mouse on the <kbd>canvas</kbd>, drags it, and releases it:</p>
+<table border="1" style="border-collapse: collapse;width: 100%;border-color: #000000">
+<tbody>
+<tr>
+<td style="width: 17.97%"><strong>State</strong></td>
+<td style="width: 80.03%"><strong>Callback</strong></td>
+</tr>
+<tr>
+<td style="width: 17.97%"><span><kbd>Picker</kbd> searches for a hit</span></td>
+<td style="width: 80.03%"><span><kbd>hitPropertyCallback(object)</kbd></span>:<span> This callback informs the picker about which object property to use to make the comparison with the retrieved color from the offscreen framebuffer.</span></td>
+</tr>
+<tr>
+<td style="width: 17.97%"><span>User drags mouse in picking mode</span></td>
+<td style="width: 80.03%"><span><kbd>moveCallback(dx, dy)</kbd>: When the picking mode is activated (by having picked at least one object), this callback allows us to move the objects in the picking list (hits). This list is maintained internally by the <kbd>Picker</kbd> class.</span></td>
+</tr>
+<tr>
+<td style="width: 17.97%"><span>Remove hit from picking list</span></td>
+<td style="width: 80.03%"><span><kbd>addHitCallback(object)</kbd>: If we click on an object and this object is not in the picking list, the picker notifies the application by triggering this callback.</span></td>
+</tr>
+<tr>
+<td style="width: 17.97%"><span>Add hit to picking list</span></td>
+<td style="width: 80.03%"><span><kbd>removeHitCallback(object)</kbd>: If we click on an object and this object is already in the picking list, the picker will remove it from the list and then it will inform the application by triggering this callback.</span></td>
+</tr>
+<tr>
+<td style="width: 17.97%"><span>End Picking Mode</span></td>
+<td style="width: 80.03%"><span><kbd>processHitsCallback(hits)</kbd>: If the user releases the mouse button while the <em>Shift </em>key is not pressed, the picking mode finishes and the application is notified by triggering this callback. If the <em>Shift</em> key is pressed, then the picking mode continues, and the picker waits for a new click to continue looking for hits.</span></td>
+</tr>
+</tbody>
+</table>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Implementing Unique Object Labels</h1>
+                </header>
+            
+            <article>
+                
+<p>We previously mentioned that picking based on the diffuse property could be difficult if two or more objects in the scene share the same diffuse color. If that were the case and you selected one of them, how could you determine which one is picked based on its color? In the following <em>Time for Action</em> section, we will implement unique object labels. The objects will be rendered in the offscreen framebuffer using these color labels instead of the diffuse colors. The scene will still be rendered on the screen using the non-unique diffuse colors.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Time for Action: Unique Object Labels</h1>
+                </header>
+            
+            <article>
+                
+<p>This section is divided into two parts. In the first part, you will develop code to generate a random scene with cones and cylinders. Each object will be assigned a unique object label that will be used for coloring the object in the offscreen renderbuffer. In the second part, we will configure the picker to work with unique labels. Let's get started:</p>
+<ol>
+<li>Open the <kbd>ch08_02_picking-initial.html</kbd> file in your browser. This is a scene that is only showing the floor object. We are going to create a scene that contains multiple objects that can be either balls or cylinders.</li>
+<li>Open <kbd>ch08_02_picking-initial.html</kbd> in a source code editor.</li>
+<li>We will write code so that each object in the scene can have the following:
+<ul>
+<li>A position assigned randomly</li>
+<li>A unique object label color</li>
+<li>A non-unique diffuse color</li>
+<li>A scale factor that will determine the size of the object</li>
+</ul>
+</li>
+<li>We have provided empty functions that you will implement in this section.</li>
+<li>Let's write the <kbd>positionGenerator</kbd> function. Scroll down to it and add the following code:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>function </span><span>positionGenerator</span>() {<br/>  <span>const<br/></span><span>    </span>flagX = Math.<span>floor</span>(Math.<span>random</span>() * <span>10</span>)<span>,<br/></span><span>    </span>flagZ = Math.<span>floor</span>(Math.<span>random</span>() * <span>10</span>)<span>;<br/></span><span><br/></span><span>  </span><span>let </span>x = Math.<span>floor</span>(Math.<span>random</span>() * <span>60</span>)<span>,<br/></span><span>    </span>z = Math.<span>floor</span>(Math.<span>random</span>() * <span>60</span>)<span>;<br/></span><span><br/></span><span>  </span><span>if </span>(flagX &gt;= <span>5</span>) {<br/>    x = -x<span>;<br/></span><span>  </span>}<br/>  <span>if </span>(flagZ &gt;= <span>5</span>) {<br/>    z = -z<span>;<br/></span><span>  </span>}<br/><br/>  <span>return </span>[x<span>, </span><span>0</span><span>, </span>z]<span>;<br/></span>}</pre></div>
+<ol start="6">
+<li>Here, we are using the <kbd>Math.random</kbd> function to generate the <kbd>x</kbd> and <kbd>z</kbd> coordinates for an object in the scene. Since <kbd>Math.random</kbd> always returns a positive number, we use the <kbd>flagX</kbd> and <kbd>flagZ</kbd> variables to randomly distribute the objects on the <kbd>x</kbd>-<kbd>z</kbd> plane (floor). Also, because we want all of the objects to be on the <kbd>x</kbd>-<kbd>z</kbd> plane, the <kbd>y</kbd> component is always set to <kbd>0</kbd> in the <kbd>return</kbd> statement.</li>
+<li>Let's write a unique object label generator function. Scroll to the empty <kbd>objectLabelGenerator</kbd> function and add the following code:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>const </span>colorset = {}<span>;<br/></span><span><br/></span><span>function </span><span>objectLabelGenerator</span>() {<br/>  <span>const<br/></span><span>    </span>color = [Math.<span>random</span>()<span>, </span>Math.<span>random</span>()<span>, </span>Math.<span>random</span>()<span>, </span><span>1</span>]<span>,<br/></span><span>    </span>key = color.<span>toString</span>()<span>;<br/></span><span><br/></span><span>  </span><span>if </span>(key <span>in </span>colorset) {<br/>    <span>return </span><span>objectLabelGenerator</span>()<span>;<br/></span><span>  </span>}<br/>  <span>else </span>{<br/>    colorset[key] = <span>true</span><span>;<br/></span><span>    </span><span>return </span>color<span>;<br/></span><span>  </span>}<br/>}</pre></div>
+<ol start="8">
+<li>We create a random color using the <kbd>Math.random</kbd> function. If the <kbd>key</kbd> variable is already a property of the <kbd>colorset</kbd> object, then we call the <kbd>objectLabelGenerator</kbd> function recursively to get a new value; otherwise, we make <kbd>key</kbd> a property of <kbd>colorset</kbd> and then <kbd>return</kbd> the respective color. Notice how well the handling of JavaScript objects as sets allows us to resolve any possible key collision.</li>
+<li>Write the <kbd>diffuseColorGenerator</kbd> function. We will use this function to assign diffuse properties to the objects:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>function </span><span>diffuseColorGenerator</span>(index) {<br/>  <span>const </span>color = (index % <span>30 </span>/ <span>60</span>) + <span>0.2</span><span>;<br/></span><span>  </span><span>return </span>[color<span>, </span>color<span>, </span>color<span>, </span><span>1</span>]<span>;<br/></span>}</pre></div>
+<ol start="10">
+<li>This function represents the case where we want to generate colors that are not unique. The index parameter represents the index of the object in the <kbd>scene.objects</kbd> list to which we are assigning the diffuse color. In this function, we are creating a gray-level color since the <kbd>r</kbd>, <kbd>g</kbd>, and <kbd>b</kbd> components in the <kbd>return</kbd> statement all have the same <kbd>color</kbd> value.</li>
+<li>The <kbd>diffuseColorGenerator</kbd> function will create collisions every <kbd>30</kbd> indices. The remainder of the division of the index by <kbd>30</kbd> will create a loop in the sequence:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px">0 % 30 = 0<br/>1 % 30 = 1<br/>...<br/>29 % 30 = 29<br/>30 % 30 = 0<br/>31 % 30 = 1<br/>... </pre></div>
+<ol start="12">
+<li>Since this result is being divided by <kbd>60</kbd>, the result will be a number in the <kbd>[0, 0.5]</kbd> range. Then, we add <kbd>0.2</kbd> to make sure that the minimum value that <kbd>color</kbd> has is <kbd>0.2</kbd>. This way, the objects will not look too dark during the onscreen rendering (they would be black if the calculated diffuse color were <kbd>0</kbd>).</li>
+<li>The last auxiliary function we will write is the <kbd>scaleGenerator</kbd> function:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>function </span><span>scaleGenerator</span>() {<br/>  <span>const </span>scale = Math.<span>random</span>() + <span>0.3</span><span>;<br/></span><span>  </span><span>return </span>[scale<span>, </span>scale<span>, </span>scale]<span>;<br/></span>}</pre></div>
+<ol start="14">
+<li>This function will allow us to have objects of different sizes. <kbd>0.3</kbd> is added to control the minimum scaling factor that any object will have in the scene.</li>
+<li>Let's load <kbd>100</kbd> objects to our scene. By the end of this section, you will be able to test picking on any of them!</li>
+<li>Go to the <kbd>load</kbd> function and edit it so that it looks like this:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>function </span><span>load</span>() {<br/>  scene.<span>add</span>(<span>new </span>Floor(<span>80</span><span>, </span><span>20</span>))<span>;<br/></span><span><br/></span><span>  </span><span>for </span>(<span>let </span>i = <span>0</span><span>; </span>i &lt; <span>100</span><span>; </span>i++) {<br/>    <span>const </span>objectType = Math.<span>floor</span>(Math.<span>random</span>() * <span>2</span>)<span>;<br/></span><span><br/></span><span>    </span><span>const </span>options = {<br/>      <span>position</span>: <span>positionGenerator</span>()<span>,<br/></span><span>      </span><span>scale</span>: <span>scaleGenerator</span>()<span>,<br/></span><span>      </span><span>diffuse</span>: <span>diffuseColorGenerator</span>(i)<span>,<br/></span><span>      </span><span>pcolor</span>: <span>objectLabelGenerator</span>()<br/>    }<span>;<br/></span><span><br/></span><span>    </span><span>switch </span>(objectType) {<br/>      <span>case </span><span>1</span>:<br/>        <span>return </span>scene.<span>load</span>(<span>'/common/models/ch8/sphere.json'</span><span>, <br/></span><span>         `ball_</span>${i}<span>`</span><span>, </span>options)<span>;<br/></span><span>      </span><span>case </span><span>0</span>:<br/>        <span>return </span>scene.<span>load</span>(<span>'/common/models/ch8/cylinder.json'</span><span>, <br/></span><span>         `cylinder_</span>${i}<span>`</span><span>, </span>options)<span>;<br/></span><span>    </span>}<br/>  }<br/>}</pre></div>
+<ol start="17">
+<li>The picking color is represented by the <kbd>pcolor</kbd> attribute. This attribute is passed in a list of attributes to the <kbd>scene.load</kbd> function. Once the object is loaded (using <strong>JSON/Ajax</strong>), <kbd>load</kbd> uses this list of attributes and adds them as object properties.</li>
+<li>The shaders in this exercise have already been set up for you. The <kbd>pcolor</kbd> property that corresponds to the unique object label is mapped to the <kbd>uPickingColor</kbd> uniform, and the <kbd>uOffscreen</kbd> uniform determines whether it is used in the fragment shader:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px">uniform vec4 uPickingColor;<br/> <br/>void main(void) {<br/><br/>  if (uOffscreen) {<br/>    fragColor = uPickingColor;<br/>    return;<br/>  }<br/>  else {<br/>    // on-screen rendering<br/>  }<br/><br/>}</pre></div>
+<ol start="19">
+<li>As <span>described </span>previously, we keep the offscreen and onscreen buffers in sync by using the <kbd>render</kbd> function as follows:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>function </span><span>render</span>() {<br/>  <span>// Off-screen rendering<br/></span><span>  </span>gl.<span>bindFramebuffer</span>(gl.<span>FRAMEBUFFER</span><span>, </span>picker.<span>framebuffer</span>)<span>;<br/></span><span>  </span>gl.<span>uniform1i</span>(program.uOffscreen<span>, </span><span>true</span>)<span>;<br/></span><span>  </span><span>draw</span>()<span>;<br/></span><span><br/></span><span>  </span><span>// On-screen rendering<br/></span><span>  </span>gl.<span>uniform1i</span>(program.uOffscreen<span>, </span>showPickingImage)<span>;<br/></span><span>  </span>gl.<span>bindFramebuffer</span>(gl.<span>FRAMEBUFFER</span><span>, </span><span>null</span>)<span>;<br/></span><span>  </span><span>draw</span>()<span>;<br/></span>}</pre></div>
+<ol start="20">
+<li>Save your work as <kbd>ch08_03_picking-no-picker.html</kbd>.</li>
+<li>Open <kbd>ch08_03_picking-no-picker.html</kbd> in your browser.</li>
+<li>Click on <span class="packt_screen">Show Picking Image</span>. What happens?</li>
+<li>The scene is being rendered to both the offscreen and default onscreen framebuffer. However, we have not configured the <kbd>Picker</kbd> callbacks yet.</li>
+<li>Open <kbd><span>ch08_03_picking-no-picker.html</span></kbd> in your source code editor.</li>
+<li>Scroll down to the <kbd>configure</kbd> function. The picker is already set up for you:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px">picker = <span>new </span>Picker(canvas<span>, </span>{<br/>  <span>hitPropertyCallback</span>: <span>hitProperty</span><span>,<br/></span><span>  </span><span>addHitCallback</span>: <span>addHit</span><span>,<br/></span><span>  </span><span>removeHitCallback</span>: <span>removeHit</span><span>,<br/></span><span>  </span><span>processHitsCallback</span>: <span>processHits</span><span>,<br/></span><span>  </span><span>moveCallback</span>: <span>movePickedObjects<br/></span>})<span>;</span></pre></div>
+<ol start="26">
+<li>This code fragment maps functions in the web page to picker callback hooks. These callbacks are invoked according to the picking state.</li>
+<li>We will now implement the necessary callbacks. Again, we have provided empty functions that you will need to code.</li>
+<li>Let's create the <kbd>hitProperty</kbd> function. Scroll down to the empty <kbd>hitProperty</kbd> function and add the following code:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>function </span><span>hitProperty</span>(obj) {<br/>  <span>return </span>obj.<span>pcolor</span><span>;<br/></span>}</pre></div>
+<ol start="29">
+<li>We are returning the <kbd>pcolor</kbd> property to make the comparison with the color that will be read from the offscreen framebuffer. If these colors match, then we have a hit.</li>
+</ol>
+<ol start="30">
+<li>Write the <kbd>addHit</kbd> and <kbd>removeHit</kbd> functions. We want to create the effect where the diffuse color is changed to the picking color during picking. We need an extra property to temporarily save the original diffuse color so that we can restore it later:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>function </span><span>addHit</span>(obj) {<br/>  obj.<span>previous </span>= obj.<span>diffuse</span>.<span>slice</span>(<span>0</span>)<span>;<br/></span><span>  </span>obj.<span>diffuse </span>= obj.<span>pcolor</span><span>;<br/></span>}</pre></div>
+<ol start="31">
+<li>The <kbd>addHit</kbd> function stores the current diffuse color in an auxiliary property named <kbd>previous</kbd>. Then, it changes the diffuse color to <kbd>pcolor</kbd>, the object-picking label:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>function </span><span>removeHit</span>(obj) {<br/>  obj.<span>diffuse </span>= obj.<span>previous</span>.<span>slice</span>(<span>0</span>)<span>;<br/></span>}</pre></div>
+<ol start="32">
+<li>The <kbd>removeHit</kbd> function restores the diffuse color.</li>
+<li>Now, let's write the code for <kbd>processHits</kbd>:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>function </span><span>processHits</span>(hits) {<br/>  hits.<span>forEach</span>(hit =&gt; hit.<span>diffuse </span>= hit.<span>previous</span>)<span>;<br/></span>}</pre></div>
+<ol start="34">
+<li>Remember that <kbd>processHits</kbd> is called upon exiting picking mode. This function will receive one parameter: the <kbd>hits</kbd> that the <kbd>picker</kbd> detected. Each element of the <kbd>hits</kbd> list is an object in <kbd>scene</kbd>. In this case, we want to give the hits their diffuse color back. For that, we use the previous property that we set in the <kbd>addHit</kbd> function.</li>
+<li>The last picker callback we need to implement is the <kbd>movePickedObjects</kbd> function:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>function </span><span>movePickedObjects</span>(dx<span>, </span>dy) {<br/>  <span>const </span>hits = picker.<span>getHits</span>()<span>;<br/></span><span><br/></span><span>  </span><span>if </span>(!hits) <span>return</span><span>;<br/></span><span><br/></span><span>  </span><span>const </span>factor = Math.<span>max</span>(<br/>    Math.<span>max</span>(camera.<span>position</span>[<span>0</span>]<span>, </span>camera.<span>position</span>[<span>1</span>])<span>, <br/></span>     camera.<span>position</span>[<span>2</span>]<br/>  ) / <span>2000</span><span>;<br/></span><span><br/></span><span>  </span>hits.<span>forEach</span>(hit =&gt; {<br/>    <span>const </span>scaleX = vec3.<span>create</span>()<span>;<br/></span><span>    </span><span>const </span>scaleY = vec3.<span>create</span>()<span>;<br/></span><span><br/></span><span>    </span><span>if </span>(controls.<span>alt</span>) {<br/>      vec3.<span>scale</span>(scaleY<span>, </span>camera.<span>normal</span><span>, </span>dy * factor)<span>;<br/></span><span>    </span>}<br/>    <span>else </span>{<br/>      vec3.<span>scale</span>(scaleY<span>, </span>camera.<span>up</span><span>, </span>-dy * factor)<span>;<br/></span><span>      </span>vec3.<span>scale</span>(scaleX<span>, </span>camera.<span>right</span><span>, </span>dx * factor)<span>;<br/></span><span>    </span>}<br/><br/>    vec3.<span>add</span>(hit.<span>position</span><span>, </span>hit.<span>position</span><span>, </span>scaleY)<span>;<br/></span><span>    </span>vec3.<span>add</span>(hit.<span>position</span><span>, </span>hit.<span>position</span><span>, </span>scaleX)<span>;<br/></span><span>  </span>})<span>;<br/></span>}</pre></div>
+<ol start="36">
+<li>This function allows us to move the objects in the hits list interactively. The parameters that this callback function receives are as follows:
+<ul>
+<li><kbd>dx</kbd>: Displacement in the horizontal direction obtained from the mouse when it is dragged on <kbd>canvas</kbd></li>
+<li><kbd>dy</kbd>: Displacement in the vertical direction obtained from the mouse when it is dragged on <kbd>canvas</kbd></li>
+</ul>
+</li>
+<li>Let's analyze the code. First, we retrieve all of the hits from the picker instance:</li>
+</ol>
+<pre style="padding-left: 60px"><span>const </span>hits = picker.<span>getHits</span>()<span>;</span></pre>
+<ol start="38">
+<li>If there are no hits, the function <kbd>returns</kbd> immediately:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px">if (!hits) return;</pre></div>
+<ol start="39">
+<li>We calculate a weighing factor that we will use later (the fudge factor):</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>const </span>factor = Math.<span>max</span>(<br/>  Math.<span>max</span>(camera.<span>position</span>[<span>0</span>]<span>, </span>camera.<span>position</span>[<span>1</span>])<span>, </span>camera.<span>position</span>[<span>2</span>]<br/>) / <span>2000</span><span>;</span></pre></div>
+<ol start="40">
+<li>We create a loop to go through the hits list so that we can update each object's position:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px">hits.<span>forEach</span>(hit =&gt; {<br/>  <span>const </span>scaleX = vec3.<span>create</span>()<span>;<br/></span><span>  </span><span>const </span>scaleY = vec3.<span>create</span>()<span>;<br/></span><span><br/></span><span>  // ...</span><span><br/></span>})<span>;</span></pre></div>
+<ol start="41">
+<li>The <kbd>scaleX</kbd> and <kbd>scaleY</kbd> variables are initialized for every hit.</li>
+<li>The <em>Alt</em> key is being used to perform dollying (moving the camera along its normal path). In this case, we want to move the objects that are in the picking list along the camera's normal direction when the user is pressing the <em>Alt</em> key to provide a consistent user experience.</li>
+<li>To move the hits along the camera normal, we use the <kbd>dy</kbd> (up-down) displacement, as follows:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>if </span>(controls.<span>alt</span>) {<br/>  vec3.<span>scale</span>(scaleY<span>, </span>camera.<span>normal</span><span>, </span>dy * factor)<span>;<br/></span>}</pre></div>
+<ol start="44">
+<li>This creates a scaled version of <kbd>camera.normal</kbd> and stores it into the <kbd>scaleY</kbd> variable. Notice that <kbd>vec3.scale</kbd> is an operation that's available in the <strong>glMatrix</strong> library.</li>
+<li>If the user is not pressing the <em>Alt</em> key, then we use <kbd>dx</kbd> (left-right) and <kbd>dy</kbd> (up-down) to move the hits in the camera plane. Here, we use the camera's up and right vectors to calculate the <kbd>scaleX</kbd> and <kbd>scaleY</kbd> parameters:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>else </span>{<br/>  vec3.<span>scale</span>(scaleY<span>, </span>camera.<span>up</span><span>, </span>-dy * factor)<span>;<br/></span><span>  </span>vec3.<span>scale</span>(scaleX<span>, </span>camera.<span>right</span><span>, </span>dx * factor)<span>;<br/></span>}</pre></div>
+<ol start="46">
+<li>We update the position of the hit:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px">vec3.<span>add</span>(hit.<span>position</span><span>, </span>hit.<span>position</span><span>, </span>scaleY)<span>;<br/></span>vec3.<span>add</span>(hit.<span>position</span><span>, </span>hit.<span>position</span><span>, </span>scaleX)<span>;</span></pre></div>
+<ol start="47">
+<li>Save the page as <kbd>ch08_04_picking-final.html</kbd> and open it using your browser.</li>
+</ol>
+<ol start="48">
+<li>You will see a scene like the one shown in the following screenshot:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/2bd69814-1dd5-46af-999e-fd484bdd46ca.png"/></p>
+<ol start="49">
+<li>Click on <span class="packt_screen">Reset Scene</span><strong> </strong>several times and verify that you get a new scene every time.</li>
+</ol>
+<ol start="50">
+<li>In this scene, all of the objects have very similar colors. However, each one has a unique picking color. To verify this, click on the <span class="packt_screen">Show Picking Image</span><strong> </strong>button. You will see on the screen what is being rendered in the offscreen buffer:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/dfb44a14-ec34-468b-943f-c7a6dda3fe47.png"/></p>
+<ol start="51">
+<li>Let's validate the changes that we made to the picker callbacks. Let's start by picking one object. As you can see, the object diffuse color becomes its picking color (this was the change you implemented in the <kbd>addHit</kbd> function):</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/25e09a6f-fd71-4710-bd82-b4883b0ebcd5.png"/></p>
+<ol start="52">
+<li>When the mouse is released, the object goes back to the original color. This is the change that was implemented in the <kbd>processHits</kbd> function.</li>
+<li>While the mouse button is held down over an object, you can drag it around. When this is done, <kbd>movePickedObjects</kbd> is being invoked.</li>
+<li>Pressing the <em>Shift</em> key while objects are being selected will tell the picker not to exit <strong>picking mode</strong>. This way, you can select and move more than one object at once:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/ac02ecf1-a6fa-4aaf-a67c-c10dcb844700.png"/></p>
+<ol start="55">
+<li>You will exit picking mode if you select an object and the <em>Shift</em> key is no longer pressed or if your next click does not produce any hits (in other words, clicking anywhere else).</li>
+<li>If you have any problems with this exercise or missed one of the steps, we have included the complete exercise in the <kbd>ch08_03_picking-no-picker.html</kbd> and <kbd>ch08_04_picking-final.html</kbd> files.</li>
+</ol>
+<p><em><strong>What just happened?</strong></em></p>
+<p>We have done the following:</p>
+<ul>
+<li>Created the property-picking color. This property is unique for every object in the scene and allows us to implement picking based on it.</li>
+<li>Modified the fragment shader to use the picking color property by including a new uniform, <kbd>uPickingColor</kbd>, and mapping this uniform to the <kbd>pcolor</kbd> object property.</li>
+<li>Learned about the different picking states. We have also learned how to modify the <kbd>Picker</kbd> callbacks to perform specific application logic such as removing picked objects from the scene.</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Have a Go: Clearing the Scene</h1>
+                </header>
+            
+            <article>
+                
+<p>Rewrite the <kbd>processHits</kbd> function to remove the balls in the hit list from the scene. If the user has removed all of the balls from the scene, display a message with the elapsed time for accomplishing this task.</p>
+<div class="packt_tip"><span class="packt_screen">Hint</span><br/>
+<br/>
+Use <kbd>scene.remove(objectName)</kbd> in the <kbd>processHits</kbd> function if the alias starts with <kbd>ball_</kbd>.</div>
+<div class="packt_tip"><span class="packt_screen">Hint</span><br/>
+<br/>
+Once the hits are removed from the scene, revisit the <kbd>scene.objects</kbd> list and make sure that there are no objects whose alias starts with <kbd>ball_</kbd>.</div>
+<div class="packt_tip"><span class="packt_screen">Hint</span><br/>
+<br/>
+Use a JavaScript timer to measure and display the elapsed time until task completion.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Have a Go: Using Alternative Identifiers for Picking</h1>
+                </header>
+            
+            <article>
+                
+<p><span>H</span>ow would you uniquely identify objects without using colors? Since we are leveraging an offscreen framebuffer, we could identify each object with a unique ID rather than a color since the visuals of our offscreen render do not matter. Go ahead and implement an ID-based strategy for identifying each object.</p>
+<div class="packt_infobox"><span class="packt_screen">Packing Indices into RGBA Channels</span><strong><br/></strong><br/>
+You can think of object <kbd>1</kbd> as being the index (or color) <kbd>[0, 0, 0, 1]</kbd>, object <kbd>2</kbd> as <kbd>[0, 0, 0, 2]</kbd>, all the way up to where object <kbd>1020</kbd> (that is, <kbd>255 * 4</kbd>) would be <kbd>[255, 255, 255, 255]</kbd>.</div>
+<p>Since our RGBA channel is bound to a range of <kbd>[0-255]</kbd>, how could we pack more IDs into our four-based vector?</p>
+<div class="packt_tip"><span class="packt_screen">Different Base Numeral System</span><br/>
+<br/>
+You may first think of leveraging decimals instead of whole numbers. This is a viable solution, especially after you account for the accuracy of floating points in ESSL. Another viable solution would be to use a <kbd>255</kbd> based numeral system rather than our traditional base <kbd>10</kbd>. With this approach, you could uniquely identify 4+ billions objects without decimals.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Have a Go: Decoupling WebGL Components</h1>
+                </header>
+            
+            <article>
+                
+<p><span>Although we can implement </span><kbd>Controls</kbd><span> and </span><kbd>Picker</kbd><span> by decoupling them with a more scalable architecture, we opted for a simpler implementation for educational purposes.</span></p>
+<p><span>That being said, how would you rebuild the examples in this chapter with the goal of decoupling classes from one another to minimize component interdependence?</span></p>
+<div class="packt_tip"><span class="packt_screen">Hint</span><span><br/>
+<br/>
+One approach would be to leverage the pub/sub pattern discussed earlier for our <kbd>Clock</kbd>. That is, each component can extend the <kbd>EventEmitter</kbd> class – similar to <kbd>Clock</kbd> – to publish events that other components may subscribe to.</span></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>Let’s summarize what we learned in this chapter:</p>
+<ul>
+<li>We studied the difference between a framebuffer and a renderbuffer. A renderbuffer is a special buffer that is attached to a framebuffer.</li>
+<li>We learned that WebGL provides mechanisms to create offscreen framebuffers that differ from the default onscreen framebuffer.</li>
+<li>We covered how a framebuffer needs to have at least one texture to store colors and a renderbuffer to store depth information.</li>
+<li>We discussed how to convert user click coordinates to <kbd>canvas</kbd> coordinates so that we can map them to values in the offscreen framebuffer.</li>
+<li>We discussed the <kbd>Picker</kbd> architecture. Picking can have different states, and each state is associated with a callback function. Picker callbacks allow custom application logic to determine what happens when picking is in progress.</li>
+<li>We learned how to implement color-based picking in WebGL. Picking purely based on a diffuse color is limited, because there could be scenarios where several objects have the same diffuse color.</li>
+<li>We learned that it’s better to assign a new color property that is unique for every object to perform picking. This property is known as picking the color/object label.</li>
+<li>We discussed encoding unique IDs rather than unique colors into the four-based vector, RGBA.</li>
+</ul>
+<p>In the next chapter, we will bring all of the concepts we've covered in the previous chapters together and build a 3D virtual car showroom. Additionally, we will see how to import car models from Blender, a 3D editing tool, into a WebGL application.</p>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

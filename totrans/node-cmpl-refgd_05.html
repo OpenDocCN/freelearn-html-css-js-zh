@@ -1,0 +1,697 @@
+<html><head></head><body><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Your First Express Application</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that we've got our feet wet building an Express application for Node.js, let's work on an application that performs a useful function. The application we'll build will keep a list of notes, and it will let us explore some aspects of a real application.</p>
+<p>In this chapter, we'll only build the basic infrastructure of the application, and in the later chapters, we'll extend the application considerably.  </p>
+<p>The topics covered in this chapter includes</p>
+<ul>
+<li>Using Promises and async functions in Express router functions</li>
+<li>Applying the MVC paradigm to Express applications</li>
+<li>Building an Express application</li>
+<li>JavaScript Class definitions</li>
+<li>Implementing the CRUD paradigm</li>
+<li>Handlebars templates</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Promises, async functions, and Express router functions</h1>
+                </header>
+            
+            <article>
+                
+<p>Before we get into developing our application, we must take a deeper look at a pair of new ES-2015/2016/2017 features that collectively revolutionize JavaScript programming:  The <kbd>Promise</kbd> class and <kbd>async</kbd> functions. Both are used for deferred and asynchronous computation and can make intensely nested callback a thing of the past:</p>
+<ul>
+<li>A <kbd>Promise</kbd> represents an operation that hasn't completed yet but is expected to be completed in the future. We've seen Promises in use. The <kbd>.then</kbd> or <kbd>.catch</kbd> functions are invoked when the promised result (or error) is available. </li>
+<li><em>Generator</em> functions are a new kind of function that can be paused and resumed, and can return results from the middle of the function. </li>
+<li>Those two features were mixed with another, the iteration protocol, along with some new syntax, to create <kbd>async</kbd> functions. </li>
+</ul>
+<p>The magic of <kbd>async</kbd> functions is that we can write asynchronous code as if it's synchronous code. It's still asynchronous code, meaning long-running request handlers won't block the event loop. The code looks like the synchronous code we'd write in other languages. One statement follows another, the errors are thrown as exceptions, and the results land on the next line of code. Promise and <kbd>async</kbd> functions are so much of an improvement that it's extremely compelling for the Node.js community to switch paradigms, meaning rewriting legacy callback-oriented APIs.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>Over the years, several other approaches have been used to manage asynchronous code, and you may come across code using these other techniques. Before the <kbd>Promise</kbd> object was standardized, at least two implementations were available: Bluebird (<a href="http://bluebirdjs.com/">http://bluebirdjs.com/</a>) and Q (<a href="https://www.npmjs.com/package/q">https://www.npmjs.com/package/q</a>). Use of a non-standard Promise library should be carefully considered, since there is value in maintaining compatibility with the standard Promise object.</p>
+<p>The <strong>Pyramid of Doom</strong> is named after the shape the code takes after a few layers of nesting. Any multistage process can quickly escalate to code nested 15 levels deep. Consider the following example:</p>
+<pre>router.get('/path/to/something', (req, res, next) =&gt; { 
+  doSomething(arg1, arg2, (err, data1) =&gt; { 
+    if (err) return next(err); 
+    doAnotherThing(arg3, arg2, data1, (err2, data2) =&gt; { 
+      if (err2) return next(err2); 
+      somethingCompletelyDifferent(arg1, arg42, (err3, data3) =&gt; { 
+        if (err3) return next(err3); 
+        doSomethingElse((err4, data4) =&gt; { 
+          if (err4) return next(err4); 
+          res.render('page', { data }); 
+        }); 
+      }); 
+    }); 
+  }); 
+});</pre>
+<p>Rewriting this as an <kbd>async</kbd> function will make this much clearer. To get there, we need to examine the following ideas:</p>
+<ul>
+<li>Using Promises to manage asynchronous results</li>
+<li>Generator functions and Promises</li>
+<li><kbd>async</kbd> functions</li>
+</ul>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mceNonEditable"/>
+<p>We generate a Promise this way:</p>
+<pre>exports.asyncFunction = function(arg1, arg2) { 
+  return <strong>new Promise((resolve, reject) =&gt; { 
+    // perform some task or computation that's asynchronous 
+    // for any error detected: 
+    if (errorDetected) return reject(dataAboutError); 
+    // When the task is finished 
+    resolve(theResult); 
+  });</strong> 
+}; </pre>
+<div class="packt_infobox"><span>Note that </span><kbd>asyncFunction</kbd><span> is an asynchronous function, but it does not take a callback. Instead, it returns a </span><kbd>Promise</kbd><span> object, and the asynchronous code is executed within a callback passed to the </span><kbd>Promise</kbd><span> class.</span></div>
+<p>Your code must indicate the status of the <span>asynchronous operation</span> via the <kbd>resolve</kbd> and <kbd>reject</kbd> functions. As implied by the function names, <kbd>reject</kbd> indicates an error occurred and <kbd>resolve</kbd> indicates a success result. Your caller then uses the function as follows:</p>
+<pre>asyncFunction(arg1, arg2) 
+.then((result) =&gt; { 
+   // the operation succeeded 
+   // do something with the result<br/>   return newResult;
+}) 
+.catch(err =&gt; { 
+   // an error occurred 
+}); </pre>
+<p>The system is fluid enough that the function passed in a <kbd>.then</kbd> can return something, such as another Promise, and you can chain the <kbd>.then</kbd> calls together. The value returned in a <kbd>.then</kbd> handler (if any) becomes a new Promise object, and in this way you can construct a chain of <kbd>.then</kbd> and <kbd>.catch</kbd> calls to manage a sequence of asynchronous operations. </p>
+<p>A sequence of asynchronous operations would be implemented as a chain of <kbd>.then</kbd> functions, as we will see in the next section.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Promises and error handling</h1>
+                </header>
+            
+            <article>
+                
+<p>Promise objects can be in one of three states:</p>
+<ul>
+<li><strong>Pending</strong>: This is the initial state, neither fulfilled nor rejected</li>
+<li><strong>Fulfilled</strong>: This is the final state where it executed successfully and<br/>
+produced a result</li>
+<li><strong>Rejected</strong>: This is the final state where execution failed</li>
+</ul>
+<p>Consider this code segment similar to the one we'll use later in this chapter:</p>
+<pre>notes.read(req.query.key) 
+.then(note =&gt; { return filterNote(note); }) 
+.then(note =&gt; { return swedishChefSpeak(note); }) 
+.then(note =&gt; { 
+    res.render('noteview', { 
+        title: note ? note.title : "", 
+        notekey: req.query.key, 
+        note: note 
+    }); 
+}) 
+.catch(err =&gt; { next(err); }); </pre>
+<p>There are several places where errors can occur in this little bit of code. The <kbd>notes.read</kbd> function has several possible failure modes: the <kbd>filterNote</kbd> function might want to raise an alarm if it detects a cross-site scripting attack. The Swedish chef could be on strike. There could be a failure in <kbd>res.render</kbd> or the template being used. But we have only one way to catch and report errors. Are we missing something?</p>
+<p>The <kbd>Promise</kbd> class automatically captures errors, sending them down the chain of operations attached to the <kbd>Promise</kbd>. If the <kbd>Promise</kbd> class has an error on its hands, it skips over the <kbd>.then</kbd> functions and will instead invoke the first <kbd>.catch</kbd> function it finds. In other words, using instances of Promise provides a higher assurance of capturing and reporting errors. With the older convention, error reporting was trickier, and it was easy to forget to add correct error handling.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Flattening our asynchronous code</h1>
+                </header>
+            
+            <article>
+                
+<p>The problem being addressed is that asynchronous coding in JavaScript results in the Pyramid of Doom. To explain, let's reiterate the example Ryan Dahl gave as the primary Node.js idiom:</p>
+<pre>db.query('SELECT ..etc..', function(err, resultSet) { 
+   if (err) { 
+      // Instead, errors arrive here 
+   } else { 
+      // Instead, results arrive here 
+    } 
+}); 
+// We WANT the errors or results to arrive here </pre>
+<p>The goal was to avoid blocking the event loop with a long operation. Deferring the processing of results or errors using callback functions was an excellent solution and is the founding idiom of Node.js. The implementation of callback functions led to this pyramid-shaped problem.  Namely, that results and errors land in the callback. Rather than delivering them to the next line of code, the errors and results are buried.</p>
+<p>Promises help flatten the code so that it no longer takes a pyramidal shape. They also capture errors, ensuring delivery to a useful location. But those errors and results are still buried inside an anonymous function and do not get delivered to the next line of code.</p>
+<p>Further, using Promises results in a little bit of boilerplate code that obscures the programmers intent. It's less boilerplate than with regular callback functions, but the boilerplate is still there.</p>
+<p>Fortunately, the ECMAScript committee kept working on the problem.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Promises and generators birthed async functions</h1>
+                </header>
+            
+            <article>
+                
+<p>Generators and the associated Iteration Protocol are a large topic, which we will briefly cover. </p>
+<p>The Iteration Protocol is what's behind the new <kbd>for..of</kbd> loop, and some other new looping constructs. These constructs can be used with anything producing an iterator. For more about both, see <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols">https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols</a>.</p>
+<p>A generator is a kind of function which can be stopped and started using the <kbd>yield</kbd> keyword. Generators produce an iterator whose values are whatever is given to the yield statement. For more on this, see <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Generator">https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Generator</a>.</p>
+<p>Consider this:</p>
+<pre class="p1"><strong><span class="s1">$ cat gen.js<br/>function* gen() {<br/></span><span class="s1"><span class="Apple-converted-space">    </span>yield 1;<br/></span><span class="s1"><span class="Apple-converted-space">    </span>yield 2;<br/></span><span class="s1"><span class="Apple-converted-space">    </span>yield 3;<br/></span><span class="s1"><span class="Apple-converted-space">    </span>yield 4;</span><span class="s1"><br/></span><span class="s1">}<br/></span><span class="s1">for (let g of gen()) {<br/></span><span class="s1"><span class="Apple-converted-space">   </span>console.log(g);<br/></span></strong><span class="s1"><strong>}</strong><br/><strong>$ node gen.js</strong><br/><strong>1</strong><br/><strong>2</strong><br/><strong>3</strong><br/><strong>4</strong><br/></span></pre>
+<p>The <kbd>yield</kbd> statement causes a generator function to pause and to provide the value given to the next call on its <kbd>next</kbd> function. The <kbd>next</kbd> function isn't explicitly seen here, but is what controls the loop, and is part of the iteration protocol. Instead of the loop, try calling <kbd>gen().next()</kbd> several times:</p>
+<pre class="p1"><span class="s1">var geniter = gen();<br/></span><span class="s1">console.log(geniter.next());<br/></span><span class="s1">console.log(geniter.next());<br/></span><span class="s1">console.log(geniter.next());</span></pre>
+<p>You'll see this:</p>
+<pre class="p1"><strong><span class="s1">$ node gen.js<br/></span><span class="s1">{ value: 1, done: false }<br/></span><span class="s1">{ value: 2, done: false }<br/></span><span class="s1">{ value: 3, done: false }</span></strong></pre>
+<p>The Iteration protocol says the iterator is finished when <kbd>done</kbd> is <kbd>true</kbd>. In this case, we didn't call it enough to trigger the end state of the iterator.</p>
+<p>Where generators became interesting is when used with functions that return a Promise. The Promise is what's made available through the iterator. The code consuming the iterator can wait on the Promise to get its value. A series of asynchronous operations could be inside the generator and invoked in an iterable fashion. </p>
+<p>With the help of an extra function, a generator function along with Promise-returning asynchronous functions can be a very nice way to write asynchronous code. We saw an example of this in <a href="">Chapter 2</a>,<em> Setting up Node.js,</em> while exploring Babel. Babel has a plugin to rewrite <kbd>async</kbd> functions into a generator along with a helper function, and we took a look at the transpiled code and the helper function. The <kbd>co</kbd> library (<a href="https://www.npmjs.com/package/co">https://www.npmjs.com/package/co</a>) is a popular helper function for implementing asynchronous coding in generators. Create a file named <kbd>2files.js</kbd>:</p>
+<pre>const fs = require('fs-extra');<br/>const co = require('co');<br/>const util = require('util');<br/>co(function* () {<br/>  var texts = [<br/>    yield fs.readFile('hello.txt', 'utf8'),<br/>    yield fs.readFile('goodbye.txt', 'utf8')<br/>  ];<br/>  console.log(util.inspect(texts));<br/>});</pre>
+<p>Then run it like so:</p>
+<pre><strong>$ node 2files.js</strong><br/><strong>[ 'Hello, world!\n', 'Goodbye, world!\n' ]</strong></pre>
+<p>Normally, <kbd>fs.readFile</kbd> sends its result to a callback function, and we'd build a little pyramid-shaped piece of code to perform this task. The <kbd>fs-extra</kbd> module contains implementations of all functions from the built-in <kbd>fs</kbd> module but changed to return a Promise instead of a callback function. Therefore, each <kbd>fs.readFile</kbd> shown here is returning a Promise that's resolved when the file content is fully read into memory. What <kbd>co</kbd> does is it manages the dance of waiting for the Promise to be resolved (or rejected), and returns the value of the Promise. Therefore, with two suitable text files we have the result shown from executing <kbd>2files.js</kbd>.</p>
+<p>The important thing is that the code is very clean and readable. We aren't caught up in boilerplate code required to manage asynchronous operations. The intent of the programmer is pretty clear.</p>
+<p><kbd>async</kbd> functions take that same combination of generators and Promises and define a standardized syntax in the JavaScript language. Create a file named <kbd>2files-async.js</kbd>:</p>
+<pre class="p1"><span class="s1">const fs<span class="Apple-converted-space">    </span>= require('fs-extra');<br/></span><span class="s1">const util<span class="Apple-converted-space">  </span>= require('util');<br/></span><span class="s1">async function twofiles() {<br/></span><span class="s1"><span class="Apple-converted-space">    </span>var texts = [<br/></span><span class="s1"><span class="Apple-converted-space">        </span>await fs.readFile('hello.txt', 'utf8'),<br/></span><span class="s1"><span class="Apple-converted-space">        </span>await fs.readFile('goodbye.txt', 'utf8')<br/></span><span class="s1"><span class="Apple-converted-space">    </span>];<br/></span><span class="s1"><span class="Apple-converted-space">    </span>console.log(util.inspect(texts));<br/></span><span class="s1">}<br/></span><span class="s1">twofiles().catch(err =&gt; { console.error(err); });<br/></span></pre>
+<p>Then run it like so:</p>
+<pre class="p1"><strong><span class="s1">$ node 2files-async.js <br/>[ 'Hello, world!\n', 'Goodbye, world!\n' ]</span></strong></pre>
+<p>Clean. Readable. The intent of the programmer is clear. No dependency on an add-on library, with syntax built-in to the JavaScript language. Most importantly, everything is handled in a natural way. Errors are indicated naturally by throwing exceptions. The results of an asynchronous operation naturally appear as the result of the operation, with the <kbd>await</kbd> keyword facilitating the delivery of that result.</p>
+<p>To see the real advantage, let's return to the Pyramid of Doom example from earlier:</p>
+<pre>router.get('/path/to/something', async (req, res, next) =&gt; { <br/>   try {<br/>       let data1 = await doSomething(req.query.arg1, req.query.arg2);<br/>       let data2 = await doAnotherThing(req.query.arg3, req.query.arg2, <br/>       data1);<br/>       let data3 = await somethingCompletelyDifferent(req.query.arg1,<br/>                                                      req.query.arg42);<br/>       let data4 = await doSomethingElse();<br/>       res.render('page', { data1, data2, data3, data4 }); <br/>   } catch(err) {<br/>       next(err);<br/>   }<br/>}); </pre>
+<p>Other than the <kbd>try/catch</kbd>, this example became very clean compared to its form as a callback pyramid. All the asynchronous callback boilerplate is erased, and the intent of the programmer shines clearly.</p>
+<p>Why was the <kbd>try/catch</kbd> needed? Normally, an <kbd>async</kbd> function catches thrown errors, automatically reporting them correctly. But since this example is within an Express router function, we're limited by its capabilities. Express doesn't know how to recognize an <kbd>async</kbd> function, and therefore it does not know to look for the thrown errors. Instead, we're required to <kbd>catch</kbd> them and call <kbd>next(err)</kbd>.</p>
+<p>This improvement is only for code executing inside an <kbd>async</kbd> function. Code outside an <kbd>async</kbd> function still requires callbacks or Promises for asynchronous coding. Further, the return value of an <kbd>async</kbd> function is a Promise.</p>
+<p>Refer to the official specification of <kbd>async</kbd> functions at <a href="https://tc39.github.io/ecmascript-asyncawait/"><span class="URLPACKT">https://tc39.github.io/ecmascript-asyncawait/</span></a> for details.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Express and the MVC paradigm</h1>
+                </header>
+            
+            <article>
+                
+<p>Express doesn't enforce an opinion on how you should structure the Model, View, and Controller modules of your application, or whether you should follow any kind of MVC paradigm at all. As we learned in the previous chapter, the blank application created by the Express Generator provides two aspects of the MVC model:</p>
+<ul>
+<li>The <kbd>views</kbd> directory contains template files, controlling the display portion, corresponding to the View.</li>
+<li>The <kbd>routes</kbd> directory contains code implementing the URLs recognized by the application and coordinating the response to each URL. This corresponds to the controller.</li>
+</ul>
+<p>This leaves you wondering where to put code corresponding to the model. Models hold the application data, changing it as instructed by the controller and supplying data requested by View code. At a minimum, the Model code should be in separate modules from the Controller code. This is to ensure a clean separation of concerns, for example, to ease the unit testing of each.</p>
+<p>The approach we'll use is to create a <kbd>models</kbd> directory as a sibling of the <kbd>views</kbd> and <kbd>routes</kbd> directories. The <kbd>models</kbd> directory will hold modules for storing the notes and related data. The API of the modules in the <kbd>models</kbd> directory will provide functions to create, read, update, or delete data items <strong>C</strong><span><strong>reate</strong>, </span><strong>R</strong><span><strong>ead</strong>, </span><strong>Update</strong><span>, and </span><strong>D</strong><span><strong>elete</strong> or </span><strong>Destroy </strong><span>(</span><strong>CRUD</strong> model) and other functions necessary for the View code to do its thing.</p>
+<p>The CRUD model (create, read, update, destroy) is the four basic operations of persistent data storage. The <kbd>Notes</kbd> application is structured as a CRUD application to demonstrate implementing each of these operations.</p>
+<p>We'll use functions named <kbd>create</kbd>, <kbd>read</kbd>, <kbd>update</kbd>, and <kbd>destroy</kbd> to implement each of the basic operations.</p>
+<div class="packt_infobox"><span>We're using the verb </span><kbd>destroy</kbd><span> rather than </span><kbd>delete</kbd>,<span> because </span><kbd>delete</kbd><span> is a reserved word in JavaScript.</span></div>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Creating the Notes application</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's start creating the <em>Notes</em> application as before, by using the Express generator to give us a starting point:</p>
+<pre><strong>$ mkdir notes</strong><br/><strong>$ cd notes</strong><br/><strong>$ npm install express-generator@4.x</strong><br/><strong>$ ./node_modules/.bin/express --view=hbs --git .</strong><br/><strong>destination is not empty, continue? [y/N] y</strong><br/><br/><strong>   create : .</strong><br/><strong>   create : ./package.json</strong><br/><strong>   create : ./app.js</strong><br/><strong>   create : ./.gitignore</strong><br/><strong>   create : ./public</strong><br/><strong>   create : ./routes</strong><br/><strong>   create : ./routes/index.js</strong><br/><strong>   create : ./routes/users.js</strong><br/><strong>   create : ./views</strong><br/><strong>   create : ./views/index.hbs</strong><br/><strong>   create : ./views/layout.hbs</strong><br/><strong>   create : ./views/error.hbs</strong><br/><strong>   create : ./bin</strong><br/><strong>   create : ./bin/www</strong><br/><strong>   create : ./public/stylesheets</strong><br/><strong>   create : ./public/stylesheets/style.css</strong><br/><br/><strong>   install dependencies:</strong><br/><strong>     $ cd . &amp;&amp; npm install</strong><br/><br/><strong>   run the app:</strong><br/><strong>     $ DEBUG=notes:* npm start</strong><br/><br/><strong>   create : ./public/javascripts</strong><br/><strong>   create : ./public/images</strong><br/><strong>$ npm install</strong><br/><strong>added 82 packages and removed 5 packages in 97.188s</strong><br/><strong>$ npm uninstall express-generator</strong><br/><strong>up to date in 8.325s</strong></pre>
+<p>If you wish, you can run <kbd>npm start</kbd> and view the blank application in your browser. Instead, let's move on to setting up the code.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Your first Notes model</h1>
+                </header>
+            
+            <article>
+                
+<p>Create a directory named <kbd>models</kbd>, as a sibling of the <kbd>views</kbd> and <kbd>routes</kbd> directories.</p>
+<p>Then, create a file named <kbd>Note.js</kbd> in that directory, and put this code in it:</p>
+<pre>const _note_key = Symbol('key');<br/>const _note_title = Symbol('title');<br/>const _note_body = Symbol('body');<br/><br/>module.exports = class Note { <br/>    constructor(key, title, body) { <br/>        this[_note_key] = key; <br/>        this[_note_title] = title; <br/>        this[_note_body] = body; <br/>    } <br/><br/>    get key() { return this[_note_key]; }<br/>    get title() { return this[_note_title]; }<br/>    set title(newTitle) { this[_note_title] = newTitle; }<br/>    get body() { return this[_note_body]; }<br/>    set body(newBody) { this[_note_body] = newBody; }<br/>};</pre>
+<p>This defines a new class, <kbd>Note</kbd>, for use within our <kbd>Notes</kbd> application. The intent is to hold data related to notes being exchanged between users of our application. </p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Understanding ES-2015 class definitions</h1>
+                </header>
+            
+            <article>
+                
+<p>This sort of object class definition is new to JavaScript with ES-2015. It simplifies defining classes over previous methods and brings JavaScript class definitions closer to the syntax in other languages. Under the hood, JavaScript classes still use prototype-based inheritance, but with a simpler syntax, and the coder doesn't even have to think about the object prototype.</p>
+<p>We can reliably determine whether an object is a note with the <kbd>instanceof</kbd> operator:</p>
+<pre><strong>$ node</strong><br/><strong>&gt; const Note = require('./Note');</strong><br/><strong>&gt; typeof Note</strong><br/><strong>'function'</strong><br/><strong>&gt; const aNote = new Note('foo', 'The Rain In Spain', 'Falls mainly on the plain');</strong><br/><strong>&gt; var notNote = {}</strong><br/><strong>&gt; notNote instanceof Note</strong><br/><strong>false</strong><br/><strong>&gt; aNote instanceof Note</strong><br/><strong>true</strong><br/><strong>&gt; typeof aNote</strong><br/><strong>'object'</strong></pre>
+<p>This shows us the clearest method to identify an object is with the <kbd>instanceof</kbd> operator. The <kbd>typeof</kbd> operator informs us <kbd>Note</kbd> is a function (because of the prototype-based inheritance behind the scenes), and that an instance of the <kbd>Note</kbd> class is an object. With instance of, we can easily determine whether an object is an instance of a given class.</p>
+<p>With the Note class, we have used <kbd>Symbol</kbd> instances to provide a small measure of data hiding. JavaScript classes don't provide a data-hiding mechanism—you can't label a field <kbd>private</kbd> as you can in Java, for example. It's useful to know how to hide implementation details. This is an important attribute of object-oriented programming, because it's useful to have the freedom to change the implementation at will. And there's the issue of controlling which code can manipulate the object's fields. </p>
+<p>First, we declared getter and setter functions to provide access to the values. We went over normal getter/setter usage in <a href="2e4fd521-22f2-4df0-810c-54c972ed8e6e.xhtml">Chapter 4</a>, <em>HTTP Servers and Clients</em>.</p>
+<p>Access to a getter-based field is by using the name of the property, and not by calling a function - <kbd>aNote.title</kbd> and not <kbd>aNote.title()</kbd>. It looks like you're accessing an object property by assigning a value or accessing the value. In actuality, the function defined in the class is executed on every access. You can define a read-only property by only implementing a getter, and no setter, as we did with the <kbd>key</kbd> field.</p>
+<p>There are significant differences between the preceding and simply defining anonymous objects:</p>
+<pre>{<br/>   key: 'foo', title: 'The Rain in Spain',<br/>   body: 'Falls mainly on the plain'<br/>}</pre>
+<p>We write code like that in JavaScript all the time. It's easy, it's quick, and it's a very fluid way to share data between functions. But there's no measure of hiding implementation details, and no clear identification of object type. </p>
+<p>In the <kbd>Note</kbd> class, we could have used this <kbd>constructor</kbd> method:</p>
+<div>
+<pre><span>class</span><span> </span><span>Note</span><span> {<br/></span><span>  </span><span>constructor</span><span>(</span><span>key</span><span>, </span><span>title</span><span>, </span><span>body</span><span>) {<br/></span><span>     </span><span>this</span><span>.</span><span>key</span><span> </span><span>=</span><span> </span><span>key</span><span>;<br/></span><span>     </span><span>this</span><span>.</span><span>title</span><span> </span><span>=</span><span> </span><span>title</span><span>;<br/></span><span>     </span><span>this</span><span>.</span><span>body</span><span> </span><span>=</span><span> </span><span>body</span><span>;<br/></span><span> }<br/></span><span>}</span></pre></div>
+<p>That's effectively the same as the anonymous object, in that no details have been hidden and no control is implemented in terms of which code can do what to object instances. The only advantage over an anonymous object is <span>using the </span><kbd>instanceof</kbd><span> operator to</span> identify object instances.</p>
+<p>The method we chose uses the Symbol class, which is also new with ES-2015. A Symbol is an opaque object with two main use cases:</p>
+<ul>
+<li>Generating unique keys to use as property fields—as in the previous <kbd>Note</kbd> class</li>
+<li>Symbolic identifiers that you can use for concepts like COLOR_RED</li>
+</ul>
+<p>You define a Symbol through a factory method that generates <kbd>Symbol</kbd> instances:</p>
+<pre class="p1"><span class="s1">&gt; let symfoo = Symbol('foo')</span></pre>
+<p>Each time you invoke the Symbol factory method, a new and unique instance is created. For example, <span class="s1"><kbd>Symbol('foo') === Symbol('foo')</kbd> is <kbd>false</kbd>, as is </span><kbd><span class="s1">symfoo === Symbol('foo')</span></kbd><span class="s1">, because a new instance is created on each side of the equality operator. However, <kbd>symfoo === symfoo</kbd> is true, because they are the same instance.</span></p>
+<p>What this means in practice is that i<span>f we try a direct approach to access a field, it fails:</span></p>
+<pre class="p1"><span class="s1">&gt; aNote[Symbol('title')]<br/></span><span class="s1">undefined</span></pre>
+<p>Remember that each time we use the Symbol factory method we get a new instance. The new instance of <kbd>Symbol('title')</kbd> is not the same instance used within the <kbd>Note.js</kbd> module. </p>
+<p>The bottom line is that using <kbd>Symbol</kbd> objects for the fields provides a small measure of implementation hiding. </p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Filling out the in-memory Notes model</h1>
+                </header>
+            
+            <article>
+                
+<p>Create a file named <kbd>notes-memory.js</kbd> in the <kbd>models</kbd> directory, with this code:</p>
+<pre>const Note = require('./Note');<br/><br/>var notes = [];<br/><br/>exports.update = exports.create = async function(key, title, body) {<br/>    notes[key] = new Note(key, title, body);<br/>    return notes[key];<br/>};<br/><br/>exports.read = async function(key) {<br/>    if (notes[key]) return notes[key];<br/>    else throw new Error(`Note ${key} does not exist`);<br/>};<br/><br/>exports.destroy = async function(key) {<br/>    if (notes[key]) {<br/>        delete notes[key];<br/>    } else throw new Error(`Note ${key} does not exist`);<br/>};<br/><br/>exports.keylist = async function() { return Object.keys(notes); };<br/>exports.count = async function() { return notes.length; };<br/>exports.close = async function() { }</pre>
+<p>This is a simple in-memory data store that's fairly self-explanatory. The <kbd>key</kbd> for each Note instance is used as the index to an array, which in turn holds the Note instance. Simple, fast, and easy to implement. It does not support any long-term data persistence. Any data stored in this model will disappear when the server is killed.</p>
+<p>We have used <kbd>async</kbd> functions because in the future we'll be storing data in the file system or in databases. Therefore, we need an asynchronous API.</p>
+<p>The <kbd>create</kbd> and <kbd>update</kbd> functions are being handled by the same function. At this stage of the Notes application, the code for both these functions can be exactly the same because they perform the exact same operation. Later, when we add database support to Notes, the <kbd>create</kbd> and <kbd>update</kbd> functions will need to be different. For example, in a SQL data model, <kbd>create</kbd> would be implemented with an <kbd>INSERT INTO</kbd> command, while <kbd>update</kbd> would be implemented with an <kbd>UPDATE</kbd> command.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">The Notes home page</h1>
+                </header>
+            
+            <article>
+                
+<p>We're going to modify the starter application to support creating, editing, updating, viewing, and deleting notes. Let's start by fixing up the home page. It should show a list of notes, and the top navigation bar should link to an <span class="packt_screen">ADD Note</span> page so that we can always add a new note.</p>
+<p>While we will be modifying the generated <kbd>app.js</kbd>, it needs no modification to support the home page. These lines of code are related to the home page:</p>
+<pre>const index = require('./routes/index'); 
+.. 
+app.use('/', index); </pre>
+<p>Additionally, to support Handlebars templates <kbd>app.js</kbd> requires these changes:</p>
+<div>
+<pre><span>const</span><span> </span><span>hbs</span><span> </span><span>=</span><span> </span><span>require</span><span>(</span><span>'hbs'</span><span>);<br/>...<br/>app.set('view engine', 'hbs');<br/>hbs.registerPartials(path.join(__dirname, 'partials'));<br/></span></pre>
+<p>We'll put Handlebars <kbd>partials</kbd> in a directory, <kbd>partials</kbd>, which is a sibling to the <kbd>views</kbd> directory. <span>Change</span> <kbd>routes/index.js</kbd> <span>to this:</span></p>
+</div>
+<pre>const express = require('express');<br/>const router = express.Router();<br/>const notes = require('../models/notes-memory');<br/><br/>/* GET home page. */<br/>router.get('/', async (req, res, next) =&gt; {<br/>  let keylist = await notes.keylist();<br/>  let keyPromises = keylist.map(key =&gt; {<br/>    return notes.read(key)<br/>  });<br/>  let notelist = await Promise.all(keyPromises);<br/>  res.render('index', { title: 'Notes', notelist: notelist });<br/>});<br/><br/>module.exports = router;</pre>
+<p>This gathers data about the notes that we'll be displaying on the home page. By default, we'll show a simple table of note titles. We do need to talk about the technique.</p>
+<p>The <kbd>Promise.all</kbd> function executes an array of Promises. The Promises are evaluated in parallel, allowing our code to potentially make parallel requests to a service. This should execute more quickly than making the requests one at a time sequentially.</p>
+<p>We could have written a simple <kbd>for</kbd> loop like so:</p>
+<pre>let keylist = await notes.keylist();<br/>let notelist = [];<br/>for (key of keylist) {<br/>    let note = await notes.read(keylist);<br/>    notelist.push({ key: note.key, title: note.title });<br/>}</pre>
+<p>While simpler to read, the notes are retrieved one at a time with no opportunity to overlap <kbd>read</kbd> operations.</p>
+<p>The Promise array is constructed using the <kbd>map</kbd> function. With <kbd>map</kbd>, one iterates over an array to produce a new array. In this case, the new array contains the Promises generated by the <kbd>notes.read</kbd> function calls.</p>
+<p>Because we wrote <kbd>await Promise.all</kbd>, the <kbd>notelist</kbd> array will be completely filled with the correct data once all the Promises succeed. If any Promise fails—is rejected, in other words—an exception will be thrown instead. What we've done is enqueue a list of asynchronous operations and neatly waited for them all to finish.</p>
+<p>The <kbd>notelist</kbd> array is then passed into the <kbd>view</kbd> templates we're about to write.</p>
+<p>Start with <kbd>views/layout.hbs</kbd>, containing:</p>
+<pre>&lt;!DOCTYPE html&gt;<br/>&lt;html&gt;<br/> &lt;head&gt;<br/> &lt;title&gt;{{title}}&lt;/title&gt;<br/> &lt;link rel='stylesheet' href='/stylesheets/style.css' /&gt;<br/> &lt;/head&gt;<br/>  &lt;body&gt;<br/>  <strong>{{&gt; header }}</strong><br/>  {{{body}}}<br/>  &lt;/body&gt;<br/>&lt;/html&gt;</pre>
+<p>This is the generated file, with the addition of a partial for the page header. We already declared <kbd>partials</kbd> to live in the <kbd>partials</kbd> directory. Create <kbd>partials/header.hbs</kbd>, containing:</p>
+<div>
+<pre><span>&lt;</span><span>header</span><span>&gt;<br/></span><span> &lt;</span><span>h1</span><span>&gt;</span><span>{{</span><span> </span><span>title</span><span> </span><span>}}</span><span>&lt;/</span><span>h1</span><span>&gt;<br/></span><span>  &lt;</span><span>div</span><span> </span><span>class=</span><span>'navbar'</span><span>&gt;<br/></span><span>  &lt;</span><span>p</span><span>&gt;&lt;</span><span>a</span><span> </span><span>href=</span><span>'/'</span><span>&gt;</span><span>Home</span><span>&lt;/</span><span>a</span><span>&gt;</span><span> | </span><span>&lt;</span><span>a</span><span> </span><span>href=</span><span>'/notes/add'</span><span>&gt;</span><span>ADD Note</span><span>&lt;/</span><span>a</span><span>&gt;&lt;/</span><span>p</span><span>&gt;<br/></span><span>  &lt;/</span><span>div</span><span>&gt;<br/></span><span>&lt;/</span><span>header</span><span>&gt;</span></pre></div>
+<p>Change <kbd>views/index.hbs</kbd> to this:</p>
+<pre>{{#each notelist}}<br/>&lt;ul&gt;<br/>  &lt;li&gt;{{ key }}:<br/>  &lt;a href="/notes/view?key={{ key }}"&gt;{{ title }}&lt;/a&gt;<br/>  &lt;/li&gt;<br/>&lt;/ul&gt;<br/>{{/each}}</pre>
+<p>This simply steps through the array of note data and formats a simple listing. Each item links to the <kbd>/notes/view</kbd> URL with a <kbd>key</kbd> parameter. We have yet to look at that code, but this URL will obviously display the note. Another thing of note is that no HTML for the list is generated if the <kbd>notelist</kbd> is empty.</p>
+<p>There's of course a whole lot more that could be put into this. For example, it's easy to add jQuery support to every page just by adding the appropriate <kbd>script</kbd> tags here.</p>
+<p>We now have enough written to run the application; let's view the home page:</p>
+<pre><strong>$ DEBUG=notes:* npm start</strong><br/><br/><strong>&gt; notes@0.0.0 start /Users/David/chap05/notes</strong><br/><strong>&gt; node ./bin/www</strong><br/><br/><strong>  notes:server Listening on port 3000 +0ms</strong><br/><strong>GET / 200 87.300 ms - 308</strong><br/><strong>GET /stylesheets/style.css 200 27.744 ms - 111</strong></pre>
+<p>If we visit <kbd>http://localhost:3000</kbd>, we will see the following page:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="Images/34f574a7-e8fe-46b3-a1cf-f806fe04b73c.png" style="width:34.33em;height:17.75em;" width="597" height="309"/></div>
+<p>Because there aren't any notes (yet), there's nothing to show. Clicking on the <span class="packt_screen">Home</span> link just refreshes the page. Clicking on the <span class="packt_screen">ADD Note</span> link throws an error because we haven't (yet) implemented that code. This shows that the provided error handler in <kbd>app.js</kbd> is performing as expected.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Adding a new note – create</h1>
+                </header>
+            
+            <article>
+                
+<p>Now, let's look at creating notes. Because the application doesn't have a route configured for the <kbd>/notes/add</kbd> URL, we must add one. To do that, we need a controller for the notes.</p>
+<p>In <kbd>app.js</kbd>, make the following changes.</p>
+<p>Comment out these lines:</p>
+<pre>// var users = require('./routes/users'); 
+.. 
+// app.use('/users', users); </pre>
+<p>At this stage, the <kbd>Notes</kbd> application does not support users, and these routes are not required. That will change in a future chapter.</p>
+<p>What we really need to do is add code for the <kbd>notes</kbd> controller:</p>
+<pre>// const users = require('./routes/users'); 
+const notes  = require('./routes/notes'); 
+.. 
+// app.use('/users', users); 
+app.use('/notes', notes); </pre>
+<p>Now, we'll add a Controller module containing the <kbd>notes</kbd> router. Create a file named <kbd>routes/notes.js</kbd>, with this content:</p>
+<pre>const util = require('util'); 
+const express = require('express'); 
+const router = express.Router(); 
+const notes = require('../models/notes-memory'); 
+ 
+// Add Note. 
+router.get('/add', (req, res, next) =&gt; { 
+    res.render('noteedit', { 
+        title: "Add a Note", 
+        docreate: true, 
+        notekey: "", note: undefined 
+    }); 
+}); 
+ 
+module.exports = router; </pre>
+<p>The resulting <kbd>/notes/add</kbd> URL corresponds to the link in <kbd>partials/header.hbs</kbd>.</p>
+<p>In the <kbd>views</kbd> directory, add a template named <kbd>noteedit.hbs</kbd>, containing the following:</p>
+<pre>&lt;form method='POST' action='/notes/save'&gt; <br/>&lt;input type='hidden' name='docreate' value='&lt;%= <br/>                  docreate ? "create" : "update"%&gt;'&gt; <br/>&lt;p&gt;Key: <br/>{{#if docreate }}<br/>    &lt;input type='text' name='notekey' value=''/&gt; <br/>{{else}} <br/>    {{#if note }}{{notekey}}{{/if}} <br/>    &lt;input type='hidden' name='notekey'<br/>         value='{{#if note }}{{notekey}}{{/if}}'/&gt; <br/>{{/if}} <br/>&lt;/p&gt; <br/>&lt;p&gt;Title: &lt;input type='text' name='title' <br/>        value='{{#if note }}{{note.title}}{{/if}}' /&gt;&lt;/p&gt; <br/>&lt;br/&gt;&lt;textarea rows=5 cols=40 name='body' &gt;<br/>    {{#if note }}{{note.body}}{{/if}} <br/>    &lt;/textarea&gt; <br/>&lt;br/&gt;&lt;input type='submit' value='Submit' /&gt; <br/>&lt;/form&gt;</pre>
+<p>We'll be reusing this template to support both editing notes and creating new ones.</p>
+<p>Notice that the <kbd>note</kbd> and <kbd>notekey</kbd> objects passed to the template are empty in this case. The template detects this condition and ensures the input areas are empty. Additionally, a flag, <kbd>docreate</kbd>, is passed in so that the form records whether it is being used to create or update a note. At this point, we're adding a new note, so no note object exists. The template code is being written defensively to not throw errors.</p>
+<p>This template is a form that will <kbd>POST</kbd> its data to the <kbd>/notes/save</kbd> URL. If you were to run the application at this time, it would give you an error message because no route is configured for that URL.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>To support the <kbd>/notes/save</kbd> URL, add this to <kbd>routes/notes.js</kbd>:</p>
+<pre><br/>// Save Note (update)<br/>router.post('/save', async (req, res, next) =&gt; {<br/>    var note;<br/>    if (req.body.docreate === "create") {<br/>        note = await notes.create(req.body.notekey,<br/>                req.body.title, req.body.body);<br/>    } else {<br/>        note = await notes.update(req.body.notekey,<br/>                req.body.title, req.body.body);<br/>    }<br/>    res.redirect('/notes/view?key='+ req.body.notekey);<br/>});</pre>
+<p>Because this URL will also be used for both creating and updating notes, it needs to detect the <kbd>docreate</kbd> flag and call the appropriate model operation.</p>
+<p>The model returns a Promise for both <kbd>notes.create</kbd> and <kbd>notes.update</kbd>. <span>Of course, we must call the corresponding Model function based on the <kbd>docreate</kbd> flag. </span></p>
+<p>This is a <kbd>POST</kbd> operation handler. Because of <span>the </span><kbd>bodyParser</kbd><span> middleware</span>, the form data is added to the <kbd>req.body</kbd> object. The fields attached to <kbd>req.body</kbd> correspond directly to elements in the HTML form.</p>
+<p>Now, we can run the application again and use the <span class="packt_screen">Add a Note</span> form:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="Images/c832fe20-73d7-4e07-a496-a71faa1fa83e.png" style="width:43.83em;height:15.00em;" width="593" height="444"/></div>
+<p>But upon clicking on the <span class="packt_screen">Submit</span> button, we get an error message. There isn't anything, yet, implementing the <kbd>/notes/view</kbd> URL.</p>
+<p>You can modify the URL in the location box to revisit <kbd>http://localhost:3000</kbd>, and you'll see something like the following screenshot on the home page:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="Images/994a5099-4517-4f21-a455-897076962d74.png" style="width:28.42em;height:19.08em;" width="499" height="335"/></div>
+<p>The note is actually there; we just need to implement <kbd>/notes/view</kbd>. Let's get on with that.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Viewing notes – read</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that we've looked at how to create notes, we need to move on to reading them. This means implementing controller logic and view templates for the <kbd>/notes/view</kbd> URL.</p>
+<p>To <kbd>routes/notes.js</kbd>, add this router function:</p>
+<pre>// Read Note (read)<br/>router.get('/view', async (req, res, next) =&gt; {<br/>    var note = await notes.read(req.query.key);<br/>    res.render('noteview', {<br/>        title: note ? note.title : "",<br/>        notekey: req.query.key, note: note<br/>    });<br/>});</pre>
+<p>Because this route is mounted on a router handling <kbd>/notes</kbd>, this route handles <kbd>/notes/view</kbd>.</p>
+<p>If <kbd>notes.read</kbd> successfully reads the note, it is rendered with the <kbd>noteview</kbd> template. If something goes wrong, we'll instead display an error to the user through Express.</p>
+<p>To the <kbd>views</kbd> directory, add the <kbd>noteview.hbs</kbd> template, referenced by this code:</p>
+<pre>{{#if note}}&lt;h3&gt;{{ note.title }}&lt;/h3&gt;{{/if}}<br/>{{#if note}}&lt;p&gt;{{ note.body }}&lt;/p&gt;{{/if}}<br/>&lt;p&gt;Key: {{ notekey }}&lt;/p&gt;<br/>{{#if notekey }}<br/>    &lt;hr/&gt;<br/>    &lt;p&gt;&lt;a href="/notes/destroy?key={{notekey}}"&gt;Delete&lt;/a&gt;<br/>     | &lt;a href="/notes/edit?key={{notekey}}"&gt;Edit&lt;/a&gt;&lt;/p&gt;<br/>{{/if}}</pre>
+<p>This is straightforward: taking data out of the note object and displaying using HTML. At the bottom are two links, one to <kbd>/notes/destroy</kbd> to delete the note and the other to <kbd>/notes/edit</kbd> to edit it.</p>
+<p>The code for neither of these exists at the moment. But that won't stop us from going ahead and executing the application:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="Images/e6658cdd-3c46-427e-b5b8-e3f7a8ad7673.png" style="width:30.33em;height:23.58em;" width="513" height="399"/></div>
+<p>As expected, with this code, the application correctly redirects to <kbd>/notes/view</kbd>, and we can see our handiwork. Also, as expected, clicking on either the <span class="packt_screen">Delete</span> or <span class="packt_screen">Edit</span> links will give you an error, because the code hasn't been implemented.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Editing an existing note – update</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that we've looked at the <kbd>create</kbd> and <kbd>read</kbd> operations, let's look at how to update or edit a note. </p>
+<p>To <kbd>routes/notes.js</kbd>, add this router function:</p>
+<pre>// Edit note (update)<br/>router.get('/edit', async (req, res, next) =&gt; {<br/>    var note = await notes.read(req.query.key);<br/>    res.render('noteedit', {<br/>        title: note ? ("Edit " + note.title) : "Add a Note",<br/>        docreate: false,<br/>        notekey: req.query.key, note: note<br/>    });<br/>});</pre>
+<p>We're reusing the <kbd>noteedit.ejs</kbd> template, because it can be used for both <kbd>create</kbd> and <kbd>update</kbd>/<kbd>edit</kbd> operations. Notice that we pass <kbd>false</kbd> for <kbd>docreate</kbd>, informing the template that it is to be used for editing.</p>
+<p>In this case, we first retrieve the note object and then pass it through to the template. This way, the template is set up for editing rather than note creation. When the user clicks on the <span class="packt_screen">Submit</span> button, we'll end up in the same <kbd>/notes/save</kbd> route handler shown in the preceding screenshot. It already does the right thing: calling the <kbd>notes.update</kbd> method in the model rather than <kbd>notes.create</kbd>.</p>
+<p>Because that's all we need do, we can go ahead and rerun the application:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="Images/b3950a09-e038-448e-b3d0-96998fa21d8a.png" style="width:29.83em;height:25.67em;" width="514" height="442"/></div>
+<p>Click on the <span class="packt_screen">Submit</span> button here, and you will be redirected to the <kbd>/notes/view</kbd> screen and will then be able to read the newly edited note. Back to the <kbd>/notes/view</kbd> screen: we've just taken care of the <span class="packt_screen">Edit</span> link, but the <span class="packt_screen">Delete</span> link still produces an error.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Deleting notes – destroy</h1>
+                </header>
+            
+            <article>
+                
+<p>Now, let's look at how to implement the <kbd>/notes/destroy</kbd> URL to delete notes.</p>
+<p>To <kbd>routes/notes.js</kbd>, add the following router function:</p>
+<pre>// Ask to Delete note (destroy)<br/>router.get('/destroy', async (req, res, next) =&gt; {<br/>    var note = await notes.read(req.query.key);<br/>    res.render('notedestroy', {<br/>        title: note ? note.title : "",<br/>        notekey: req.query.key, note: note<br/>    });<br/>});</pre>
+<p>Destroying a note is a significant step if only because there's no trash can to retrieve it from if we make a mistake. Therefore, we want to ask the user whether they're sure they want to delete that note. In this case, we retrieve the note and then render the following page, displaying a question to ensure they do want to delete the note.</p>
+<p>To the <kbd>views</kbd> directory, add a <kbd>notedestroy.hbs</kbd> template:</p>
+<pre>&lt;form method='POST' action='/notes/destroy/confirm'&gt;<br/>&lt;input type='hidden' name='notekey' value='{{#if note}}{{notekey}}{{/if}}'&gt;<br/>&lt;p&gt;Delete {{note.title}}?&lt;/p&gt;<br/>&lt;br/&gt;&lt;input type='submit' value='DELETE' /&gt; <br/>&lt;a href="/notes/view?key={{#if note}}{{notekey}}{{/if}}"&gt;Cancel&lt;/a&gt;<br/>&lt;/form&gt;</pre>
+<p>This is a simple form, asking the user to confirm by clicking on the button. The <span class="packt_screen">Cancel</span> link just sends them back to the <kbd>/notes/view</kbd> page. Clicking on the <span class="packt_screen">Submit</span> button generates a <kbd>POST</kbd> request on the <kbd>/notes/destroy/confirm</kbd> URL.</p>
+<p>That URL needs a request handler. Add this code to <kbd>routes/notes.js</kbd>:</p>
+<pre>// Really destroy note (destroy)<br/>router.post('/destroy/confirm', async (req, res, next) =&gt; {<br/>    await notes.destroy(req.body.notekey);<br/>    res.redirect('/');<br/>});</pre>
+<p>This calls the <kbd>notes.destroy</kbd> function in the model. If it succeeds, the browser is redirected to the home page. If not, an error message is shown to the user. Rerunning the application, we can now view it in action:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="Images/30ef8b2e-91a4-4eb1-b3c4-01a06e827bf0.png" style="width:25.67em;height:16.92em;" width="498" height="328"/></div>
+<p>Now that everything is working in the application, you can click on any button or link and keep all the notes you want.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Theming your Express application</h1>
+                </header>
+            
+            <article>
+                
+<p>The Express team has done a decent job of making sure Express applications look okay out of the gate. Our Notes application won't win any design awards, but at least it isn't ugly. There's a lot of ways to improve it, now that the basic application is running. Let's take a quick look at theming an Express application. In <a href=""><span class="ChapterrefPACKT">Chapter 6</span></a>, <em>Implementing the Mobile-First Paradigm</em>, we'll take a deeper dive, focusing on that all-important goal of addressing the mobile market.</p>
+<p>If you're running the <em>Notes</em> application using the recommended method, <kbd>npm start</kbd>, a nice log of activity is being printed in your console window. One of those is the following:</p>
+<pre>GET /stylesheets/style.css 304 0.702 ms - - </pre>
+<p>This is due to this line of code that we put in <kbd>layout.hbs</kbd>:</p>
+<pre>&lt;link rel='stylesheet' href='/stylesheets/style.css' /&gt; </pre>
+<p>This file was autogenerated for us by the Express Generator at the outset and dropped inside the <kbd>public</kbd> directory. The <kbd>public</kbd> directory is managed by the Express static file server, using this line in <kbd>app.js</kbd>:</p>
+<pre>app.use(express.static(path.join(__dirname, 'public'))); </pre>
+<p>Let's open <kbd>public/stylesheets/style.css</kbd> and take a look:</p>
+<pre>body { 
+  padding: 50px; 
+  font: 14px "Lucida Grande", Helvetica, Arial, sans-serif; 
+} 
+ 
+a { 
+  color: #00B7FF; 
+} </pre>
+<p>Something that leaps out is that the application content has a lot of white space at the top and left-hand sides of the screen. The reason is that <kbd>body</kbd> tags have the <kbd>padding: 50px</kbd> style. Changing it is quick business.</p>
+<p>Since there is no caching in the Express static file server, we can simply edit the CSS file and reload the page, and the CSS will be reloaded as well. It's possible to turn on cache-control headers and ETags generation, as you would do for a production website. Look in the online Express documentation for details.</p>
+<p>It involves a little bit of work:</p>
+<pre>body { 
+  padding: 5px; 
+  .. 
+} 
+.. 
+header { 
+    background: #eeeeee; 
+    padding: 5px; 
+} </pre>
+<p>As a result, we'll have this:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="Images/8e6139be-9c2b-4c6c-b279-b2b1635eaba2.png" style="width:32.58em;height:22.42em;" width="500" height="344"/></div>
+<p>We're not going to win any design awards with this either, but there's the beginning of some branding and theming possibilities.</p>
+<p>Generally speaking, the way we've structured the page templates, applying a site-wide theme is just a matter of adding appropriate code to <kbd>layout.hbs</kbd> along with appropriate stylesheets and other assets. Many of the modern theming frameworks, such as Twitter's Bootstrap, serve up CSS and JavaScript files out of a CDN server, making it incredibly easy to incorporate into a site design.</p>
+<p>For jQuery, refer to <a href="http://jquery.com/download/"><span class="URLPACKT">http://jquery.com/download/</span></a>.</p>
+<p>Google's Hosted Libraries service provides a long list of libraries, hosted on Google's CDN infrastructure. Refer to <a href="https://developers.google.com/speed/libraries/"><span class="URLPACKT">https://developers.google.com/speed/libraries/</span></a>.</p>
+<p>While it's straightforward to use third-party CDNs to host these assets, it's safer to host them yourself. Not only do you take responsibility for bandwidth consumption of your application, but you're certain of not being affected by any outages of third-party services. As reliable as Google might be, their service can go down, and if that means jQuery and Bootstrap doesn't load, your customer will think your site is broken. But if those files are loaded from the same server as your application, the reliability of delivering those files will exactly equal the reliability of your application.</p>
+<p>In <a href="">Chapter 6</a>, <em>Implementing the Mobile-First Paradigm</em>, we will look at a simple method to add those front-end libraries to your application.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Scaling up – running multiple Notes instances</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that we've got ourselves a running application, you'll have played around a bit and created, read, updated, and deleted many notes.</p>
+<p>Suppose for a moment this isn't a toy application, but one that is interesting enough to draw a million users a day. Serving a high load typically means adding servers, load balancers, and many other things. A core part is to have multiple instances of the application running at the same time to spread the load.</p>
+<p>Let's see what happens when you run multiple instances of the Notes application at the same time.</p>
+<p>The first thing is to make sure the instances are on different ports. In <kbd>bin/www</kbd>, you'll see that setting the <kbd>PORT</kbd> environment variable controls the port being used. <span>If the</span> <kbd>PORT</kbd> <span>variable is not set, it defaults to</span> <kbd>http://localhost:3000</kbd><span>, or what we've been using all along.</span></p>
+<p>Let's open up <kbd>package.json</kbd> and add these lines to the <kbd>scripts</kbd> section:</p>
+<pre>"scripts": { 
+    "start": "DEBUG=notes:* node ./bin/www", 
+    "server1": "DEBUG=notes:* PORT=3001 node ./bin/www", 
+    "server2": "DEBUG=notes:* PORT=3002 node ./bin/www" },</pre>
+<p>The <kbd>server1</kbd> script runs on <kbd>PORT 3001</kbd>, while the <kbd>server2</kbd> script runs on <kbd>PORT 3002</kbd>. Isn't it nice to have all this documented in one place?</p>
+<p>Then, in one command window, run this:</p>
+<pre><strong>$ npm run server1</strong><br/><br/><strong>&gt; notes@0.0.0 server1 /Users/David/chap05/notes</strong><br/><strong>&gt; DEBUG=notes:* PORT=3001 node ./bin/www</strong><br/><br/><strong>  notes:server Listening on port 3001 +0ms</strong></pre>
+<p>In another command window, run this:</p>
+<pre><strong>$ npm run server2</strong><br/><br/><strong>&gt; notes@0.0.0 server2 /Users/David/chap05/notes</strong><br/><strong>&gt; DEBUG=notes:* PORT=3002 node ./bin/www</strong><br/><br/><strong>  notes:server Listening on port 3002 +0ms</strong></pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>This gives us two instances of the Notes application. Use two browser windows to visit <kbd>http://localhost:3001</kbd> and <kbd>http://localhost:3002</kbd>. Enter a couple of notes, and you might see something like this:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="Images/3f9f45a6-7222-4702-af1f-c4f52d180d07.png" style="width:28.00em;height:24.75em;" width="500" height="442"/></div>
+<p>After editing and adding some notes, your two browser windows could look like the preceding screenshot. The two instances do not share the same data pool. Each is instead running in its own process and memory space. You add a note in one, and it does not show in the other screen.</p>
+<p>Additionally, because the model code does not persist data anywhere, the notes are not saved. You might have written the greatest Node.js programming book of all time, but as soon as the application server restarts, it's gone.</p>
+<p>Typically, you run multiple instances of an application to scale performance. That's the old <em>throw more servers at it</em> trick. For this to work, the data of course must be shared, and each instance must access the same data source. Typically, this involves a database. And when it comes to user identity information, it might even entail armed guards. </p>
+<p>Hold on—we'll get to database implementation shortly. Before that, we'll cover mobile-first development.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>We've come a long way in this chapter.</p>
+<p>We started with the Pyramid of Doom and how the <kbd>Promise</kbd> object and <kbd>async</kbd> functions can help us a tame asynchronous code. We'll be using these techniques all through this book.</p>
+<p>We quickly moved on to writing the foundation of a real application with Express. At the moment, it keeps its data in memory, but it has the basic functionality of what will become a note-taking application supporting real-time collaborative commenting on the notes.</p>
+<p>In the next chapter, we'll dip our toes in the water of responsive, mobile-friendly web design. Due to the growing popularity of mobile computing devices, it's become necessary to address mobile devices first before desktop computer users. In order to reach those millions of users a day, the Notes application users need a good user experience when using their smartphone.</p>
+<p>In following chapters, we'll keep growing the capabilities of the Notes application, starting with database storage models.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  </body></html>

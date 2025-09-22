@@ -1,0 +1,950 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Putting It All Together</h1>
+                </header>
+            
+            <article>
+                
+<p>In the previous chapter, we covered framebuffers, renderbuffers, and the steps required to interact with a 3D application using picking. In this chapter, we will bring together all of the concepts we've learned so far to build a 3D virtual car showroom. In the development of this demo application, we will use models, lights, cameras, animation, colors, textures, and more. We will also learn how to integrate these elements with a simple yet effective graphical user interface.</p>
+<p>In this chapter, you will learn to do the following:</p>
+<ul>
+<li>Put together all of the architecture we've developed throughout this book</li>
+<li>Create a 3D virtual car showroom application using our architecture</li>
+<li>Import car models from Blender into a WebGL scene</li>
+<li>Set up several light sources</li>
+<li>Create robust shaders to handle multiple materials</li>
+<li>Learn about the OBJ and MTL file formats</li>
+<li>Program the camera to fly through the scene</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Creating a WebGL Application</h1>
+                </header>
+            
+            <article>
+                
+<p>At this point, we've covered the basic topics required to create a WebGL application. These topics have been implemented in the framework that we've iteratively built throughout this book.</p>
+<p>In <a href="48a27fb2-f17b-43b2-8706-ab638a32b7ff.xhtml" target="_blank">Chapter 1</a>, <em>Getting Started</em>, we introduced WebGL and learned how to use it in our browser. We learned that the WebGL context behaves as a state machine. As a result, we can query the different state variables using <kbd>gl.getParameter</kbd>.</p>
+<p class="mce-root"/>
+<p>Then, we studied how objects in a WebGL scene are defined by vertices. We saw how we can use indices to label vertices so that the WebGL rendering pipeline can quickly rasterize to render an object. We studied the functions that manipulate buffers and the two main functions to render primitives: <kbd>drawArrays</kbd> (no indices) and <kbd>drawElements</kbd> (with indices). We learned about using JSON to represent geometries and how we can download models from a web server.</p>
+<p>Next, we studied how to illuminate our 3D scene. We learned about normal vectors, the physics of light reflection, and the 3D math required to implement illumination. We also learned how to implement different lighting models using shaders in ESSL.</p>
+<p>Then<em>, </em>we implemented our own custom cameras since WebGL does not have cameras. We studied the Camera matrix and demonstrated how it's actually the inverse of the Model-View matrix. In other words, rotation, translation, and scaling in world space produces the inverse operations in camera space.</p>
+<p>Following cameras and matrices, we covered the basics of animation. We discussed useful techniques for animations, such as the matrix stack with <kbd>push</kbd> and <kbd>pop</kbd> operations to represent local and global transformations, and we analyzed how to establish an animation cycle that is independent of the rendering cycle. Our animations covered different types of interpolation techniques, with examples showcasing various animation styles.</p>
+<p>Then, we investigated color representation with WebGL and how we can use colors in objects, lights, and the overall scene. In doing so, we also studied blending and the creation of translucent and transparent effects. After colors and blending, we covered textures for adding more detail to our scene. Then, we saw how users can interact with our 3D application with picking.</p>
+<p>In this chapter, we will leverage all of these concepts to create an impressive 3D application. Reasonably enough, we will use all of the components we have developed so far. Let's quickly review them.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Architectural Review</h1>
+                </header>
+            
+            <article>
+                
+<p>The following components are present in the architecture that has been built throughout this book:</p>
+<ul>
+<li><kbd>Axis.js</kbd>: Auxiliary object that represents the center of the scene with visual helpers.</li>
+<li><kbd>Camera.js</kbd>: Contains a camera representation from the two types of camera we have developed: orbiting and tracking.</li>
+<li><kbd>Clock.js</kbd>: A requestAnimationFrame-based timer to synchronize our entire application from a single source of truth.</li>
+<li><kbd>Controls.js</kbd>: Listens for mouse and keyboard events on the HTML5 <kbd>canvas</kbd>. It interprets these events and then transforms them into camera actions.</li>
+<li><kbd>EventEmitter.js</kbd>: A simple class that provides a pub-sub approach for managing interactions between components in our application.</li>
+<li><kbd>Floor.js</kbd>: Auxiliary object that appears like a rectangular mesh and provides the floor reference for the scene.</li>
+<li><kbd>Light.js</kbd>: Simplifies the creation and managing of lights in the scene.</li>
+<li><kbd>Picker.js</kbd>: Provides color-based object picking.</li>
+<li><kbd>Program.js</kbd>: Composes the functions that handle programs, shaders, and the mapping between JavaScript values and ESSL uniforms.</li>
+<li><kbd>Scene.js</kbd>: Contains a list of objects to be rendered by WebGL.</li>
+<li><kbd>Texture.js</kbd>: A class for the creation and managing of WebGL textures.</li>
+<li><kbd>Transforms.js</kbd>: Contains the matrices discussed in this book, that is, the Model-View matrix, the Camera matrix, the uProjectionMatrix, and the Normal matrix. It implements the matrix stack with the <kbd>push</kbd> and <kbd>pop</kbd> operations.</li>
+<li><kbd>utils.js</kbd><span>: Contains auxiliary functions, such as </span><kbd>getGLContext</kbd><span>, which helps create a WebGL context for a given HTML5 <kbd>canvas</kbd>.</span></li>
+<li>Application hook functions, which are as follows:
+<ul>
+<li><kbd>init</kbd>: This function initializes the application and is only called when the document has loaded via <kbd>window.onload = init;</kbd>.</li>
+<li><kbd>configure</kbd>: This function creates and configures dependencies, such as the program, cameras, lights, and so on.</li>
+<li><kbd>load</kbd>: This function requests objects from the web server by calling <kbd>scene.load</kbd>. We can also add locally generated geometry (such as the <kbd>Floor</kbd>) by calling <kbd>scene.add</kbd>.</li>
+<li><kbd>draw</kbd>: This function is called when the rendering timer goes off. Here, we retrieve objects from the <kbd>scene</kbd> and render them appropriately by ensuring their location (for example, applying local transforms using the matrix stack) and their properties (for example, passing the respective uniforms to the <kbd>program</kbd>).</li>
+</ul>
+</li>
+</ul>
+<p>Now, let's bring all of these concepts together and create a 3D virtual car showroom.</p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Time for Action: 3D Virtual Car Showroom</h1>
+                </header>
+            
+            <article>
+                
+<p>Leveraging the WebGL skills and infrastructure code we have developed thus far, we will create an application that visualizes different 3D car models. The final result will look like this:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/6108a8ab-27d9-45e3-b67c-6825b27431f7.png"/></p>
+<p>First, we'll start by defining the <strong>graphical user interface (GUI</strong>) of our application. Then, we'll add WebGL support by creating a <kbd>canvas</kbd> element and obtaining a WebGL context. After obtaining a valid WebGL context, we will define and implement the vertex and fragment shader using ESSL. Then, we will implement the three functions that hook into the life cycle of our application: <kbd>configure</kbd>, <kbd>load</kbd>, and <kbd>draw</kbd>.</p>
+<p>Before we get started, let's consider some of the fundamentals of our virtual showroom application.</p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Complexity of the Models</h1>
+                </header>
+            
+            <article>
+                
+<p>Real-world applications are, generally, much more complex than PoC (proof of concept) demos. This is especially true with 3D applications, since 3D assets, such as models, are much more complex than simple spheres, cones, and other primitive geometric figures. Models in large 3D applications tend to have lots of vertices with complicated configurations that provide the level of detail and realism users expect. Apart from the pure geometrical representation of these models, they often come with several textures. As expected, creating geometries and textures <em>manually</em> with JSON files is nothing short of daunting.</p>
+<p>Fortunately, we can use various industry proved 3D design software to create and import models into a WebGL scene. For our 3D virtual car showroom, we will use models that have been created with <strong>Blender</strong>, a widely used, open source 3D tool.</p>
+<div class="packt_infobox"><span class="packt_screen">Blender</span><br/>
+<br/>
+Blender is an open source 3D computer graphics software that allows you to create animations, games, and other interactive applications. Blender provides numerous features so that you can create complex models. You can check out the official Blender website for more information: <a href="https://www.blender.org/">https://www.blender.org</a>.</div>
+<p>We will use Blender to import car models into our WebGL scene. First, we will export the models to an intermediary file format called <strong>OBJ</strong> and then parse them into consumable JSON files. We will cover more on these concepts later.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Shader Quality</h1>
+                </header>
+            
+            <article>
+                
+<p>Since we will be using complex models, such as cars, we'll need to develop shaders that can render the different materials of our models. This should be relatively simple, since the shaders we've developed already handle diffuse, specular, and ambient components for materials. In Blender, we will select the option to export materials when generating the OBJ files. Blender will then generate a second file known as the <strong>Material Template Library</strong> (<strong>MTL</strong>). For the best results, our shaders will use Phong shading and Phong lighting, with support for multiple lights.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Network Delays and Bandwidth Consumption</h1>
+                </header>
+            
+            <article>
+                
+<p>When it comes to WebGL applications with large 3D assets, we generally download geometries and textures from a web server. As expected, this can take some time depending on the quality of the network connection and the amount of data that needs to be transferred. There are, however, several strategies for optimizing this process, such as compression and 3D asset optimizations, which will be covered in a later chapter. We will use AJAX to provide users with a great user experience by downloading these large assets in the background.</p>
+<p>With these considerations in mind, let's get started.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Designing Our GUI</h1>
+                </header>
+            
+            <article>
+                
+<p>We will define a very simple layout for our application. First, we will define our HTML document and include all of the necessary dependencies:</p>
+<div>
+<pre><span>&lt;html&gt;<br/></span><span>&lt;head&gt;<br/></span><span>  &lt;title&gt;</span>Real-Time 3D Graphics with WebGL 2<span>&lt;/title&gt;<br/></span><span>  &lt;link </span><span>rel=</span><span>"shortcut icon" </span><span>type=</span><span>"image/png" <br/></span><span>   href=</span><span>"/common/images/favicon.png" </span><span>/&gt;<br/><br/></span><span>  &lt;!-- libraries --&gt;<br/></span><span> </span><span>&lt;link </span><span>rel=</span><span>"stylesheet" </span><span>href=</span><span>"/common/lib/normalize.css"</span><span>&gt;<br/></span><span> &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/lib/dat.gui.js"</span><span>&gt;&lt;/script&gt;<br/></span><span> &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/lib/gl-matrix.js"</span><span>&gt;&lt;/script&gt;<br/></span><span><br/></span><span> </span><span>&lt;!-- modules --&gt;<br/></span><span> </span><span>&lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/utils.js"</span><span>&gt;&lt;/script&gt;<br/></span><span> &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/EventEmitter.js"</span><span>&gt;&lt;/script&gt;<br/></span><span> &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Camera.js"</span><span>&gt;&lt;/script&gt;<br/></span><span> &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Clock.js"</span><span>&gt;&lt;/script&gt;<br/></span><span> &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Controls.js"</span><span>&gt;&lt;/script&gt;<br/></span><span> &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Floor.js"</span><span>&gt;&lt;/script&gt;<br/></span><span> &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Light.js"</span><span>&gt;&lt;/script&gt;<br/></span><span> &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Program.js"</span><span>&gt;&lt;/script&gt;<br/></span><span> &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Scene.js"</span><span>&gt;&lt;/script&gt;<br/></span><span> &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Texture.js"</span><span>&gt;&lt;/script&gt;<br/></span><span> &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Transforms.js"</span><span>&gt;&lt;/script&gt;</span><span><br/></span><span>&lt;/head&gt;<br/></span><span>&lt;body&gt;</span><span><br/></span><span>&lt;/body&gt;<br/></span><span>&lt;/html&gt;</span></pre></div>
+<p>As you can see, we've included the following libraries that are required for our application:</p>
+<ul>
+<li><kbd>normalize.css</kbd>: A set of styles that makes browsers render all elements more consistently</li>
+<li><kbd>dat.gui.js</kbd>: A lightweight graphical user interface for changing variables in JavaScript</li>
+<li><kbd>gl-matrix.js</kbd>: A <span>JavaScript matrix and vector library for high performance applications</span></li>
+</ul>
+<p>Now that we've included the required libraries, we will include the various components we've covered throughout this book.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Adding canvas Support</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that we have the shell for our application, let's add the <kbd>canvas</kbd> that's required for our WebGL application:</p>
+<div>
+<pre><span>&lt;canvas </span><span>id=</span><span>"webgl-canvas"</span><span>&gt;<br/></span><span> </span>Your browser does not support the HTML5 canvas element.<br/><span>&lt;/canvas&gt;</span></pre></div>
+<p>The <kbd>canvas</kbd> element with the <kbd>webgl-canvas</kbd> ID goes between the <kbd>body</kbd> of our HTML document.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Adding Shader Scripts</h1>
+                </header>
+            
+            <article>
+                
+<p>Next, let's include the two shaders that we'll need for our application by using the following code:</p>
+<pre><span>&lt;script </span><span>id=</span><span>"vertex-shader" </span><span>type=</span><span>"x-shader/x-vertex"</span><span>&gt;<br/></span><span>  </span>#version 300 es<br/>  precision mediump float;<br/><br/>  void main(void) {}<br/><span>&lt;/script&gt;<br/></span><span><br/></span><span>&lt;script </span><span>id=</span><span>"fragment-shader" </span><span>type=</span><span>"x-shader/x-fragment"</span><span>&gt;<br/></span><span>  </span>#version 300 es<br/>  precision mediump float;<br/><br/>  void main(void) {}<br/><span>&lt;/script&gt;</span></pre>
+<p>These <kbd>scripts</kbd> are placed inside the <kbd>head</kbd> of our document.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Adding WebGL Support</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that we have the basic boilerplate for our application, let's initialize our WebGL application:</p>
+<pre><span>&lt;script </span><span>type=</span><span>"text/javascript"</span><span>&gt;<br/></span><span>  </span><span>'use strict'</span><span>;<br/></span><span><br/></span><span>  </span><span>let </span>gl<span>, </span>program<span>, </span>scene<span>, </span>clock<span>;<br/></span><span><br/></span><span>  </span><span>function </span><span>configure</span>() {<br/>    <span>const </span>canvas = utils.<span>getCanvas</span>(<span>'webgl-canvas'</span>)<span>;<br/></span><span>    </span>utils.<span>autoResizeCanvas</span>(canvas)<span>;<br/></span><span><br/></span><span>    </span>gl = utils.<span>getGLContext</span>(canvas)<span>;<br/></span><span>    </span>gl.<span>clearColor</span>(<span>0.9</span><span>, </span><span>0.9</span><span>, </span><span>0.9</span><span>, </span><span>1</span>)<span>;<br/></span><span>    </span>gl.<span>clearDepth</span>(<span>1</span>)<span>;<br/></span><span>    </span>gl.<span>enable</span>(gl.<span>DEPTH_TEST</span>)<span>;<br/></span><span>    </span>gl.<span>depthFunc</span>(gl.<span>LESS</span>)<span>;<br/></span><span>    </span>gl.<span>blendFunc</span>(gl.<span>SRC_ALPHA</span><span>, </span>gl.<span>ONE_MINUS_SRC_ALPHA</span>)<span>;<br/></span><span><br/></span><span>    </span>program = <span>new </span>Program(gl<span>, </span><span>'vertex-shader'</span><span>, </span><span>'fragment-shader'</span>)<span>;<br/></span><span><br/></span><span>    </span>scene = <span>new </span>Scene(gl<span>, </span>program)<span>;<br/></span><span><br/></span><span>    </span>clock = <span>new </span>Clock()<span>;<br/></span><span>  </span>}<br/><br/>  <span>function </span><span>draw</span>() {<br/>    gl.<span>viewport</span>(<span>0</span><span>, </span><span>0</span><span>, </span>gl.<span>canvas</span>.<span>width</span><span>, </span>gl.<span>canvas</span>.<span>height</span>)<span>;<br/></span><span>    </span>gl.<span>clear</span>(gl.<span>COLOR_BUFFER_BIT </span>| gl.<span>DEPTH_BUFFER_BIT</span>)<span>;<br/></span><span>  </span>}<br/><br/>  <span>function </span><span>init</span>() {<br/>    <span>configure</span>()<span>;<br/></span><span>    </span>clock.<span>on</span>(<span>'tick'</span><span>, </span><span>draw</span>)<span>;<br/></span><span>  </span>}<br/><br/>  window.<span>onload </span>= <span>init</span><span>;<br/></span><span>&lt;/script&gt;</span></pre>
+<div>
+<p>This <kbd>script</kbd> tag goes after the shader scripts to ensure that we can reference them as needed.</p>
+<p>Let's cover this code in detail:</p>
+<pre><span>let </span>gl<span>, </span>program<span>, </span>scene<span>, </span>clock<span>;</span></pre>
+<p>We need to define the various global variables that we'll be setting and using throughout the application. As in all of our previous exercises, we need to define the entry point for the application. We do this with the following code:</p>
+<pre><span>function </span><span>init</span>() {<br/>  <span>configure</span>()<span>;<br/></span><span>  </span>clock.<span>on</span>(<span>'tick'</span><span>, </span><span>draw</span>)<span>;<br/></span>}<br/><br/>window.<span>onload </span>= <span>init</span><span>;</span></pre>
+<p>The <kbd>init</kbd> function is called once our document has loaded via <kbd>window.onload</kbd>. In the <kbd>init</kbd> function, we set up our application by calling <kbd>configure</kbd> and using the <kbd>clock</kbd> instance to call <kbd>draw</kbd> on every <kbd>tick</kbd>—that is, every <kbd>requestAnimationFrame</kbd> call:</p>
+<pre><span>function </span><span>configure</span>() {<br/>  <span>const </span>canvas = utils.<span>getCanvas</span>(<span>'webgl-canvas'</span>)<span>;<br/></span><span>  </span>utils.<span>autoResizeCanvas</span>(canvas)<span>;<br/></span><span><br/></span><span>  </span>gl = utils.<span>getGLContext</span>(canvas)<span>;<br/></span><span>  </span>gl.<span>clearColor</span>(<span>0.9</span><span>, </span><span>0.9</span><span>, </span><span>0.9</span><span>, </span><span>1</span>)<span>;<br/></span><span>  </span>gl.<span>clearDepth</span>(<span>1</span>)<span>;<br/></span><span>  </span>gl.<span>enable</span>(gl.<span>DEPTH_TEST</span>)<span>;<br/></span><span>  </span>gl.<span>depthFunc</span>(gl.<span>LESS</span>)<span>;<br/></span><span>  </span>gl.<span>blendFunc</span>(gl.<span>SRC_ALPHA</span><span>, </span>gl.<span>ONE_MINUS_SRC_ALPHA</span>)<span>;<br/></span><span><br/></span><span>  </span>program = <span>new </span>Program(gl<span>, </span><span>'vertex-shader'</span><span>, </span><span>'fragment-shader'</span>)<span>;<br/></span><span><br/></span><span>  </span>scene = <span>new </span>Scene(gl<span>, </span>program)<span>;<br/></span><span><br/></span><span>  </span>clock = <span>new </span>Clock()<span>;<br/></span>}</pre></div>
+<p>We initialize and set our <kbd>canvas</kbd> with the ID of <kbd>webgl-canvas</kbd>. Then, we pass the <kbd>canvas</kbd> instance to our utility function for full screen and auto resizing capabilities. <span>This function is useful because it automatically updates the size of the <kbd>canvas</kbd> to the available window space without hardcoding the size of the <kbd>canvas</kbd>. Then, we</span> initialize <kbd>gl</kbd>, <kbd>scene</kbd>, <kbd>clock</kbd>, and <kbd>program</kbd> using the provided shaders. Finally, we set the <kbd>gl</kbd> context with the basic configurations, such as a clear color, depth testing, and blending functions:</p>
+<pre><span>function </span><span>draw</span>() {<br/>  gl.<span>viewport</span>(<span>0</span><span>, </span><span>0</span><span>, </span>gl.<span>canvas</span>.<span>width</span><span>, </span>gl.<span>canvas</span>.<span>height</span>)<span>;<br/></span><span>  </span>gl.<span>clear</span>(gl.<span>COLOR_BUFFER_BIT </span>| gl.<span>DEPTH_BUFFER_BIT</span>)<span>;<br/></span>}</pre>
+<div>
+<p>The <kbd>draw</kbd> function is simple, as it simply sets the viewport and clears the <kbd>canvas</kbd>. <span>You can find this source code inside the </span><span><kbd>ch09_scaffolding.html</kbd> file for this book.</span></p>
+<p><span>Now, if you run</span> <kbd>ch09_scaffolding.html</kbd> <span>in your browser, you will see that the <kbd>canvas</kbd> resizes according to the size of the browser, as follows:</span></p>
+</div>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/051f60b1-b25d-42d8-b850-5006343b2158.png" style="width:30.00em;height:19.00em;"/></p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Implementing the Shaders</h1>
+                </header>
+            
+            <article>
+                
+<p>With our shaders, we will implement <strong>Phong shading</strong> and the <strong>Phong reflection</strong> model. Remember that Phong shading interpolates vertex normals and creates a normal for every fragment<span>–</span>the processing happens in the fragment shader. The Phong reflection model describes illumination as the addition of ambient, diffuse, and specular interaction of the object with the light sources.</p>
+<p>To be consistent with the Material Template Library (MTL) format, we’ll follow some typical conventions to set out uniform names that refer to material properties:</p>
+<table border="1" style="border-collapse: collapse;width: 100%;border-color: #000000">
+<tbody>
+<tr>
+<td class="CDPAlignLeft CDPAlign">
+<p><strong>Material</strong> <strong>Uniform</strong></p>
+</td>
+<td class="CDPAlignLeft CDPAlign"><strong>Description</strong></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd><span>uKa</span></kbd></td>
+<td class="CDPAlignLeft CDPAlign"><span>Ambient property.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd><span>uKd</span></kbd></td>
+<td class="CDPAlignLeft CDPAlign"><span>Diffuse property.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd><span>uKs</span></kbd></td>
+<td class="CDPAlignLeft CDPAlign"><span>Specular property.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd><span>uNi</span></kbd></td>
+<td class="CDPAlignLeft CDPAlign"><span>Optical density. We will not use this feature, but you will see it in the MTL file.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd><span>uNs</span></kbd></td>
+<td class="CDPAlignLeft CDPAlign"><span>Specular exponent. A high exponent results in a tight, concentrated highlight. <kbd>Ns</kbd> values normally range from <kbd>0</kbd> to <kbd>1000</kbd>.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd>uD</kbd></td>
+<td class="CDPAlignLeft CDPAlign"><span>Transparency (alpha channel).</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd>uIllum</kbd></td>
+<td class="CDPAlignLeft CDPAlign">Determines the illumination model for the object being rendered. Unlike previous chapters where we had one model for all objects, we let objects describe their reflective properties.<br/>
+<br/>
+According to the MTL file format specification, <strong>illum</strong> can be any of the following:<br/>
+<br/>
+<ul>
+<li>Color on and Ambient off.</li>
+<li>Color on and Ambient on.</li>
+<li>Highlight on.</li>
+<li>Reflection on and Ray trace on.</li>
+<li>Transparency: Glass on, Reflection: Ray trace on.</li>
+<li>Reflection: Fresnel on and Ray trace on.</li>
+<li>Transparency: Refraction on, Reflection: Fresnel off and Ray trace on.</li>
+<li>Transparency: Refraction on, Reflection: Fresnel on and Ray trace on.</li>
+<li>Reflection on and Ray trace off.</li>
+<li>Transparency: Glass on, Reflection: Ray trace off.</li>
+<li>Casts shadows onto invisible surfaces.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<div class="packt_infobox"><strong><span class="packt_screen">The Wavefro</span></strong><span class="packt_screen">nt</span> <span class="packt_screen">.obj</span><strong><span class="packt_screen"> file</span></strong><br/>
+<br/>
+For more information on OBJ and MTL file specifications, please refer to the following link: <a href="https://en.wikipedia.org/wiki/Wavefront_.obj_file">https://en.wikipedia.org/wiki/Wavefront_.obj_file</a>.</div>
+<p class="mce-root"/>
+<p>Our shaders will also support multiple lights by using uniform arrays, as described in earlier chapters. The number of lights is defined by a constant in both the vertex and fragment shaders:</p>
+<div>
+<pre>const int numLights = 4;</pre></div>
+<p>We will use the following uniform arrays to work with lights:</p>
+<table border="1" style="border-collapse: collapse;width: 100%;border-color: #000000">
+<tbody>
+<tr>
+<td style="width: 31.2256%">
+<p><strong>Light </strong><strong>Uniform Array</strong></p>
+</td>
+<td style="width: 66.7744%"><strong>Description</strong></td>
+</tr>
+<tr>
+<td style="width: 31.2256%"><kbd><span>uLa[numLights]</span></kbd></td>
+<td style="width: 66.7744%"><span>Ambient property.</span></td>
+</tr>
+<tr>
+<td style="width: 31.2256%"><kbd><span>uLd[numLights]</span></kbd></td>
+<td style="width: 66.7744%"><span>Diffuse property.</span></td>
+</tr>
+<tr>
+<td style="width: 31.2256%"><kbd><span>uLs[numLights]</span></kbd></td>
+<td style="width: 66.7744%"><span>Specular property.</span></td>
+</tr>
+</tbody>
+</table>
+<div class="packt_tip"><span class="packt_screen"><strong>Source code</strong></span><br/>
+<br/>
+You can refer to <kbd>ch09_02_showroom.html</kbd> if you wish to explore the source code for the shaders in this chapter.</div>
+<p>Here's the vertex shader:</p>
+<pre><span>&lt;script </span><span>id=</span><span>"vertex-shader" </span><span>type=</span><span>"x-shader/x-vertex"</span><span>&gt;<br/></span><span>  </span>#version 300 es<br/>  precision mediump float;<br/><br/>  const int numLights = 4;<br/><br/>  uniform mat4 uModelViewMatrix;<br/>  uniform mat4 uProjectionMatrix;<br/>  uniform mat4 uNormalMatrix;<br/>  uniform vec3 uLightPosition[numLights];<br/><br/>  in vec3 aVertexPosition;<br/>  in vec3 aVertexNormal;<br/><br/>  out vec3 vNormal;<br/>  out vec3 vLightRay[numLights];<br/>  out vec3 vEye[numLights];<br/><br/>  void main(void) {<br/>    vec4 vertex = uModelViewMatrix * vec4(aVertexPosition, 1.0);<br/>    vec4 lightPosition = vec4(0.0);<br/><br/>    for(int i= 0; i &lt; numLights; i++) {<br/>      lightPosition = vec4(uLightPosition[i], 1.0);<br/>      vLightRay[i] = vertex.xyz - lightPosition.xyz;<br/>      vEye[i] = -vec3(vertex.xyz);<br/>    }<br/><br/>    vNormal = vec3(uNormalMatrix * vec4(aVertexNormal, 1.0));<br/>    gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aVertexPosition, 1.0);<br/>  }<br/><span>&lt;/script&gt;</span></pre>
+<p class="mce-root">Along with the corresponding fragment shader:</p>
+<pre><span>&lt;script </span><span>id=</span><span>"fragment-shader" </span><span>type=</span><span>"x-shader/x-fragment"</span><span>&gt;<br/></span><span>  </span>#version 300 es<br/>  precision mediump float;<br/><br/>  const int numLights = 4;<br/><br/>  uniform vec3 uLd[numLights];<br/>  uniform vec3 uLs[numLights];<br/>  uniform vec3 uLightPosition[numLights];<br/>  uniform vec3 uKa;<br/>  uniform vec3 uKd;<br/>  uniform vec3 uKs;<br/>  uniform float uNs;<br/>  uniform float uD;<br/>  uniform int uIllum;<br/>  uniform bool uWireframe;<br/><br/>  in vec3 vNormal;<br/>  in vec3 vLightRay[numLights];<br/>  in vec3 vEye[numLights];<br/><br/>  out vec4 fragColor;<br/><br/>  void main(void) {<br/>    if (uWireframe || uIllum == 0) {<br/>      fragColor = vec4(uKd, uD);<br/>      return;<br/>    }<br/><br/>    vec3 color = vec3(0.0);<br/>    vec3 light = vec3(0.0);<br/>    vec3 eye = vec3(0.0);<br/>    vec3 reflection = vec3(0.0);<br/>    vec3 normal = normalize(vNormal);<br/><br/>    if (uIllum == 1) {<br/>      for (int i = 0; i &lt; numLights; i++) {<br/>        light = normalize(vLightRay[i]);<br/>        normal = normalize(vNormal);<br/>        color += (uLd[i] * uKd * clamp(dot(normal, -light), 0.0, 1.0));<br/>      }<br/>    }<br/><br/>    if (uIllum == 2) {<br/>      for (int i = 0; i &lt; numLights; i++) {<br/>        eye = normalize(vEye[i]);<br/>        light = normalize(vLightRay[i]);<br/>        reflection = reflect(light, normal);<br/>        color += (uLd[i] * uKd * clamp(dot(normal, -light), 0.0, 1.0));<br/>        color += (uLs[i] * uKs * pow(max(dot(reflection, eye), 0.0), uNs) * <br/>         4.0);<br/>      }<br/>    }<br/><br/>    fragColor =  vec4(color, uD);<br/>  }<br/><span>&lt;/script&gt;</span></pre>
+<p>As expected, the vertex and fragment shaders borrow concepts from earlier chapters covered in this book, except for <kbd>uIllum</kbd>. As described earlier, the <kbd>illum</kbd> property d<span>etermines the illumination model for the object being rendered. We could default to a simpler fragment shader (such as <kbd>uIllum == 2</kbd>), but a simple example has been provided for educational purposes.</span></p>
+<p>Next, we will configure the three main functions that hook into the life cycle of our WebGL application. These are the <kbd>configure</kbd>, <kbd>load</kbd>, and <kbd>render</kbd> functions.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Setting up the Scene</h1>
+                </header>
+            
+            <article>
+                
+<p>We can set up the scene by defining some global variables for our application and writing the code for the <kbd>configure</kbd> function. Let's analyze this line by line:</p>
+<div>
+<pre><span>let </span>gl<span>, </span>program<span>, </span>scene<span>, </span>clock<span>, </span>camera<span>, </span>transforms<span>, </span>lights<span>,<br/></span><span>  </span>floor<span>, </span>selectedCar<span>, </span>lightPositions<span>, </span>carModelData<span>,<br/></span><span>  </span>clearColor = [<span>0.9</span><span>, </span><span>0.9</span><span>, </span><span>0.9</span><span>, </span><span>1</span>]<span>;<br/><br/></span><span>function </span><span>configure</span>() {<br/> // ...<span><br/></span>}</pre></div>
+<p class="mce-root"/>
+<p>At this stage, we want to set some of the WebGL properties, such as the clear color and the depth test. Then, we need to create a camera and set its initial position and orientation. We also need to create a camera controls instance so that we can update the position of the camera during scene interactions. Finally, we need to define the JavaScript variables that will be mapped to the shaders.</p>
+<p>To accomplish these tasks, we will use <kbd>Camera.js</kbd>, <kbd>Controls.js</kbd>, <kbd>Program.js</kbd>, and <kbd>Transforms.js</kbd> from our architecture.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Configuring WebGL Properties</h1>
+                </header>
+            
+            <article>
+                
+<p>We need to initialize and configure our <kbd>canvas</kbd> and <kbd>gl</kbd> instances:</p>
+<pre><span>function </span><span>configure</span>() {<br/>  canvas = utils.<span>getCanvas</span>(<span>'webgl-canvas'</span>)<span>;</span><span><br/>  </span>utils.<span>autoResizeCanvas</span>(canvas)<span>;<br/></span><span>  </span>gl = utils.<span>getGLContext</span>(canvas)<span>;<br/></span><span><br/></span><span>  // ...</span><span><br/></span>}</pre>
+<p>Then, we need to initialize <kbd>scene</kbd>, <kbd>clock</kbd>, and <kbd>program</kbd>:</p>
+<pre>clock = <span>new </span>Clock()<span>;</span><span><br/></span>program = <span>new </span>Program(gl<span>, </span><span>'vertex-shader'</span><span>, </span><span>'fragment-shader'</span>)<span>;<br/></span>scene = <span>new </span>Scene(gl, program)<span>;</span><span> </span></pre>
+<p>These core components are defined globally so that we can reference them throughout our application.</p>
+<p>Finally, we need to set the background color and the depth test properties, as follows:</p>
+<div>
+<pre>gl.<span>clearColor</span>(...clearColor)<span>;<br/></span>gl.<span>clearDepth</span>(<span>1</span>)<span>;<br/></span>gl.<span>enable</span>(gl.<span>DEPTH_TEST</span>)<span>;<br/></span>gl.<span>depthFunc</span>(gl.<span>LESS</span>)<span>;<br/></span>gl.<span>blendFunc</span>(gl.<span>SRC_ALPHA</span><span>, </span>gl.<span>ONE_MINUS_SRC_ALPHA</span>)<span>;</span></pre></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Setting up the Camera</h1>
+                </header>
+            
+            <article>
+                
+<p>To keep things simple, the <kbd>camera</kbd> variable will be global so that we can access it from the GUI controls:</p>
+<div>
+<pre>camera = <span>new </span>Camera(Camera.<span>ORBITING_TYPE</span>)<span>;</span></pre></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Creating the Camera Controls</h1>
+                </header>
+            
+            <article>
+                
+<p>We need to instantiate a <kbd>Controls</kbd> instance that will bind mouse gestures to <kbd>camera</kbd> actions. The first argument is the <kbd>camera</kbd> we are controlling, and the second argument is a reference to our <kbd>canvas</kbd>:</p>
+<div>
+<pre><span>new </span>Controls(<span>camera</span><span>, </span>canvas)<span>;<br/></span></pre></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Scene Transforms</h1>
+                </header>
+            
+            <article>
+                
+<p>Once we have a <kbd>camera</kbd>, we can use it to create a new <kbd>Tranforms</kbd> instance, as follows:</p>
+<div>
+<pre>transforms = <span>new </span>Transforms(gl, program<span>, </span><span>camera</span><span>, </span>canvas)<span>;</span></pre></div>
+<p>The <kbd>transforms</kbd> variable is also declared globally, so we can use it in the <kbd>draw</kbd> function to retrieve the current matrix transformations and pass them to the shaders.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Creating the Lights</h1>
+                </header>
+            
+            <article>
+                
+<p>We will create four lights by using the <kbd>Light</kbd> class from our framework with the following configurations:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/b4c541c3-f8d5-47eb-ab5e-bfbf38bb8078.png" style="width:31.67em;height:25.08em;"/></p>
+<p>First, we instantiate a <kbd>LightsManager</kbd> instance to manage our lights:</p>
+<pre>lights = <span>new </span>LightsManager()<span>;</span></pre>
+<p>Then, we create four light positions for each light and iterate over each position to uniquely position each light:</p>
+<div>
+<pre>lightPositions = {<br/>  <span>farLeft</span>: [-<span>1000</span><span>, </span><span>1000</span><span>, </span>-<span>1000</span>]<span>,<br/></span><span>  </span><span>farRight</span>: [<span>1000</span><span>, </span><span>1000</span><span>, </span>-<span>1000</span>]<span>,<br/></span><span>  </span><span>nearLeft</span>: [-<span>1000</span><span>, </span><span>1000</span><span>, </span><span>1000</span>]<span>,<br/></span><span>  </span><span>nearRight</span>: [<span>1000</span><span>, </span><span>1000</span><span>, </span><span>1000</span>]<br/>}<span>;<br/></span><span><br/></span>Object.<span>keys</span>(lightPositions).<span>forEach</span>(key =&gt; {<br/>  <span>const </span>light = <span>new </span>Light(key)<span>;<br/></span><span>  </span>light.<span>setPosition</span>(lightPositions[key])<span>;<br/></span><span>  </span>light.<span>setDiffuse</span>([<span>0.4</span><span>, </span><span>0.4</span><span>, </span><span>0.4</span>])<span>;<br/></span><span>  </span>light.<span>setSpecular</span>([<span>0.8</span><span>, </span><span>0.8</span><span>, </span><span>0.8</span>])<span>;<br/></span><span>  </span>lights.<span>add</span>(light)<br/>})<span>;</span></pre></div>
+<div>
+<p>Since every light has the same diffuse, ambient, and specular properties, we only set a dynamic position by using the <kbd>lightPositions</kbd> data.</p>
+</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Mapping Program Attributes and Uniforms</h1>
+                </header>
+            
+            <article>
+                
+<p>Next, inside the <kbd>configure</kbd> function, we map the JavaScript values to the attributes and uniforms inside of our shaders.</p>
+<p>Using the program <kbd>instance</kbd> from earlier, we will set up the values to map attributes and uniforms to the shaders. The code looks like this:</p>
+<div>
+<pre><span>const </span>attributes = [<br/>  <span>'aVertexPosition'</span><span>,<br/></span><span>  </span><span>'aVertexNormal'</span><span>,<br/></span><span>  </span><span>'aVertexColor'<br/></span>]<span>;<br/></span><span><br/></span><span>const </span>uniforms = [<br/>  <span>'uProjectionMatrix'</span><span>,<br/></span><span>  </span><span>'uModelViewMatrix'</span><span>,<br/></span><span>  </span><span>'uNormalMatrix'</span><span>,<br/></span><span>  </span><span>'uLightPosition'</span><span>,<br/></span><span>  </span><span>'uWireframe'</span><span>,<br/></span><span>  </span><span>'uLd'</span><span>,<br/></span><span>  </span><span>'uLs'</span><span>,<br/></span><span>  </span><span>'uKa'</span><span>,<br/></span><span>  </span><span>'uKd'</span><span>,<br/></span><span>  </span><span>'uKs'</span><span>,<br/></span><span>  </span><span>'uNs'</span><span>,<br/></span><span>  </span><span>'uD'</span><span>,<br/></span><span>  </span><span>'uIllum'<br/></span>]<span>;<br/></span><span><br/></span>program.<span>load</span>(attributes<span>, </span>uniforms)<span>;</span></pre></div>
+<p>When creating shaders, make sure that the shader attributes and uniforms are properly mapped to JavaScript values. This mapping step allows us to refer to attributes and uniforms effortlessly. Check out the <kbd>setAttributeLocations</kbd> and <kbd>setUniformLocations</kbd> methods inside of <kbd>Program.js</kbd>, which are called by <kbd>program.load</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Uniform Initialization</h1>
+                </header>
+            
+            <article>
+                
+<p>After mapping the variables, we can initialize shader uniforms, such as lights:</p>
+<div>
+<pre>gl.<span>uniform3fv</span>(program.uLightPosition<span>, </span>lights.<span>getArray</span>(<span>'position'</span>))<span>;<br/></span>gl.<span>uniform3fv</span>(program.uLd<span>, </span>lights.<span>getArray</span>(<span>'diffuse'</span>))<span>;<br/></span>gl.<span>uniform3fv</span>(program.uLs<span>, </span>lights.<span>getArray</span>(<span>'specular'</span>))<span>;</span></pre></div>
+<p class="mce-root"/>
+<p>The default material properties are as follows:</p>
+<div>
+<pre>gl.<span>uniform3fv</span>(program.uKa<span>, </span>[<span>1</span><span>, </span><span>1</span><span>, </span><span>1</span>])<span>;<br/></span>gl.<span>uniform3fv</span>(program.uKd<span>, </span>[<span>1</span><span>, </span><span>1</span><span>, </span><span>1</span>])<span>;<br/></span>gl.<span>uniform3fv</span>(program.uKs<span>, </span>[<span>1</span><span>, </span><span>1</span><span>, </span><span>1</span>])<span>;<br/></span>gl.<span>uniform1f</span>(program.uNs<span>, </span><span>1</span>)<span>;</span></pre></div>
+<p>Lastly, we will create a <kbd>floor</kbd> instance that we will use later. We will also structure the data that describes the car model that we'll be loading later:</p>
+<pre>floor = <span>new </span>Floor(<span>200</span><span>, </span><span>2</span>)<span>;<br/></span><span><br/></span>carModelData = {<br/>  <span>'BMW i8'</span>: {<br/>    <span>paintAlias</span>: <span>'BMW'</span><span>,<br/></span><span>    </span><span>partsCount</span>: <span>25</span><span>,<br/></span><span>    </span><span>path</span>: <span>'/common/models/bmw-i8/part'<br/></span><span>  </span>}<br/>}<span>;</span></pre>
+<p>Although we have only described one car model here, we'll leverage this data format so that we can add other car models later in this chapter.</p>
+<p>Here's the final <kbd>configure</kbd> function, which you can find in the <kbd>ch09_02_showroom.html</kbd> source code:</p>
+<pre><span>function </span><span>configure</span>() {<br/>  <span>const </span>canvas = utils.<span>getCanvas</span>(<span>'webgl-canvas'</span>)<span>;<br/></span><span>  </span>utils.<span>autoResizeCanvas</span>(canvas)<span>;<br/></span><span><br/></span><span>  </span>gl = utils.<span>getGLContext</span>(canvas)<span>;<br/></span><span>  </span>gl.<span>clearColor</span>(...clearColor)<span>;<br/></span><span>  </span>gl.<span>clearDepth</span>(<span>1</span>)<span>;<br/></span><span>  </span>gl.<span>enable</span>(gl.<span>DEPTH_TEST</span>)<span>;<br/></span><span>  </span>gl.<span>depthFunc</span>(gl.<span>LESS</span>)<span>;<br/></span><span>  </span>gl.<span>blendFunc</span>(gl.<span>SRC_ALPHA</span><span>, </span>gl.<span>ONE_MINUS_SRC_ALPHA</span>)<span>;<br/></span><span><br/></span><span>  </span>program = <span>new </span>Program(gl<span>, </span><span>'vertex-shader'</span><span>, </span><span>'fragment-shader'</span>)<span>;<br/></span><span><br/></span><span>  </span><span>const </span>attributes = [<br/>    <span>'aVertexPosition'</span><span>,<br/></span><span>    </span><span>'aVertexNormal'</span><span>,<br/></span><span>    </span><span>'aVertexColor'<br/></span><span>  </span>]<span>;<br/></span><span><br/></span><span>  </span><span>const </span>uniforms = [<br/>    <span>'uProjectionMatrix'</span><span>,<br/></span><span>    </span><span>'uModelViewMatrix'</span><span>,<br/></span><span>    </span><span>'uNormalMatrix'</span><span>,<br/></span><span>    </span><span>'uLightPosition'</span><span>,<br/></span><span>    </span><span>'uWireframe'</span><span>,<br/></span><span>    </span><span>'uLd'</span><span>,<br/></span><span>    </span><span>'uLs'</span><span>,<br/></span><span>    </span><span>'uKa'</span><span>,<br/></span><span>    </span><span>'uKd'</span><span>,<br/></span><span>    </span><span>'uKs'</span><span>,<br/></span><span>    </span><span>'uNs'</span><span>,<br/></span><span>    </span><span>'uD'</span><span>,<br/></span><span>    </span><span>'uIllum'<br/></span><span>  </span>]<span>;<br/></span><span><br/></span><span>  </span>program.<span>load</span>(attributes<span>, </span>uniforms)<span>;<br/></span><span><br/></span><span>  </span>scene = <span>new </span>Scene(gl<span>, </span>program)<span>;<br/></span><span>  </span>clock = <span>new </span>Clock()<span>;<br/></span><span><br/></span><span>  </span>camera = <span>new </span>Camera(Camera.ORBITING_TYPE)<span>;<br/></span><span>  </span><span>new </span>Controls(camera<span>, </span>canvas)<span>;<br/></span><span><br/></span><span>  </span>transforms = <span>new </span>Transforms(gl<span>, </span>program<span>, </span>camera<span>, </span>canvas)<span>;<br/></span><span><br/></span><span>  </span>lights = <span>new </span>LightsManager()<span>;<br/></span><span><br/></span><span>  </span>lightPositions = {<br/>    <span>farLeft</span>: [-<span>1000</span><span>, </span><span>1000</span><span>, </span>-<span>1000</span>]<span>,<br/></span><span>    </span><span>farRight</span>: [<span>1000</span><span>, </span><span>1000</span><span>, </span>-<span>1000</span>]<span>,<br/></span><span>    </span><span>nearLeft</span>: [-<span>1000</span><span>, </span><span>1000</span><span>, </span><span>1000</span>]<span>,<br/></span><span>    </span><span>nearRight</span>: [<span>1000</span><span>, </span><span>1000</span><span>, </span><span>1000</span>]<br/>  }<span>;<br/></span><span><br/></span><span>  </span>Object.<span>keys</span>(lightPositions).<span>forEach</span>(key =&gt; {<br/>    <span>const </span>light = <span>new </span>Light(key)<span>;<br/></span><span>    </span>light.<span>setPosition</span>(lightPositions[key])<span>;<br/></span><span>    </span>light.<span>setDiffuse</span>([<span>0.4</span><span>, </span><span>0.4</span><span>, </span><span>0.4</span>])<span>;<br/></span><span>    </span>light.<span>setSpecular</span>([<span>0.8</span><span>, </span><span>0.8</span><span>, </span><span>0.8</span>])<span>;<br/></span><span>    </span>lights.<span>add</span>(light)<br/>  })<span>;<br/></span><span><br/></span><span>  </span>gl.<span>uniform3fv</span>(program.uLightPosition<span>, </span>lights.<span>getArray</span>(<span>'position'</span>))<span>;<br/></span><span>  </span>gl.<span>uniform3fv</span>(program.uLd<span>, </span>lights.<span>getArray</span>(<span>'diffuse'</span>))<span>;<br/></span><span>  </span>gl.<span>uniform3fv</span>(program.uLs<span>, </span>lights.<span>getArray</span>(<span>'specular'</span>))<span>;<br/></span><span><br/></span><span>  </span>gl.<span>uniform3fv</span>(program.uKa<span>, </span>[<span>1</span><span>, </span><span>1</span><span>, </span><span>1</span>])<span>;<br/></span><span>  </span>gl.<span>uniform3fv</span>(program.uKd<span>, </span>[<span>1</span><span>, </span><span>1</span><span>, </span><span>1</span>])<span>;<br/></span><span>  </span>gl.<span>uniform3fv</span>(program.uKs<span>, </span>[<span>1</span><span>, </span><span>1</span><span>, </span><span>1</span>])<span>;<br/></span><span>  </span>gl.<span>uniform1f</span>(program.uNs<span>, </span><span>1</span>)<span>;<br/></span><span><br/></span><span>  </span>floor = <span>new </span>Floor(<span>200</span><span>, </span><span>2</span>)<span>;<br/></span><span><br/></span><span>  </span>carModelData = {<br/>    <span>'BMW i8'</span>: {<br/>      <span>paintAlias</span>: <span>'BMW'</span><span>,<br/></span><span>      </span><span>partsCount</span>: <span>25</span><span>,<br/></span><span>      </span><span>path</span>: <span>'/common/models/bmw-i8/part'<br/></span><span>    </span>}<br/>  }<span>;<br/></span>}</pre>
+<p><span>We have finished setting up the scene. Next, we'll implement the <kbd>load</kbd> function.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Loading the Cars</h1>
+                </header>
+            
+            <article>
+                
+<p>Inside of the <kbd>load</kbd> function, we will download some assets in the background that we can load into our application.</p>
+<p>When the JSON files that describe the cars are available, we just use the <kbd>scene</kbd> instance to load these files. Keep in mind that it's uncommon to have ready-to-use JSON files. In such situations, there are specialized design tools, such as Blender, which can significantly help create and convert consumable models.</p>
+<p>That said, we will use the pre-built models that are available on <a href="http://www.blendswap.org/">blendswap.org.</a> All of these models are publicly available, and are free of charge to use and distribute. Before we can use these models, we need to export them to an intermediate file format from where we can extract the geometry and material properties to create the appropriate JSON files. The file format we are going to use is <strong>Wavefront OBJ</strong>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Exporting the Blender Models</h1>
+                </header>
+            
+            <article>
+                
+<p>All of the assets for this exercise are provided in this <span>book's source code.</span> However, if you want to go through the steps of converting the models, here are the steps. <span>For this exercise, we will be using Blender (v2.6).</span></p>
+<div class="packt_tip"><strong><span class="packt_screen">Blender</span><br/>
+<br/></strong> If you do not have Blender, you can download it for your operating system from <a href="https://www.blender.org/download/">https://www.blender.org/download/</a>.</div>
+<p class="mce-root"/>
+<p>Once you have loaded the car into Blender, you need to export it as an OBJ file. To do so, go to <strong>File</strong> | <strong>Export</strong> | <strong>Wavefront (.obj)</strong>, as shown in the following screenshot:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/6d1a3104-bd09-4bc9-beb2-917541d6e04e.png"/></p>
+<p>In the <strong>Export OBJ</strong> panel, make sure that the following options are active:</p>
+<ul>
+<li><strong>Apply Modifiers</strong>: This will write the vertices in the scene that are the result of a mathematical operation instead of direct modeling. If you do not check this option, the model may appear incomplete in the WebGL scene.</li>
+<li><strong>Write Materials</strong>: Blender will create the matching Material Template Library (MTL) file. We'll cover more on this in the following section.</li>
+<li><strong>Triangulate Faces</strong>: Blender will write the indices as triangles. This is ideal for WebGL rendering.</li>
+<li><strong>Entity as OBJ Objects</strong>: This configuration will identify every object in the Blender scene as an object in the OBJ file.</li>
+<li><strong>Material Groups</strong>: If an object in the Blender scene has several materials, for example, a car tire that can be made of aluminum and rubber, then the object will be subdivided into groups, one per material in the OBJ file.</li>
+</ul>
+<p class="mce-root"/>
+<p>OBJ file. Then, click on <span class="packt_screen">Export</span>. Once you have checked these export parameters, select the directory and name for your</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Understanding the OBJ Format</h1>
+                </header>
+            
+            <article>
+                
+<p>There are several types of definitions in an OBJ file. Let's cover them line-by-line with a simple example. We are going to dissect a sample <kbd>square.obj</kbd> file that we will export from the Blender file called <kbd>square.blend</kbd>. This file represents a square divided into two parts, one painted red and the other painted blue, as shown in the following diagram:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/36b9625a-a092-47cd-8aca-3a21aba8b6ab.png" style="width:37.00em;height:20.58em;"/></p>
+<p>When we export Blender models to an OBJ format, the resulting file normally starts with a comment:</p>
+<div>
+<pre># Blender v2.62 (sub 0) OBJ<br/>File: 'squares.blend'<br/># www.blender.org</pre></div>
+<p>These are comments, and they are denoted with a hash <kbd>#</kbd> symbol at the beginning of the line.</p>
+<p>Next, we will usually find a line referring to the Material Template Library that this OBJ file is using. This line will begin with the keyword <kbd>mtllib</kbd>, followed by the name of the material's file:</p>
+<div>
+<pre>mtllib square.mtl</pre></div>
+<p class="mce-root"/>
+<p>There are several ways that geometries can be grouped into entities in an OBJ file. We can find lines starting with the prefix <kbd>o</kbd>, followed by the object name, or by the prefix <kbd>g</kbd>, followed by the group name:</p>
+<div>
+<pre>o squares_mesh</pre></div>
+<p>After object declaration, the following lines will refer to vertices, <kbd>v</kbd>, optionally to vertex normals, <kbd>vn</kbd>, and texture coordinates, <kbd>vt</kbd>. It’s important to note that vertices are shared by all groups in an object in the OBJ format. That is, you will not find lines referring to vertices when defining a group, because it's assumed that all vertex data was defined when the object was defined:</p>
+<div>
+<pre>v  1.0  0.0 -2.0<br/>v  1.0  0.0  0.0<br/>v -1.0  0.0  0.0<br/>v -1.0  0.0 -2.0<br/>v  0.0  0.0  0.0<br/>v  0.0  0.0 -2.0<br/>vn 0.0  1.0  0.0</pre></div>
+<p>In our case, we have instructed Blender to export group materials. This means that each part of the object that has a different set of material properties will appear in the OBJ file as a group. In this example, we are defining an object with two groups (<kbd>squares_mesh_blue</kbd> and <kbd>squares_mesh_red</kbd>) and two corresponding materials (blue and red):</p>
+<div>
+<pre>g squares_mesh_blue</pre></div>
+<p>If materials are being used, the line after the group declaration will be the material that's being used for that group. In this case, only the name of the material is required. It's assumed that the material properties for this material are defined in the MTL file that was declared at the beginning of the OBJ file:</p>
+<div>
+<pre>usemtl blue</pre></div>
+<p>The lines that begin with the prefix <kbd>s</kbd> refer to smooth shading across polygons. Although mentioned here, we will not be using this definition when parsing the OBJ files into JSON files:</p>
+<div>
+<pre>s off</pre></div>
+<p>The lines that start with <kbd>f</kbd> refer to faces. There are different ways to represent faces. Let's see them.</p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Vertex</h1>
+                </header>
+            
+            <article>
+                
+<div>
+<pre>f i1 i2 i3...</pre></div>
+<p>In this configuration, every face element corresponds to a vertex index. Depending on the number of indices per face, you could have triangular, rectangular, or polygonal faces. However, we have instructed Blender to use triangular faces to create the OBJ file. Otherwise, we would need to decompose the polygons into triangles before we could call <kbd>drawElements</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Vertex/Texture Coordinate</h1>
+                </header>
+            
+            <article>
+                
+<div>
+<pre>f i1/t1 i2/t2 i3/t3...</pre></div>
+<p>In this combination, every vertex index appears to be followed by a forward slash and texture coordinate index. You will normally find this combination when texture coordinates are defined at the object level with <kbd>vt</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Vertex/Texture Coordinate/Normal</h1>
+                </header>
+            
+            <article>
+                
+<div>
+<pre>f i1/t1/n1 i2/t2/n2 i3/t3/n3...</pre></div>
+<p>Here is a normal index that has been added as the third element in the configuration. If both texture coordinates and vertex normals are defined at the object level, you will most likely see this configuration at the group level.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Vertex//Normal</h1>
+                </header>
+            
+            <article>
+                
+<p>There can also be cases where normals are defined but texture coordinates are not. In this case, the second part of the face configuration is missing:</p>
+<div>
+<pre>f i1//n1 i2//n2 i3//n3...</pre></div>
+<p>This is the case for <kbd>square.obj</kbd>, which looks like this:</p>
+<div>
+<pre>f 6//1 4//1 3//1<br/>f 6//1 3//1 5//1</pre></div>
+<p>Note that faces are defined using indices. In our example, we have defined a square divided into two parts. Here, we can see that all of the vertices share the same normal, which has been identified with index <kbd>1</kbd>.</p>
+<p class="mce-root"/>
+<p>The remaining lines in this file represent the red group:</p>
+<div>
+<pre>g squares_mesh_red<br/>usemtl red<br/>f 1//1 6//1 5//1<br/>f 1//1 5//1 2//1</pre></div>
+<p>As we mentioned previously, groups belonging to the same object share indices.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Parsing the OBJ Files</h1>
+                </header>
+            
+            <article>
+                
+<p>After exporting our cars into OBJ format, the next step is to parse the OBJ files to create JSON files that we can load into our scene. We have included the parser that we developed for this step in <kbd>common/models/obj-parser.py</kbd>. This parser has the following features:</p>
+<ul>
+<li>It's written in Python (quite common for OBJ parsers) and can be called in the command line with the following format:</li>
+</ul>
+<div>
+<pre style="padding-left: 60px">obj-parser.py arg1 arg2</pre></div>
+<ul>
+<li>Where <kbd>arg1</kbd> is the name of the OBJ file to parse and <kbd>arg2</kbd> is the name of the MTL. The file extension is needed in both cases. For example:</li>
+</ul>
+<div>
+<pre style="padding-left: 60px">obj-parser.py square.obj square.mtl</pre></div>
+<ul>
+<li>It creates one JSON file per OBJ group.</li>
+<li>It searches into the Material Template Library (if defined) for the material properties for each group and adds them to the corresponding JSON file.</li>
+<li>It will calculate the appropriate indices for each group. Remember that OBJ groups share indices. Since we are creating one independent WebGL object per group, each object needs to have indices starting with <kbd>0</kbd>. The parser takes care of this for you.</li>
+</ul>
+<div class="packt_infobox"><strong><span class="packt_screen">Python</span></strong><br/>
+<br/>
+If you do not have Python installed in your system, you can get it from <a href="http://www.python.org/">http://www.python.org/</a> or<a href="https://anaconda.org/anaconda/python"> https://anaconda.org/anaconda/python</a>.</div>
+<p class="mce-root"/>
+<p>The following diagram summarizes the procedure needed to create JSON files from Blender scenes:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/5fd36821-62f5-4642-9ad0-00e36299aa13.png" style="width:41.92em;height:25.00em;"/></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Loading Cars into Our WebGL Scene</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that we have cars stored as JSON files, they are ready to be used in our WebGL scene. First, we have to let the user choose which car to visualize. That said, it's still a good idea to load one by default. To do so, we will write the following code inside the <kbd>load</kbd> function:</p>
+<div>
+<pre><span>function </span><span>goHome</span>() {<br/>  camera.<span>goHome</span>([<span>0</span><span>, </span><span>0.5</span><span>, </span><span>10</span>])<span>;<br/></span><span>  </span>camera.<span>setFocus</span>([<span>0</span><span>, </span><span>0</span><span>, </span><span>0</span>])<span>;<br/></span><span>  </span>camera.<span>setAzimuth</span>(<span>25</span>)<span>;<br/></span><span>  </span>camera.<span>setElevation</span>(-<span>11</span>)<span>;<br/></span>}<br/><br/><span>function </span><span>load</span>() {<br/>  <span>goHome</span>()<span>;<br/></span><span>  </span><span>loadCar</span>(<span>'BMW i8'</span>)<span>;<br/></span>}</pre>
+<p>We call <kbd>goHome</kbd>, a helper function, that sets the <kbd>camera</kbd> position to a particular point in our scene. This is defined as a function, since we'll later use it as a way to reset our <kbd>camera</kbd> location, as needed. Then, we call <kbd>loadCar</kbd>, which is where we supply the <kbd>key</kbd> of the car (for example, <kbd>BMW i8</kbd>) we want to load from the <kbd>carModelData</kbd> that we defined inside of <kbd>configure</kbd>. Let's see what <kbd>loadCar</kbd> looks like:</p>
+<pre><span>function </span><span>loadCar</span>(model) {<br/>  scene.<span>objects </span>= []<span>;<br/></span><span>  </span>scene.<span>add</span>(floor)<span>;<br/></span><span>  </span><span>const </span>{ path<span>, </span>partsCount } = carModelData[model]<span>;<br/></span><span>  </span>scene.<span>loadByParts</span>(path<span>, </span>partsCount)<span>;<br/></span><span>  </span>selectedCar = model<span>;<br/></span>}</pre></div>
+<p>This function clears all of the objects in our <kbd>scene</kbd>, adds the already created <kbd>floor</kbd> instance, and extracts the necessary data from the <kbd>carModelData</kbd> object, such as the <kbd>path</kbd> to the model and the number of parts to load.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Rendering</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's take a step back and assess the big picture. We previously mentioned that, in our architecture, we have defined three main functions that define the life cycle of our WebGL application. These functions are <kbd>configure</kbd>, <kbd>load</kbd>, and <kbd>draw</kbd>.</p>
+<p>Thus far, we've set up the scene by writing the code for the <kbd>configure</kbd> function. After that, we created our JSON cars and loaded them by writing the code for the <kbd>load</kbd> function. Now, we will implement the code for the third function: the <kbd>draw</kbd> function.</p>
+<p>The code is pretty standard and almost identical to the <kbd>draw</kbd> functions that we've written in previous chapters. As the following code demonstrates, we set and clear the area that we are going to draw. Then, we check the camera's perspective and process every object in <kbd>scene</kbd>.</p>
+<p>One important consideration is that we need to ensure that we are correctly mapping the material properties defined in our JSON objects to the appropriate shader uniforms.</p>
+<p>Let's start implementing the <kbd>draw</kbd> function:</p>
+<div>
+<pre><span>function </span><span>draw</span>() {<br/>  gl.<span>viewport</span>(<span>0</span><span>, </span><span>0</span><span>, gl.</span>canvas.<span>width</span><span>, gl.</span>canvas.<span>height</span>)<span>;<br/></span><span>  </span>gl.<span>clear</span>(gl.<span>COLOR_BUFFER_BIT </span>| gl.<span>DEPTH_BUFFER_BIT</span>)<span>;<br/></span><span>  </span>transforms.<span>updatePerspective</span>()<span>;<br/></span><span><br/></span><span>  // ...</span><br/>}</pre>
+<p>First, we set our viewport and clear the scene, followed by applying the perspective update by using the <kbd>transforms</kbd> instance we initialized inside of <kbd>configure</kbd>.</p>
+<p>Then, we move to the objects in our scene:</p>
+<pre><span>try </span>{<br/>  scene.<span>traverse</span>(object =&gt; {<br/>    <span>if </span>(!object.<span>visible</span>) <span>return</span><span>;<br/></span><span><br/></span><span>    </span>transforms.<span>calculateModelView</span>()<span>;<br/></span><span>    </span>transforms.<span>push</span>()<span>;<br/></span><span>    </span>transforms.<span>setMatrixUniforms</span>()<span>;<br/></span><span>    </span>transforms.<span>pop</span>()<span>;<br/></span><span><br/></span><span>    </span>gl.<span>uniform3fv</span>(program.uKa<span>, </span>object.<span>Ka</span>)<span>;<br/></span><span>    </span>gl.<span>uniform3fv</span>(program.uKd<span>, </span>object.<span>Kd</span>)<span>;<br/></span><span>    </span>gl.<span>uniform3fv</span>(program.uKs<span>, </span>object.<span>Ks</span>)<span>;<br/></span><span>    </span>gl.<span>uniform1f</span>(program.uNs<span>, </span>object.<span>Ns</span>)<span>;<br/></span><span>    </span>gl.<span>uniform1f</span>(program.uD<span>, </span>object.<span>d</span>)<span>;<br/></span><span>    </span>gl.<span>uniform1i</span>(program.uIllum<span>, </span>object.<span>illum</span>)<span>;<br/></span><span><br/></span><span>    </span><span>// Bind<br/></span><span>    </span>gl.bindVertexArray(object.<span>vao</span>)<span>;<br/></span><span>    </span>gl.<span>bindBuffer</span>(gl.<span>ELEMENT_ARRAY_BUFFER</span><span>, </span>object.<span>ibo</span>)<span>;<br/></span><span><br/></span><span>    </span><span>if </span>(object.<span>wireframe</span>) {<br/>      gl.<span>uniform1i</span>(program.uWireframe<span>, </span><span>1</span>)<span>;<br/></span><span>      </span>gl.<span>drawElements</span>(gl.<span>LINES</span><span>, </span>object.<span>indices</span>.<span>length</span><span>, </span>gl.<span>UNSIGNED_SHORT</span><span>, <br/></span><span>       0</span>)<span>;<br/></span><span>    </span>}<br/>    <span>else </span>{<br/>      gl.<span>uniform1i</span>(program.uWireframe<span>, </span><span>0</span>)<span>;<br/></span><span>      </span>gl.<span>drawElements</span>(gl.<span>TRIANGLES</span><span>, </span>object.<span>indices</span>.<span>length</span><span>, <br/></span>       gl.<span>UNSIGNED_SHORT</span><span>, </span><span>0</span>)<span>;<br/></span><span>    </span>}<br/><br/>    <span>// Clean<br/></span><span>    </span>gl.bindVertexArray(<span>null</span>)<span>;<br/></span><span>    </span>gl.<span>bindBuffer</span>(gl.<span>ARRAY_BUFFER</span><span>, </span><span>null</span>)<span>;<br/></span><span>    </span>gl.<span>bindBuffer</span>(gl.<span>ELEMENT_ARRAY_BUFFER</span><span>, </span><span>null</span>)<span>;<br/></span><span>  </span>})<span>;<br/></span>}<br/><span>catch </span>(error) {<br/>  console.<span>error</span>(error)<span>;<br/></span>}</pre>
+<p><span>It may be helpful to take a look at the list of uniforms that was defined in the earlier section on shaders. We need to make sure that all of the shader uniforms are paired with object attributes.</span></p>
+</div>
+<p>The following diagram shows the process that occurs inside the <kbd>draw</kbd> function:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/6a1f1a48-9965-4484-a37d-50314abaa617.png" style="width:34.75em;height:26.25em;"/></p>
+<p>Each car part is a different JSON file. The <kbd>draw</kbd> function iterates through all of these parts inside the <kbd>scene</kbd>. For each part, the material properties are passed as uniforms to the shaders and the geometry is passed as attributes (reading data from the respective VBOs). Finally, the draw call (<kbd>drawElements</kbd>) is executed. The result looks something like this:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/03a50b25-f2e1-4daa-9aad-795f45a63e3c.png"/></p>
+<p>Here's the final JavaScript source code that can be found in <kbd>ch09_02_showroom.html</kbd>:</p>
+<pre><span>&lt;html&gt;<br/></span><span>&lt;head&gt;<br/></span><span>  &lt;title&gt;</span>Real-Time 3D Graphics with WebGL2<span>&lt;/title&gt;<br/></span><span>  &lt;link </span><span>rel=</span><span>"shortcut icon" </span><span>type=</span><span>"image/png" <br/></span><span>   href=</span><span>"/common/images/favicon.png" </span><span>/&gt;<br/></span><span><br/></span><span>  </span><span>&lt;!-- libraries --&gt;<br/></span><span>  </span><span>&lt;link </span><span>rel=</span><span>"stylesheet" </span><span>href=</span><span>"/common/lib/normalize.css"</span><span>&gt;<br/></span><span>  &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/lib/dat.gui.js"</span><span>&gt;&lt;/script&gt;<br/></span><span>  &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/lib/gl-matrix.js"</span><span>&gt;&lt;/script&gt;<br/></span><span><br/></span><span>  </span><span>&lt;!-- modules --&gt;<br/></span><span>  </span><span>&lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/utils.js"</span><span>&gt;&lt;/script&gt;<br/></span><span>  &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/EventEmitter.js"</span><span>&gt;&lt;/script&gt;<br/></span><span>  &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Camera.js"</span><span>&gt;&lt;/script&gt;<br/></span><span>  &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Clock.js"</span><span>&gt;&lt;/script&gt;<br/></span><span>  &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Controls.js"</span><span>&gt;&lt;/script&gt;<br/></span><span>  &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Floor.js"</span><span>&gt;&lt;/script&gt;<br/></span><span>  &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Light.js"</span><span>&gt;&lt;/script&gt;<br/></span><span>  &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Program.js"</span><span>&gt;&lt;/script&gt;<br/></span><span>  &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Scene.js"</span><span>&gt;&lt;/script&gt;<br/></span><span>  &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Texture.js"</span><span>&gt;&lt;/script&gt;<br/></span><span>  &lt;script </span><span>type=</span><span>"text/javascript" </span><span>src=</span><span>"/common/js/Transforms.js"</span><span>&gt;&lt;/script&gt;</span><span><br/></span></pre>
+<p class="mce-root"/>
+<p>The following code is for the vertex shader:</p>
+<pre><span>  &lt;script </span><span>id=</span><span>"vertex-shader" </span><span>type=</span><span>"x-shader/x-vertex"</span><span>&gt;<br/></span><span>    </span>#version 300 es<br/>    precision mediump float;<br/><br/>    const int numLights = 4;<br/><br/>    uniform mat4 uModelViewMatrix;<br/>    uniform mat4 uProjectionMatrix;<br/>    uniform mat4 uNormalMatrix;<br/>    uniform vec3 uLightPosition[numLights];<br/><br/>    in vec3 aVertexPosition;<br/>    in vec3 aVertexNormal;<br/><br/>    out vec3 vNormal;<br/>    out vec3 vLightRay[numLights];<br/>    out vec3 vEye[numLights];<br/><br/>    void main(void) {<br/>      vec4 vertex = uModelViewMatrix * vec4(aVertexPosition, 1.0);<br/>      vec4 lightPosition = vec4(0.0);<br/><br/>      for(int i= 0; i &lt; numLights; i++) {<br/>        lightPosition = vec4(uLightPosition[i], 1.0);<br/>        vLightRay[i] = vertex.xyz - lightPosition.xyz;<br/>        vEye[i] = -vec3(vertex.xyz);<br/>      }<br/><br/>      vNormal = vec3(uNormalMatrix * vec4(aVertexNormal, 1.0));<br/>      gl_Position = uProjectionMatrix * uModelViewMatrix * <br/>       vec4(aVertexPosition, 1.0);<br/>    }<br/>  <span>&lt;/script&gt;</span></pre>
+<p>The following code is for the fragment shader:</p>
+<pre><span>  &lt;script </span><span>id=</span><span>"fragment-shader" </span><span>type=</span><span>"x-shader/x-fragment"</span><span>&gt;<br/></span><span>    </span>#version 300 es<br/>    precision mediump float;<br/><br/>    const int numLights = 4;<br/><br/>    uniform vec3 uLd[numLights];<br/>    uniform vec3 uLs[numLights];<br/>    uniform vec3 uLightPosition[numLights];<br/>    uniform vec3 uKa;<br/>    uniform vec3 uKd;<br/>    uniform vec3 uKs;<br/>    uniform float uNs;<br/>    uniform float uD;<br/>    uniform int uIllum;<br/>    uniform bool uWireframe;<br/><br/>    in vec3 vNormal;<br/>    in vec3 vLightRay[numLights];<br/>    in vec3 vEye[numLights];<br/><br/>    out vec4 fragColor;<br/><br/>    void main(void) {<br/>      if (uWireframe || uIllum == 0) {<br/>        fragColor = vec4(uKd, uD);<br/>        return;<br/>      }<br/><br/>      vec3 color = vec3(0.0);<br/>      vec3 light = vec3(0.0);<br/>      vec3 eye = vec3(0.0);<br/>      vec3 reflection = vec3(0.0);<br/>      vec3 normal = normalize(vNormal);<br/><br/>      if (uIllum == 1) {<br/>        for (int i = 0; i &lt; numLights; i++) {<br/>          light = normalize(vLightRay[i]);<br/>          normal = normalize(vNormal);<br/>          color += (uLd[i] * uKd * clamp(dot(normal, -light), 0.0, 1.0));<br/>        }<br/>      }<br/><br/>      if (uIllum == 2) {<br/>        for (int i = 0; i &lt; numLights; i++) {<br/>          eye = normalize(vEye[i]);<br/>          light = normalize(vLightRay[i]);<br/>          reflection = reflect(light, normal);<br/>          color += (uLd[i] * uKd * clamp(dot(normal, -light), 0.0, 1.0));<br/>          color += (uLs[i] * uKs * pow(max(dot(reflection, eye), 0.0), uNs) <br/>           * 4.0);<br/>        }<br/>      }<br/><br/>      fragColor =  vec4(color, uD);<br/>    }<br/>  <span>&lt;/script&gt;<br/></span></pre>
+<p class="mce-root"/>
+<p>The following is the application code with the appropriate global variable definitions:</p>
+<pre><span>  &lt;script </span><span>type=</span><span>"text/javascript"</span><span>&gt;<br/></span><span>    </span><span>'use strict'</span><span>;<br/></span><span><br/></span><span>    </span><span>let </span>gl<span>, </span>program<span>, </span>scene<span>, </span>clock<span>, </span>camera<span>, </span>transforms<span>, </span>lights<span>,<br/></span><span>      </span>floor<span>, </span>selectedCar<span>, </span>lightPositions<span>, </span>carModelData<span>,<br/></span><span>      </span>clearColor = [<span>0.9</span><span>, </span><span>0.9</span><span>, </span><span>0.9</span><span>, </span><span>1</span>]<span>;<br/></span></pre>
+<p>The following is the configuration step:</p>
+<pre><span><br/></span><span>    </span><span>function </span><span>configure</span>() {<br/>      <span>const </span>canvas = utils.<span>getCanvas</span>(<span>'webgl-canvas'</span>)<span>;<br/></span><span>      </span>utils.<span>autoResizeCanvas</span>(canvas)<span>;<br/></span><span><br/></span><span>      </span>gl = utils.<span>getGLContext</span>(canvas)<span>;<br/></span><span>      </span>gl.<span>clearColor</span>(...clearColor)<span>;<br/></span><span>      </span>gl.<span>clearDepth</span>(<span>1</span>)<span>;<br/></span><span>      </span>gl.<span>enable</span>(gl.<span>DEPTH_TEST</span>)<span>;<br/></span><span>      </span>gl.<span>depthFunc</span>(gl.<span>LESS</span>)<span>;<br/></span><span>      </span>gl.<span>blendFunc</span>(gl.<span>SRC_ALPHA</span><span>, </span>gl.<span>ONE_MINUS_SRC_ALPHA</span>)<span>;<br/></span><span><br/></span><span>      </span>program = <span>new </span>Program(gl<span>, </span><span>'vertex-shader'</span><span>, </span><span>'fragment-shader'</span>)<span>;<br/></span><span><br/></span><span>      </span><span>const </span>attributes = [<br/>        <span>'aVertexPosition'</span><span>,<br/></span><span>        </span><span>'aVertexNormal'</span><span>,<br/></span><span>        </span><span>'aVertexColor'<br/></span><span>      </span>]<span>;<br/></span><span><br/></span><span>      </span><span>const </span>uniforms = [<br/>        <span>'uProjectionMatrix'</span><span>,<br/></span><span>        </span><span>'uModelViewMatrix'</span><span>,<br/></span><span>        </span><span>'uNormalMatrix'</span><span>,<br/></span><span>        </span><span>'uLightPosition'</span><span>,<br/></span><span>        </span><span>'uWireframe'</span><span>,<br/></span><span>        </span><span>'uLd'</span><span>,<br/></span><span>        </span><span>'uLs'</span><span>,<br/></span><span>        </span><span>'uKa'</span><span>,<br/></span><span>        </span><span>'uKd'</span><span>,<br/></span><span>        </span><span>'uKs'</span><span>,<br/></span><span>        </span><span>'uNs'</span><span>,<br/></span><span>        </span><span>'uD'</span><span>,<br/></span><span>        </span><span>'uIllum'<br/></span><span>      </span>]<span>;<br/></span><span><br/></span><span>      </span>program.<span>load</span>(attributes<span>, </span>uniforms)<span>;<br/></span><span><br/></span><span>      </span>scene = <span>new </span>Scene(gl<span>, </span>program)<span>;<br/></span><span>      </span>clock = <span>new </span>Clock()<span>;<br/></span><span><br/></span><span>      </span>camera = <span>new </span>Camera(Camera.ORBITING_TYPE)<span>;<br/></span><span>      </span><span>new </span>Controls(camera<span>, </span>canvas)<span>;<br/></span><span><br/></span><span>      </span>transforms = <span>new </span>Transforms(gl<span>, </span>program<span>, </span>camera<span>, </span>canvas)<span>;<br/></span><span><br/></span><span>      </span>lights = <span>new </span>LightsManager()<span>;<br/></span><span><br/></span><span>      </span>lightPositions = {<br/>        <span>farLeft</span>: [-<span>1000</span><span>, </span><span>1000</span><span>, </span>-<span>1000</span>]<span>,<br/></span><span>        </span><span>farRight</span>: [<span>1000</span><span>, </span><span>1000</span><span>, </span>-<span>1000</span>]<span>,<br/></span><span>        </span><span>nearLeft</span>: [-<span>1000</span><span>, </span><span>1000</span><span>, </span><span>1000</span>]<span>,<br/></span><span>        </span><span>nearRight</span>: [<span>1000</span><span>, </span><span>1000</span><span>, </span><span>1000</span>]<br/>      }<span>;<br/></span><span><br/></span><span>      </span>Object.<span>keys</span>(lightPositions).<span>forEach</span>(key =&gt; {<br/>        <span>const </span>light = <span>new </span>Light(key)<span>;<br/></span><span>        </span>light.<span>setPosition</span>(lightPositions[key])<span>;<br/></span><span>        </span>light.<span>setDiffuse</span>([<span>0.4</span><span>, </span><span>0.4</span><span>, </span><span>0.4</span>])<span>;<br/></span><span>        </span>light.<span>setSpecular</span>([<span>0.8</span><span>, </span><span>0.8</span><span>, </span><span>0.8</span>])<span>;<br/></span><span>        </span>lights.<span>add</span>(light)<br/>      })<span>;<br/></span><span><br/></span><span>      </span>gl.<span>uniform3fv</span>(program.uLightPosition<span>, </span>lights.<span>getArray</span>(<span>'position'</span>))<span>;<br/></span><span>      </span>gl.<span>uniform3fv</span>(program.uLd<span>, </span>lights.<span>getArray</span>(<span>'diffuse'</span>))<span>;<br/></span><span>      </span>gl.<span>uniform3fv</span>(program.uLs<span>, </span>lights.<span>getArray</span>(<span>'specular'</span>))<span>;<br/></span><span><br/></span><span>      </span>gl.<span>uniform3fv</span>(program.uKa<span>, </span>[<span>1</span><span>, </span><span>1</span><span>, </span><span>1</span>])<span>;<br/></span><span>      </span>gl.<span>uniform3fv</span>(program.uKd<span>, </span>[<span>1</span><span>, </span><span>1</span><span>, </span><span>1</span>])<span>;<br/></span><span>      </span>gl.<span>uniform3fv</span>(program.uKs<span>, </span>[<span>1</span><span>, </span><span>1</span><span>, </span><span>1</span>])<span>;<br/></span><span>      </span>gl.<span>uniform1f</span>(program.uNs<span>, </span><span>1</span>)<span>;<br/></span><span><br/></span><span>      </span>floor = <span>new </span>Floor(<span>200</span><span>, </span><span>2</span>)<span>;<br/></span><span><br/></span><span>      </span>carModelData = {<br/>        <span>'BMW i8'</span>: {<br/>          <span>paintAlias</span>: <span>'BMW'</span><span>,<br/></span><span>          </span><span>partsCount</span>: <span>25</span><span>,<br/></span><span>          </span><span>path</span>: <span>'/common/models/bmw-i8/part'<br/></span><span>        </span>}<br/>      }<span>;<br/></span><span>    </span>}<br/><br/>    <span>function </span><span>goHome</span>() {<br/>      camera.<span>goHome</span>([<span>0</span><span>, </span><span>0.5</span><span>, </span><span>5</span>])<span>;<br/></span><span>      </span>camera.<span>setFocus</span>([<span>0</span><span>, </span><span>0</span><span>, </span><span>0</span>])<span>;<br/></span><span>      </span>camera.<span>setAzimuth</span>(<span>25</span>)<span>;<br/></span><span>      </span>camera.<span>setElevation</span>(-<span>10</span>)<span>;<br/></span><span>    </span>}</pre>
+<p>The following code is for loading the required assets:</p>
+<pre>    <span>function </span><span>loadCar</span>(model) {<br/>      scene.<span>objects </span>= []<span>;<br/></span><span>      </span>scene.<span>add</span>(floor)<span>;<br/></span><span>      </span><span>const </span>{ path<span>, </span>partsCount } = carModelData[model]<span>;<br/></span><span>      </span>scene.<span>loadByParts</span>(path<span>, </span>partsCount)<span>;<br/></span><span>      </span>selectedCar = model<span>;<br/></span><span>    </span>}<br/><br/>    <span>function </span><span>load</span>() {<br/>      <span>goHome</span>()<span>;<br/></span><span>      </span><span>loadCar</span>(<span>'BMW i8'</span>)<span>;<br/></span><span>    </span>}</pre>
+<p>The following code states where we draw our scene:</p>
+<pre>    <span>function </span><span>draw</span>() {<br/>      gl.<span>viewport</span>(<span>0</span><span>, </span><span>0</span><span>, </span>gl.<span>canvas</span>.<span>width</span><span>, </span>gl.<span>canvas</span>.<span>height</span>)<span>;<br/></span><span>      </span>gl.<span>clear</span>(gl.<span>COLOR_BUFFER_BIT </span>| gl.<span>DEPTH_BUFFER_BIT</span>)<span>;<br/></span><span>      </span>transforms.<span>updatePerspective</span>()<span>;<br/></span><span><br/></span><span>      </span><span>try </span>{<br/>        scene.<span>traverse</span>(object =&gt; {<br/>          <span>if </span>(!object.<span>visible</span>) <span>return</span><span>;<br/></span><span><br/></span><span>          </span>transforms.<span>calculateModelView</span>()<span>;<br/></span><span>          </span>transforms.<span>push</span>()<span>;<br/></span><span>          </span>transforms.<span>setMatrixUniforms</span>()<span>;<br/></span><span>          </span>transforms.<span>pop</span>()<span>;<br/></span><span><br/></span><span>          </span>gl.<span>uniform3fv</span>(program.uKa<span>, </span>object.<span>Ka</span>)<span>;<br/></span><span>          </span>gl.<span>uniform3fv</span>(program.uKd<span>, </span>object.<span>Kd</span>)<span>;<br/></span><span>          </span>gl.<span>uniform3fv</span>(program.uKs<span>, </span>object.<span>Ks</span>)<span>;<br/></span><span>          </span>gl.<span>uniform1f</span>(program.uNs<span>, </span>object.<span>Ns</span>)<span>;<br/></span><span>          </span>gl.<span>uniform1f</span>(program.uD<span>, </span>object.<span>d</span>)<span>;<br/></span><span>          </span>gl.<span>uniform1i</span>(program.uIllum<span>, </span>object.<span>illum</span>)<span>;<br/></span><span><br/></span><span>          </span><span>// Bind<br/></span><span>          </span>gl.bindVertexArray(object.<span>vao</span>)<span>;<br/></span><span>          </span>gl.<span>bindBuffer</span>(gl.<span>ELEMENT_ARRAY_BUFFER</span><span>, </span>object.<span>ibo</span>)<span>;<br/></span><span><br/></span><span>          </span><span>if </span>(object.<span>wireframe</span>) {<br/>            gl.<span>uniform1i</span>(program.uWireframe<span>, </span><span>1</span>)<span>;<br/></span><span>            </span>gl.<span>drawElements</span>(gl.<span>LINES</span><span>, </span>object.<span>indices</span>.<span>length</span><span>, <br/></span>             gl.<span>UNSIGNED_SHORT</span><span>, </span><span>0</span>)<span>;<br/></span><span>          </span>}<br/>          <span>else </span>{<br/>            gl.<span>uniform1i</span>(program.uWireframe<span>, </span><span>0</span>)<span>;<br/></span><span>            </span>gl.<span>drawElements</span>(gl.<span>TRIANGLES</span><span>, </span>object.<span>indices</span>.<span>length</span><span>, <br/></span>             gl.<span>UNSIGNED_SHORT</span><span>, </span><span>0</span>)<span>;<br/></span><span>          </span>}<br/><br/>          <span>// Clean<br/></span><span>          </span>gl.bindVertexArray(<span>null</span>)<span>;<br/></span><span>          </span>gl.<span>bindBuffer</span>(gl.<span>ARRAY_BUFFER</span><span>, </span><span>null</span>)<span>;<br/></span><span>          </span>gl.<span>bindBuffer</span>(gl.<span>ELEMENT_ARRAY_BUFFER</span><span>, </span><span>null</span>)<span>;<br/></span><span>        </span>})<span>;<br/></span><span>      </span>}<br/>      <span>catch </span>(error) {<br/>        console.<span>error</span>(error)<span>;<br/></span><span>      </span>}<br/>    }</pre>
+<p>The initialization of our application after the document has loaded is performed with the following code:</p>
+<pre>    <span>function </span><span>init</span>() {<br/>      <span>configure</span>()<span>;<br/></span><span>      </span><span>load</span>()<span>;<br/></span><span>      </span>clock.<span>on</span>(<span>'tick'</span><span>, </span><span>draw</span>)<span>;</span><span><br/></span><span>    </span>}<br/><br/>    window.<span>onload </span>= <span>init</span><span>;<br/></span><br/>  <span>&lt;/script&gt;<br/></span><span>&lt;/head&gt;<br/></span><span><br/></span><span>&lt;body&gt;<br/></span><span><br/></span><span>  &lt;canvas </span><span>id=</span><span>"webgl-canvas"</span><span>&gt;<br/></span><span>    </span>Your browser does not support the HTML5 canvas element.<br/>  <span>&lt;/canvas&gt;<br/></span><span><br/></span><span>&lt;/body&gt;<br/></span><span>&lt;/html&gt;</span></pre>
+<p class="mce-root"/>
+<p><em><strong>What just happened?</strong></em></p>
+<p>We have covered a demo that uses many of the elements we've discussed throughout this book. We used the infrastructure code that we developed throughout the previous chapters and implemented the three main functions: <kbd>configure</kbd>, <kbd>load</kbd>, and <kbd>draw</kbd>. As we've seen, these functions define the life cycle of our application.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Have a Go: Interactive Controls</h1>
+                </header>
+            
+            <article>
+                
+<p><span>Let's leverage <strong>dat.GUI</strong> to</span> add more interactivity and customization to our application. Go ahead and try and add the following functionality:</p>
+<ol>
+<li>Create a dropdown so that you can select from the following car models provided in the <kbd>common/models/</kbd> directory: <kbd>bmw-i8</kbd>, <span><kbd>audi-r8</kbd>,</span> <kbd>ford-mustang</kbd>, and <kbd>lamborghini-gallardo</kbd>.</li>
+</ol>
+<div class="packt_tip"><strong><span class="packt_screen">Hint</span><br/>
+<br/></strong> You can leverage <kbd>carModelData</kbd> to declaratively describe the car models and use the already created <kbd>loadCar</kbd> function with the appropriate information.</div>
+<ol start="2">
+<li>Create a color picker to change the color of the loaded car.</li>
+</ol>
+<div class="packt_tip"><strong><span class="packt_screen">Hint</span><br/>
+<br/></strong> By inspecting the car data files, you will find various indicators that signify which parts are body panels. These are described as <kbd>paintAlias</kbd> in <kbd>carModelData</kbd>,  which can be used to change the <kbd>Kd</kbd> property of each individual item in the scene.</div>
+<ol start="3">
+<li>Create a slider to change the shininess of the selected car.</li>
+</ol>
+<div class="packt_tip"><strong><span class="packt_screen">Hint</span><br/>
+<br/></strong> You can use <kbd>paintAlias</kbd> once again and update the <kbd>Ks</kbd> property of each individual item in the scene.</div>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mceNonEditable"/>
+<p class="mceNonEditable"/>
+<p class="mceNonEditable"/>
+<p>The following functionality has been implemented in <kbd>ch09_03_showroom-controls.html</kbd>, along with controls for each individual light, the background color, floor visibility, and so forth:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/d32ccc1d-cd9d-4f90-90bc-4a8e70d2ee2f.png"/></div>
+<div class="packt_tip"><kbd>utils.configureControls</kbd><br/>
+<br/>
+The <kbd>utils.configureControls</kbd> method is a simple abstraction on top of the dat.GUI interface to remove repetition and provide a more declarative way for describing our controls widget. You can use dat.GUI directly or build upon this simple helper function.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Bonus</h1>
+                </header>
+            
+            <article>
+                
+<p>You made it! How awesome is that?! As a bonus, a few additional examples have been provided for you in the source code under the <kbd>ch10</kbd> directory. The bonus examples use the virtual car showroom as a base to showcase a few more advanced features for you to leverage in your future ventures in building compelling 3D experiences. Enjoy!</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>Let’s summarize what we’ve learned in this chapter:</p>
+<ul>
+<li>We've reviewed concepts, architecture, and code that has been developed throughout this book.</li>
+<li>We built a 3D virtual car showroom application showcasing how all of these elements fit together.</li>
+<li>We've learned that designing complex models requires specialized tools, such as Blender.</li>
+<li>We covered how most of the current 3D graphics formats require the definition of vertices, indices, normals, and texture coordinates.</li>
+<li>We studied how to obtain required elements from a Blender model to parse them into JSON files that we can load into a WebGL scene.</li>
+<li>We learned how to add a controls widget to provide customization functionality.</li>
+</ul>
+<p>In the next chapter, we will get a sneak peek at some of the advanced techniques commonly used in 3D computer graphic systems, including games, simulations, and other 3D applications. After addressing these topics, we will also learn how to implement them in WebGL.</p>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

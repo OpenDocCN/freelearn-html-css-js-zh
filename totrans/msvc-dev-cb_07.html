@@ -1,0 +1,369 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Monitoring and Observability</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">In this chapter, we will cover the following recipes:</p>
+<ul>
+<li>Structured JSON logging</li>
+<li>Collecting metrics with StatsD and Graphite</li>
+<li>Collecting metrics with Prometheus</li>
+<li>Making debugging easier with tracing</li>
+<li>Alerting when something goes wrong</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Introduction</h1>
+                </header>
+            
+            <article>
+                
+<p>Microservices add complexity to an architecture. With more moving parts in a system, monitoring and observing the behavior of the system becomes more important and more challenging. In a microservice architecture, failure conditions impacting one service can cascade in unexpected ways, impacting the system as a whole. A faulty switch somewhere in a datacenter may be causing unusually high latency for a service, perhaps resulting in intermittent timeouts in requests originating from the API Gateway, which may result in unexpected user impact, which results in an alert being fired. This kind of scenario is not uncommon in a microservice architecture and requires forethought so that engineers can easily determine the nature of customer-impacting incidents. Distributed systems are bound to experience certain failures and special consideration must be taken to build observability into systems.</p>
+<p class="mce-root"/>
+<p>Another shift that microservices have necessitated is the move to DevOps. Many traditional monitoring solutions were developed at a time when operations were the sole responsibility of a special and distinct group of system administrators or operations engineers. System administrators and operations engineers are often interested in system-level or host-level metrics, such as CPU, memory disk, and network usage. These metrics are important but only make up a small part of observability. <strong>Observability</strong> must also be considered by engineers writing microservices. It's equally important to use metrics to be able to observe events unique to a system, such as certain types of exceptions being thrown or the number of events emitted to a queue.</p>
+<p>Planning for observability also gives us the information we need to effectively test systems in production. Ephemeral environments for staging and integration testing can be useful, but there are entire classes of failure states that they are unable to test for. As discussed in <a href="b569ef24-285f-40bf-97b0-0ac9c1a79494.xhtml">Chapter 5</a>, <em>Reliability Patterns</em>, Gamedays and other forms of failure injection are critical for improving the resilience of systems. Observable systems lend themselves to this kind of testing, allowing engineers to gain confidence in our understanding of the system.</p>
+<p>In this chapter, we'll introduce several tenants of monitoring and observability. We'll demonstrate how to modify our services to emit structured logs. We'll also take a look at metrics, using a number of different systems for collecting, aggregating, and visualizing metrics. Finally we'll look at tracing, a way to look at requests as they travel through various components of a system and alert us when user-impacting error conditions are detected.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Structured JSON logging</h1>
+                </header>
+            
+            <article>
+                
+<p>Outputting useful logs is a key part of building an observable service. What constitutes a useful log is subjective, but a good set of guidelines is that logs should contain timestamped information about key events in a system. A good logging system supports the notion of configurable log levels, so the amount of information sent to logs can be dialed up or down for a specific amount of time depending on the needs of engineers working with the system. For example, when testing a service against failure scenarios in production, it may be useful to turn up the log level and get more detail about events in the system.</p>
+<p class="mce-root"/>
+<p>The two most popular logging libraries for Java applications are <strong>Log4j</strong> (<a href="https://logging.apache.org/log4j/2.x/">https://logging.apache.org/log4j/2.x/</a>) and <strong>Logback</strong> (<a href="https://logback.qos.ch/">https://logback.qos.ch/</a>). By default, both of these libraries will emit log entries in an unstructured format, usually space-separated fields including information such as a timestamp, log level, and message. This is useful, but especially so in a microservices architecture, where multiple services are emitting event logs possibly to a centralized log store; it's extremely useful to emit structured logs with some consistency.</p>
+<p>JSON has become a common standard for passing messages between systems. Nearly every popular language has libraries for parsing and generating JSON. It's lightweight, yet structured, making it a good choice for data, such as event logs. Emitting event logs in JSON makes it easier to feed your service's logs into a centralized store and have log data analyzed and queried.</p>
+<p>In this recipe, we'll modify our message-service to emit logs using the popular <kbd>logback</kbd> library for Java applications.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's have a look at the following steps:</p>
+<ol>
+<li>Open the message-service project from <a href="5c67f295-78fb-4ae9-a596-39f384f6e9f2.xhtml">Chapter 6</a>, <em>Security</em>. The first change we'll make is to add the <kbd>logback</kbd> library to the <kbd>build.gradle</kbd> file:</li>
+</ol>
+<pre style="padding-left: 60px">group <span>'com.packtpub.microservices'<br/></span>version <span>'1.0-SNAPSHOT'<br/></span><span><br/></span>buildscript {<br/>    repositories {<br/>        mavenCentral()<br/>    }<br/>    dependencies {<br/>        classpath <span>group</span>: <span>'org.springframework.boot'</span>, <span>name</span>: <span>'spring-boot-gradle-plugin'</span>, <span>version</span>: <span>'1.5.9.RELEASE'<br/></span><span>    </span>}<br/>}<br/><br/>apply <span>plugin</span>: <span>'java'<br/></span>apply <span>plugin</span>: <span>'org.springframework.boot'<br/></span><span><br/></span><span>sourceCompatibility </span>= <span>1.8<br/></span><span><br/></span>repositories {<br/>    mavenCentral()<br/>}<br/><br/>dependencies {<br/>    compile <span>group</span>: <span>'org.springframework.boot'</span>, <span>name</span>: <span>'spring-boot-starter-web'<br/></span><span>    </span>compile <span>group</span>: <span>'io.github.resilience4j'</span>, <span>name</span>: <span>'resilience4j-circuitbreaker'</span>, <span>version</span>: <span>'0.11.0'<br/></span><strong><span>    </span>compile <span>group</span>: <span>'net.logstash.logback'</span>, <span>name</span>: <span>'logstash-logback-encoder'</span>, <span>version</span>: </strong><span><strong>'4.7'</strong><br/></span><span>    </span>testCompile <span>group</span>: <span>'junit'</span>, <span>name</span>: <span>'junit'</span>, <span>version</span>: <span>'4.12'<br/></span>}</pre>
+<ol start="2">
+<li>Create a <kbd>logback.xml</kbd> configuration file. In the configuration file, we'll create a single logger, called <kbd>jsonLogger</kbd>, that references a single appender, called <kbd>consoleAppender</kbd>:</li>
+</ol>
+<pre style="padding-left: 60px"><span>&lt;?</span><span>xml version=</span><span>"1.0" </span><span>encoding=</span><span>"utf-8"</span><span>?&gt;<br/></span><span>&lt;configuration&gt;<br/></span><span>    &lt;appender </span><span>name=</span><span>"consoleAppender" </span><span>class=</span><span>"ch.qos.logback.core.ConsoleAppender"</span><span>&gt;<br/></span><span>        &lt;encoder </span><span>class=</span><span>"net.logstash.logback.encoder.LogstashEncoder"</span><span>/&gt;<br/></span><span>    &lt;/appender&gt;<br/></span><span>    &lt;logger </span><span>name=</span><span>"jsonLogger" </span><span>additivity=</span><span>"false" </span><span>level=</span><span>"DEBUG"</span><span>&gt;<br/></span><span>        &lt;appender-ref </span><span>ref=</span><span>"consoleAppender"</span><span>/&gt;<br/></span><span>    &lt;/logger&gt;<br/></span><span>    &lt;root </span><span>level=</span><span>"INFO"</span><span>&gt;<br/></span><span>        &lt;appender-ref </span><span>ref=</span><span>"consoleAppender"</span><span>/&gt;<br/></span><span>    &lt;/root&gt;<br/></span><span>&lt;/configuration&gt;</span></pre>
+<ol start="3">
+<li>Add a single sample log message to <kbd>Application.java</kbd> to test our new logging configuration:</li>
+</ol>
+<pre style="padding-left: 60px"><span>package </span>com.packtpub.microservices.ch07.message<span>;<br/></span><span><br/></span><span>import </span>com.packtpub.microservices.ch07.message.clients.SocialGraphClient<span>;<br/></span><span>import </span>org.apache.log4j.LogManager<span>;<br/></span><span>import </span>org.apache.log4j.Logger<span>;<br/></span><span>import </span>org.springframework.boot.SpringApplication<span>;<br/></span><span>import </span>org.springframework.boot.autoconfigure.<span>SpringBootApplication</span><span>;<br/></span><span>import </span>org.springframework.context.annotation.<span>Bean</span><span>;<br/></span><span>import </span>org.springframework.scheduling.annotation.<span>EnableAsync</span><span>;<br/></span><span>import </span>org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor<span>;<br/></span><span><br/></span><span>import </span>java.util.concurrent.Executor<span>;<br/></span><span><br/></span><span>@SpringBootApplication<br/></span><span>@EnableAsync<br/></span><span>public class </span>Application {<br/><br/><strong>    private Logger logger = LogManager.getLogger(Application.class);</strong><br/><br/>    <span>@Bean<br/></span><span>    </span><span>public </span>MessageRepository <span>messageRepository</span>() {<br/>        <span>return new </span>MessageRepository()<span>;<br/></span><span>    </span>}<br/><br/>    <span>@Bean<br/></span><span>    </span><span>public </span>SocialGraphClient <span>socialGraphClient</span>() {<br/>        <span>return new </span>SocialGraphClient(<span>"http://localhost:4567"</span>)<span>;<br/></span><span>    </span>}<br/><br/>    <span>public static void </span><span>main</span>(String[] args) {<span><br/></span><strong><span>        </span>logger.info(<span>"Starting application"</span>)</strong><span><strong>;</strong><br/></span><span>        </span>SpringApplication.<span>run</span>(Application.<span>class, </span>args)<span>;<br/></span><span>    </span>}<br/><br/>    <span>@Bean<br/></span><span>    </span><span>public </span>Executor <span>asyncExecutor</span>() {<br/>        ThreadPoolTaskExecutor executor = <span>new </span>ThreadPoolTaskExecutor()<span>;<br/></span><span>        </span>executor.setCorePoolSize(<span>2</span>)<span>;<br/></span><span>        </span>executor.setMaxPoolSize(<span>2</span>)<span>;<br/></span><span>        </span>executor.setQueueCapacity(<span>500</span>)<span>;<br/></span><span>        </span>executor.setThreadNamePrefix(<span>"SocialServiceCall-"</span>)<span>;<br/></span><span>        </span>executor.initialize()<span>;<br/></span><span>        return </span>executor<span>;<br/></span><span>    </span>}<br/>}</pre>
+<ol start="4">
+<li>Run the application and see that log messages are now emitted in JSON:</li>
+</ol>
+<pre style="padding-left: 60px"><strong>$ ./gradlew bootRun</strong><br/><br/><strong>&gt; Task :bootRun</strong><br/><strong>{"@timestamp":"2018-08-09T22:08:22.959-05:00","@version":1,"message":"Starting application","logger_name":"com.packtpub.microservices.ch07.message.Application","thread_name":"main","level":"INFO","level_value":20000}</strong><br/><br/><strong>  .   ____          _            __ _ _</strong><br/><strong> /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \</strong><br/><strong>( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \</strong><br/><strong> \\/  ___)| |_)| | | | | || (_| |  ) ) ) )</strong><br/><strong>  '  |____| .__|_| |_|_| |_\__, | / / / /</strong><br/><strong> =========|_|==============|___/=/_/_/_/</strong><br/><strong> :: Spring Boot ::        (v1.5.9.RELEASE)</strong><br/><br/><strong>{"@timestamp":"2018-08-09T22:08:23.786-05:00","@version":1,"message":"Starting Application on fartlek.local with PID 82453 (/Users/posman/projects/microservices-cookbook/chapter07/message-service/build/classes/java/main started by posman in /Users/posman/projects/microservices-cookbook/chapter07/message-service)","logger_name":"com.packtpub.microservices.ch07.message.Application","thread_name":"main","level":"INFO","level_value":20000}</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Collecting metrics with StatsD and Graphite</h1>
+                </header>
+            
+            <article>
+                
+<p>Metrics are numeric measurements over time. The most common types of metrics collected in our systems are counters, timers, and gauges. A counter is exactly what it sounds like, a value that is incremented a number of times over some time period. A timer can be used to measure recurring events in a system, such as the amount of time it takes to serve a request or perform a database query. Gauges are just arbitrary numeric values that can be recorded.</p>
+<p><strong>StatsD</strong> is an open source network daemon invented in 2011 at Etsy. Metrics data is pushed to a <kbd>statsd</kbd> server, often on the same server, which aggregates data before sending it on to a durable backend. One of the most common backends used with <kbd>statsd</kbd> is <strong>Graphite</strong>, an open source time-series storage engine and graphing tool. Together, Graphite and StatsD make up a very popular metrics stack. They're easy to get started with and enjoy large communities and a large selection of tools and libraries.</p>
+<p>Spring Boot has a sub-project called <strong>Actuator</strong> that adds a number of production readiness features to a service. Actuator gives us our services certain metrics for free, together with a project called micrometer, Actuator enables a vendor-neutral API to various metric's backends. We'll use Actuator and micrometer in this recipe and the next one.</p>
+<p>In this recipe, we'll add Actuator to the message-service we've worked with in previous recipes. We'll create a few custom metrics and demonstrate using <kbd>statsd</kbd> and <kbd>graphite</kbd> to graph metrics from our application. We'll run <kbd>statsd</kbd> and <kbd>graphite</kbd> locally in docker containers.</p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's look at the following steps:</p>
+<ol>
+<li>Open the message-service project from previous recipes. We're going to upgrade the version of Spring Boot and add <kbd>actuator</kbd> and <kbd>micrometer</kbd> to our list of dependencies. Modify the <kbd>build.gradle</kbd> file to look like the following:</li>
+</ol>
+<pre style="padding-left: 60px">group <span>'com.packtpub.microservices'<br/></span>version <span>'1.0-SNAPSHOT'<br/></span><span><br/></span>buildscript {<br/>    repositories {<br/>        mavenCentral()<br/>    }<br/>    dependencies {<br/>        classpath <span>group</span>: <span>'org.springframework.boot'</span>, <span>name</span>: <span>'spring-boot-gradle-plugin'</span>, <span>version</span>: <span>'2.0.4.RELEASE'<br/></span><span>    </span>}<br/>}<br/><br/>apply <span>plugin</span>: <span>'java'<br/></span>apply <span>plugin</span>: <span>'org.springframework.boot'<br/></span><span><br/></span><span>sourceCompatibility </span>= <span>1.8<br/></span><span><br/></span>repositories {<br/>    mavenCentral()<br/>}<br/><br/>dependencies {<br/>    compile <span>group</span>: <span>'org.springframework.boot'</span>, <span>name</span>: <span>'spring-boot-starter-web'</span>, <span>version</span>: <span>'2.0.4.RELEASE'<br/></span><span>    </span>compile <span>group</span>: <span>'org.springframework.boot'</span>, <span>name</span>: <span>'spring-boot-starter-actuator'</span>, <span>version</span>: <span>'2.0.4.RELEASE'<br/></span><span>    </span>compile <span>group</span>: <span>'io.micrometer'</span>, <span>name</span>: <span>'micrometer-core'</span>, <span>version</span>: <span>'1.0.6'<br/></span><span>    </span>compile <span>group</span>: <span>'io.micrometer'</span>, <span>name</span>: <span>'micrometer-registry-statsd'</span>, <span>version</span>: <span>'1.0.6'<br/></span><span>    </span>compile <span>group</span>: <span>'io.github.resilience4j'</span>, <span>name</span>: <span>'resilience4j-circuitbreaker'</span>, <span>version</span>: <span>'0.11.0'<br/></span><span>    </span>compile <span>group</span>: <span>'log4j'</span>, <span>name</span>: <span>'log4j'</span>, <span>version</span>: <span>'1.2.17'<br/></span><span>    </span>compile <span>group</span>: <span>'net.logstash.logback'</span>, <span>name</span>: <span>'logstash-logback-encoder'</span>, <span>version</span>: <span>'5.2'<br/></span><span>    </span>testCompile <span>group</span>: <span>'junit'</span>, <span>name</span>: <span>'junit'</span>, <span>version</span>: <span>'4.12'<br/></span>}</pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mceNonEditable"/>
+<p class="mceNonEditable"/>
+<ol start="2">
+<li>Open <kbd>application.yml</kbd> in the <kbd>src/main/resources</kbd> directory and add the following:</li>
+</ol>
+<pre style="padding-left: 60px"><span>server</span>:<br/>  <span>port</span>:<br/>    8082<br/><br/><span>management</span>:<br/>  <span>metrics</span>:<br/>    <span>export</span>:<br/>      <span>statsd</span>:<br/>        <span>enabled</span>: true<br/>        <span>flavor</span>: <span>"etsy"<br/></span><span>        </span><span>host</span>:<br/>          0.0.0.0<br/>        <span>port</span>:<br/>          8125</pre>
+<ol start="3">
+<li>Our application now supports emitting metrics to a locally-running instance of <kbd>statsd</kbd>. Open <kbd>MessageController.java</kbd> and add the <kbd>Timed</kbd> annotation to the class as well as the <kbd>get</kbd> method:</li>
+</ol>
+<pre style="padding-left: 60px"><span>package </span>com.packtpub.microservices.ch07.message.controllers<span>;<br/></span><span><br/></span><span>import </span>com.packtpub.microservices.ch07.message.MessageRepository<span>;<br/></span><span>import </span>com.packtpub.microservices.ch07.message.clients.SocialGraphClient<span>;<br/></span><span>import </span>com.packtpub.microservices.ch07.message.exceptions.MessageNotFoundException<span>;<br/></span><span>import </span>com.packtpub.microservices.ch07.message.exceptions.MessageSendForbiddenException<span>;<br/></span><span>import </span>com.packtpub.microservices.ch07.message.models.Message<span>;<br/></span><span>import </span>com.packtpub.microservices.ch07.message.models.UserFriendships<span>;<br/></span><span>import </span>io.micrometer.core.annotation.<span>Timed</span><span>;<br/></span><span>import </span>io.micrometer.statsd.StatsdMeterRegistry<span>;<br/></span><span>import </span>org.springframework.beans.factory.annotation.<span>Autowired</span><span>;<br/></span><span>import </span>org.springframework.http.ResponseEntity<span>;<br/></span><span>import </span>org.springframework.scheduling.annotation.<span>Async</span><span>;<br/></span><span>import </span>org.springframework.web.bind.annotation.*<span>;<br/></span><span>import </span>org.springframework.web.client.RestTemplate<span>;<br/></span><span>import </span>org.springframework.web.servlet.support.ServletUriComponentsBuilder<span>;<br/></span><span><br/></span><span>import </span>java.net.URI<span>;<br/></span><span>import </span>java.util.List<span>;<br/></span><span>import </span>java.util.concurrent.CompletableFuture<span>;<br/></span><span><br/></span><span>@RestController<br/></span><span>@Timed<br/></span><span>public class </span>MessageController {<br/><br/>    <span>@Autowired<br/></span><span>    </span><span>private </span>MessageRepository <span>messagesStore</span><span>;<br/></span><span><br/></span><span>    </span><span>@Autowired<br/></span><span>    </span><span>private </span>SocialGraphClient <span>socialGraphClient</span><span>;<br/></span><span><br/></span><span>    </span><span>@Autowired<br/></span><span>    </span><span>private </span>StatsdMeterRegistry <span>registry</span><span>;<br/></span><span><br/></span><span>    </span><span>@Timed</span>(<span>value</span>=<span>"get.messages"</span>)<br/>    <span>@RequestMapping</span>(<span>path </span>= <span>"/{id}"</span><span>, </span><span>method </span>= RequestMethod.<span>GET</span><span>, </span><span>produces </span>= <span>"application/json"</span>)<br/>    <span>public </span>Message <span>get</span>(<span>@PathVariable</span>(<span>"id"</span>) String id) <span>throws </span>MessageNotFoundException {<br/>        <span>registry</span>.counter(<span>"get_messages"</span>).increment()<span>;<br/></span><span>        return </span><span>messagesStore</span>.get(id)<span>;<br/></span><span>    </span>}<br/><br/>    <span>@RequestMapping</span>(<span>path </span>= <span>"/"</span><span>, </span><span>method </span>= RequestMethod.<span>POST</span><span>, </span><span>produces </span>= <span>"application/json"</span>)<br/>    <span>public </span>ResponseEntity&lt;Message&gt; <span>send</span>(<span>@RequestBody </span>Message message) <span>throws </span>MessageSendForbiddenException {<br/><br/>        List&lt;String&gt; friendships = <span>socialGraphClient</span>.getFriendships(message.getSender())<span>;<br/></span><span>        if </span>(!friendships.contains(message.getRecipient())) {<br/>            <span>throw new </span>MessageSendForbiddenException(<span>"Must be friends to send message"</span>)<span>;<br/></span><span>        </span>}<br/><br/>        Message saved = <span>messagesStore</span>.save(message)<span>;<br/></span><span>        </span>URI location = ServletUriComponentsBuilder<br/>                .<span>fromCurrentRequest</span>().path(<span>"/{id}"</span>)<br/>                .buildAndExpand(saved.getId()).toUri()<span>;<br/></span><span>        return </span>ResponseEntity.<span>created</span>(location).build()<span>;<br/></span><span>    </span>}<br/><br/>    <span>@Async<br/></span><span>    </span><span>public </span>CompletableFuture&lt;Boolean&gt; <span>isFollowing</span>(String fromUser<span>, </span>String toUser) {<br/><br/>        String url = String.<span>format</span>(<br/>                <span>"http://localhost:4567/followings?user=%s&amp;filter=%s"</span><span>,<br/></span><span>                </span>fromUser<span>, </span>toUser)<span>;<br/></span><span><br/></span><span>        </span>RestTemplate template = <span>new </span>RestTemplate()<span>;<br/></span><span>        </span>UserFriendships followings = template.getForObject(url<span>, </span>UserFriendships.<span>class</span>)<span>;<br/></span><span><br/></span><span>        return </span>CompletableFuture.<span>completedFuture</span>(<br/>                followings.getFriendships().isEmpty()<br/>        )<span>;<br/></span><span>    </span>}<br/>}</pre>
+<ol start="4">
+<li>In order to demonstrate that metrics are actually being emitted, we'll run <kbd>statsd</kbd> and graphite locally in a docker container. Having installed <kbd>docker</kbd>, run the following command, which will pull down an image from <kbd>dockerhub</kbd> and run a container locally:</li>
+</ol>
+<pre style="padding-left: 60px"><strong> docker run -d --name graphite --restart=always \</strong><br/><strong>   -p 80:80 -p 2003-2004:2003-2004 -p 2023-2024:2023-2024 \</strong><br/><strong>   -p 8125:8125/udp -p 8126:8126 \</strong><br/><strong>   hopsoft/graphite-statsd</strong></pre>
+<ol start="5">
+<li>Now, visit <kbd>http://localhost</kbd> to see your metrics!</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Collecting metrics with Prometheus</h1>
+                </header>
+            
+            <article>
+                
+<p><strong>Prometheus</strong> is an open source monitoring and alerting toolkit originally developed in 2012 at <strong>SoundCloud</strong>. It was inspired by Borgmon at Google. In contrast to the push model employed by systems such as <kbd>statsd</kbd>, Prometheus uses a pull model for collecting metrics. Instead of each service being responsible for pushing metrics to a <kbd>statsd</kbd> server, Prometheus is responsible for scraping an endpoint exposed by services that have metrics. This inversion of responsibilities provides some benefits when operating metrics at scale. Targets in Prometheus can be configured manually or via service discovery.</p>
+<p>In contrast to the hierarchical format that systems such as Graphite use to store metrics data, Prometheus employs a multidimensional data model. Time-series data in Prometheus is identified by a metric name (such as <kbd>http_request_duration_seconds</kbd>) and one or more labels (such as <kbd>service=message-service</kbd> and <kbd>method=POST</kbd>). This format can make it easier to standardize metrics across a number of different applications, which is particularly valuable in a microservices architecture.</p>
+<p class="mce-root"/>
+<p>In this recipe, we'll continue to use message-service and the Actuator and micrometer libraries. We'll configure micrometer to use the Prometheus metrics registry and we'll expose an endpoint that Prometheus can scrape in order to collect metrics from our service. We'll then configure Prometheus to scrape the message-service (running locally) and run Prometheus locally to verify that we can query our metrics.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<ol>
+<li>Open the message-service and edit <kbd>build.gradle</kbd> to include actuator and the micrometer-prometheus dependencies:</li>
+</ol>
+<pre style="padding-left: 60px">group <span>'com.packtpub.microservices'<br/></span>version <span>'1.0-SNAPSHOT'<br/></span><span><br/></span>buildscript {<br/>    repositories {<br/>        mavenCentral()<br/>    }<br/>    dependencies {<br/>        classpath <span>group</span>: <span>'org.springframework.boot'</span>, <span>name</span>: <span>'spring-boot-gradle-plugin'</span>, <span>version</span>: <span>'2.0.4.RELEASE'<br/></span><span>    </span>}<br/>}<br/><br/>apply <span>plugin</span>: <span>'java'<br/></span>apply <span>plugin</span>: <span>'org.springframework.boot'<br/></span><span><br/></span><span>sourceCompatibility </span>= <span>1.8<br/></span><span><br/></span>repositories {<br/>    mavenCentral()<br/>}<br/><br/>dependencies {<br/>    compile <span>group</span>: <span>'org.springframework.boot'</span>, <span>name</span>: <span>'spring-boot-starter-web'</span>, <span>version</span>: <span>'2.0.4.RELEASE'<br/></span><span>    </span>compile <span>group</span>: <span>'org.springframework.boot'</span>, <span>name</span>: <span>'spring-boot-starter-actuator'</span>, <span>version</span>: <span>'2.0.4.RELEASE'<br/></span><span>    </span>compile <span>group</span>: <span>'io.micrometer'</span>, <span>name</span>: <span>'micrometer-core'</span>, <span>version</span>: <span>'1.0.6'<br/></span><span>    </span>compile <span>group</span>: <span>'io.micrometer'</span>, <span>name</span>: <span>'micrometer-registry-prometheus'</span>, <span>version</span>: <span>'1.0.6'<br/></span><span>    </span>compile <span>group</span>: <span>'io.github.resilience4j'</span>, <span>name</span>: <span>'resilience4j-circuitbreaker'</span>, <span>version</span>: <span>'0.11.0'<br/></span><span>    </span>compile <span>group</span>: <span>'log4j'</span>, <span>name</span>: <span>'log4j'</span>, <span>version</span>: <span>'1.2.17'<br/></span><span>    </span>compile <span>group</span>: <span>'net.logstash.logback'</span>, <span>name</span>: <span>'logstash-logback-encoder'</span>, <span>version</span>: <span>'5.2'<br/></span><span>    </span>testCompile <span>group</span>: <span>'junit'</span>, <span>name</span>: <span>'junit'</span>, <span>version</span>: <span>'4.12'<br/></span>}</pre>
+<ol start="2">
+<li>Add the following to <kbd>application.yml</kbd>. This will enable an endpoint that exposes metrics collected in the Prometheus metrics registry. Notice that we're opening another port for the management endpoints added by <kbd>actuator</kbd>:</li>
+</ol>
+<pre style="padding-left: 60px"><span>server</span>:<br/>  <span>port</span>:<br/>    8082<br/><br/><span>management</span>:<br/>  <span>server</span>:<br/>    <span>port</span>:<br/>      8081<br/>  <span>endpoint</span>:<br/>    <span>metrics</span>:<br/>      <span>enabled</span>: true<br/>    <span>prometheus</span>:<br/>      <span>enabled</span>: true<br/>  <span>endpoints</span>:<br/>    <span>web</span>:<br/>      <span>base-path</span>: <span>"/manage"<br/></span><span>      </span><span>exposure</span>:<br/>        <span>include</span>: <span>"*"<br/></span><span>  </span><span>metrics</span>:<br/>    <span>export</span>:<br/>      <span>prometheus</span>:<br/>        <span>enabled</span>: true</pre>
+<ol start="3">
+<li>We can now test that our service is exposing metrics on the <kbd>/manage/prometheus</kbd> endpoint. Run the service and make the following <kbd>curl</kbd> request:</li>
+</ol>
+<pre style="padding-left: 60px"><strong>$ curl http://localhost:8081/manage/prometheus</strong><br/><br/><strong># HELP tomcat_global_request_seconds</strong><br/><strong># TYPE tomcat_global_request_seconds summary</strong><br/><strong>tomcat_global_request_seconds_count{name="http-nio-8082",} 0.0</strong><br/><strong>tomcat_global_request_seconds_sum{name="http-nio-8082",} 0.0</strong><br/><strong># HELP tomcat_sessions_active_max</strong><br/><strong># TYPE tomcat_sessions_active_max gauge</strong><br/><strong>tomcat_sessions_active_max 0.0</strong><br/><strong># HELP process_uptime_seconds The uptime of the Java virtual machine</strong><br/><strong># TYPE process_uptime_seconds gauge</strong><br/><strong>process_uptime_seconds 957.132</strong><br/><strong># HELP jvm_gc_live_data_size_bytes Size of old generation memory pool after a full GC</strong><br/><strong># TYPE jvm_gc_live_data_size_bytes gauge</strong><br/><strong>jvm_gc_live_data_size_bytes 1.9244032E7</strong></pre>
+<ol start="4">
+<li>Configure and run Prometheus in a docker container. Create a new file in the <kbd>/tmp</kbd> directory, called <kbd>prometheus.yml</kbd>, with information about our target:</li>
+</ol>
+<pre style="padding-left: 60px"><strong># my global config</strong><br/><strong>global:</strong><br/><strong>  scrape_interval: 15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.</strong><br/><strong>  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.</strong><br/><strong>  # scrape_timeout is set to the global default (10s).</strong><br/><br/><strong># Alertmanager configuration</strong><br/><strong>alerting:</strong><br/><strong>  alertmanagers:</strong><br/><strong>  - static_configs:</strong><br/><strong>    - targets:</strong><br/><strong>      # - alertmanager:9093</strong><br/><br/><strong># Load rules once and periodically evaluate them according to the global 'evaluation_interval'.</strong><br/><strong>rule_files:</strong><br/><strong>  # - "first_rules.yml"</strong><br/><strong>  # - "second_rules.yml"</strong><br/><br/><strong># A scrape configuration containing exactly one endpoint to scrape:</strong><br/><strong># Here it's Prometheus itself.</strong><br/><strong>scrape_configs:</strong><br/><strong>  # The job name is added as a label `job=&lt;job_name&gt;` to any timeseries scraped from this config.</strong><br/><strong>  - job_name: 'prometheus'</strong><br/><br/><strong>    # metrics_path defaults to '/metrics'</strong><br/><strong>    # scheme defaults to 'http'.</strong><br/><br/><strong>    static_configs:</strong><br/><strong>    - targets: ['localhost:9090']</strong><br/><br/><strong>  - job_name: 'message-service'</strong><br/><strong>    metrics_path: '/manage/prometheus'</strong><br/><strong>    static_configs:</strong><br/><strong>    - targets: ['localhost:8081']</strong></pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mceNonEditable"/>
+<ol start="5">
+<li>Download and extract the version of Prometheus for your platform. Instructions are on the Prometheus website (<a href="https://prometheus.io/docs/introduction/first_steps/">https://prometheus.io/docs/introduction/first_steps/</a>). Run Prometheus with the configuration file we created in the previous step:</li>
+</ol>
+<pre style="padding-left: 60px"><strong>$ ./prometheus --config.file=/tmp/prometheus.yml</strong></pre>
+<ol start="6">
+<li>Open <kbd>http://localhost:9090</kbd> in your browser to issue Prometheus queries and see your metrics! Until you start making requests to your service, the only metrics you'll see will be the JVM and system metrics, but this should give you an idea of the kind of querying you can do with Prometheus and demonstrate how the scraper works.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Making debugging easier with tracing</h1>
+                </header>
+            
+            <article>
+                
+<p>In a microservices architecture, a single request can go through several different services and result in writes to several different data stores and event queues. When debugging a production incident, it isn't always clear whether a problem exists in one system or another. This lack of specificity means metrics and logs only form a small part of the picture. Sometimes we need to zoom out and look at the complete life cycle of a request from the user agent to a terminal service and back again.</p>
+<p>In 2010, engineers at Google published a paper describing <strong>Dapper</strong> (<a href="https://research.google.com/archive/papers/dapper-2010-1.pdf">https://research.google.com/archive/papers/dapper-2010-1.pdf</a>), a large-scale distributed systems tracing infrastructure. The paper described how Google had been using an internally developed tracing system to aid in observing system behavior and debugging performance issues. This work inspired others, including engineers at Twitter who, in 2012, introduced an open source distributed tracing system called <strong>Zipkin</strong> (<a href="https://blog.twitter.com/engineering/en_us/a/2012/distributed-systems-tracing-with-zipkin.html">https://blog.twitter.com/engineering/en_us/a/2012/distributed-systems-tracing-with-zipkin.html</a>). Zipkin started out as an implementation of the Dapper paper but evolved into a full set of tools for analyzing performance and inspecting requests to Twitter infrastructure.</p>
+<p>All of the work going on in the tracing space made apparent a need for some kind of standardized API. The <strong>OpenTracing</strong> (<a href="http://opentracing.io/">http://opentracing.io/</a>) framework is an attempt to do just that. OpenTracing defines a specification detailing a pan-language standard for traces. Many engineers from different companies have contributed to this effort, including the engineers at Uber who originally created Jaeger (<a href="https://eng.uber.com/distributed-tracing/">https://eng.uber.com/distributed-tracing/</a>), an open source, end-to-end distributed tracing system that conforms to the OpenTracing specification.</p>
+<p class="mce-root"/>
+<p>In this recipe, we'll modify our message-service to add support for tracing. We'll then run Jaeger in a docker container so that we can see a few traces in practice.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<ol>
+<li>Open the message-service project and replace the contents of <kbd>build.gradle</kbd> with the following:</li>
+</ol>
+<pre style="padding-left: 60px">group <span>'com.packtpub.microservices'<br/></span>version <span>'1.0-SNAPSHOT'<br/></span><span><br/></span>buildscript {<br/>    repositories {<br/>        mavenCentral()<br/>    }<br/>    dependencies {<br/>        classpath <span>group</span>: <span>'org.springframework.boot'</span>, <span>name</span>: <span>'spring-boot-gradle-plugin'</span>, <span>version</span>: <span>'2.0.4.RELEASE'<br/></span><span>    </span>}<br/>}<br/><br/>apply <span>plugin</span>: <span>'java'<br/></span>apply <span>plugin</span>: <span>'org.springframework.boot'<br/></span><span><br/></span><span>sourceCompatibility </span>= <span>1.8<br/></span><span><br/></span>repositories {<br/>    mavenCentral()<br/>}<br/><br/>dependencies {<br/>    compile <span>group</span>: <span>'org.springframework.boot'</span>, <span>name</span>: <span>'spring-boot-starter-web'</span>, <span>version</span>: <span>'2.0.4.RELEASE'<br/></span><span>    </span>compile <span>group</span>: <span>'org.springframework.boot'</span>, <span>name</span>: <span>'spring-boot-starter-actuator'</span>, <span>version</span>: <span>'2.0.4.RELEASE'<br/></span><span>    </span>compile <span>group</span>: <span>'io.micrometer'</span>, <span>name</span>: <span>'micrometer-core'</span>, <span>version</span>: <span>'1.0.6'<br/></span><span>    </span>compile <span>group</span>: <span>'io.micrometer'</span>, <span>name</span>: <span>'micrometer-registry-statsd'</span>, <span>version</span>: <span>'1.0.6'<br/></span><span>    </span>compile <span>group</span>: <span>'io.opentracing.contrib'</span>, <span>name</span>: <span>'opentracing-spring-cloud-starter-jaeger'</span>, <span>version</span>: <span>'0.1.13'<br/></span><span>    </span>compile <span>group</span>: <span>'io.github.resilience4j'</span>, <span>name</span>: <span>'resilience4j-circuitbreaker'</span>, <span>version</span>: <span>'0.11.0'<br/></span><span>    </span>compile <span>group</span>: <span>'log4j'</span>, <span>name</span>: <span>'log4j'</span>, <span>version</span>: <span>'1.2.17'<br/></span><span>    </span>compile <span>group</span>: <span>'net.logstash.logback'</span>, <span>name</span>: <span>'logstash-logback-encoder'</span>, <span>version</span>: <span>'5.2'<br/></span><span>    </span>testCompile <span>group</span>: <span>'junit'</span>, <span>name</span>: <span>'junit'</span>, <span>version</span>: <span>'4.12'<br/></span>}</pre>
+<ol start="2">
+<li>Open <kbd>application.yml</kbd> in the <kbd>src/main/resources</kbd> directory and add a section for <kbd>opentracing</kbd> configuration. Here we're configuring our <kbd>opentracing</kbd> implementation to connect to an instance of Jaeger running locally on port <kbd>6831</kbd>:</li>
+</ol>
+<pre style="padding-left: 60px"><span>opentracing</span>:<br/>  <span>jaeger</span>:<br/>    <span>udp-sender</span>:<br/>      <span>host</span>: <span>"localhost"<br/></span><span>      </span><span>port</span>:<br/>        6831<br/><br/><span>spring</span>:<br/>  <span>application</span>:<br/>    <span>name</span>: <span>"message-service"</span></pre>
+<ol start="3">
+<li>In order to collect traces, we'll run an instance of Jaeger locally. Docker makes this easy with the following command:</li>
+</ol>
+<pre style="padding-left: 60px"><strong>docker run -d --name jaeger \</strong><br/><strong>  -e COLLECTOR_ZIPKIN_HTTP_PORT=9411 \</strong><br/><strong>  -p 5775:5775/udp \</strong><br/><strong>  -p 6831:6831/udp \</strong><br/><strong>  -p 6832:6832/udp \</strong><br/><strong>  -p 5778:5778 \</strong><br/><strong>  -p 16686:16686 \</strong><br/><strong>  -p 14268:14268 \</strong><br/><strong>  -p 9411:9411 \</strong><br/><strong>  jaegertracing/all-in-one:latest</strong></pre>
+<ol start="4">
+<li>Run message-service and make a few example requests (even if they result in a 404). Open <kbd>http://localhost:16686</kbd> in your browser and you'll see Jaeger's web UI. Hit search and explore the trace data collected so far!</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Alerting us when something goes wrong</h1>
+                </header>
+            
+            <article>
+                
+<p>If you're seriously looking at microservices, you're probably running a 24/7 service. Customers demand that your service is available to use at any time. Contrast this increase in the need for availability with the reality that distributed systems are constantly experiencing some kind of failure. No system is ever completely healthy.</p>
+<p class="mce-root"/>
+<p>Whether you have a monolith or microservices architecture, it is pointless to try to avoid production incidents altogether. Instead, you should try to optimize how you are able to respond to failures, limiting their impact on customers by reducing the time it takes to resolve them.</p>
+<p>Reducing the time it takes to resolve incidents (often measured as mean time to resolve or MTTR) involves first reducing the <strong>Mean Time To Detect</strong> (<strong>MTTD</strong>). Being able to accurately alert the right on-call engineer when a service is in a customer-impacting failure state is paramount to being able to maintain uptime. Good alerts should be actionable and urgent; if your system notifies on-call engineers when failures are either unactionable or non-urgent (not customer-impacting), you risk burning out on-call engineers and creating what is commonly referred to as alert fatigue. Alert fatigue is very real and can have a more catastrophic impact on uptime than any amount of software bugs or failing hardware. It is essential to continuously improve your system's alerting to get thresholds and other factors just right, to prevent false positives while maintaining alerting for truly customer-impacting incidents.</p>
+<p>Alerting infrastructure is not something you want to build yourself. <strong>PagerDuty</strong> is an SaaS tool that allows you to create escalation policies and schedules for teams of engineers who are on-call for specific services. Using PagerDuty, you can set up a rotating schedule so that an engineer on a team of five, for example, can expect to be on-call one week in every five. Escalation policies allow you to configure a set of steps in case the on-call engineer is unavailable (perhaps they're driving their car on the freeway). Escalation policies are often configured to page a secondary on-call schedule, a manager, or even the entire team in the event that an incident goes unacknowledged for a certain amount of time. Using a system such as PagerDuty allows engineers on a team to enjoy much-needed off-call time while knowing that customer-impacting incidents will be responded to promptly.</p>
+<p>Alerts can be configured manually using any number of supporting integrations, but this is time-consuming and error-prone. Instead, it's desirable to have a system that allows you to automate the creation and maintenance of alerts for your services. The Prometheus monitoring and alerting toolkit covered in this chapter includes a tool called Alertmanager which allows you to do just that. In this recipe, we'll modify our message-service to add alerts using Alertmanager. Specifically, we'll configure a single alert that fires when the average response time exceeds 500 ms for at least 5 minutes. We'll work from the version of message-service that already includes Prometheus metrics. We won't add any PagerDuty integration in this recipe, since that would require a PagerDuty account in order to follow along. PagerDuty has an excellent integration guide on its website. We'll configure <kbd>alertmanager</kbd> to send a simple WebHook-based alert.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mceNonEditable"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>Now, let's have a look at the following steps:</p>
+<ol>
+<li>In a previous recipe, we configured Prometheus with a file called <kbd>prometheus.yml</kbd>. We'll need to add the <kbd>alertmanager</kbd> configuration to this file, so open it again and add the following:</li>
+</ol>
+<pre style="padding-left: 60px"># my global config<br/>global:<br/>  scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.<br/>  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.<br/>  # scrape_timeout is set to the global default (10s).<br/><br/><strong># Alertmanager configuration</strong><br/><strong>alerting:</strong><br/><strong>  alertmanagers:</strong><br/><strong>  - static_configs:</strong><br/><strong>    - targets:</strong><br/><strong>      - localhost:9093</strong><br/><br/># Load rules once and periodically evaluate them according to the global 'evaluation_interval'.<br/><strong>rule_files:</strong><br/><strong>    - "rules.yml"</strong><br/>  # - "first_rules.yml"<br/>  # - "second_rules.yml"<br/><br/># A scrape configuration containing exactly one endpoint to scrape:<br/># Here it's Prometheus itself.<br/>scrape_configs:<br/>  # The job name is added as a label `job=&lt;job_name&gt;` to any timeseries scraped from this config.<br/>  - job_name: 'prometheus'<br/><br/>    # metrics_path defaults to '/metrics'<br/>    # scheme defaults to 'http'.<br/><br/>    static_configs:<br/>    - targets: ['localhost:9090']<br/><br/>  - job_name: 'message-service'<br/>    metrics_path: '/manage/prometheus'<br/>    static_configs:<br/>    - targets: ['localhost:8081']</pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mceNonEditable"/>
+<p class="mceNonEditable"/>
+<ol start="2">
+<li>Create a new file called <kbd>/tmp/rules.yml</kbd>. This file defines the rules we want Prometheus to be able to creates alerts for:</li>
+</ol>
+<pre style="padding-left: 60px">groups:<br/>- name: message-service-latency<br/>  rules:<br/>  - alert: HighLatency<br/>    expr: rate(http_server_requests_seconds_sum{job="message-service", instance="localhost:8081"}[1m]) / rate(http_server_requests_seconds_count{job="message-service", instance="localhost:8081"}[1m]) &gt; .5<br/>    for: 1m<br/>    labels:<br/>      severity: 'critical'<br/>    annotations:<br/>      summary: High request latency</pre>
+<ol start="3">
+<li>Create a new file called <kbd>/tmp/alertmanager.yml</kbd>. This is the file that will describe our alerting configuration. It is broken into a few different sections, global sets of certain configuration options that impact how <kbd>alertmanager</kbd> works. The section called receivers is where we configure our alert notification systems. In this case, it's a WebHook to a service running locally. This is just for demo purposes; we'll write a small ruby script that listens for HTTP requests and prints the payload to the standard output:</li>
+</ol>
+<pre style="padding-left: 60px">global:<br/>  resolve_timeout: 5m<br/><br/>route:<br/>  group_by: ['alertname']<br/>  group_wait: 10s<br/>  group_interval: 10s<br/>  repeat_interval: 1h<br/>  receiver: 'web.hook'<br/><br/>receivers:<br/>- name: 'web.hook'<br/>  webhook_configs:<br/>  - url: 'http://127.0.0.1:4567/'</pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mceNonEditable"/>
+<p class="mceNonEditable"/>
+<ol start="4">
+<li>Here's the source code for the small ruby service that will print out our alerts:</li>
+</ol>
+<pre style="padding-left: 60px">require 'sinatra'<br/><br/>post '/' do<br/>    body = request.body.read()<br/>    puts body<br/>    return body<br/>end</pre>
+<ol start="5">
+<li>Run the ruby script, restart <kbd>prometheus</kbd>, and start <kbd>alertmanager</kbd>. With these three systems running, we'll be ready to test our alert:</li>
+</ol>
+<pre style="padding-left: 60px"><strong>$ ruby echo.rb</strong><br/><strong>...</strong><br/><br/><strong>$ ./prometheus --config.file=/tmp/prometheus.yml</strong><br/><br/><strong>$ ./alertmanager --config.file=/tmp/alertmanager.yml</strong><br/><strong>...</strong></pre>
+<ol start="6">
+<li>In order to get our alert to fire, open message-service and add the following line to <kbd>MessageController.java</kbd>. It's a single line that will force the controller to sleep for 600 milliseconds before returning a response. Note that this is above our threshold described in our rules configuration:</li>
+</ol>
+<pre style="padding-left: 60px"><span>@RequestMapping</span>(<span>path </span>= <span>"/{id}"</span><span>, </span><span>method </span>= RequestMethod.<span>GET</span><span>, </span><span>produces </span>= <span>"application/json"</span>)<br/><span>public </span>Message <span>get</span>(<span>@PathVariable</span>(<span>"id"</span>) String id) <span>throws </span>MessageNotFoundException {<br/><span>    <br/></span><strong><span>    try { </span>Thread.<span>sleep</span>(<span>600</span>)</strong><span><strong>; } catch (InterruptedException e) } e.printStackTrace(); }</strong> <br/></span><span>    return </span><span>messagesStore</span>.get(id)<span>;<br/></span>}</pre>
+<ol start="7">
+<li>With that in place, run your updated message service and make a number of requests to it. After one minute, Prometheus should notify Alertmanager, which should then notify your local debug ruby service. Your alert is working!</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

@@ -1,0 +1,245 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Scaling</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">In this chapter, we will cover the following recipes:</p>
+<ul>
+<li>Load testing microservices with Vegeta</li>
+<li>Load testing microservices with Gatling</li>
+<li>Building auto-scaling clusters</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Introduction</h1>
+                </header>
+            
+            <article>
+                
+<p>A significant advantage of using microservices over a monolith architecture is that microservices can be separately scaled to meet the unique traffic demands they serve. A service that must do work for every single request will have very different scaling needs than a service that only needs to perform work for specific kinds of request.</p>
+<p>Because microservices encapsulate ownership over a single-domain entity, they can be load tested independently. They can also be configured to scale automatically based on demand. In this chapter, we'll discuss load testing using two different load testing tools and set up auto-scaling groups in AWS that can scale on demand. Finally, we'll discuss strategies for capacity-planning.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Load testing microservices with Vegeta</h1>
+                </header>
+            
+            <article>
+                
+<p>Load testing is an important part of predicting how your service is going to behave over time. When we are performing load testing, we shouldn't just ask simple questions, such as "<em>How many requests per second is our system capable of serving?</em>" Instead, we should try to understand how our whole system performs under various load conditions. In order to answer this question, we need to understand the infrastructure that makes up our system and the dependencies that a particular service has.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mceNonEditable"/>
+<p>For example, is the service behind a load-balancer? How about a CDN? What other caching mechanisms are used? All of these questions and more can be answered by our systems <span>having good observability</span>.</p>
+<p><strong>Vegeta</strong> is an open source load testing utility designed to test HTTP services with a constant request rate. It's a versatile tool that can be used as a command-line utility or a library. In this recipe, we'll focus on using the command-line utility. Vegeta allows you to specify targets as URLs in a separate file—optionally with custom headers and request bodies—that can be used as an input to the command-line tool. The command-line tool can then attack the targets in the file, with various options to control the request rate and duration, as well as other variables.</p>
+<p>In this recipe, we'll be using Vegeta to test the message-service we've been working with in previous chapters. We'll test a simple request path that includes creating a new message and retrieving a list of messages.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's have a look at the following steps:</p>
+<ol>
+<li>We'll modify our message-service and add a new endpoint that allows us to query all messages for a particular user. This introduces the notion of an inbox, so we'll modify our <kbd>MessageRepository</kbd> class to add a new in-memory map of usernames to lists of messages, as shown in the following code. Note that in a production system, we'd choose a more durable and flexible store, but this will suffice for demonstration purposes:</li>
+</ol>
+<pre style="padding-left: 60px"><span>package </span>com.packtpub.microservices.ch08.message<span>;<br/></span><span><br/></span><span>import </span>com.packtpub.microservices.ch08.message.exceptions.MessageNotFoundException<span>;<br/></span><span>import </span>com.packtpub.microservices.ch08.message.models.Message<span>;<br/></span><span><br/></span><span>import </span>java.util.*<span>;<br/></span><span>import </span>java.util.concurrent.ConcurrentHashMap<span>;<br/></span><span><br/></span><span>public class </span>MessageRepository {<br/><br/>    <span>private </span>ConcurrentHashMap&lt;String<span>, </span>Message&gt; <span>messages</span><span>;<br/></span><span>    private </span>ConcurrentHashMap&lt;String<span>, </span>List&lt;Message&gt;&gt; <span>inbox</span><span>;<br/></span><span><br/></span><span>    public </span><span>MessageRepository</span>() {<br/>        <span>messages </span>= <span>new </span>ConcurrentHashMap&lt;&gt;()<span>;<br/></span><span>        </span><span>inbox </span>= <span>new </span>ConcurrentHashMap&lt;&gt;()<span>;<br/></span><span>    </span>}<br/><br/>    <span>public </span>Message <span>save</span>(Message message) {<br/>        UUID uuid = UUID.<span>randomUUID</span>()<span>;<br/></span><span>        </span>Message saved = <span>new </span>Message(uuid.toString()<span>, </span>message.getSender()<span>, </span>message.getRecipient()<span>,<br/></span><span>                </span>message.getBody()<span>, </span>message.getAttachmentUri())<span>;<br/></span><span>        </span><span>messages</span>.put(uuid.toString()<span>, </span>saved)<span>;<br/></span><span>        </span>List&lt;Message&gt; userInbox = <span>inbox</span>.getOrDefault(message.getRecipient()<span>, new </span>ArrayList&lt;&gt;())<span>;<br/></span><span>        </span>userInbox.add(saved)<span>;<br/></span><span>        </span><span>inbox</span>.put(message.getRecipient()<span>, </span>userInbox)<span>;<br/></span><span>        return </span>saved<span>;<br/></span><span>    </span>}<br/><br/>    <span>public </span>Message <span>get</span>(String id) <span>throws </span>MessageNotFoundException {<br/>        <span>if </span>(<span>messages</span>.containsKey(id)) {<br/>            <span>return </span><span>messages</span>.get(id)<span>;<br/></span><span>        </span>} <span>else </span>{<br/>            <span>throw new </span>MessageNotFoundException(<span>"Message " </span>+ id + <span>" could not be found"</span>)<span>;<br/></span><span>        </span>}<br/>    }<br/><br/>    <span>public </span>List&lt;Message&gt; <span>getByUser</span>(String userId) {<br/>        <span>return </span><span>inbox</span>.getOrDefault(userId<span>, new </span>ArrayList&lt;&gt;())<span>;<br/></span><span>    </span>}<br/>}</pre>
+<ol start="2">
+<li>Modify <kbd>MessageController</kbd> to add the endpoint itself:</li>
+</ol>
+<pre style="padding-left: 60px">package com.packtpub.microservices.ch08.message.controllers;<br/><br/>import com.packtpub.microservices.ch08.message.MessageRepository;<br/>import com.packtpub.microservices.ch08.message.clients.SocialGraphClient;<br/>import com.packtpub.microservices.ch08.message.exceptions.MessageNotFoundException;<br/>import com.packtpub.microservices.ch08.message.exceptions.MessageSendForbiddenException;<br/>import com.packtpub.microservices.ch08.message.exceptions.MessagesNotFoundException;<br/>import com.packtpub.microservices.ch08.message.models.Message;<br/>import com.packtpub.microservices.ch08.message.models.UserFriendships;<br/>import org.springframework.beans.factory.annotation.Autowired;<br/>import org.springframework.http.ResponseEntity;<br/>import org.springframework.scheduling.annotation.Async;<br/>import org.springframework.web.bind.annotation.*;<br/>import org.springframework.web.client.RestTemplate;<br/>import org.springframework.web.servlet.support.ServletUriComponentsBuilder;<br/><br/>import java.net.URI;<br/>import java.util.List;<br/>import java.util.concurrent.CompletableFuture;<br/><br/>@RestController<br/>public class MessageController {<br/><br/>    @Autowired<br/>    private MessageRepository messagesStore;<br/><br/>    @Autowired<br/>    private SocialGraphClient socialGraphClient;<br/><br/>    @RequestMapping(path = "/{id}", method = RequestMethod.GET, produces = "application/json")<br/>    public Message get(@PathVariable("id") String id) throws MessageNotFoundException {<br/>        return messagesStore.get(id);<br/>    }<br/><br/>    @RequestMapping(path = "/", method = RequestMethod.POST, produces = "application/json")<br/>    public ResponseEntity&lt;Message&gt; send(@RequestBody Message message) throws MessageSendForbiddenException {<br/>        List&lt;String&gt; friendships = socialGraphClient.getFriendships(message.getSender());<br/><br/>        if (!friendships.contains(message.getRecipient())) {<br/>            throw new MessageSendForbiddenException("Must be friends to send message");<br/>        }<br/><br/>        Message saved = messagesStore.save(message);<br/>        URI location = ServletUriComponentsBuilder<br/>                .fromCurrentRequest().path("/{id}")<br/>                .buildAndExpand(saved.getId()).toUri();<br/>        return ResponseEntity.created(location).build();<br/>    }<br/><br/>    @RequestMapping(path = "/user/{userId}", method = RequestMethod.GET, produces = "application/json")<br/>    public ResponseEntity&lt;List&lt;Message&gt;&gt; getByUser(@PathVariable("userId") String userId) throws MessageNotFoundException {<br/>        List&lt;Message&gt; inbox = messagesStore.getByUser(userId);<br/>        if (inbox.isEmpty()) {<br/>            throw new MessageNotFoundException("No messages found for user: " + userId);<br/>        }<br/>        return ResponseEntity.ok(inbox);<br/>    }<br/><br/>    @Async<br/>    public CompletableFuture&lt;Boolean&gt; isFollowing(String fromUser, String toUser) {<br/>        String url = String.format(<br/>                "http://localhost:4567/followings?user=%s&amp;filter=%s",<br/>                fromUser, toUser);<br/><br/>        RestTemplate template = new RestTemplate();<br/>        UserFriendships followings = template.getForObject(url, UserFriendships.class);<br/><br/>        return CompletableFuture.completedFuture(<br/>                followings.getFriendships().isEmpty()<br/>        );<br/>    }<br/>}<br/><br/></pre>
+<ol start="3">
+<li>We'll need a mock socialgraph service, so create the following Ruby script in a file called <kbd>socialgraph.rb</kbd> and run it:</li>
+</ol>
+<pre style="padding-left: 60px">require 'sinatra'<br/><br/>get '/friendships/:user' do<br/>    content_type :json<br/>    {<br/>        username: "user:32134",<br/>        friendships: [<br/>            "user:12345"<br/>        ]<br/>    }.to_json<br/>end</pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mceNonEditable"/>
+<ol start="4">
+<li>Install <kbd>vegeta</kbd>. If you're on Mac OS X and have HomeBrew installed, you can just use the following:</li>
+</ol>
+<pre style="padding-left: 60px"><strong>$ brew update &amp;&amp; brew install vegeta</strong></pre>
+<ol start="5">
+<li>Before we can launch an attach with <kbd>vegeta</kbd>, we'll need to create a <kbd>targets</kbd> file. The first request we'll make will create a message with the specified request body. The second request will get a list of messages by user ID. Create a file called <kbd>message-request-body.json</kbd>, as shown in the following code:</li>
+</ol>
+<pre style="padding-left: 60px">{<br/>    "sender": "user:32134",<br/>    "recipient": "user:12345",<br/>    "body": "Hello there!",<br/>    "attachment_uri": "http://foo.com/image.png"<br/>}</pre>
+<ol start="6">
+<li>Create another file called <kbd>targets.txt</kbd>, as shown in the following code:</li>
+</ol>
+<pre style="padding-left: 60px">POST http://localhost:8082/<br/>Content-Type: application/json<br/>@message-request-body.json<br/><br/>GET http://localhost:8082/user:12345</pre>
+<ol start="7">
+<li>With both our message-service and our mock socialgraph service running, we're ready to load test these two services using the following code:</li>
+</ol>
+<pre style="padding-left: 60px"><strong>$ cat targets.txt| vegeta attack -duration=60s -rate=100 | vegeta report -reporter=text</strong><br/><br/><strong>Requests      [total, rate]            6000, 100.01</strong><br/><strong>Duration      [total, attack, wait]    1m0.004668981s, 59.99172349s, 12.945491ms</strong><br/><strong>Latencies     [mean, 50, 95, 99, max]  10.683968ms, 5.598656ms, 35.108562ms, 98.290388ms, 425.186942ms</strong><br/><strong>Bytes In      [total, mean]            667057195, 111176.20</strong><br/><strong>Bytes Out     [total, mean]            420000, 70.00</strong><br/><strong>Success       [ratio]                  99.80%</strong><br/><strong>Status Codes  [code:count]             201:3000  500:12  200:2988</strong><br/><strong>Error Set:</strong><br/><strong>50</strong></pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mceNonEditable"/>
+<p>Experiment with different duration values and request rates to see how the behavior of the system changes. If you increase the rate to 1,000, what happens? Depending on hardware and other factors, it's possible that the single-threaded Ruby mock service will be overwhelmed and trip the circuit breaker we added to the message-service. This should change certain details, such as the success rate, so it's an important observation to make. What would happen if you load tested the mock Ruby service separately?</p>
+<p>In this recipe, we load tested the message-service, which depends on the socialgraph service. Both services were running locally, which was necessary for demonstration purposes and gives us some insight into how the two systems behave. In a production system, it's vital to load test your services in production so that you include all of the infrastructure involved in serving requests (load balancers, caches, and so on). In a production system, you can also monitor dashboards and look for changes to how your system behaves under load conditions.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Load testing microservices with Gatling</h1>
+                </header>
+            
+            <article>
+                
+<p>Gatling is an open source load testing tool that allows users to script custom scenarios using a <em>Scala-based DSL</em>. Scenarios can go beyond simple straight path testing and involve multiple steps, even simulating user behavior, such as pauses and making decisions about how to proceed based on output in the test. Gatling can be used to automate the load testing of microservices or even browser-based web applications.</p>
+<p>In the previous recipe, we used Vegeta to send a constant request rate to our message-service. Our request path created a new message and then retrieved all messages for a user. This method had the advantage of being able to test the response time of retrieving all messages for a user as the list of messages grew. Vegeta excels at this type of testing, but because it is fed attack targets from a static file, you cannot use Vegeta to build dynamic request paths based on the responses from previous requests.</p>
+<p>Because Gatling uses a DSL to script load testing scenarios, it's possible to make a request, capture some element of the response, and use that output to make decisions about future requests. In this recipe, we'll use Gatling to script a load testing scenario that involves creating a message and then retrieving that specific message by its ID. This is a very different kind of test than what we did in the previous recipe, so it's a good opportunity to demonstrate the differences between Vegeta and Gatling.</p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's check the following steps:</p>
+<ol>
+<li>Download <kbd>gatling</kbd> for your platform. Gatling is distributed as a ZIP bundle and is available for download at <a href="https://gatling.io/download/">https://gatling.io/download/</a>. Unzip the bundle into the directory of your choice:</li>
+</ol>
+<pre style="padding-left: 60px"><strong>$ unzip gatling-charts-highcharts-bundle-2.3.1-bundle.zip</strong><br/><strong>...</strong><br/><strong>$ cd gatling-charts-highcharts-bundle-2.3.1</strong></pre>
+<ol start="2">
+<li>Simulations for <kbd>gatling</kbd> are placed by default in the <kbd>user-files/simulations</kbd> directory. Create a new subdirectory called <kbd>messageservice</kbd> and a new file called <kbd>BasicSimulation.scala</kbd>. This is the file that contains the code that describes your scenario. In our scenario, we'll use the Gatling DSL to script a POST request to the create message endpoint followed by a GET request to the message endpoint, as shown in the following code:</li>
+</ol>
+<pre style="padding-left: 60px">package messageservice<br/><br/>import io.gatling.core.Predef._<br/>import io.gatling.http.Predef._<br/>import scala.concurrent.duration._<br/><br/>class BasicSimulation extends Simulation {<br/><br/>  val httpConf = http<br/>    .baseURL("http://localhost:8082")<br/>    .acceptHeader("application/json")<br/><br/>  val scn = scenario("Create a message")<br/>    .exec(<br/>      http("createMessage")<br/>        .post("/")<br/>        .header("Content-Type", "application/json")<br/>        .body(StringBody("""{"sender": "user:32134", "recipient": "user:12345", "body": "Hello there!", "attachment_uri": "http://foo.com/image.png"}"""))<br/>        .check(header(HttpHeaderNames.Location).saveAs("location"))<br/><br/>    )<br/>    .pause(1)<br/>    .exec(<br/>      http("getMessage")<br/>        .get("${location}")<br/>    )<br/><br/>  setUp(scn.inject(atOnceUsers(50)).protocols(httpConf))<br/>}<br/><br/></pre>
+<ol start="3">
+<li>Create the same mock Ruby service we used in the previous recipe and run it:</li>
+</ol>
+<pre style="padding-left: 60px">require 'sinatra'<br/><br/>get '/friendships/:user' do<br/>    content_type :json<br/>    {<br/>        username: "user:32134",<br/>        friendships: [<br/>            "user:12345"<br/>        ]<br/>    }.to_json<br/>end</pre>
+<ol start="4">
+<li>Run the Ruby mock service as well as our message-service. From the Gatling directory, launch Gatling by running <kbd>bin/gatling.sh</kbd>. You'll be prompted to select a simulation to run. Choose <kbd>messageservice.BasicSimulation</kbd>:</li>
+</ol>
+<pre style="padding-left: 60px"><strong>$ bin/gatling.sh</strong><br/><strong>GATLING_HOME is set to /Users/posman/projects/microservices-cookbook/chapter08/gatling-charts-highcharts-bundle-2.3.1</strong><br/><strong>Choose a simulation number:</strong><br/><strong>     [0] computerdatabase.BasicSimulation</strong><br/><strong>     [1] computerdatabase.advanced.AdvancedSimulationStep01</strong><br/><strong>     [2] computerdatabase.advanced.AdvancedSimulationStep02</strong><br/><strong>     [3] computerdatabase.advanced.AdvancedSimulationStep03</strong><br/><strong>     [4] computerdatabase.advanced.AdvancedSimulationStep04</strong><br/><strong>     [5] computerdatabase.advanced.AdvancedSimulationStep05</strong><br/><strong>     [6] messageservice.BasicSimulation</strong><br/><strong>6</strong><br/><strong>Select simulation id (default is 'basicsimulation'). Accepted characters are a-z, A-Z, 0-9, - and _</strong><br/><br/><strong>Select run description (optional)</strong><br/><br/><strong>Simulation messageservice.BasicSimulation started...</strong><br/><strong>..</strong></pre>
+<ol start="5">
+<li>The output will show some statistics about the results from the load test. Requests will be bucketed into under 800 ms, between 800 ms and 1,200 ms, and over 1,200 ms. A link to an HTML file will be displayed. Open it in a browser to see charts and other useful visualizations about your load test.</li>
+</ol>
+<p>As we've seen in this recipe, Gatling offers a lot of flexibility in running load tests. With some clever scripting using the DSL, it's possible to more closely simulate production traffic by parsing log files and generating requests, making dynamic decisions based on latency, responses, or other elements of requests. Both Gatling and Vegeta are great load testing tools that you can use to explore how your systems operate under various load conditions.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Building auto-scaling clusters</h1>
+                </header>
+            
+            <article>
+                
+<p>With the advent of virtualization and the move to cloud-based infrastructure, applications can exist on elastic infrastructure designed to grow and shrink based on anticipated or measured traffic patterns. If your application experiences peak periods, you shouldn't have to provision full capacity during non-peak periods, wasting compute resources and money. From virtualization to containers and container schedulers, it's more and more common to have dynamic infrastructure that changes to accommodate the needs of your system.</p>
+<p>Microservices are a natural fit for auto-scaling. Because we can scale separate parts of a system separately, it's easier to measure the scaling needs of a specific service and its dependencies.</p>
+<p>There are many ways to create auto-scaling clusters. In the next chapter, we'll talk about container orchestration tools, but without skipping ahead, auto-scaling clusters can also be created in any cloud provider. In this recipe, we'll cover creating auto-scaling compute clusters using <em>Amazon Web Services</em>, particularly Amazon EC2 Auto Scaling. We'll create a cluster with multiple EC2 instances running our message-service behind an <strong><span>Application Load Balancer</span></strong> (<strong><span>ALB</span></strong>). We'll configure out cluster to automatically add instances based on CPU utilization.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's check the following steps:</p>
+<ol>
+<li>This recipe requires an AWS account. If you do not already have an AWS account, create one at <a href="https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/">https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/</a> and create a set of access keys at <a href="https://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html">https://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html</a>. Install the <kbd>aws cli</kbd> utility. If you're on OS X and have HomeBrew installed, this can be done with the following:</li>
+</ol>
+<pre style="padding-left: 60px"><strong>$ brew install aws</strong></pre>
+<ol start="2">
+<li>Configure the <kbd>aws</kbd> command-line utility, entering the access key you created:</li>
+</ol>
+<pre style="padding-left: 60px"><strong>$ aws configure</strong></pre>
+<ol start="3">
+<li>Create a launch configuration. Launch configurations are templates used by auto-scaling groups when creating new instances. In this case, we've chosen an Amazon AMI and <kbd>t2.nano</kbd> as our EC2 instance type (see <a href="https://aws.amazon.com/ec2/instance-types/">https://aws.amazon.com/ec2/instance-types/</a> for more details), as shown in the following code:</li>
+</ol>
+<pre style="padding-left: 60px"><strong>$ aws autoscaling create-launch-configuration --launch-configuration-name message-service-launch-configuration --image-id ari-f606f39f --instance-type t2.nano</strong></pre>
+<ol start="4">
+<li>Create the actual auto-scaling group. Auto-scaling groups have configurable maximum and minimum sizes that specify how much the auto-scaling group can shrink or grow based on demand. In this case, we'll create an auto-scaling group with a minimum of <kbd>1</kbd> instance and a maximum of <kbd>5</kbd> instances, as shown in the following code:</li>
+</ol>
+<pre style="padding-left: 60px"><strong>$ aws autoscaling create-auto-scaling-group --auto-scaling-group-name message-service-asg --launch-configuration-name message-service-launch-configuration --max-size 5 --min-size 1 --availability-zones "us-east-1a"</strong></pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<ol start="5">
+<li>We want the instances in our auto-scaling group to be accessible behind a load balancer, so we'll create that now:</li>
+</ol>
+<pre style="padding-left: 60px"><strong>$ aws elb create-load-balancer --load-balancer-name message-service-lb --listeners</strong> <strong>"Protocol=HTTP,LoadBalancerPort=80,InstanceProtocol=HTTP,InstancePort=8082" --availability-zones us-east-1a</strong><br/><br/><strong>{</strong><br/><strong>    "DNSName": "message-service-lb-1741394248.us-east-1.elb.amazonaws.com"</strong><br/><strong>}</strong></pre>
+<ol start="6">
+<li>In order to automatically scale our auto-scaling group, we need to define a metric. Clusters can be scaled based on memory, CPU utilization, or request rate. In this case, we're going to configure our scaling policy to use CPU utilization. If CPU utilization hits a 20% average, our auto-scaling group will create more instances. Create a file called <kbd>config.json</kbd>:</li>
+</ol>
+<pre style="padding-left: 60px">{<br/>  "TargetValue": 20.0,<br/>  "PredefinedMetricSpecification":<br/>    {<br/>      "PredefinedMetricType": "ASGAverageCPUUtilization"<br/>    }<br/>}</pre>
+<ol start="7">
+<li>Attach the scaling policy to our auto-scaling group.</li>
+</ol>
+<pre style="padding-left: 60px"><strong>$ aws autoscaling put-scaling-policy --policy-name cpu20 --auto-scaling-group-name message-service-asg --policy-type TargetTrackingScaling --target-tracking-configuration file://config.json</strong></pre>
+<p>Our auto-scaling group is now configured to grow when CPU utilization exceeds a 20% average. Launch configurations can also include bootstrapping steps for installing and configuring your service—typically with some kind of configuration-management tool, such as <strong>Chef</strong> or <strong>Puppet</strong>—or it can be configured to pull a Docker image from a private Docker repository.</p>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

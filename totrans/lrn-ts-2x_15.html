@@ -1,0 +1,1438 @@
+<html><head></head><body><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Working with the TypeScript Compiler and the Language Services</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we are going to learn about the internals of the TypeScript compiler and the TypeScript language services.</p>
+<p>These topics may seem very advanced and not something that everybody will find useful. While it is true that it is a topic for advanced users, the truth is that everybody can benefit from understanding the TypeScript language services. Understanding the compiler API of the TypeScript compiler can help us to develop many kinds of development tools and to automate certain aspects of our development workflow.</p>
+<p>The goal of this chapter is not to make you an expert in the compiler's internals or the development of TypeScript tools, but to gently introduce you to this very extensive topic. In this chapter, we will cover the following topics:</p>
+<ul>
+<li>The internal architecture of the TypeScript compiler</li>
+<li>Using the compiler API programmatically</li>
+<li>Working with <kbd>ts-simple-ast</kbd></li>
+<li>Implementing custom code-analysis tools</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">The TypeScript compiler's internal architecture</h1>
+                </header>
+            
+            <article>
+                
+<p>In this section, we are going to learn what the main components in the TypeScript compiler are. We are going to learn the main responsibility of each of the components, as well as what their expected inputs and outputs are.</p>
+<p>The following diagram describes the main components of the TypeScript architecture:</p>
+<div class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-313 image-border" src="Images/3e3e592e-d2b7-4083-8613-dbd668e1dfd4.png" style="width:30.83em;height:13.67em;" width="706" height="314"/></div>
+<div class="packt_figref CDPAlignCenter CDPAlign">Components of the TypeScript architecture</div>
+<p>The core TypeScript API is the foundation of everything, and is composed of elements such as the scanner, parser, binder, type checker, and emitter.</p>
+<p>The language services and the standalone compiler (the <kbd>tsc</kbd> command-line tool) sit on top of the core compiler APIs. Finally, the Visual Studio shim and the TypeScript standalone server (<kbd>tsserver</kbd>) are designed to facilitate the integration of TypeScript with Visual Studio and other source code editors.</p>
+<p>The official TypeScript documentation defines the TypeScript standalone server as follows:</p>
+<div class="packt_quote">"The TypeScript standalone server (aka tsserver) is a node executable that encapsulates the TypeScript compiler and language services and exposes them through a JSON protocol. tsserver is well suited for editors and IDE support."</div>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Scanner</h1>
+                </header>
+            
+            <article>
+                
+<p>The scanner transforms the source code files into streams of tokens. The scanner is also known as the <strong>lexer</strong> in other resources about compilers. The scanner is used by the parser.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Lexemes and tokens</h1>
+                </header>
+            
+            <article>
+                
+<p>A lexeme is a sequence of characters in the source program that matches the pattern for a token. We can say that a token has a pattern and a pattern can be matched by many lexemes, in some cases. As a result, in a programming language, there are an infinite number of potential lexemes and a limited number of tokens.</p>
+<p>The easiest way to understand the difference between a lexeme and a token is to take a look at an example, such as the following code snippet:</p>
+<pre>while (y &gt;= t) y = y - 3; </pre>
+<p>The preceding code snippet will be parsed into the following lexemes and tokens:</p>
+<table class="MsoTableGrid">
+<tbody>
+<tr>
+<td>
+<p><strong>Lexeme</strong></p>
+</td>
+<td>
+<p><strong>Token</strong></p>
+</td>
+</tr>
+<tr>
+<td>
+<p><kbd>while</kbd></p>
+</td>
+<td>
+<p><kbd>WhileKeyword</kbd></p>
+</td>
+</tr>
+<tr>
+<td>
+<p><kbd>(</kbd></p>
+</td>
+<td>
+<p><kbd>OpenParenToken</kbd></p>
+</td>
+</tr>
+<tr>
+<td>
+<p><kbd>y</kbd></p>
+</td>
+<td>
+<p><kbd>Identifier</kbd></p>
+</td>
+</tr>
+<tr>
+<td>
+<p><kbd>&gt;=</kbd></p>
+</td>
+<td>
+<p><kbd>GreaterThanEqualsToken</kbd></p>
+</td>
+</tr>
+<tr>
+<td>
+<p><kbd>t</kbd></p>
+</td>
+<td>
+<p><kbd>Identifier</kbd></p>
+</td>
+</tr>
+<tr>
+<td>
+<p><kbd>)</kbd></p>
+</td>
+<td>
+<p><kbd>CloseParenToken</kbd></p>
+</td>
+</tr>
+<tr>
+<td>
+<p><kbd>y</kbd></p>
+</td>
+<td>
+<p><kbd>Identifier</kbd></p>
+</td>
+</tr>
+<tr>
+<td>
+<p><kbd>=</kbd></p>
+</td>
+<td>
+<p><kbd>EqualsToken</kbd></p>
+</td>
+</tr>
+<tr>
+<td>
+<p><kbd>y</kbd></p>
+</td>
+<td>
+<p><kbd>Identifier</kbd></p>
+</td>
+</tr>
+<tr>
+<td>
+<p><kbd>-</kbd></p>
+</td>
+<td>
+<p><kbd>MinusToken</kbd></p>
+</td>
+</tr>
+<tr>
+<td>
+<p><kbd>3</kbd></p>
+</td>
+<td>
+<p><kbd>NumericLiteral</kbd></p>
+</td>
+</tr>
+<tr>
+<td>
+<p><kbd>;</kbd></p>
+</td>
+<td>
+<p><kbd>SemicolonToken</kbd></p>
+</td>
+</tr>
+<tr>
+<td/>
+<td>
+<p><kbd>EndOfFileToken</kbd></p>
+</td>
+</tr>
+</tbody>
+</table>
+<p> </p>
+<p>In TypeScript, the tokens are defined in the <kbd>SyntaxKind</kbd> enumeration:</p>
+<pre>export const enum SyntaxKind { 
+    Unknown, 
+    EndOfFileToken, 
+    SingleLineCommentTrivia, 
+    MultiLineCommentTrivia, 
+    NewLineTrivia, 
+    WhitespaceTrivia, 
+    ShebangTrivia, 
+    ConflictMarkerTrivia, 
+    NumericLiteral, 
+    StringLiteral, 
+    JsxText, 
+    //... </pre>
+<p>The <kbd>SyntaxtKind</kbd> enumeration is defined in the <a href="https://github.com/Microsoft/TypeScript/blob/b31aa4e012fc4c2afc9c2200f18b9e79edac160b/src/compiler/types.ts#L80">/src/compiler/types.ts</a> file in the TypeScript source code.</p>
+<div class="packt_infobox">Refer to the official TypeScript repository on GitHub at <a href="https://github.com/Microsoft/TypeScript">https://github.com/Microsoft/TypeScript</a> if you wish to explore the entire source code of the TypeScript project.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Parser</h1>
+                </header>
+            
+            <article>
+                
+<p>The TypeScript parser uses the scanner to traverse our source code files and transform them into a stream of tokens.</p>
+<p>The TypeScript parser then transforms the stream of tokens into a tree-like data structure known as an abstract syntax tree (AST). Each of the elements in this tree-like data structure is known as a node. A node is the basic building block of the AST.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">AST</h1>
+                </header>
+            
+            <article>
+                
+<p>The <strong>abstract syntax tree</strong> (<strong>AST</strong>) is a tree-like data structure created by the parser. This data structure allows the TypeScript compiler to traverse our source code to perform many core tasks, such as emitting the output JavaScript code. We are going to learn more about the AST later in this chapter.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Symbols</h1>
+                </header>
+            
+            <article>
+                
+<p>The TypeScript textbook by Basarat Ali Syed describes symbols as follows:</p>
+<div class="packt_quote">"Symbols connect declaration nodes in the AST to other declarations contributing to the same entity. Symbols are the basic building block of the Semantic system."</div>
+<p>The symbol class is defined in the TypeScript source code as follows:</p>
+<pre>function Symbol(this: Symbol, flags: SymbolFlags, name: __String) { 
+    this.flags = flags; 
+    this.escapedName = name; 
+    this.declarations = undefined; 
+    this.valueDeclaration = undefined; 
+    this.id = undefined; 
+    this.mergeId = undefined; 
+    this.parent = undefined; <br/>}</pre>
+<p>A symbol contains a reference to the declarations of a type and some flags that help us to identify some of its characteristics.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Binder</h1>
+                </header>
+            
+            <article>
+                
+<p>The TypeScript textbook by Basarat Ali Syed describes the binder as follows:</p>
+<div class="packt_quote">"The binder is used to connect the various parts of the source code into a coherent type system that can then be used by the checker. The main responsibility of the binder is to create the Symbols."</div>
+<p>TypeScript supports a feature known as <em>declaration merging</em>, which allows us to merge two separate declarations declared with the same name into a single definition. For example, the following code snippet declares two interfaces named <kbd>Person</kbd> and a variable named <kbd>person</kbd>:</p>
+<pre>interface Person { 
+    name: string; 
+} 
+ 
+interface Person { 
+    surname: string; 
+} 
+ 
+const person: Person = { name: "Remo", surname: "Jansen" }; </pre>
+<p>The type of the variable is <kbd>Person</kbd>, and as we can see, the type contains the properties declared in both previously declared interfaces. This is the case because the declaration merging mechanism merges both declarations into one unique type. This is directly related to the behavior of the binder.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Type checker</h1>
+                </header>
+            
+            <article>
+                
+<p>The type checker is probably the most important component in the TypeScript compiler. The type checker uses the abstract syntax trees (one per file) and the symbols as inputs, and it oversees the identification of type errors in our source code.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Emitter</h1>
+                </header>
+            
+            <article>
+                
+<p>The emitter is the component responsible for the generation of the output code. The output is usually JavaScript that adheres to one of the supported specifications (ES3, ES5, or ES6), but it can also be type definitions or source map files.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Language service</h1>
+                </header>
+            
+            <article>
+                
+<p>The TypeScript compiler includes an additional component that has been specifically designed to provide developers with a great developer experience. The following paragraph has been extracted from the official TypeScript documentation:</p>
+<div class="packt_quote">"The "Language Service" exposes an additional layer around the core compiler pipeline that is best suiting editor-like applications. The language service supports the common set of a typical editor operations like statement completions, signature help, code formatting and outlining, colorization, etc... Basic re-factoring like rename, Debugging interface helpers like validating breakpoints as well as TypeScript-specific features like support of incremental compilation (--watch equivalent on the command-line). The language service is designed to efficiently handle scenarios with files changing over time within a long-lived compilation context; in that sense, the language service provides a slightly different perspective about working with programs and source files from that of the other compiler interfaces."</div>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Understanding the abstract syntax tree (AST)</h1>
+                </header>
+            
+            <article>
+                
+<p>As we have already learned, an <strong>abstract syntax tree</strong>, or <strong>AST</strong>, is a tree-like data structure used to represent the abstract syntactic structure of source code written in a programming language. Each node of the AST represents a construct that occurs in the source code.</p>
+<p>We are now going to look at a small TypeScript code snippet to understand the AST in detail. There is nothing very special about the following code snippet—it simply declares an interface named <kbd>Weapon</kbd> and a couple of classes, named <kbd>Katana</kbd> and <kbd>Ninja</kbd>. It then creates an instance of the <kbd>Ninja</kbd> class and invokes one of its methods:</p>
+<pre>interface Weapon { 
+    tryHit(fromDistance: number): boolean; 
+} 
+ 
+class Katana implements Weapon { 
+    public tryHit(fromDistance: number) { 
+        return fromDistance &lt;= 2; 
+    } 
+} 
+ 
+class Ninja { 
+    private _weapon: Weapon; 
+    public constructor(weapon: Weapon) { 
+        this._weapon = weapon; 
+    } 
+    public fight(fromDistance: number) { 
+        return this._weapon.tryHit(fromDistance); 
+    } 
+} 
+ 
+const ninja = new Ninja(new Katana()); 
+ninja.fight("5"); </pre>
+<p>The AST for the preceding code snippet generated by the TypeScript compiler looks as follows:</p>
+<div class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-314 image-border" src="Images/8adc6f41-2ece-476d-a243-f9c76f3ada99.png" style="width:15.08em;height:12.00em;" width="519" height="411"/></div>
+<p>Some of the nodes of the preceding AST have been removed for ease of understanding. We can see how the AST starts with a <kbd>SourceFile</kbd> node and ends with an <kbd>EndOfFileToken</kbd> node. Between these two nodes, we have a node for the interface declaration (<kbd>InterfaceDeclaration</kbd>), two nodes for the class declarations (<kbd>ClassDeclaration</kbd>), one node for the variable declaration (<kbd>VariableStatement</kbd>), and, finally, a node for the method invocation (<kbd>ExpressionStatement</kbd>).</p>
+<p>We are now going to focus on one of these nodes: the node that represents the interface declaration (<kbd>InterfaceDeclaration</kbd>). As we saw earlier, the interface declaration looks as follows:</p>
+<pre>interface Weapon { 
+    tryHit(fromDistance: number): boolean; 
+} </pre>
+<p>The <kbd>InterfaceDeclaration</kbd> node in the AST for the preceding code snippet looks as follows:</p>
+<div class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-316 image-border" src="Images/9e8467e2-a31c-4eb8-a0b8-c0a7a6629136.png" style="width:13.42em;height:22.17em;" width="563" height="928"/></div>
+<p>In the preceding representation of the AST, we can see the names of each of the nodes that compose the AST of an interface declaration with a unique method signature. For example, we can see that the declaration starts with a node that represents the <kbd>interface</kbd> keyword (<kbd>InterfaceKeyword</kbd>), and that it is followed by the name of the interface (<kbd>Identifier</kbd>). We can also see that the <kbd>tryHit</kbd> method takes a number (<kbd>NumberKeyword</kbd>) as an argument and returns a boolean (<kbd>BooleanKeyword</kbd>).</p>
+<p>The AST nodes have certain properties. For example, the <kbd>NumberKeyword</kbd> in the preceding example has the following properties:</p>
+<pre>NumberKeyword 
+pos:43 
+start:44 
+end:50 
+flags:0 
+kind:133 </pre>
+<p>These properties allow us to identify the kind of the node (the <kbd>kind</kbd> property) and its position within the source code (the <kbd>pos</kbd> and <kbd>end</kbd> properties). The <kbd>kind</kbd> is a reference to a <kbd>Token</kbd>. The value <kbd>133</kbd> is the value of the <kbd>NumberKeyword</kbd> property in the <kbd>SyntaxKind</kbd> enum.</p>
+<p>Now we know what the TypeScript AST is and what it looks like. In the following section, we are going to learn about a tool that can help us to visualize the AST.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">TypeScript AST Viewer</h1>
+                </header>
+            
+            <article>
+                
+<p>TypeScript AST Viewer is an open source application that allows us to explore the AST for a given TypeScript code snippet. This application is available online at <a href="http://ts-ast-viewer.com">http://ts-ast-viewer.com</a>:</p>
+<div class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-317 image-border" src="Images/911252a4-64b9-4ba0-94a6-c81040af7333.png" style="width:44.67em;height:29.08em;" width="1278" height="831"/></div>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Sample application</h1>
+                </header>
+            
+            <article>
+                
+<p>The companion source code includes a very small application that we are going to use throughout the rest of this chapter. The following subsections describe each of the components in the sample application.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">interfaces.ts</h1>
+                </header>
+            
+            <article>
+                
+<p>The <kbd>interfaces.ts</kbd> file declares and exports a couple of interfaces:</p>
+<pre>export interface Weapon { 
+    tryHit(fromDistance: number): boolean; 
+} 
+ 
+export interface Named { 
+    name: string; 
+} </pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">katana.ts</h1>
+                </header>
+            
+            <article>
+                
+<p>The <kbd>katana.ts</kbd> file declares a base class named <kbd>BaseWeapon</kbd> and a derived class named <kbd>Katana</kbd>:</p>
+<pre>import { Weapon, Named } from "./interfaces"; 
+ 
+export class BaseWeapon { 
+    damage = 25; 
+} 
+ 
+export class Katana extends BaseWeapon implements Weapon, Named  { 
+    name = "Katana"; 
+    public tryHit(fromDistance: number) { 
+        return fromDistance &lt;= 2; 
+    } 
+} </pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">ninja.ts</h1>
+                </header>
+            
+            <article>
+                
+<p>The <kbd>ninja.ts</kbd> file declares a class named <kbd>Ninja</kbd>:</p>
+<pre>import { Weapon } from "./interfaces"; 
+ 
+export class Ninja { 
+    private _weapon: Weapon; 
+    public constructor(weapon: Weapon) { 
+        this._weapon = weapon; 
+    } 
+    public fight(fromDistance: number) { 
+        return this._weapon.tryHit(fromDistance); 
+    } 
+} </pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">main.ts</h1>
+                </header>
+            
+            <article>
+                
+<p>The <kbd>main.ts</kbd> file is the application's entry point. It creates an instance of <kbd>Katana</kbd> and an instance of <kbd>Ninja</kbd> and then invokes one of the methods of the <kbd>Ninja</kbd> instance:</p>
+<pre>import { Ninja } from "./ninja"; 
+import { Katana } from "./katana"; 
+ 
+const ninja = new Ninja(new Katana()); 
+ 
+ninja.fight(5); </pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">broken.ts</h1>
+                </header>
+            
+            <article>
+                
+<p>The companion source code also includes a file named <kbd>broken.ts</kbd>. This file contains some compilation errors on purpose because it is used to demonstrate how to perform error diagnostics:</p>
+<pre>import { Ninja } from "./ninja"; 
+import { Katana } from "./katana"; 
+ 
+const ninja = new Ninja(new Katana()); 
+ 
+ninja.fight("5"); </pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Traversing the TypeScript AST</h1>
+                </header>
+            
+            <article>
+                
+<p>We have learned how to visualize the TypeScript AST using the TypeScript AST viewer online. At this point, it is normal to ask ourselves where all this information is coming from. In this section, we are going to demonstrate how to use the TypeScript compiler APIs to access the AST.</p>
+<p>After creating a <kbd>package.json</kbd> file and installing TypeScript using <kbd>npm</kbd>, the first thing that we need to do is to create a new TypeScript file and import TypeScript as a module:</p>
+<pre>import * as ts from "typescript"; </pre>
+<p>Then we need to declare the configuration of the TypeScript compiler using an object literal:</p>
+<pre>const options = { 
+    module: ts.ModuleKind.CommonJS, 
+    target: ts.ScriptTarget.ES5, 
+}; </pre>
+<p>Next, we need to create a new program:</p>
+<pre>const program = ts.createProgram( 
+    [ 
+        "./app/interfaces.ts", 
+        "./app/ninja.ts", 
+        "./app/katana.ts", 
+        "./app/main.ts" 
+    ], 
+    options 
+); </pre>
+<p>A program is a collection of source files and a set of compilation options that represent a compilation unit. The program is the main entry point to the type system and code generation system.</p>
+<p>Then we need to create an instance of the TypeScript type checker:</p>
+<pre>const checker = program.getTypeChecker(); </pre>
+<p>At this point, we can write some code to iterate through the source files in the program. The following code snippet traverses the AST of the given source files and returns a list of the classes and interfaces declared in each file.</p>
+<p>It uses the <kbd>getSourceFiles</kbd> method of the program instance to access the source files in the program. The <kbd>lib.d.ts</kbd> file and the files under the <kbd>node_modules</kbd> directory are ignored.</p>
+<p>The code snippet uses a recursive function named <kbd>visit</kbd> to traverse the nodes in the AST. The recursive function compares each of the nodes with the tokens that we are looking for (<kbd>ClassDeclaration</kbd> and <kbd>InterfaceDeclaration</kbd>) to identify the classes and interfaces:</p>
+<pre>interface Result { 
+    fileName: string; 
+    classes: string[]; 
+    interfaces: string[]; 
+} 
+                      
+const entities = program.getSourceFiles().map(file =&gt; { 
+ 
+    if ( 
+        file.fileName.indexOf("lib.d.ts") !== -1 || 
+        file.fileName.indexOf("node_modules") !== -1 
+    ) { 
+        return null; 
+    } 
+ 
+    const result = { 
+        fileName: file.fileName, 
+        classes: [] as string[], 
+        interfaces: [] as string[] 
+    }; 
+ 
+    const visit = (node: ts.Node) =&gt; { 
+        if (node.kind === ts.SyntaxKind.ClassDeclaration) { 
+            // Find class identifier 
+            node.getChildren().forEach(n =&gt; { 
+                if (n.kind === ts.SyntaxKind.Identifier) { 
+                    const name = (n as ts.Identifier).getFullText(); 
+                    result.classes.push(name); 
+                } 
+            }); 
+        } else if (node.kind === ts.SyntaxKind.InterfaceDeclaration) { 
+            // Find interface identifier 
+            node.getChildren().forEach(n =&gt; { 
+                if (n.kind === ts.SyntaxKind.Identifier) { 
+                    const name = (n as ts.Identifier).getFullText(); 
+                    result.interfaces.push(name); 
+                } 
+            }); 
+        } else if (node.kind === ts.SyntaxKind.ModuleDeclaration) { 
+            // Iterate module nodes 
+            ts.forEachChild(node, visit); 
+        } 
+    }; 
+ 
+    ts.forEachChild(file, visit); 
+    return result; 
+ 
+}).filter(e =&gt; e !== null) as Result[]; </pre>
+<p>If the token found is a module declaration, we will invoke the recursive function <kbd>visit</kbd> once more. Once we have managed to find all the classes and interfaces in our source code, we can display them in the console using a simple <kbd>forEach</kbd> loop:</p>
+<pre>entities.forEach(e =&gt; { 
+    console.log(chalk.cyan(` 
+        FILE: ${e.fileName}n 
+        CLASSES: ${e.classes.length &gt; 0 ? e.classes : "N/A"}n 
+        INTERFACES: ${e.interfaces.length &gt; 0 ? e.interfaces : "N/A"}n 
+    `)); 
+}); </pre>
+<div class="packt_infobox">Note that the <kbd>chalk</kbd> module can be installed via <kbd>npm</kbd>, and is used to display colored text in the console output.</div>
+<p>Now we know how we can access and traverse the TypeScript AST. As we can see, the process required to create this kind of task is quite tedious. However, there is an open source tool that can help us to traverse the TypeScript AST with ease: <kbd>ts-simple-ast</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Working with ts-simple-ast</h1>
+                </header>
+            
+            <article>
+                
+<p>As we learned in the preceding section, when it comes to working with the TypeScript, AST is not very complicated. However, there is an open source npm module named <kbd>ts-simple-ast</kbd> that makes working with the TypeScript AST even easier! In this section, we are going to take a look at multiple examples to learn how to use <kbd>ts-simple-ast</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Traversing the AST with ts-simple-ast</h1>
+                </header>
+            
+            <article>
+                
+<p>The following code snippet implements an application that is almost identical to the application that we implemented in the preceding section. The most notable difference is that, instead of using the core TypeScript compiler APIs, we are going to use the <kbd>ts-simple-ast</kbd> helpers:</p>
+<pre>import chalk from "chalk"; 
+import Ast, { DiagnosticMessageChain } from "ts-simple-ast"; </pre>
+<p>The following function is used in many of the examples in this chapter, and it is used to get an instance of the TypeScript AST, given certain files and the desired compiler settings:</p>
+<pre>function getAst(tsConfigPath: string, sourceFilesPath: string) { 
+  const ast = new Ast({ 
+    tsConfigFilePath: tsConfigPath, 
+    addFilesFromTsConfig: false 
+  }); 
+  ast.addExistingSourceFiles(sourceFilesPath); 
+  return ast; 
+} </pre>
+<p>We can use the <kbd>getAst</kbd> function to access the <kbd>ts-simple-ast</kbd> AST and then the <kbd>getSourceFiles</kbd> method to access the source files in the program:</p>
+<pre>const myAst = getAst("./tsconfig.json", "./app/*.ts"); 
+const files = myAst.getSourceFiles(); </pre>
+<p>At this point, we can use <kbd>getFilePath</kbd> to get the path of a source file and the <kbd>getClasses</kbd> and <kbd>getInterfaces</kbd> methods to access the class and interface declarations in a source file:</p>
+<pre>const entities = files.map(f =&gt; { 
+  return { 
+    fileName: f.getFilePath(), 
+    classes: f.getClasses().map(c =&gt; c.getName()), 
+    interfaces: f.getInterfaces().map(i =&gt; i.getName()) 
+  }; 
+}); </pre>
+<p>As we can see, the <kbd>ts-simple-ast</kbd> helpers can greatly simplify traversing the TypeScript AST or searching for a certain kind of entity.</p>
+<p>Finally, we can display the name of the classes on the command-line interface:</p>
+<pre>entities.forEach(e =&gt; { 
+  console.log( 
+    chalk.cyan(` 
+        FILE: ${e.fileName}n 
+        CLASSES: ${e.classes.length &gt; 0 ? e.classes : "N/A"}n 
+        INTERFACES: ${e.interfaces.length &gt; 0 ? e.interfaces : "N/A"}n 
+    `) 
+  ); 
+}); </pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Diagnostics with ts-simple-ast</h1>
+                </header>
+            
+            <article>
+                
+<p>The following code snippet implements a very small application that uses <kbd>ts-simple-ast</kbd> to find errors in a TypeScript file using the error diagnostic APIs. The application uses the <kbd>chalk</kbd> npm module to display errors using a red font in the command-line interface:</p>
+<pre>import chalk from "chalk"; 
+import Ast, { DiagnosticMessageChain } from "ts-simple-ast"; </pre>
+<p>The following function is the same <kbd>getAst</kbd> function that we used in the preceding section:</p>
+<pre>function getAst(tsConfigPath: string, sourceFilesPath: string) { 
+  const ast = new Ast({ 
+    tsConfigFilePath: tsConfigPath, 
+    addFilesFromTsConfig: false 
+  }); 
+  ast.addExistingSourceFiles(sourceFilesPath); 
+  return ast; 
+} </pre>
+<p>The AST provided by <kbd>ts-simple-ast</kbd> includes a method named <kbd>getDiagnostics</kbd>, which allows us to access the detected compilation errors. The <kbd>getErrors</kbd> function showcases how to traverse each of the diagnostics and how to access the underlying <kbd>DiagnosticMessageChain</kbd>.</p>
+<p>The method <kbd>diagnostic.getMessageText</kbd> returns a string or a <kbd>DiagnosticMessageChain</kbd>. The <kbd>DiagnosticMessageChain</kbd> implements the iterator pattern, which explains why we use the <kbd>DiagnosticMessageChain.getNext</kbd> method:</p>
+<pre>function getErrors(ast: Ast) { 
+ 
+  const diagnostics = ast.getDiagnostics(); 
+ 
+  function dmcToString(dmc: DiagnosticMessageChain, msg: string = ""): string { 
+    const messageText = dmc.getMessageText(); 
+    const code = dmc.getCode(); 
+    msg += `${code} ${messageText}n`; 
+    const next = dmc.getNext(); 
+    return next ? dmcToString(next, msg) : msg; 
+  } 
+ 
+  const errors = diagnostics.map(diagnostic =&gt; { 
+    const code = diagnostic.getCode(); 
+    const sourceOrUndefined = diagnostic.getSourceFile(); 
+    const source = sourceOrUndefined ? sourceOrUndefined.getFilePath() : ""; 
+    const line = sourceOrUndefined 
+      ? sourceOrUndefined.getLineNumberFromPos(diagnostic.getStart() || 0) 
+      : ""; 
+    const stringOrDMC = diagnostic.getMessageText(); 
+    const messageText = 
+      typeof stringOrDMC === "string" ? stringOrDMC : dmcToString(stringOrDMC); 
+    return ` 
+            ERROR CODE: ${code} 
+            DESCRIPTION: ${messageText} 
+            FILE: ${source} 
+            LINE: ${line} 
+        `; 
+  }); 
+ 
+  return errors; 
+} 
+ 
+const myAst = getAst("./tsconfig.json", "./app/broken.ts"); 
+ 
+getErrors(myAst).forEach(err =&gt; console.log(chalk.red(err))); </pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Accessing class details with ts-simple-ast</h1>
+                </header>
+            
+            <article>
+                
+<p>The following code snippet demonstrates how we can use the <kbd>ts-simple-ast</kbd> APIs to access and manipulate class declarations.</p>
+<div class="packt_infobox">Note that the preceding example is not meant to be executed. It is a showcase of the available methods in the <kbd>ts-simple-ast</kbd> API, but it is not an executable demo.</div>
+<p>Just like in the preceding examples, we are going to use the <kbd>getAst</kbd>, <kbd>getSourceFiles</kbd>, and <kbd>getClasses</kbd> methods to find all the class declarations in our source code.</p>
+<p>We will then use some tools to access the details of the class declaration, including methods, derived classes, and properties, among others. We will also demonstrate how we can modify the class declaration by performing operations such as adding a base class or a new method:</p>
+<pre>import chalk from "chalk"; 
+import Ast, { DiagnosticMessageChain } from "ts-simple-ast"; 
+ 
+function getAst(tsConfigPath: string, sourceFilesPath: string) { 
+    const ast = new Ast({ 
+      tsConfigFilePath: tsConfigPath, 
+      addFilesFromTsConfig: false 
+    }); 
+    ast.addExistingSourceFiles(sourceFilesPath); 
+    return ast; 
+} 
+ 
+const myAst = getAst("./tsconfig.json", "./app/*.ts"); 
+const files = myAst.getSourceFiles(); 
+ 
+files.forEach(file =&gt; { 
+ 
+    // Find all classes 
+    const classes = file.getClasses(); 
+ 
+    // Find class by name 
+    const class1 = file.getClass("Katana"); 
+ 
+    // Find class with no constructors 
+    const firstClassWithConstructor = file.getClass( 
+        c =&gt; c.getConstructors().length &gt; 0 
+    ); 
+ 
+    // Add a class 
+    const classDeclaration = file.addClass({ 
+        name: "ClassName" 
+    }); 
+ 
+    // Get extends 
+    const extendsExpression = classDeclaration.getExtends(); 
+ 
+    // Set extends 
+    classDeclaration.setExtends("BaseClass"); 
+ 
+    // Remove extends 
+    classDeclaration.removeExtends(); 
+ 
+    // Get derived classes 
+    const derivedClasses = classDeclaration.getDerivedClasses(); 
+ 
+    // Remove one class 
+    if (classDeclaration) { 
+        classDeclaration.remove(); 
+    } 
+ 
+    // Get instance methods 
+    const instanceMethods = classDeclaration.getInstanceMethods(); 
+ 
+    // Get static methods 
+    const staticMethods = classDeclaration.getStaticMethods(); 
+ 
+    // Add method 
+    const method = classDeclaration.addMethod( 
+        { isStatic: true, name: "myMethod", returnType: "string" } 
+    ); 
+ 
+    // Remove method 
+    method.remove(); 
+ 
+    // Get instance properties 
+    const instanceProperties = classDeclaration.getInstanceProperties(); 
+ 
+    // Get static properties 
+    const staticProperties = classDeclaration.getStaticProperties(); 
+ 
+    // Add a property 
+    const property = classDeclaration.addProperty({ isStatic: true, name: "prop", type: "string" }); 
+ 
+    // Remove property 
+    property.remove(); 
+ 
+}); </pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Accessing module details with ts-simple-ast</h1>
+                </header>
+            
+            <article>
+                
+<p>The following code snippet demonstrates how we can use the <kbd>ts-simple-ast</kbd> APIs to access and manipulate module <kbd>import</kbd> and <kbd>export</kbd> declarations.</p>
+<div class="packt_infobox">Note that the preceding example is not meant to be executed. It is a showcase of the available methods in the <kbd>ts-simple-ast</kbd> API, but it is not an executable demo.</div>
+<p>Just like in the preceding examples, we are going to use the <kbd>getAst</kbd> and <kbd>getSourceFiles</kbd> methods to access the source code's objects:</p>
+<pre>import chalk from "chalk"; 
+import Ast, { DiagnosticMessageChain } from "ts-simple-ast"; 
+ 
+function getAst(tsConfigPath: string, sourceFilesPath: string) { 
+    const ast = new Ast({ 
+      tsConfigFilePath: tsConfigPath, 
+      addFilesFromTsConfig: false 
+    }); 
+    ast.addExistingSourceFiles(sourceFilesPath); 
+    return ast; 
+} 
+ 
+const myAst = getAst("./tsconfig.json", "./app/*.ts"); 
+const files = myAst.getSourceFiles(); </pre>
+<p>We will then use some methods to access the details of the module <kbd>import</kbd> and <kbd>export</kbd> declarations. We also demonstrate how we can add and remove module <kbd>import</kbd> and <kbd>export</kbd> declarations by performing operations such as adding a default <kbd>export</kbd>:</p>
+<pre>files.forEach(file =&gt; { 
+ 
+  const functionDeclaration = file.getFunction("someFunction"); 
+ 
+  if (functionDeclaration) { 
+ 
+    // Is exported 
+    functionDeclaration.isExported(); 
+    functionDeclaration.isNamedExport(); 
+    functionDeclaration.isDefaultExport(); 
+ 
+    // Has export keyword 
+    functionDeclaration.hasExportKeyword(); 
+    functionDeclaration.hasDefaultKeyword(); 
+ 
+    // Access export keywords 
+    functionDeclaration.getExportKeyword(); 
+    functionDeclaration.getDefaultKeyword(); 
+ 
+    // Set is export 
+    functionDeclaration.setIsDefaultExport(true);  
+    functionDeclaration.setIsDefaultExport(false); 
+ 
+    // Set is exported 
+    functionDeclaration.setIsExported(true);  
+    functionDeclaration.setIsExported(false); 
+ 
+  } 
+ 
+  // Get all imports 
+  const imports = file.getImportDeclarations(); 
+ 
+  // Add import 
+  const importDeclaration = file.addImportDeclaration({ 
+      defaultImport: "MyClass", 
+      moduleSpecifier: "./file" 
+  }); 
+ 
+  // Remove import 
+  importDeclaration.remove(); 
+ 
+  // Get default import 
+  const defaultImport = importDeclaration.getDefaultImport(); 
+ 
+  // Get named imports 
+  const namedImports = importDeclaration.getNamedImports(); 
+ 
+  // Add named import 
+  const namedImport = importDeclaration.addNamedImport({ 
+      name: "MyClass", 
+      alias: "MyAliasName" // alias is optional 
+  }); 
+ 
+  // Remove named import 
+  namedImport.remove(); 
+ 
+}); </pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Accessing the language services API</h1>
+                </header>
+            
+            <article>
+                
+<p>The language services API is built on top of the core compiler APIs, and it was designed to provide software engineers with a great developer experience independent of their IDE or code editor of choice.</p>
+<p>We are going to use <kbd>ts-simple-ast</kbd> to access the language services API. We can access the language services API using the <kbd>getLanguageService</kbd> method in an AST instance:</p>
+<pre>myAst.getLanguageService(); </pre>
+<p>The language services API implements methods that allow us to perform a common editing task, such as renaming a variable or automatically implementing an interface. The following screenshot shows some of the available methods in the language services API:</p>
+<div class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-318 image-border" src="Images/7c1f8e17-a5e4-4f43-8214-350fed0df449.png" style="width:33.08em;height:16.08em;" width="1140" height="554"/></div>
+<p>We are now going to create a very small application that uses the language services API to find interfaces in the sample application included in the companion source code. The application will display the name of each of the interfaces and the name of each of their implementations:</p>
+<pre>import chalk from "chalk"; 
+import { flatten, join } from "lodash"; 
+import Ast, { DiagnosticMessageChain } from "ts-simple-ast"; 
+import * as ts from "typescript"; 
+ 
+function getAst(tsConfigPath: string, sourceFilesPath: string) { 
+    const ast = new Ast({ 
+      tsConfigFilePath: tsConfigPath, 
+      addFilesFromTsConfig: false 
+    }); 
+    ast.addExistingSourceFiles(sourceFilesPath); 
+    return ast; 
+} 
+ 
+const myAst = getAst("./tsconfig.json", "./app/*.ts"); 
+const languageService = myAst.getLanguageService(); 
+const files = myAst.getSourceFiles(); 
+const interfaceDeclarations = flatten(files.map(f =&gt; f.getInterfaces())); </pre>
+<p>We then need to find the name of each of the interface declarations using the <kbd>getName</kbd> method.</p>
+<p>We are also going to try to find each of their implementations using the <kbd>getImplementations</kbd> method, which is part of the language services API. The method expects us to pass the node that declares the interface. The node can be accessed using the <kbd>interfaceDeclaration.getNameNode</kbd> method.</p>
+<p>Once we have found the implementations, we need to find their names. We do this by searching for the name of the nodes of the kind called <kbd>Identifier</kbd>:</p>
+<pre>const result = interfaceDeclarations.map(interfaceDeclaration =&gt; { 
+ 
+    const interfaceName = interfaceDeclaration.getName(); 
+ 
+    const implementations = languageService.getImplementations( 
+        interfaceDeclaration.getNameNode() 
+    ); 
+ 
+    const implementationNames = implementations.map(implementation =&gt; { 
+        const children = implementation.getNode().getChildren(); 
+        const identifier = children.filter( 
+            child =&gt; child.getKind() === ts.SyntaxKind.Identifier 
+        )[0]; 
+        const implementationName = identifier.getText(); 
+        return implementationName; 
+    }); 
+ 
+    return { 
+        interface: interfaceName, 
+        implementations: implementationNames 
+    }; 
+ 
+}); </pre>
+<p>Finally, we display the results in the console:</p>
+<pre>console.log( 
+    result.forEach( 
+        o =&gt; console.log( 
+            `- ${o.interface} is implemented by ${join(o.implementations, ",")}` 
+        ) 
+    ) 
+); </pre>
+<p>If we execute the application, we should be able to see the following displayed in our console:</p>
+<pre>- Weapon is implemented by Katana 
+- Named is implemented by Katana </pre>
+<div class="packt_infobox">Since TypeScript 2.2, it is possible to write language services plugins to extend the language services API. Custom language services can help to provide developers with a better developing experience. For example, there is a language service that provides developers with autocomplete and error diagnostic features while working with GraphQL queries. Before this, GraphQL queries were just text, and as a result, they were somewhat tedious to implement. Implementing our language services plugins is out of the scope of this book, but if you wish to learn more, you will be able to do so at <a href="https://github.com/Microsoft/TypeScript/wiki/Writing-a-Language-Service-Plugin">https://github.com/Microsoft/TypeScript/wiki/Writing-a-Language-Service-Plugin</a>.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Implementing a yUML compiler</h1>
+                </header>
+            
+            <article>
+                
+<p>In this section, we are going to put together everything that we have learned so far during this chapter to create a custom developer tool. We are going to write a tool that takes TypeScript source code as input and generates a <strong>unified modeling language</strong> (<strong>UML</strong>) class diagram. A class diagram describes the structure of a system by showing the system's classes, their attributes, methods, and the relationships among the objects.</p>
+<p>A class diagram looks as follows:</p>
+<div class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-319 image-border" src="Images/794d7e60-33ed-4437-af11-ae46afdd8b1c.png" style="width:31.33em;height:15.58em;" width="818" height="407"/></div>
+<p>We are going to use the TypeScript compiler API and <kbd>ts-simple-ast</kbd> to traverse the AST generated by the sample application included in the companion source code. We will then emit some code in a <strong>domain-specific language</strong> (<strong>DSL</strong>) known as yUML. Finally, we will post the yUML DSL to an online service to generate the diagram as an image. We are going to translate from TypeScript to yUML, which means that we can think about this as creating a yUML compiler.</p>
+<p>We are going to start by importing some required modules:</p>
+<pre>import * as fs from "fs"; 
+import { flatten, join } from "lodash"; 
+import * as path from "path"; 
+import * as request from "request"; 
+import Ast, * as SimpleAST from "ts-simple-ast"; 
+import * as ts from "typescript"; </pre>
+<p>The <kbd>fs</kbd> and <kbd>path</kbd> modules are native core Node.js modules and don't need to be installed. However, we are going to need the type definitions for Node.js (<kbd>@types/node</kbd>).</p>
+<div class="packt_infobox">Note that the <kbd>flatten</kbd> function is part of the <kbd>lodash</kbd> npm module. This function allows us to transform a multidimensional array (for example, an array of arrays) into an array with only one dimension.</div>
+<p>We are then going to declare two interfaces that are used to represent the relevant details about a class, method, or property. In this example, we are going to only use the name of the method or property:</p>
+<pre>interface MethodDetails { 
+  name: string; 
+} 
+ 
+interface PropertyDetails { 
+  name: string; 
+} </pre>
+<p>The following code snippet declares a constant variable named <kbd>templates</kbd>. Templates are functions that take names and return strings that contain yUML DSL snippets:</p>
+<pre>const templates = { 
+  url: (dsl: string) =&gt; `http://yuml.me/diagram/scruffy/class/${dsl}`, 
+  composition: "+-&gt;", 
+  implementsOrExtends: (abstraction: string, implementation: string) =&gt; { 
+    return ( 
+      `${templates.plainClassOrInterface(abstraction)}` + 
+      `^-${templates.plainClassOrInterface(implementation)}` 
+    ); 
+  }, 
+  plainClassOrInterface: (name: string) =&gt; `[${name}]`, 
+  colorClass: (name: string) =&gt; `[${name}{bg:skyblue}]`, 
+  colorInterface: (name: string) =&gt; `[${name}{bg:palegreen}]`, 
+  class: (name: string, props: PropertyDetails[], methods: MethodDetails[]) =&gt; { 
+    const pTemplate = (property: PropertyDetails) =&gt; `${property.name};`; 
+    const mTemplate = (method: MethodDetails) =&gt; `${method.name}();`; 
+    return ( 
+      `${templates.colorClass(name)}` + 
+      `[${name}|${props.map(pTemplate)}|${methods.map(mTemplate)}]` 
+    ); 
+  }, 
+  interface: ( 
+    name: string, 
+    props: PropertyDetails[], 
+    methods: MethodDetails[] 
+  ) =&gt; { 
+    const pTemplate = (property: PropertyDetails) =&gt; `${property.name};`; 
+    const mTemplate = (method: MethodDetails) =&gt; `${method.name}();`; 
+    return ( 
+      `${templates.colorInterface(name)}` + 
+      `[${name}|${props.map(pTemplate)}|${methods.map(mTemplate)}]` 
+    ); 
+  } 
+}; </pre>
+<p>The following function is used to get the AST for the given source files:</p>
+<pre>function getAst(tsConfigPath: string, sourceFilesPaths?: string[]) { 
+  const ast = new Ast({ 
+    tsConfigFilePath: tsConfigPath, 
+    addFilesFromTsConfig: !Array.isArray(sourceFilesPaths) 
+  }); 
+  if (sourceFilesPaths) { 
+    ast.addExistingSourceFiles(sourceFilesPaths); 
+  } 
+  return ast; 
+} </pre>
+<p>The following function emits the yUML DSL for the class declarations. We traverse the AST, searching for properties and methods:</p>
+<pre>function emitClass(classDeclaration: SimpleAST.ClassDeclaration) { 
+ 
+  const className = classDeclaration.getSymbol()!.getName(); 
+  const propertyDeclarations = classDeclaration.getProperties(); 
+  const methodDeclarations = classDeclaration.getMethods(); 
+ 
+  const properties = propertyDeclarations.map(property =&gt; { 
+      const sym = property.getSymbol(); 
+      if (sym) { 
+          return { 
+              name: sym.getName() 
+          }; 
+      } 
+  }).filter((p) =&gt; p !== undefined) as PropertyDetails[]; 
+ 
+  const methods = methodDeclarations.map(method =&gt; { 
+    const sym = method.getSymbol(); 
+    if (sym) { 
+        return { 
+            name: sym.getName() 
+        } 
+    } 
+  }).filter((p) =&gt; p !== undefined) as MethodDetails[]; 
+ 
+  return templates.class(className, properties, methods); 
+} </pre>
+<p>The following function emits the yUML DSL for interface declarations. We traverse through the AST, searching for properties and methods:</p>
+<pre>function emitInterface(interfaceDeclaration: SimpleAST.InterfaceDeclaration) { 
+ 
+  const interfaceName = interfaceDeclaration.getSymbol()!.getName(); 
+  const propertyDeclarations = interfaceDeclaration.getProperties(); 
+  const methodDeclarations = interfaceDeclaration.getMethods(); 
+ 
+  const properties = propertyDeclarations.map(property =&gt; { 
+      const sym = property.getSymbol(); 
+      if (sym) { 
+          return { 
+              name: sym.getName() 
+          } 
+      } 
+  }).filter((p) =&gt; p !== undefined) as PropertyDetails[]; 
+ 
+  const methods = methodDeclarations.map(method =&gt; { 
+      const sym = method.getSymbol(); 
+      if (sym) { 
+          return { 
+              name: sym.getName() 
+          } 
+      } 
+  }).filter((p) =&gt; p !== undefined) as MethodDetails[]; 
+ 
+  return templates.interface(interfaceName, properties, methods); 
+} </pre>
+<p>The following function emits the yUML DSL for heritage clauses. This includes relationships defined in our source code by the use of the <kbd>extends</kbd> and <kbd>implements</kbd> keywords:</p>
+<pre>function emitInheritanceRelationships( 
+  classDeclaration: SimpleAST.ClassDeclaration 
+) { 
+ 
+  const className = classDeclaration.getSymbol()!.getName(); 
+  const extended =  classDeclaration.getExtends(); 
+  const implemented =  classDeclaration.getImplements(); 
+  let heritageClauses: HeritageClause[] = []; 
+ 
+  if (extended) { 
+      const identifier = extended.getChildrenOfKind(ts.SyntaxKind.Identifier)[0]; 
+      if (identifier) { 
+          const sym = identifier.getSymbol(); 
+          if (sym) { 
+              heritageClauses.push( 
+                  { 
+                      clause: sym.getName(), 
+                      className 
+                  } 
+              ); 
+          } 
+      } 
+  } 
+ 
+  if (implemented) { 
+      implemented.forEach(i =&gt; { 
+          const identifier = i.getChildrenOfKind(ts.SyntaxKind.Identifier)[0]; 
+          if (identifier) { 
+              const sym = identifier.getSymbol(); 
+              if (sym) { 
+                  heritageClauses.push( 
+                      { 
+                          clause: sym.getName(), 
+                          className 
+                      } 
+                  ); 
+              } 
+          } 
+      }); 
+  } 
+ 
+  return flatten(heritageClauses).map((c: HeritageClause) =&gt; 
+    templates.implementsOrExtends(c.clause, c.className) 
+  ); 
+ 
+} </pre>
+<p>The following function renders the UML diagram into a <kbd>.png</kbd> file using the yUML web service. We invoke the web service using the <kbd>request</kbd> npm module.</p>
+<p>The <kbd>request</kbd> module is used to download the rendered image. The image is then saved into the current directory using the code's Node.js FileSystem API:</p>
+<pre>function render(dsl: string) { 
+  const download = (uri: string, filename: string, callback: () =&gt; void) =&gt; { 
+    request.head(uri, (err, res, body) =&gt; { 
+      request(uri) 
+        .pipe(fs.createWriteStream(filename)) 
+        .on("close", callback); 
+    }); 
+  }; 
+ 
+  const url = templates.url(dsl); 
+  const file = `uml_diagram_${new Date().getTime()}.png`; 
+  const absolutePath = path.join(__dirname, file); 
+ 
+  download(url, file, () =&gt; 
+    console.log(`Saved UML diagram available at ${absolutePath}`) 
+  ); 
+} </pre>
+<p>The following function generates the yUML DSL for the given TypeScript files. This function delegates work to the previously defined <kbd>getAst</kbd>, <kbd>emitClass</kbd>, <kbd>emitInterface</kbd>, and <kbd>emitInheritanceRelationships</kbd> functions:</p>
+<pre>function yUML(tsConfigPath: string, sourceFilesPaths: string[]) { 
+  const ast = getAst(tsConfigPath, sourceFilesPaths); 
+  const files = ast.getSourceFiles(); 
+ 
+  const declarations = files.map(f =&gt; { 
+    return { 
+      fileName: f.getFilePath(), 
+      classes: f.getClasses(), 
+      interfaces: f.getInterfaces() 
+    }; 
+  }); 
+ 
+  const entities = declarations.map(d =&gt; { 
+    const classes = d.classes.map(emitClass); 
+    const interfaces = d.interfaces.map(emitInterface); 
+    const inheritanceRelationships = d.classes.map( 
+      emitInheritanceRelationships 
+    ); 
+    return [...classes, ...interfaces, ...inheritanceRelationships]; 
+  }); 
+ 
+  return join(flatten(entities), ","); 
+} </pre>
+<p>At this point, we have implemented the entire application and we can invoke the yUML function to generate the yUML DSL for the given files:</p>
+<pre>const yuml = yUML("./tsconfig.json", [ 
+  "./app/interfaces.ts", 
+  "./app/ninja.ts", 
+  "./app/katana.ts", 
+  "./app/main.ts" 
+]); </pre>
+<p>Finally, we can invoke the <kbd>render</kbd> function:</p>
+<pre>render(yuml); </pre>
+<div class="packt_infobox">Refer to the official <kbd>ts-simple-ast</kbd> documentation at <a href="https://dsherret.github.io/ts-simple-ast/">https://dsherret.github.io/ts-simple-ast/</a> to learn more about the available APIs.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">VS Code extensions</h1>
+                </header>
+            
+            <article>
+                
+<p>Developing Visual Studio extensions is out of the scope of this book. However, it is worth mentioning that VS Code extensions can be developed using TypeScript. This means that it is possible to transform our custom command-line TypeScript tools, such as the UML diagram generator, into VS Code extensions without too many complications.</p>
+<div class="packt_infobox">Refer to the official VS Code documentation about the development of extensions at <a href="https://code.visualstudio.com/docs/extensions/overview">https://code.visualstudio.com/docs/extensions/overview</a> to learn more.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we have learned about the internal components of the TypeScript compiler. We have also learned how to use the compiler APIs and how we can take advantage of these features to develop our TypeScript development tools.</p>
+<p>I hope that this chapter will foster your curiosity of the TypeScript compiler internals and the development of software development tools powered by TypeScript. Their potential and growing popularity will take the JavaScript ecosystem to the next level.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  </body></html>

@@ -1,0 +1,934 @@
+<html><head></head><body><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Unit Testing and Functional Testing</h1>
+                </header>
+            
+            <article>
+                
+<p>nit testing <span>has become a primary part of good software development practice. It is a method by which individual units of source code are tested to ensure proper functioning. Each unit is theoretically the smallest testable part of an application. In a Node.js application, you might consider each module as a unit.</span></p>
+<p>In unit testing, each unit is tested separately, isolating the unit under test as much as possible from other parts of the application. If a test fails, you would want it to be due to a bug in your code rather than a bug in the package that your code happens to use. A common technique is to use mock objects or mock data to isolate individual parts of the application from one another.</p>
+<p>Functional testing, on the other hand, doesn't try to test individual components, but instead it tests the whole system. Generally speaking, unit testing is performed by the development team, and functional testing is performed by a <strong>Quality Assurance</strong> (<strong>QA</strong>) or <strong>Quality Engineering</strong> (<strong>QE</strong>) team. Both testing models are needed to fully certify an application. An analogy might be that unit testing is similar to ensuring that each word in a sentence is correctly spelled, while functional testing ensures that the paragraph containing that sentence has a good structure.</p>
+<p>In this chapter, we'll cover:</p>
+<p class="mce-root"/>
+<ul>
+<li>Assertions as the basis of software tests</li>
+<li>The Mocha unit testing framework and the Chai assertions library</li>
+<li>Using tests to find bugs and fixing the bug</li>
+<li>Using Docker to manage test infrastructure</li>
+<li>Testing a REST backend service</li>
+<li>UI testing in a real web browser using Puppeteer</li>
+<li>Improving UI testability with element ID attributes</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Assert – the basis of testing methodologies</h1>
+                </header>
+            
+            <article>
+                
+<p>Node.js has a useful <span>built-in</span> testing tool, the <kbd><span class="CodeInTextPACKT">assert</span></kbd> module. Its functionality is similar to assert libraries in other languages. Namely, it's a collection of functions for testing conditions, and if the conditions indicate an error, the <kbd>assert</kbd> function throws an exception.</p>
+<p>At its simplest, a test suite is a series of <kbd>assert</kbd> calls to validate the behavior of a thing being tested. For example, a test suite could instantiate the user authentication service, then make an API call, using <kbd>assert</kbd> methods to validate the result, then make another API call, validating its results, and so on.</p>
+<p><span>Consider a code snippet like this, which you could save in a file named </span><kbd><span class="CodeInTextPACKT">deleteFile.js</span></kbd>:</p>
+<pre>const fs = require('fs'); 
+
+exports.deleteFile = function(fname, callback) { 
+  fs.stat(fname, (err, stats) =&gt; { 
+    if (err) callback(new Error(`the file ${fname} does not exist`)); 
+    else { 
+      fs.unlink(fname, err2 =&gt; { 
+        if (err) callback(new Error(`could not delete ${fname}`)); 
+        else callback(); 
+      }); 
+    } 
+  }); 
+}; </pre>
+<p>The first thing to notice is this contains several layers of asynchronous callback functions. That presents a couple of challenges:  </p>
+<ul>
+<li>Capturing errors from deep inside a callback, to ensure the test scenario fails</li>
+<li>Detecting conditions where the callbacks are never called</li>
+</ul>
+<p>The following is an example of using <kbd><span class="CodeInTextPACKT">assert</span></kbd> for testing. Create a file named <kbd><span class="CodeInTextPACKT">test-deleteFile.js</span></kbd> containing the following:</p>
+<pre>const fs = require('fs'); 
+const assert = require('assert'); 
+const df = require('./deleteFile'); 
+
+df.deleteFile("no-such-file", (err) =&gt; { 
+    assert.throws( 
+        function() { if (err) throw err; }, 
+        function(error) { 
+            if ((error instanceof Error) 
+             &amp;&amp; /does not exist/.test(error)) { 
+               return true; 
+            } else return false; 
+        }, 
+        "unexpected error" 
+    ); 
+}); </pre>
+<p>This is what's called a negative test scenario, in that it's testing whether requesting to delete a nonexistent file throws an error.</p>
+<p>If you are looking for a quick way to test, the <kbd><span class="CodeInTextPACKT">assert</span></kbd> module can be useful when used this way. If it runs and no messages are printed, then the test passes. But, did it catch the instance of the <kbd>deleteFile</kbd> callback never being called?</p>
+<pre><strong>$ node test-deleteFile.js</strong> </pre>
+<p>The <kbd>assert</kbd> module is used by many of the test frameworks as a core tool for writing test cases. What the test frameworks do is create a familiar test suite and test case structure to encapsulate your test code.</p>
+<p><span>There are many styles of assertion libraries available in Node.js. Later in this chapter, we'll use the Chai assertion library (<a href="http://chaijs.com/"><span class="URLPACKT">http://chaijs.com/</span></a>) which gives you a choice between three different assertion styles (should, expect, and assert).</span></p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Testing a Notes model</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's start our unit testing journey with the <span>data models we wrote for the Notes application. Because this is unit testing, the models should be tested separately from the rest of the Notes application.</span></p>
+<p>In the case of most of the Notes models, isolating their dependencies implies creating a mock database. Are you going to test the data model or the underlying database? Mocking out a database means creating a fake database implementation, which does not look like a productive use of our time. You can argue that testing a data model is really about testing the interaction between your code and the database, that mocking out the database means not testing that interaction, and therefore we should test our code against the database engine used in production.</p>
+<p><span>With that line of reasoning in mind, we'll skip mocking out the database, and instead run the tests against a database containing test data. </span>To simplify launching the test database, we'll use Docker to start and stop a version of the Notes application stack that's set up for testing.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Mocha and Chai­ – the chosen test tools</h1>
+                </header>
+            
+            <article>
+                
+<p>If you haven't already <span>done so, duplicate the source tree to use in this chapter. For example, if you had a</span> directory named <kbd><span class="CodeInTextPACKT">chap10</span></kbd>, create one named <kbd><span class="CodeInTextPACKT">chap11</span></kbd> containing everything from <kbd><span class="CodeInTextPACKT">chap10</span></kbd>.</p>
+<p>In the <kbd><span class="CodeInTextPACKT">notes</span></kbd> directory, create a new directory named <kbd><span class="CodeInTextPACKT">test</span></kbd>.</p>
+<p><span>Mocha (<a href="http://mochajs.org/"><span class="URLPACKT">http://mochajs.org/</span></a>) is one</span> <span>of many test frameworks available for Node.js. As you'll see shortly, it helps us write test cases and test suites, and it provides a test results reporting mechanism. It was chosen over the alternatives because it supports Promises. It fits very well with the Chai assertion library mentioned earlier. And, we'll need to use ES6 modules from test suites written in CommonJS, and therefore we must use the <kbd>esm</kbd> module.</span></p>
+<p>You may find references to an earlier <kbd>@std/esm</kbd> module. That module has been deprecated, with <kbd>esm</kbd> put in its place.</p>
+<p>While in the <kbd><span class="CodeInTextPACKT">notes/test</span></kbd> directory, type this to install Mocha, Chai, and <kbd>esm</kbd>:</p>
+<pre><strong>$ npm init</strong><br/><strong>... answer the questions to create package.json</strong><br/><strong>$ npm install mocha@5.x chai@4.1.x esm --save</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Notes model test suite</h1>
+                </header>
+            
+            <article>
+                
+<p>Because we have several Notes models, the test suite should run against any model. We can write tests using the Notes model API we developed, and an environment variable should be used to declare the model to test.</p>
+<p>Because we've written the Notes application using ES6 modules, we have a small challenge to overcome. Mocha only supports running tests in CommonJS modules, and Node.js (as of this writing) does not support loading an ES6 module from a CommonJS module. An ES6 module can use <kbd>import</kbd> to load a CommonJS module, but a CommonJS module cannot use <kbd>require</kbd> to load an ES6 module. There are various technical reasons behind this, the bottom line is that we're limited in this way.</p>
+<p>Because Mocha requires that tests be CommonJS modules, we're in the position of having to load an ES6 module into a CommonJS module.  A module, <kbd>esm</kbd>, exists which allows that combination to work. If you'll refer back, we installed that module in the previous section. Let's see how to use it.</p>
+<p>In the <kbd><span class="CodeInTextPACKT">test</span></kbd> directory, create a file named <kbd><span class="CodeInTextPACKT">test-model.js</span></kbd> containing this as the outer shell of the test suite:</p>
+<pre>'use strict'; 
+<br/><strong>require = require("esm")(module,{"esm":"js"});</strong><br/>const assert = require('chai').assert; <br/><strong>const model = require('../models/notes');</strong>
+
+describe("Model Test", function() { 
+  .. 
+}); </pre>
+<p>The support to load ES6 modules is enabled by the <kbd>require('esm')</kbd> statement shown here. It replaces the standard <kbd>require</kbd> function with one from the <kbd>esm</kbd> module. That parameter list at the end enables the feature to load ES6 modules in a CommonJS module. Once you've done this, your CommonJS module can load an ES6 module as evidenced by <kbd>require('../models/notes')</kbd> a couple of lines later.</p>
+<p>The Chai library supports three flavors of assertions. We're using the <kbd><span class="CodeInTextPACKT">assert</span></kbd> style here, but it's easy to use a different style if you prefer. For the other styles supported by <span>Chai, see <a href="http://chaijs.com/guide/styles/"><span class="URLPACKT">http://chaijs.com/guide/styles/</span></a>.</span></p>
+<p>Chai's assertions include a very long list of useful assertion functions, see <a href="http://chaijs.com/api/assert/">http://chaijs.com/api/assert/</a>.<a href="http://chaijs.com/api/assert/"/></p>
+<p>The Notes model to test must be selected with the <kbd>NOTES_MODEL</kbd> environment variable. For the models that also consult environment variables, we'll need to supply that configuration as well.</p>
+<p>With Mocha, a test suite is contained within a <kbd><span class="CodeInTextPACKT">describe</span></kbd> block. The first argument is descriptive text, which you use to tailor the presentation of test results.</p>
+<p>Rather than <span>maintaining a separate test database, we can create one on the fly while executing tests. Mocha has what are called hooks, which are functions executed before or after test case execution. The hook functions let you, the test suite author, set up and tear down required conditions for the test suite to operate as desired. </span><span>For example, to create a test database with known test content:</span></p>
+<pre>describe("Model Test", function() { <br/>  beforeEach(async function() {<br/>    try {<br/>      const keyz = await model.keylist();<br/>      for (let key of keyz) {<br/>        await model.destroy(key);<br/>      }<br/>      await model.create("n1", "Note 1", "Note 1");<br/>      await model.create("n2", "Note 2", "Note 2");<br/>      await model.create("n3", "Note 3", "Note 3");<br/>    } catch (e) {<br/>      console.error(e);<br/>      throw e;<br/>    }<br/>  });
+    .. 
+}); </pre>
+<p>This defines a <kbd><span class="CodeInTextPACKT">beforeEach</span></kbd> hook, which is executed before every test case. The other hooks are <kbd><span class="CodeInTextPACKT">before</span></kbd>, <kbd><span class="CodeInTextPACKT">after</span></kbd>, <kbd><span class="CodeInTextPACKT">beforeEach</span></kbd>, and <kbd><span class="CodeInTextPACKT">afterEach</span></kbd>. The each hooks are triggered before or after each test case execution.</p>
+<p>This is meant to be a cleanup/preparation step before every test. It uses our Notes API to first delete all notes from the database (if any) and then create a set of new notes with known characteristics. This technique simplifies tests by ensuring that we have known conditions to test against.</p>
+<p>We also have a side effect of testing the <kbd><span class="CodeInTextPACKT">model.keylist</span></kbd> and <kbd><span class="CodeInTextPACKT">model.create</span></kbd> methods.</p>
+<p>In Mocha, a series of test cases are encapsulated with a <kbd>describe</kbd> block, and written using an <kbd><span class="CodeInTextPACKT">it</span></kbd> block. The <kbd>describe</kbd> block is meant to describe that group of tests, and the <kbd>it</kbd> block is for checking assertions on a specific aspect of the thing being tested. You can nest the <kbd><span class="CodeInTextPACKT">describe</span></kbd> <span>blocks as deeply as you like:</span></p>
+<pre>  describe("check keylist", function() {<br/>    it("should have three entries", async function() {<br/>      const keyz = await model.keylist();<br/>      assert.exists(keyz);<br/>      assert.isArray(keyz);<br/>      assert.lengthOf(keyz, 3);<br/>    });<br/>    it("should have keys n1 n2 n3", async function() {<br/>      const keyz = await model.keylist();<br/>      assert.exists(keyz);<br/>      assert.isArray(keyz);<br/>      assert.lengthOf(keyz, 3);<br/>      for (let key of keyz) {<br/>        assert.match(key, /n[123]/, "correct key");<br/>      }<br/>    });<br/>    it("should have titles Node #", async function() {<br/>      const keyz = await model.keylist();<br/>      assert.exists(keyz);<br/>      assert.isArray(keyz);<br/>      assert.lengthOf(keyz, 3);<br/>      var keyPromises = keyz.map(key =&gt; model.read(key));<br/>      const notez = await Promise.all(keyPromises);<br/>      for (let note of notez) {<br/>        assert.match(note.title, /Note [123]/, "correct title");<br/>      }<br/>    });<br/>  });</pre>
+<p>The idea is to call Notes API functions, then to test the results to check whether they matched the expected results.</p>
+<p>This <kbd><span class="CodeInTextPACKT">describe</span></kbd> block is within the outer <kbd><span class="CodeInTextPACKT">describe</span></kbd> block. The descriptions given in the <span class="CodeInTextPACKT">describe</span> and <kbd><span class="CodeInTextPACKT">it</span></kbd> blocks are used to make the test report more readable. The <kbd>it</kbd> block forms a pseudo-sentence along the lines of <em>it (the thing being tested) should do this or that</em>.</p>
+<div class="packt_tip"><span>It is important with Mocha to not use arrow functions in the </span><kbd><span class="CodeInTextPACKT">describe</span></kbd><span> and </span><kbd><span class="CodeInTextPACKT">it</span></kbd><span> blocks. By now, you will have grown fond of arrow functions because of how much easier they are to write. But, Mocha calls these functions with </span>a<span> </span><kbd><span class="CodeInTextPACKT">this</span></kbd><span> object containing useful functions for Mocha. Because arrow functions avoid setting up </span>a<span> </span><kbd><span class="CodeInTextPACKT">this</span></kbd><span> object, Mocha would break.</span>
+<p> </p>
+<p><span>Even though Mocha requires regular functions for the </span><kbd>describe</kbd><span> and </span><kbd>it</kbd><span> blocks, we can use arrow functions within those functions.</span></p>
+</div>
+<p>How does Mocha know whether the test code passes? How does it know when the test finishes? This segment of code shows one of the three methods.</p>
+<p>Generally, Mocha is looking to see if the function throws an exception, or whether the test case takes too long to execute (a timeout situation). In either case, Mocha will indicate a test failure. That's of course simple to determine for non-asynchronous code. But, Node.js is all about asynchronous code, and Mocha has two models for testing asynchronous code.</p>
+<p>In the first (not seen here), Mocha passes in a callback function, and the test code is to call the callback function. In the second, as seen here, it looks for a Promise being returned by the test function, and determines pass/fail on whether the Promise is in the <em>resolve</em> or <em>reject</em> state.</p>
+<p>In this case, we're using <kbd>async</kbd> functions, because they automatically return a Promise. Within the functions, we're calling asynchronous functions using <kbd>await,</kbd> ensuring any thrown exception is indicated as a rejected Promise. </p>
+<p>Another item to note is the question asked earlier: what if the callback function we're testing is never called?  Or, what if a Promise is never resolved?  Mocha starts a timer and if the test case does not finish before the timer expires, Mocha fails the test case.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Configuring and running tests</h1>
+                </header>
+            
+            <article>
+                
+<p>We have more tests to write, but let's first get set up to run the tests. The simplest model to test is the in-memory model. Let's add this to the <kbd><span class="CodeInTextPACKT">scripts</span></kbd> section of <kbd>notes/test/<span class="CodeInTextPACKT">package.json</span></kbd>:</p>
+<pre>"test-notes-memory": "NOTES_MODEL=memory mocha test-model",</pre>
+<p>To install dependencies, we must run <kbd>npm install</kbd> in both the <kbd>notes/test</kbd> and <kbd>notes</kbd> directories. That way both the dependencies for the test code, and the dependencies for Notes, are installed in their correct place.</p>
+<p>Then, we can run it as follows:</p>
+<pre><strong>$ npm run test-notes-memory</strong><br/><br/><strong>&gt; notes-test@1.0.0 test-notes-memory /Users/david/chap11/notes/test</strong><br/><strong>&gt; NOTES_MODEL=memory mocha test-model</strong><br/><br/><strong>  Model Test</strong><br/><strong>    check keylist</strong><br/><strong>      √ should have three entries</strong><br/><strong>      √ should have keys n1 n2 n3</strong><br/><strong>      √ should have titles Node #</strong><br/><br/><strong>  3 passing (18ms)</strong></pre>
+<p>The <kbd><span class="CodeInTextPACKT">mocha</span></kbd> command is used to run the test suite. </p>
+<p>The structure of the output follows the structure of the <kbd>describe</kbd> and <kbd>it</kbd> blocks. You should set up the descriptive text strings so it reads nicely.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">More tests for the Notes model</h1>
+                </header>
+            
+            <article>
+                
+<p>That wasn't enough to test much, so let's go ahead and add some more tests:</p>
+<pre>describe("read note", function() {<br/>    it("should have proper note", async function() {<br/>        const note = await model.read("n1");<br/>        assert.exists(note);<br/>        assert.deepEqual({ key: note.key, title: note.title, body: <br/>        note.body }, {<br/>          key: "n1", title: "Note 1 FAIL", body: "Note 1"<br/>        });<br/>    });<br/>    <br/>    it("Unknown note should fail", async function() {<br/>        try {<br/>          const note = await model.read("badkey12");<br/>          assert.notExists(note);<br/>          throw new Error("should not get here");<br/>        } catch(err) {<br/>          // this is expected, so do not indicate error<br/>          assert.notEqual(err.message, "should not get here");<br/>        }<br/>    });<br/>});
+
+describe("change note", function() {<br/>    it("after a successful model.update", async function() {<br/>        const newnote = await model.update("n1", "Note 1 title <br/>        changed", "Note 1 body changed");<br/>        const note = await model.read("n1");<br/>        assert.exists(note);<br/>        assert.deepEqual({ key: note.key, title: note.title, body: <br/>        note.body }, {<br/>          key: "n1", title: "Note 1 title changed", body: "Note 1 body <br/>        changed"<br/>        });<br/>    });<br/>});
+
+describe("destroy note", function() {<br/>    it("should remove note", async function() {<br/>        await model.destroy("n1");<br/>        const keyz = await model.keylist();<br/>        assert.exists(keyz);<br/>        assert.isArray(keyz);<br/>        assert.lengthOf(keyz, 2);<br/>        for (let key of keyz) {<br/>          assert.match(key, /n[23]/, "correct key");<br/>        }<br/>    });<br/>    it("should fail to remove unknown note", async function() {<br/>        try {<br/>          await model.destroy("badkey12");<br/>          throw new Error("should not get here");<br/>        } catch(err) {<br/>            // this is expected, so do not indicate error<br/>            assert.notEqual(err.message, "should not get here");<br/>        }<br/>    });<br/>  });<br/><br/>  after(function() {  model.close(); });
+}); </pre>
+<p>Notice that for the negative tests – where the test passes if an error is thrown – we run it in a <kbd>try/catch</kbd> block. The <kbd>throw new Error</kbd> line in each case should not execute because the preceding code should throw an error. Therefore, we can check if the message in that thrown error is the message which arrives, and fail the test if that's the case.</p>
+<p>Now, the test report:</p>
+<pre>$ npm run test-notes-memory<br/><br/>&gt; notes-test@1.0.0 test-notes-memory /Users/david/chap11/notes/test<br/>&gt; NOTES_MODEL=memory mocha test-model<br/><br/>  Model Test<br/>    check keylist<br/>      √ should have three entries<br/>      √ should have keys n1 n2 n3<br/>      √ should have titles Node #<br/>    read note<br/>      √ should have proper note<br/>      √ Unknown note should fail<br/>    change note<br/>      √ after a successful model.update<br/>    destroy note<br/>      √ should remove note<br/>      √ should fail to remove unknown note<br/><br/>  8 passing (17ms) </pre>
+<p>In these additional tests, we have a couple of negative tests. In each test that we expect to fail, we supply a <kbd><span class="CodeInTextPACKT">notekey</span></kbd> <span>that we know is not in the database, and we then ensure that the model gives us an error.</span></p>
+<p><span>The Chai Assertions API includes some very expressive assertions. In this case, we've used the <kbd>deepEqual</kbd> method which does a deep comparison of two objects. In our case, it looks like this:</span></p>
+<div>
+<pre>assert.deepEqual({ key: note.key, title: note.title, body: note.body }, {<br/>   key: "n1", title: "Note 1", body: "Note 1"<br/> });</pre></div>
+<p>This reads nicely in the test code, but more importantly a reported test failure looks very nice. Since these are currently passing, try introducing an error by changing one of the expected value strings. Upon rerunning the test, you'll see:</p>
+<pre><span><strong> Model Test </strong><br/><strong>    check keylist </strong><br/><strong>      √ should have three entries </strong><br/><strong>      √ should have keys n1 n2 n3 </strong><br/><strong>      √ should have titles Node # </strong><br/><strong>    read note </strong><br/><strong>      1) should have proper note </strong><br/><strong>      √ Unknown note should fail </strong><br/><strong>    change note </strong><br/><strong>      √ after a successful model.update </strong><br/><strong>    destroy note </strong><br/><strong>      √ should remove note </strong><br/><strong>      √ should fail to remove unknown note </strong><br/> <br/><strong>  7 passing (42ms) </strong><br/><strong>  1 failing </strong><br/> <br/><strong>  1) Model Test </strong><br/><strong>       read note </strong><br/><strong>         should have proper note: </strong><br/><strong>      AssertionError: expected { Object (key, title, ...) } to deeply </strong><br/><strong>      equal { Object (key, title, ...) } </strong><br/><strong>      + expected - actual </strong><br/> <br/><strong>       { </strong><br/><strong>         "body": "Note 1" </strong><br/><strong>         "key": "n1" </strong><br/><strong>      -  "title": "Note 1" </strong><br/><strong>      +  "title": "Note 1 FAIL" </strong><br/><strong>       } </strong><br/>       <br/><strong>      at Context.&lt;anonymous&gt; (test-model.js:53:16)                                               </strong><br/><strong>      at &lt;anonymous&gt;                  </strong> <br/></span></pre>
+<p>At the top is the status report of each test case. For one test, instead of a check mark is a number, and the number corresponds to the reported details at the bottom. Mocha presents test failures this way when the <kbd>spec</kbd> reporter is used. Mocha supports other test report formats, some of which produce data that can be sent into test status reporting systems. For more information, see <a href="https://mochajs.org/#reporters">https://mochajs.org/#reporters</a>.</p>
+<p>In this case, the failure was detected by a <kbd>deepEqual</kbd> method, which presents the detected object inequality in this way.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Testing database models</h1>
+                </header>
+            
+            <article>
+                
+<p>That was good, but we obviously won't run Notes in production with the in-memory Notes model. This means that we need to test all the other models. </p>
+<p>Testing the LevelUP and filesystem models is easy, just add this to the <span class="CodeInTextPACKT">scripts</span> section of <kbd><span class="CodeInTextPACKT">package.json</span></kbd>:</p>
+<pre>"test-notes-levelup": "NOTES_MODEL=levelup mocha",
+"test-notes-fs": "NOTES_MODEL=fs mocha", </pre>
+<p>Then run the following command:</p>
+<pre><strong>$ npm run test-notes-fs 
+$ npm run test-notes-levelup</strong> </pre>
+<p>This will produce a successful test result.</p>
+<p>The simplest database to test is SQLite3, since it requires zero setup. We have two SQLite3 models to test, let's start with <kbd><span class="CodeInTextPACKT">notes-sqlite3.js</span></kbd>. Add the following to the <span class="CodeInTextPACKT">scripts</span> section of <kbd><span class="CodeInTextPACKT">package.json</span></kbd>:</p>
+<pre>"test-notes-sqlite3": "rm -f chap11.sqlite3 &amp;&amp; sqlite3 chap11.sqlite3 --init ../models/chap07.sql &lt;/dev/null &amp;&amp; NOTES_MODEL=sqlite3 SQLITE_FILE=chap11.sqlite3 mocha test-model", </pre>
+<p>This command sequence puts the test database in the <kbd><span class="CodeInTextPACKT">chap11.sqlite3</span></kbd> file. It first initializes that database using the <kbd><span class="CodeInTextPACKT">sqlite3</span></kbd> command-line tool. Note that we've connected its input to <kbd><span class="CodeInTextPACKT">/dev/null</span></kbd> because the <kbd><span class="CodeInTextPACKT">sqlite3</span></kbd> command will prompt for input otherwise. Then, it runs the test suite passing in environment variables required to run against the SQLite3 model.</p>
+<p>Running the test suite does find two errors:</p>
+<pre><strong><span>$ npm run test-notes-sqlite3 <br/> <br/>&gt; notes-test@1.0.0 test-notes-sqlite3 /Users/david/chap11/notes/test <br/>&gt; rm -f chap11.sqlite3 &amp;&amp; sqlite3 chap11.sqlite3 --init ../models/chap07.sql &lt;/dev/null &amp;&amp; NOTES_MODEL=sqlite3 SQLITE_FILE=chap11.sqlite3 mocha test-model <br/><br/>  Model Test <br/>    check keylist <br/>      √ should have three entries <br/>      √ should have keys n1 n2 n3 <br/>      √ should have titles Node # <br/>    read note <br/>      √ should have proper note <br/>      1) Unknown note should fail <br/>    change note <br/>      √ after a successful model.update (114ms) <br/>    destroy note <br/>      √ should remove note (103ms) <br/>      2) should fail to remove unknown note <br/> <br/> <br/>  6 passing (6s) <br/>  2 failing <br/> <br/>  1) Model Test <br/>       read note <br/>         Unknown note should fail: <br/>     Uncaught TypeError: Cannot read property 'notekey' of undefined <br/>      at Statement.db.get (/home/david/nodewebdev/node-web-development-<br/>  code-4th-edition/chap11/notes/models/notes-sqlite3.mjs:64:39)                               <br/>                                                                                                                                                                   <br/>  2) Model Test <br/>       destroy note <br/>         should fail to remove unknown note: <br/> <br/>      AssertionError: expected 'should not get here' to not equal <br/>  'should not get here' <br/></span><span>      + expected - actual</span><span>  <br/></span></strong></pre>
+<p>The failing test calls <kbd><span class="CodeInTextPACKT">model.read("badkey12")</span></kbd>, a <kbd>key</kbd> which we know does not exist. Writing negative tests paid off. The failing line of code at <kbd><span class="CodeInTextPACKT">models/notes-sqlite3.mjs</span></kbd> (line 64) reads as follows:</p>
+<pre>const note = new Note(row.notekey, row.title, row.body);</pre>
+<p>It's easy enough to insert <kbd><span class="CodeInTextPACKT">console.log(util.inspect(row));</span></kbd> just before this and learn that, for the failing call, SQLite3 gave us <kbd><span>undefined</span></kbd> for <kbd><span class="CodeInTextPACKT">row</span></kbd>, explaining the error message.</p>
+<p>The test suite calls the <kbd><span class="CodeInTextPACKT">read</span></kbd> function multiple times with a <kbd><span class="CodeInTextPACKT">notekey</span></kbd> value that does exist. Obviously, when given an invalid <kbd><span class="CodeInTextPACKT">notekey</span></kbd> value, the query gives an empty results set and SQLite3 invokes the callback with both the <kbd><span class="CodeInTextPACKT">undefined</span></kbd> error and the <kbd><span class="CodeInTextPACKT">undefined</span></kbd> row values. This is common behavior for database modules. An empty result set isn't an error, and therefore we received no error and an undefined <kbd>row</kbd>.</p>
+<p>In fact, we saw this behavior earlier with <kbd><span class="CodeInTextPACKT">models/notes-sequelize.mjs</span></kbd><span>. The equivalent code in</span> <kbd><span class="CodeInTextPACKT">models/notes-sequelize.mjs</span></kbd> <span>does the right thing, and it has a check, which we can adapt. Let's rewrite the</span> <kbd><span class="CodeInTextPACKT">read</span></kbd> <span>function in </span><kbd><span class="CodeInTextPACKT">models/notes-sqlite.mjs</span></kbd> to this:</p>
+<pre>export async function read(key) {<br/>  var db = await connectDB();<br/>  var note = await new Promise((resolve, reject) =&gt; {<br/>    db.get("SELECT * FROM notes WHERE notekey = ?", [ key ], (err, row) <br/>    =&gt; {<br/>        if (err) return reject(err);<br/>        if (!row) { <strong>reject(new Error(`No note found for ${key}`)); </strong>} <br/>        else {<br/>            const note = new Note(row.notekey, row.title, row.body);<br/>            resolve(note);<br/>        }<br/>    });<br/>  });<br/>  return note;<br/>}</pre>
+<p>This is simple, we just check whether <kbd><span class="CodeInTextPACKT">row</span></kbd> <span>is <kbd>undefined</kbd> and, if so, throw an error. While the database doesn't see an empty results set as an error, Notes does. Furthermore, Notes already knows how to deal with a thrown error in this case. </span>Make this change and that particular test case passes. </p>
+<p>There is a second similar error in the <kbd>destroy</kbd> logic. The test to destroy a nonexistent note fails to produce an error at this line:</p>
+<div>
+<pre><span>await</span><span> </span><span>model</span><span>.</span><span>destroy</span><span>(</span><span>"badkey12"</span><span>);</span></pre></div>
+<p>If we inspect the other models, they're throwing errors for a nonexistent key. In SQL, it obviously is not an error if this SQL (from <kbd>models/notes-sqlite3.mjs</kbd>) does not delete anything:</p>
+<div>
+<pre><span>db</span><span>.</span><span>run</span><span>(</span><span>"DELETE FROM notes WHERE notekey = ?;"</span><span>, ... );</span></pre></div>
+<p>Unfortunately, there isn't a SQL option to make this SQL statement fail if it does not delete any records. Therefore, we must add a check to see if a record exists. Namely:</p>
+<pre>export async function destroy(key) {<br/>    const db = await connectDB();<br/>    <strong>const note = await read(key);</strong><br/>    return await new Promise((resolve, reject) =&gt; {<br/>        db.run("DELETE FROM notes WHERE notekey = ?;", [ key ], err =&gt; <br/>       {<br/>            if (err) return reject(err);<br/>            resolve();<br/>        });<br/>    });<br/>}</pre>
+<p>Therefore, we read the note and as a byproduct we verify the note exists. If the note doesn't exist, <kbd>read</kbd> will throw an error, and the <kbd>DELETE</kbd> operation will not even run.</p>
+<p><span>These are the bugs we referred to in <a href=""><span class="ChapterrefPACKT">Chapter 7</span></a>, <em><span class="ItalicsPACKT">Data Storage and Retrieval</span></em>. We simply forgot to check for these conditions in this particular model. Thankfully, our diligent testing caught the problem. At least, that's the story to tell the managers rather than telling them that we forgot to check for something we already knew could happen.</span></p>
+<p>Now that we've fixed <kbd><span class="CodeInTextPACKT">models/notes-sqlite3.mjs</span></kbd>, let's also test <kbd><span class="CodeInTextPACKT">models/notes-sequelize.mjs</span></kbd> <span>using the SQLite3 database. To do this, we need a connection object to specify in the</span> <kbd><span class="CodeInTextPACKT">SEQUELIZE_CONNECT</span></kbd> variable. While we can reuse the existing one, let's create a new one. Create a file named <kbd><span class="CodeInTextPACKT">test/sequelize-sqlite.yaml</span></kbd> containing this:</p>
+<pre>dbname: notestest 
+username: 
+password: 
+params: 
+    dialect: sqlite 
+    storage: notestest-sequelize.sqlite3 
+    logging: false </pre>
+<p>This way, we don't overwrite the production database instance with our test suite. Since the test suite destroys the database it tests, it must be run against a database we are comfortable destroying. The <span class="CodeInTextPACKT">logging</span> parameter turns off the voluminous output <kbd>Sequelize</kbd> produces so that we can read the test results report.</p>
+<p>Add the following to the <span class="CodeInTextPACKT">scripts</span> section of <kbd><span class="CodeInTextPACKT">package.json</span></kbd>:</p>
+<pre>"test-notes-sequelize-sqlite": "NOTES_MODEL=sequelize SEQUELIZE_CONNECT=sequelize-sqlite.yaml mocha test-model" </pre>
+<p>Then run the test suite:</p>
+<pre><strong>$ npm run test-notes-sequelize-sqlite 
+.. 
+ 8 passing (2s)</strong> </pre>
+<p>We pass with flying colors!  <span>We've been able to leverage the same test suite against multiple Notes models. We even found two bugs in one model. But, we have two test configurations remaining to test.</span></p>
+<p><span>Our test results matrix reads as follows:</span></p>
+<ul>
+<li><kbd><span class="CodeInTextPACKT">models-fs</span></kbd>: PASS</li>
+<li><kbd><span class="CodeInTextPACKT">models-memory</span></kbd>: PASS</li>
+<li><kbd><span class="CodeInTextPACKT">models-levelup</span></kbd>: PASS</li>
+<li><kbd><span class="CodeInTextPACKT">models-sqlite3</span></kbd>: 2 failures, now fixed</li>
+<li><kbd><span class="CodeInTextPACKT">models-sequelize</span></kbd>: with SQLite3: PASS</li>
+<li><kbd><span class="CodeInTextPACKT">models-sequelize</span></kbd>: with MySQL: untested</li>
+<li><kbd><span class="CodeInTextPACKT">models-mongodb</span></kbd>: untested</li>
+</ul>
+<p>The two untested models both require the setup of a database server. We avoided testing these combinations, but our manager won't accept that excuse because the CEO needs to know we've completed the test cycles. Notes must be tested in a similar configuration to the production environment.</p>
+<p>In production, we'll be using a regular database server, of course, with MySQL or MongoDB being the primary choices. Therefore, we need a way that incurs a low overhead to run tests against those databases. Testing <span>against the production configuration must be so easy that we should feel no resistance in doing so, to ensure that tests are run often enough to make the desired impact.</span></p>
+<p>Fortunately, we've already had experience of a technology that supports easily creating and destroying the deployment infrastructure. Hello, Docker!</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Using Docker to manage test infrastructure</h1>
+                </header>
+            
+            <article>
+                
+<p>One advantage Docker gives is the ability to install the production environment on our laptop. It's then very easy to push the same Docker setup to the cloud-hosting environment for staging or production deployment. </p>
+<p>What we'll do in this section is demonstrate reusing the Docker Compose configuration defined previously for test infrastructure, and to automate executing the Notes test suite inside the containers using a shell script. <span>Generally speaking, it's important to replicate the production environment when running tests. Docker can make this an easy thing to do.</span></p>
+<p><span>Using Docker, we'll be able to easily test against a database, and have a simple method for starting and stopping a test version of our production environment. </span><span>Let's get started.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Docker Compose to orchestrate test infrastructure</h1>
+                </header>
+            
+            <article>
+                
+<p>We had a great <span>experience using Docker Compose to orchestrate Notes application deployment. The whole system, with four independent services, is easily described in</span> <kbd><span class="CodeInTextPACKT">compose/docker-compose.yml</span></kbd><span>. What we'll do is duplicate the Compose file, then make a couple of small changes required to support test execution.</span></p>
+<p>Let's start by making a new directory, <kbd><span class="CodeInTextPACKT">test-compose</span></kbd>, as a sibling to the <kbd><span class="CodeInTextPACKT">notes</span></kbd>, <kbd><span class="CodeInTextPACKT">users</span></kbd>, and <kbd><span class="CodeInTextPACKT">compose</span></kbd> directories. Copy <kbd><span class="CodeInTextPACKT">compose/docker-compose.yml</span></kbd> to the newly created <kbd><span class="CodeInTextPACKT">test-compose</span></kbd> directory. We'll be making several changes to this file and a couple of small changes to the existing <span class="CodeInTextPACKT">Dockerfile</span>s.</p>
+<p>We want to change the container and network names so our test infrastructure doesn't clobber the production infrastructure. We'll constantly delete and recreate the test containers, so as to keep the developers happy, we'll leave development infrastructure alone and perform testing on separate infrastructure. By maintaining separate test containers and networks, our test scripts can do anything they like without disturbing the development or production containers.</p>
+<p>Consider this change to the <kbd><span class="CodeInTextPACKT">db-auth</span></kbd> and <kbd><span class="CodeInTextPACKT">db-notes</span></kbd> containers:</p>
+<pre>db-userauth-test:<br/>  build: ../authnet<br/>  container_name: db-userauth-test<br/>  networks:<br/>    - authnet-test<br/>  environment:<br/>    MYSQL_RANDOM_ROOT_PASSWORD: "true"<br/>    MYSQL_USER: userauth-test<br/>    MYSQL_PASSWORD: userauth-test<br/>    MYSQL_DATABASE: userauth-test<br/>  volumes:<br/>    - db-userauth-test-data:/var/lib/mysql<br/>  restart: always
+.. 
+db-notes-test:<br/>  build: ../frontnet<br/>  container_name: db-notes-test<br/>  networks:<br/>    - frontnet-test<br/>  environment:<br/>    MYSQL_RANDOM_ROOT_PASSWORD: "true"<br/>    MYSQL_USER: notes-test<br/>    MYSQL_PASSWORD: notes12345<br/>    MYSQL_DATABASE: notes-test<br/>  volumes:<br/>    - db-notes-test-data:/var/lib/mysql<br/>  restart: always</pre>
+<p>This is the same as earlier, but with <kbd><span class="CodeInTextPACKT">-test</span></kbd><span> appended to container and network names.</span></p>
+<p>That's the first change we must make, append <kbd><span class="CodeInTextPACKT">-test</span></kbd> to every container and network name in <kbd><span class="CodeInTextPACKT">test-compose/docker-compose.yml</span></kbd>. Everything we'll do with tests will run on completely separate containers, hostnames, and networks from those of the development instance.</p>
+<p>This change will affect the <kbd><span class="CodeInTextPACKT">notes-test</span></kbd> and <kbd><span class="CodeInTextPACKT">userauth-test</span></kbd> services because the database server hostnames are now <kbd><span class="CodeInTextPACKT">db-auth-test</span></kbd> and <kbd><span class="CodeInTextPACKT">db-notest-test</span></kbd>. There are several environment variables or configuration files to update.</p>
+<p>Another consideration is the environment variables required to configure the services.  <span>Previously, we defined all environment variables in the </span><span class="CodeInTextPACKT">Dockerfiles</span><span>.  It's extremely useful to reuse those Dockerfiles so we know we're testing the same deployment as is used in production.  But we need to tweak the configuration settings to match the test infrastructure.</span></p>
+<p>The database configuration shown here is an example. The same Dockerfiles are used, but we also define environment variables <span>in </span><kbd><span class="CodeInTextPACKT">test-compose/docker-compose.yml</span></kbd><span>. As you might expect, this overrides the Dockerfile environment variables with the values set here:</span></p>
+<pre>userauth-test:<br/>  build: ../users<br/>  container_name: userauth-test<br/>  depends_on:<br/>    - db-userauth-test<br/>  networks:<br/>    - authnet-test<br/>    - frontnet-test<br/>  environment:<br/>    DEBUG: ""<br/>    NODE_ENV: "test"<br/>    SEQUELIZE_CONNECT: "sequelize-docker-test-mysql.yaml"<br/>    HOST_USERS_TEST: "localhost"<br/>  restart: always<br/>  volumes:<br/>    - ./reports-userauth:/reports
+.. 
+notes-test:<br/>  build: ../notes<br/>  container_name: notes-test<br/>  depends_on:<br/>    - db-notes-test<br/>  networks:<br/>    - frontnet-test<br/>  ports:<br/>    - "3000:3000"<br/>  restart: always<br/>  environment:<br/>    NODE_ENV: "test"<br/>    SEQUELIZE_CONNECT: "test/sequelize-mysql.yaml"<br/>    USER_SERVICE_URL: "http://userauth-test:3333"<br/>  volumes:<br/>    - ./reports-notes:/reports<br/>...<br/>networks:<br/>  frontnet-test:<br/>    driver: bridge<br/>  authnet-test:<br/>    driver: bridge<br/><br/>volumes: <br/>  db-userauth-test-data: <br/>  db-notes-test-data: </pre>
+<p>Again, we changed the container and network names to append <kbd><span class="CodeInTextPACKT">-test</span></kbd>. We moved some of the environment variables from <span class="CodeInTextPACKT">Dockerfile</span> to <kbd><span class="CodeInTextPACKT">test-compose/docker-compose.yml</span></kbd>. Finally, we added some data volumes to mount host directories inside the container.</p>
+<p>Another thing to do is to set up directories to store test code. A common practice in Node.js projects is to put test code in the same directory as the application code. Earlier in this chapter, we did so, implementing a small test suite in the <kbd>notes/test</kbd> directory. As it stands, <kbd>notes/Dockerfile</kbd> does not copy that directory into the container. The test code must exist in the container to execute the tests. Another issue is it's helpful to not deploy test code in production.</p>
+<p>What we can do is to ensure that <kbd>test-compose/docker-compose.yml</kbd> mounts <kbd>notes/test</kbd> into the container:</p>
+<pre>notes-test:<br/>  ...<br/>  volumes:<br/>    - ./reports-notes:/reports<br/>    - ../notes/test:/notesapp/test</pre>
+<p>This gives us the best of both worlds.</p>
+<ul>
+<li>The test code is in <kbd>notes/test</kbd> where it belongs</li>
+<li>The test code is not copied into the production container</li>
+<li>In test mode, the <kbd>test</kbd> directory appears where it belongs</li>
+</ul>
+<p>We have a couple of configuration files remaining for the <span><kbd>Sequelize</kbd> database connection to set up.</span></p>
+<p>For the <kbd>userauth-test</kbd> container, the <kbd>SEQUELIZE_CONNECT</kbd> variable now refers to a configuration file that does not exist, thanks to overriding the variable in <kbd>user/Dockerfile</kbd>. Let's create that file as <kbd><span class="CodeInTextPACKT">test-compose/userauth/sequelize-docker-mysql.yaml</span></kbd>, containing the following:</p>
+<pre>dbname: userauth-test<br/>username: userauth-test<br/>password: userauth-test<br/>params:<br/>    host: db-userauth-test<br/>    port: 3306<br/>    dialect: mysql</pre>
+<p>The values match the variables passed to the <kbd>db-userauth-test</kbd> container. Then we must ensure this configuration file is mounted into the <kbd>userauth-test</kbd> container:</p>
+<pre>userauth-test:<br/>  ...<br/>  volumes:<br/>    - ./reports-userauth:/reports<br/>    - ./userauth/sequelize-docker-test-mysql.yaml:/userauth/sequelize-<br/>  docker-test-mysql.yaml</pre>
+<p>For <kbd>notes-test</kbd> we have a configuration file, <kbd>test/sequelize-mysql.yaml</kbd>, to put in the <kbd>notes/test</kbd> directory:</p>
+<pre>dbname: notes-test <br/>username: notes-test<br/>password: notes12345<br/>params: <br/>    host: db-notes-test<br/>    port: 3306 <br/>    dialect: mysql <br/>    logging: false </pre>
+<p>Again, this matches the configuration variables in <kbd>db-notes-test</kbd>. In <kbd>test-compose/docker-compose.yml</kbd>, we mount that file into the container.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Executing tests under Docker Compose</h1>
+                </header>
+            
+            <article>
+                
+<p>Now we're ready to execute some of the tests inside a container. We've used a Docker Compose file to describe the test environment for the Notes application, using the same architecture as in the production environment. The test scripts and configuration has been injected into the containers. The question is, how do we automate test execution?</p>
+<p>The technique we'll use is to run a shell script, and use <kbd>docker exec -it</kbd> to execute commands to run the test scripts. This is somewhat automated, and with some more work it can be fully automated.</p>
+<p>In <kbd><span class="CodeInTextPACKT">test-compose</span></kbd>, let's make a shell script called <kbd><span class="CodeInTextPACKT">run.sh</span></kbd> (on Windows, <kbd>run.ps1</kbd>):</p>
+<pre><strong>docker-compose stop</strong><br/><br/><strong>docker-compose build</strong><br/><strong>docker-compose up --force-recreate -d</strong><br/><strong>docker ps</strong><br/><strong>docker network ls</strong><br/><br/><strong>sleep 20</strong><br/><strong>docker exec -it --workdir /notesapp/test -e DEBUG= notes-test npm install</strong><br/><br/><strong>docker exec -it --workdir /notesapp/test -e DEBUG= notes-test npm run test-notes-memory</strong><br/><strong>docker exec -it --workdir /notesapp/test -e DEBUG= notes-test npm run test-notes-fs</strong><br/><strong>docker exec -it --workdir /notesapp/test -e DEBUG= notes-test npm run test-notes-levelup</strong><br/><strong>docker exec -it --workdir /notesapp/test -e DEBUG= notes-test npm run test-notes-sqlite3</strong><br/><strong>docker exec -it --workdir /notesapp/test -e DEBUG= notes-test npm run test-notes-sequelize-sqlite</strong><br/><strong>docker exec -it --workdir /notesapp/test -e DEBUG= notes-test npm run test-notes-sequelize-mysql</strong><br/><br/><strong>docker-compose stop</strong> </pre>
+<div class="packt_infobox"><span>It's common practice to run tests out of a continuous integration system such as Jenkins. Continuous integration systems automatically run builds or tests against software products. The build and test results data is used to automatically generate status pages.  Visit </span><a href="https://jenkins.io/index.html"><span class="URLPACKT">https://jenkins.io/index.html</span></a><span>, which is a good starting point for a Jenkins job.</span></div>
+<p>That makes the first real step to building the containers, followed by bringing them up. The script sleeps for a few seconds to give the containers time to fully instantiate themselves.</p>
+<p>The subsequent commands all follow a particular pattern that is important to understand. The commands are executed in the <kbd>/notesapp/test</kbd> directory thanks to the <kbd>--workdir</kbd> option. Remember that directory is injected into the container by the Docker Compose file.</p>
+<p>Using <kbd>-e DEBUG=</kbd> we've disabled the <kbd>DEBUG</kbd> options. If those options are set, we'd have excess unwanted output in the test results, so using this option ensures that debugging output doesn't occur. </p>
+<p>Now that you understand the options, you can see that the subsequent commands are all executed in the <kbd>test</kbd> directory using the <kbd>package.json</kbd> in that directory. It starts by running <kbd>npm install</kbd>, and then running each of the scenarios in the test matrix.</p>
+<p>To run the tests, simply type:</p>
+<pre><strong>$ sh -x run.sh</strong> </pre>
+<p>That's good, we've got most of our test matrix automated and pretty well squared away. There is a glaring hole in the test matrix and plugging that hole will let us see how to set up MongoDB under Docker.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">MongoDB setup under Docker and testing Notes against MongoDB</h1>
+                </header>
+            
+            <article>
+                
+<p>In <a href="">Chapter 7</a>,<em> Data Storage and Retrieval</em>, we developed MongoDB support for Notes, and since then we've focused on <kbd>Sequelize</kbd>. To make up for that slight, let's make sure we at least test our MongoDB support. <span>Testing on MongoDB would simply require defining a container for the MongoDB database and a little bit of configuration.</span></p>
+<p><span>Visit </span><a href="https://hub.docker.com/_/mongo/"><span class="URLPACKT">https://hub.docker.com/_/mongo/</span></a><span> for the official MongoDB container. You'll be able to retrofit this to allow deploying the Notes application running on MongoDB.</span></p>
+<p>Add this to <kbd>test-compose/docker-compose.yml</kbd>:</p>
+<pre>db-notes-mongo-test:<br/>  image: mongo:3.6-jessie<br/>  container_name: db-notes-mongo-test<br/>  networks:<br/>    - frontnet-test<br/>  volumes:<br/>    - ./db-notes-mongo:/data/db</pre>
+<p>That's all that's required to add a MongoDB container to a Docker Compose file. We've connected it to <kbd>frontnet</kbd> so that the <kbd>notes</kbd> (<kbd>notes-test</kbd>) container can access the service.</p>
+<p>Then in <kbd>notes/test/package.json</kbd> we add a line to facilitate running tests on MongoDB:</p>
+<pre>"test-notes-mongodb": "MONGO_URL=<strong>mongodb://db-notes-mongo-test/</strong> MONGO_DBNAME=chap11-test NOTES_MODEL=mongodb mocha <strong>--no-timeouts</strong> test-model"</pre>
+<p>Simply by adding the MongoDB container to <kbd>frontnet-test</kbd>, the database is available at the URL shown here. Hence, it's simple to now run the test suite using the Notes MongoDB model. </p>
+<p>The <kbd>--no-timeouts</kbd> option was necessary to avoid a spurious error while testing the suite against MongoDB. This option instructs Mocha to not check whether a test case execution takes too long.</p>
+<p>The final requirement is to add this line in <kbd>run.sh</kbd> (or <kbd>run.ps1</kbd> for Windows):</p>
+<pre>docker exec -it --workdir /notesapp/test -e DEBUG= notes-test npm run test-notes-mongodb</pre>
+<p>That, then, ensures MongoDB is tested during every test run. </p>
+<p><span>We can now report to the manager the final test results matrix:</span></p>
+<ul>
+<li><kbd><span class="CodeInTextPACKT">models-fs</span></kbd>: PASS</li>
+<li><kbd><span class="CodeInTextPACKT">models-memory</span></kbd>: PASS</li>
+<li><kbd><span class="CodeInTextPACKT">models-levelup</span></kbd>: PASS</li>
+<li><kbd><span class="CodeInTextPACKT">models-sqlite3</span></kbd>: Two failures, now fixed, PASS</li>
+<li><kbd><span class="CodeInTextPACKT">models-sequelize</span></kbd><span> </span>with SQLite3: PASS</li>
+<li><kbd><span class="CodeInTextPACKT">models-sequelize</span></kbd><span> </span>with MySQL: PASS</li>
+<li><kbd><span class="CodeInTextPACKT">models-mongodb</span></kbd>: PASS</li>
+</ul>
+<p>The manager will tell you "good job" and then remember that the Models are only a portion of the Notes application. We've left two areas completely untested:</p>
+<ul>
+<li>The REST API for the user authentication service</li>
+<li>Functional testing of the user interface</li>
+</ul>
+<p>Let's get on with those testing areas. </p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Testing REST backend services</h1>
+                </header>
+            
+            <article>
+                
+<p>It's now time to turn our attention to the user authentication service. We've mentioned tests of this service, saying that we'll get to them later. We had developed some scripts for ad hoc testing, which have been useful all along. But later is now, and it's time to get cracking on some real tests.</p>
+<p>There's a question of which tool to use for testing the authentication service. Mocha does a good job of organizing a series of test cases, and we should reuse it here. But the thing we have to test is a REST service. <span>The customer of this service, the Notes application, uses it through the REST API, giving us a perfect rationalization to test at the REST interface.</span> Our ad hoc scripts used the SuperAgent library to simplify making REST API calls. There happens to be a companion library, SuperTest, that is meant for REST API testing. Read its documentation here: <a href="https://www.npmjs.com/package/supertest">https://www.npmjs.com/package/supertest</a>.</p>
+<p>We've already made the <kbd><span class="CodeInTextPACKT">test-compose/userauth</span></kbd> directory. In that directory, create a file named <kbd><span class="CodeInTextPACKT">test.js</span></kbd>:</p>
+<pre>'use strict';<br/><br/>const assert = require('chai').assert;<br/>const request = require('supertest')(process.env.URL_USERS_TEST);<br/>const util = require('util');<br/>const url = require('url');<br/>const URL = url.URL;<br/><br/>const authUser = 'them';<br/>const authKey = 'D4ED43C0-8BD6-4FE2-B358-7C0E230D11EF';<br/><br/>describe("Users Test", function() {<br/>    ... Test code follows<br/>});</pre>
+<p>This sets up Mocha and the SuperTest client. The <kbd>URL_USERS_TEST</kbd> <span>environment variable specifies the base URL of the server to run the test against. You'll almost certainly be using <kbd>http://localhost:3333</kbd> given the configuration we've used earlier in the book. SuperTest initializes itself a little differently to SuperAgent. The SuperTest module exposes a function that we call with the  <kbd>URL_USERS_TEST</kbd> environment variable, then we use THAT <kbd>request</kbd> object throughout the rest of the script to make REST API requests.</span></p>
+<p><span>This variable was already set in</span> <kbd><span class="CodeInTextPACKT">test-compose/docker-compose.yml</span></kbd> with the required value. The other thing of importance is a pair of variables to store the authentication user ID and key:</p>
+<pre>beforeEach(async function() {<br/>  await request.post('/create-user')<br/>       .send({ <br/>          username: "me", password: "w0rd", provider: "local",<br/>          familyName: "Einarrsdottir", givenName: "Ashildr", <br/>          middleName: "",<br/>          emails: [], photos: []<br/>        })<br/>        .set('Content-Type', 'application/json')<br/>        .set('Acccept', 'application/json')<br/>        .auth(authUser, authKey);<br/>});<br/>    <br/>afterEach(async function() {<br/>  await request.delete('/destroy/me')<br/>        .set('Content-Type', 'application/json')<br/>        .set('Acccept', 'application/json')<br/>        .auth(authUser, authKey);<br/>}); </pre>
+<p>If you remember, the <kbd>beforeEach</kbd> function is run immediately before every test case, and <kbd>afterEach</kbd> is run afterward. These functions use the REST API to create our test user before running the test, and then afterward to destroy the test user. That way our tests can assume this user will exist:</p>
+<pre>describe("List user", function() {<br/>   it("list created users", async function() {<br/>     const res = await request.get('/list')<br/>          .set('Content-Type', 'application/json')<br/>          .set('Acccept', 'application/json')<br/>          .auth(authUser, authKey);<br/>    assert.exists(res.body);<br/>    assert.isArray(res.body);<br/>    assert.lengthOf(res.body, 1);<br/>    assert.deepEqual(res.body[0], { <br/>          username: "me", id: "me", provider: "local",<br/>          familyName: "Einarrsdottir", givenName: "Ashildr", <br/>          middleName: "",<br/>          emails: [], photos: []<br/>    });<br/>  });<br/>});</pre>
+<p>Now, we can turn to testing some API methods, such as the <kbd><span class="CodeInTextPACKT">/list</span></kbd> operation.</p>
+<p>We have already guaranteed that there is an account, in the <kbd><span class="CodeInTextPACKT">beforeEach</span></kbd> method, so <kbd><span class="CodeInTextPACKT">/list</span></kbd> should give us an array with one entry.</p>
+<p>This follows the general pattern for using Mocha to test a REST API method. First, we use SuperTest's <kbd>request</kbd> object to call the API method, and <kbd>await</kbd> its result. Once we have the result, we use <kbd>assert</kbd> methods to validate it is what is expected:</p>
+<pre>describe("find user", function() {<br/>  it("find created users", async function() {<br/>    const res = await request.get('/find/me')<br/>            .set('Content-Type', 'application/json')<br/>            .set('Acccept', 'application/json')<br/>            .auth(authUser, authKey);<br/>    assert.exists(res.body);<br/>    assert.isObject(res.body);<br/>    assert.deepEqual(res.body, { <br/>            username: "me", id: "me", provider: "local",<br/>            familyName: "Einarrsdottir", givenName: "Ashildr", <br/>            middleName: "",<br/>            emails: [], photos: []<br/>    });<br/>});<br/>it("fail to find non-existent users", async function() {<br/>    var res;<br/>    try {<br/>      res = await request.get('/find/nonExistentUser')<br/>            .set('Content-Type', 'application/json')<br/>            .set('Acccept', 'application/json')<br/>            .auth(authUser, authKey);<br/>    } catch(e) {<br/>      return; // Test is okay in this case<br/>    }<br/>    assert.exists(res.body);<br/>    assert.isObject(res.body);<br/>    assert.deepEqual(res.body, {});<br/>  });<br/>});    </pre>
+<p>We are checking the <kbd><span class="CodeInTextPACKT">/find</span></kbd> <span>operation in two ways:</span></p>
+<ul>
+<li><span>Looking for the account we know exists – failure is indicated if the user account is not found</span></li>
+<li><span>Looking for the one we know does not exist – failure is indicated if we receive something other than an error or an empty object</span></li>
+</ul>
+<p>Add this test case:</p>
+<pre>describe("delete user", function() {<br/>  it("delete nonexistent users", async function() {<br/>    var res;<br/>    try {<br/>      res = await request.delete('/destroy/nonExistentUser')<br/>              .set('Content-Type', 'application/json')<br/>              .set('Acccept', 'application/json')<br/>              .auth(authUser, authKey);<br/>    } catch(e) {<br/>      return; // Test is okay in this case<br/>    }<br/>    assert.exists(res);<br/>    assert.exists(res.error);<br/>    assert.notEqual(res.status, 200);<br/>  });<br/>}); </pre>
+<p>Finally, we should check the <kbd><span class="CodeInTextPACKT">/destroy</span></kbd> operation. We already check this operation in the <kbd><span class="CodeInTextPACKT">afterEach</span></kbd> method, where we <kbd>destroy</kbd> a known user account. We need to also perform the negative test and verify its behavior against an account we know does not exist.</p>
+<p>The desired behavior is that either an error is thrown, or the result shows an HTTP <kbd>status</kbd> indicating an error. In fact, the current authentication server code gives a 500 status code along with some other information.</p>
+<p>In <kbd><span class="CodeInTextPACKT">test-compose/docker-compose.yml</span></kbd>, we need to inject this script, <kbd>test.js</kbd>, into the <kbd>userauth-test</kbd> container. We'll add that here:</p>
+<pre>userauth-test:<br/>  ...<br/>  volumes:<br/>    - ./reports-userauth:/reports<br/>    - ./userauth/sequelize-docker-test-mysql.yaml:/userauth/sequelize-docker-test-mysql.yaml<br/>    - <strong>./userauth/test.js:/userauth/test.js</strong></pre>
+<p>We have a test script, and have injected that script into the desired container (<kbd>userauth-test</kbd>). The next step is to automate running this test. One way is to add this to <kbd>run.sh</kbd> (aka <kbd>run.ps1</kbd> on Windows):</p>
+<pre>docker exec -it -e DEBUG= userauth-test npm install supertest mocha chai<br/>docker exec -it -e DEBUG= userauth-test ./node_modules/.bin/mocha test.js</pre>
+<p>Now, if you run the <kbd>run.sh</kbd> test script you'll see the required packages get installed, and then this test suite execution.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Automating test results reporting</h1>
+                </header>
+            
+            <article>
+                
+<p>It's cool we have automated test execution, and Mocha makes the test results look nice with all those check marks. What if the management wants a graph of test failure trends over time?  Or there could be any number of reasons to report test results as data rather than a user-friendly printout on the console.</p>
+<p>Mocha uses what's called a Reporter to report test results. A Mocha Reporter is a module that prints data in whatever format it supports. Information is on the Mocha website:  <a href="https://mochajs.org/#reporters">https://mochajs.org/#reporters</a>.</p>
+<p>You will find the current list of available <kbd>reporters</kbd> like so:</p>
+<pre><strong># mocha --reporters</strong><br/><br/><strong>    dot - dot matrix</strong><br/><strong>    doc - html documentation</strong><br/><strong>    spec - hierarchical spec list</strong><br/><strong>    json - single json object</strong><br/><strong>    progress - progress bar</strong><br/><strong>    list - spec-style listing</strong><br/><strong>    tap - test-anything-protocol</strong><br/><strong>...</strong></pre>
+<p>Then you use a specific <kbd>reporter</kbd> like so:</p>
+<pre><strong># mocha --reporter tap test</strong><br/><strong>1..4</strong><br/><strong>ok 1 Users Test List user list created users</strong><br/><strong>ok 2 Users Test find user find created users</strong><br/><strong>ok 3 Users Test find user fail to find non-existent users</strong><br/><strong>ok 4 Users Test delete user delete nonexistent users</strong><br/><strong># tests 4</strong><br/><strong># pass 4</strong><br/><strong># fail 0</strong></pre>
+<p><strong>Test Anything Protocol</strong> (<span><strong>TAP</strong>)</span> is a widely used test results format, increasing the possibility of finding higher level reporting tools. Obviously, the next step would be to save the results into a file somewhere, after mounting a host directory into the container.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Frontend headless browser testing with Puppeteer</h1>
+                </header>
+            
+            <article>
+                
+<p>A big cost area in testing is manual <span>user interface </span>testing. Therefore, a wide range of tools have been developed to automate running tests at the HTTP level. Selenium is a popular tool implemented in Java, for example. In the Node.js world, we have a few interesting choices. The <em><span class="CodeInTextPACKT">chai-http</span></em> plugin to Chai would let us interact at the HTTP level with the Notes application, while staying within the now-familiar Chai environment. </p>
+<p><span>However, for this section, we'll use Puppeteer (<a href="https://github.com/GoogleChrome/puppeteer">https://github.com/GoogleChrome/puppeteer</a>). This tool is a high-level Node.js module to control a headless Chrome or Chromium browser, using the DevTools protocol. That protocol allows</span> tools <span>to instrument, inspect, debug, and profile Chromium or Chrome. </span></p>
+<p>Puppeteer is meant to be a general purpose test automation tool, and has a strong feature set for that purpose. Because it's easy to make web page screenshots with Puppeteer, it can also be used in a screenshot service.</p>
+<p>Because Puppeteer is controlling a real web browser, your user interface tests will be very close to live browser testing without having to hire a human to do the work. Because it uses a headless version of Chrome, no visible browser window will show on your screen, and tests can be run in the background, instead. A downside to this attractive story is that Puppeteer only works against Chrome. Meaning that an automated test against Chrome does not test your application against other browsers, such as Opera or Firefox. </p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Setting up Puppeteer</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's first set up the directory and install the packages:</p>
+<pre><strong>$ mkdir test-compose/notesui</strong><br/><strong>$ cd test-compose/notesui</strong><br/><strong>$ npm init</strong><br/><strong>... answer the questions</strong><br/><strong>$ npm install puppeteer@1.1.x mocha@5.x chai@4.1.x --save</strong></pre>
+<p>During installation, you'll see that Puppeteer causes the download of Chromium like so:</p>
+<pre><strong>Downloading Chromium r497674 - 92.5 Mb [====================] 100% 0.0s</strong> </pre>
+<p>The <kbd>puppeteer</kbd> module will launch that Chromium instance as needed, managing it as a background process, and communicating with it using the DevTools protocol.</p>
+<p>In the script we're about to write, we need a user account that we can use to log in and perform some actions. Fortunately, we already have a script to set up a test account. In <kbd><span class="CodeInTextPACKT">users/package.json</span></kbd>, add this line to the <span class="CodeInTextPACKT">scripts</span> section:</p>
+<pre>"setupuser": "PORT=3333 node users-add", </pre>
+<p>We're about to write this test script, but let's finish the setup, the final bit of which is adding these lines to <kbd><span class="CodeInTextPACKT">run.sh</span></kbd>:</p>
+<pre><strong>docker exec -it userauth-test npm run setupuser 
+docker exec -it notesapp-test npm run test-docker-ui</strong> </pre>
+<p>When executed, these two lines ensure that the test user is set up, and it then runs the user interface tests.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Improving testability in the Notes UI</h1>
+                </header>
+            
+            <article>
+                
+<p>While the Notes application displays well in the browser, how do we write test software to distinguish one page from another?  The key requirement is for test scripts to inspect the page, determine which page is being displayed, and read the data on the page. That means each HTML element must be easily addressable using a CSS selector. </p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>While developing the Notes application, we forgot to do that, and the <strong>Software Quality Engineering</strong> (<strong>SQE</strong>) manager has requested our assistance. At stake is the testing budget, which will be stretched further the more the SQE team can automate their tests.</p>
+<p>All that's necessary is to add a few <kbd><span class="CodeInTextPACKT">id</span></kbd> or <kbd><span class="CodeInTextPACKT">class</span></kbd> <span>attributes to HTML elements to improve testability. With a few identifiers, and a commitment to maintain those identifiers, the SQE team can write repeatable test scripts to validate the application.</span></p>
+<p>In <kbd><span class="CodeInTextPACKT">notes/partials/header.hbs</span></kbd>, change these lines:</p>
+<pre>...<br/>&lt;a <strong>id="btnGoHome"</strong> class="navbar-brand" href='/'&gt;<br/>...<br/>{{#if user}}<br/>...<br/>&lt;a class="nav-item nav-link btn btn-dark col-auto" <strong>id="btnLogout" </strong>href="/users/logout"&gt;...&lt;/a&gt;<br/>&lt;a class="nav-item nav-link btn btn-dark col-auto" <strong>id="btnAddNote"</strong> href='/notes/add'&gt;...&lt;/a&gt;<br/>{{else}}<br/>...<br/>&lt;a class="nav-item nav-link btn btn-dark col-auto" <strong>id="btnloginlocal"</strong> href="/users/login"&gt;..&lt;/a&gt;<br/>&lt;a class="nav-item nav-link btn btn-dark col-auto" <br/>                        <strong>id="btnLoginTwitter"</strong> href="/users/auth/twitter"&gt;...&lt;/a&gt;<br/>...<br/>{{/if}}<br/>...</pre>
+<p>In <kbd><span class="CodeInTextPACKT">notes/views/index.hbs</span></kbd>, make these changes:</p>
+<pre>&lt;div <strong>id="notesHomePage"</strong> class="container-fluid"&gt;<br/>  &lt;div class="row"&gt;<br/>    &lt;div <strong>id="notetitles"</strong> class="col-12 btn-group-vertical" role="group"&gt;<br/>      {{#each notelist}}<br/>      &lt;a <strong>id="{{key}}"</strong> class="btn btn-lg btn-block btn-outline-dark" <br/>          href="/notes/view?key={{ key }}"&gt;...&lt;/a&gt;<br/>      {{/each}}<br/>    &lt;/div&gt;<br/>  &lt;/div&gt;<br/>&lt;/div&gt;</pre>
+<p class="mce-root"/>
+<p>In <kbd>notes/views/login.hbs</kbd>, make these changes:</p>
+<pre>&lt;div <strong>id="notesLoginPage"</strong> class="container-fluid"&gt;<br/>...<br/>&lt;form <strong>id="notesLoginForm"</strong> method='POST' action='/users/login'&gt; <br/>...<br/>&lt;button type="submit" <strong>id="formLoginBtn"</strong> class="btn btn-default"&gt;Submit&lt;/button&gt; <br/>&lt;/form&gt;<br/>...<br/>&lt;/div&gt;</pre>
+<p>In <kbd>notes/views/notedestroy.hbs</kbd>, make these changes:</p>
+<pre>&lt;form <strong>id="formDestroyNote"</strong> method='POST' action='/notes/destroy/confirm'&gt;<br/>...<br/>&lt;button <strong>id="btnConfirmDeleteNote"</strong> type="submit" value='DELETE' <br/>                class="btn btn-outline-dark"&gt;DELETE&lt;/button&gt;<br/>...<br/>&lt;/form&gt;</pre>
+<p>In <kbd>notes/views/noteedit.hbs</kbd>, make these changes:</p>
+<pre>&lt;form <strong>id="formAddEditNote"</strong> method='POST' action='/notes/save'&gt;<br/>...<br/>&lt;button <strong>id='btnSave'</strong> type="submit" class="btn btn-default"&gt;Submit&lt;/button&gt;<br/>...<br/>&lt;/form&gt;</pre>
+<p>In <kbd>notes/views/noteview.hbs</kbd>, make these changes:</p>
+<pre>&lt;div <strong>id="noteView"</strong> class="container-fluid"&gt;<br/>...<br/>&lt;p <strong>id="showKey"</strong>&gt;Key: {{ notekey }}&lt;/p&gt;<br/>...<br/>&lt;a <strong>id="btnDestroyNote"</strong> class="btn btn-outline-dark" <br/>     href="/notes/destroy?key={{notekey}}" role="button"&gt; ...  &lt;/a&gt;<br/>&lt;a <strong>id="btnEditNote"</strong> class="btn btn-outline-dark" <br/>     href="/notes/edit?key={{notekey}}" role="button"&gt; ... &lt;/a&gt;<br/>&lt;button <strong>id="btnComment"</strong> type="button" class="btn btn-outline-dark" <br/>     data-toggle="modal" data-target="#notes-comment-modal"&gt; ... &lt;/button&gt; <br/>...<br/>&lt;/div&gt;</pre>
+<p>What we've done is add <kbd>id=</kbd> attributes to selected elements in the templates. We can now easily write CSS selectors to address any element. The engineering team can also start using these selectors in UI code.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Puppeteer test script for Notes</h1>
+                </header>
+            
+            <article>
+                
+<p>In <kbd><span class="CodeInTextPACKT">test-compose/notesui</span></kbd>, create a file named <kbd><span class="CodeInTextPACKT">uitest.js</span></kbd> containing the following:</p>
+<pre>const puppeteer = require('puppeteer');<br/>const assert = require('chai').assert;<br/>const util = require('util');<br/>const { URL } = require('url');<br/><br/>describe('Notes', function() {<br/>    this.timeout(10000);<br/>    let browser;<br/>    let page;<br/><br/>    before(async function() {<br/>        browser = await puppeteer.launch({ slomo: 500 });<br/>        page = await browser.newPage();<br/>        await page.goto(process.env.NOTES_HOME_URL);<br/>    });<br/><br/>    after(async function() {<br/>        await page.close();<br/>        await browser.close();<br/>    });<br/>});</pre>
+<p>This is the start of a Mocha test suite. In the <kbd>before</kbd> function, we set up Puppeteer by launching a Puppeteer instance, starting a new Page object, and telling that Page to go to the Notes application home page. That URL is passed in using the named environment variable.</p>
+<p>It's useful to first think about scenarios we might want to verify with the Notes applications:</p>
+<ul>
+<li>Log into the Notes application</li>
+<li>Add a note to the application</li>
+<li>View an added note</li>
+<li>Delete an added note</li>
+<li>Log out</li>
+<li>And so on</li>
+</ul>
+<p>Here's code for an implementation of the Login scenario:</p>
+<pre>describe('Login', function() {<br/>    before(async function() { ... });<br/>    it('should click on login button', async function() {<br/>        const btnLogin = await page.waitForSelector('#btnloginlocal');<br/>        await btnLogin.click();<br/>    });<br/>    it('should fill in login form', async function() {<br/>        const loginForm = await page.waitForSelector('#notesLoginPage <br/>        #notesLoginForm');<br/>        await page.type('#notesLoginForm #username', "me");<br/>        await page.type('#notesLoginForm #password', "w0rd");<br/>        await page.click('#formLoginBtn');<br/>    });<br/>    it('should return to home page', async function() {<br/>        const home = await page.waitForSelector('#notesHomePage');<br/>        const btnLogout = await page.waitForSelector('#btnLogout');<br/>        const btnAddNote = await page.$('#btnAddNote');<br/>        assert.exists(btnAddNote);<br/>    });<br/>    after(async function() { ... });<br/>});</pre>
+<p>This test sequence handles the Login Scenario. It shows you a few of the Puppeteer API methods. Documentation of the full API is at <a href="https://github.com/GoogleChrome/puppeteer/blob/master/docs/api.md">https://github.com/GoogleChrome/puppeteer/blob/master/docs/api.md</a>. The Page object encapsulates the equivalent of a browser tab in Chrome/Chromium.</p>
+<p>The <kbd>waitForSelector</kbd> function does what it says – it waits until an HTML element matching the CSS selector appears, and it will wait over one or more page refreshes. There are several variants of this function to allow waiting for several kinds of things. This function returns a Promise, making it worth our time to use async functions in our test code. The Promise will resolve to an <kbd>ElementHandle</kbd>, which is a wrapper around an HTML element, or else throw an exception, which would conveniently make the test fail.</p>
+<p>The named element, <kbd>#btnloginlocal</kbd>, is in <kbd>partials/header.hbs</kbd>, and will show up only when a user is not logged in. Hence, we will have determined that the browser is currently displaying a Notes page, and that it is not logged in.</p>
+<p>The <kbd>click</kbd> method does what it suggests, and causes a mouse button click on the referenced HTML element. If you want to emulate a tap, such as for a mobile device, there is a <kbd>tap</kbd> method for that purpose.</p>
+<p>The next stage of the test sequence picks up from that click. The browser should have gone to the Login page, and therefore this CSS selector should become valid:   <kbd>#notesLoginPage #notesLoginForm</kbd>. What we do next is type text for our test user ID and password into the corresponding form elements, and then click on the <span class="packt_screen">Log In</span> button.</p>
+<p>The next test stage picks up from there, and the browser should be on the home page as determined by this CSS selector: <kbd>#notesHomePage</kbd>. If we were logged in successfully, the page should have <span class="packt_screen">Log Out</span> (<kbd>#btnLogout</kbd>) and <span class="packt_screen">ADD Note</span> buttons (<kbd>#btnAddNote</kbd>). </p>
+<p>In this case, we've used a different function, <kbd>$</kbd>, to check if the <span class="packt_screen">ADD Note</span> button exists. Unlike the <kbd>wait</kbd> functions, <kbd>$</kbd> simply queries the current page without waiting. If the named CSS Selector is not in the current page, it simply returns <kbd>null</kbd> rather than throwing an exception. Therefore, to determine that the element exists, we use <kbd>assert.exists</kbd> rather than relying on the thrown exception.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Running the login scenario</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that we have one test scenario entered, let's give it a whirl. In one window, start the Notes test infrastructure:</p>
+<pre><strong>$ cd test-compose</strong><br/><strong>$ docker-compose up --force-rebuild</strong></pre>
+<p>Then in another window:</p>
+<pre><strong>$ docker exec -it userauth bash</strong><br/><strong>userauth# PORT=3333 node ./users-add.js</strong><br/><strong>userauth# exit</strong><br/><strong>$ cd test-compare/notesui</strong><br/><strong>$ NOTES_HOME_URL=http://localhost:3000 mocha --no-timeouts uitest.js </strong><br/><br/><strong>  Notes</strong><br/><strong>    Login</strong><br/><strong>      √ should click on login button</strong><br/><strong>      √ should fill in login form (72ms)</strong><br/><strong>      √ should return to home page (1493ms)</strong><br/><br/><strong>  3 passing (3s)</strong></pre>
+<p>The <kbd>NOTES_HOME_URL</kbd> variable is what the script looks for to direct the Chromium browser to use the Notes application. To run the tests, we should use Docker Compose to launch the test infrastructure, and then ensure the test user is installed in the user database.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">The Add Note scenario</h1>
+                </header>
+            
+            <article>
+                
+<p>Add this to <kbd>uitest.js</kbd>:</p>
+<pre>describe('Add Note', function() {<br/>    // before(async function() { ... });<br/>    it('should see Add Note button', async function() {<br/>        const btnAddNote = await page.waitForSelector('#btnAddNote');<br/>        await btnAddNote.click();<br/>    });<br/>    it('should fill in Add Note form', async function() {<br/>        const formAddEditNote = await <br/>        page.waitForSelector('#formAddEditNote');<br/>        await page.type('#notekey', 'key42');<br/>        await page.type('#title', 'Hello, world!');<br/>        await page.type('#body', 'Lorem ipsum dolor');<br/>        await page.click('#btnSave');<br/>    });<br/>    it('should view note', async function() {<br/>        await page.waitForSelector('#noteView');<br/>        const shownKey = <strong>await page.$eval('#showKey', el =&gt; <br/>        el.innerText);</strong><br/>        assert.exists(shownKey);</pre>
+<pre><br/>        assert.isString(shownKey);<br/>        assert.include(shownKey, 'key42');<br/>        const shownTitle = await page.$eval('#notetitle', el =&gt; <br/>        el.innerText);<br/>        assert.exists(shownTitle);<br/>        assert.isString(shownTitle);<br/>        assert.include(shownTitle, 'Hello, world!');<br/>        const shownBody = await page.$eval('#notebody', el =&gt; <br/>        el.innerText);<br/>        assert.exists(shownBody);<br/>        assert.isString(shownBody);<br/>        assert.include(shownBody, 'Lorem ipsum dolor');<br/>    });<br/>    it('should go to home page', async function() {<br/>        await page.waitForSelector('#btnGoHome');<br/>        await <strong>page.goto(process.env.NOTES_HOME_URL);</strong><br/>        // await page.click('#btnGoHome');<br/>        await page.waitForSelector('#notesHomePage');<br/>        const titles = await page.$('#notetitles');<br/>        assert.exists(titles);<br/>        const key42 = await page.$('#key42');<br/>        assert.exists(key42);<br/>        const btnLogout = await page.$('#btnLogout');<br/>        assert.exists(btnLogout);<br/>        const btnAddNote = await page.$('#btnAddNote');<br/>        assert.exists(btnAddNote);<br/>    });<br/>    // after(async function() { ... });<br/>});</pre>
+<p>This is a more involved scenario, in which we:</p>
+<ul>
+<li>Click on the <span class="packt_screen">ADD Note</span> button</li>
+<li>Wait for the note edit screen to show up</li>
+<li>Fill in the text for the note and click the <span class="packt_screen">Save</span> button</li>
+<li>Validate the note view page to ensure that's correct</li>
+<li>Validate the home page to ensure that's correct.</li>
+</ul>
+<p>Most of this is using the same Puppeteer functions as before, but with a couple of additions.</p>
+<p>The <kbd>$eval</kbd> function looks for the element matching the CSS selector, and invokes the callback function on that element. If no element is found an error is thrown instead. As used here, we are retrieving the text from certain elements on the screen, and validating that it matches what the test entered as the note. That's an end-to-end test of adding and retrieving notes.</p>
+<p>The next difference is using <kbd>goto</kbd> instead of clicking on <kbd>#btnGoHome</kbd>.</p>
+<p>As you add test scenarios to the test script, you'll find it easy for Puppeteer to have a spurious timeout, or for the login process to mysteriously not work, or other spurious errors. </p>
+<p>Rather than go over the remaining scenarios, we'll spend the next section discussing how to mitigate such issues. But first we need to prove the scenario does work even if we have to run the test 10 times to get this result:</p>
+<pre><strong>$ NOTES_HOME_URL=http://localhost:3000 ./node_modules/.bin/mocha --no-timeouts uitest3.js </strong><br/><br/><strong>  Notes</strong><br/><strong>    Login</strong><br/><strong>      √ should click on login button (50ms)</strong><br/><strong>      √ should fill in login form (160ms)</strong><br/><strong>      √ should return to home page (281ms)</strong><br/><strong>    Add Note</strong><br/><strong>      √ should see Add Note button</strong><br/><strong>      √ should fill in Add Note form (1843ms)</strong><br/><strong>      √ should view note</strong><br/><strong>      √ should go to home page (871ms)</strong><br/><br/><strong>  7 passing (5s)</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Mitigating/preventing spurious test errors in Puppeteer scripts</h1>
+                </header>
+            
+            <article>
+                
+<p>The goal is to fully automate the test run, in order to avoid having to hire a human to babysit the test execution and spend time rerunning tests because of spurious errors. To do so, the tests need to be repeatable without any spurious errors. Puppeteer is a complex system – there is a Node.js module communicating with a Chromium instance running Headless in the background – and it seems easy for timing issues to cause a spurious error.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Configuring timeouts</h1>
+                </header>
+            
+            <article>
+                
+<p>Both Mocha and Puppeteer allow you to set timeout values, and a long timeout value can avoid triggering an error, if some action simply requires a long time to run. At the top of the test suite, we used this Mocha function:</p>
+<pre>this.timeout(10000);</pre>
+<p>That gives 10 seconds for every test case. If you want to use a longer timeout, increase that number.</p>
+<p>The <kbd>puppeteer.launch</kbd> function can take a timeout value in its options object. By default, Puppeteer uses a 30-second timeout on most operations, and they all take an options object with a setting to change that timeout period. In this case, we've added the <kbd>slowMo</kbd> option to slow down operations on the browser.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Tracing events on the Page and the Puppeteer instance</h1>
+                </header>
+            
+            <article>
+                
+<p>Another useful tactic is to generate a trace of what happened so you can puzzle away. Inserting <kbd>console.log</kbd> statements is tedious and makes your code look a little ugly. Puppeteer offers a couple of methods to trace the actions and to dynamically turn off tracing.</p>
+<p>In <kbd>uitest.js,</kbd> add this code:</p>
+<pre><br/>function frameEvent(evtname, frame) {<br/>    console.log(`${evtname} ${frame.url()} ${frame.title()}`);<br/>}<br/><br/>function ignoreURL(url) {<br/>    if (url.match(/\/assets\//) === null <br/>     &amp;&amp; url.match(/\/socket.io\//) === null<br/>     &amp;&amp; url.match(/fonts.gstatic.com/) === null<br/>     &amp;&amp; url.match(/fonts.googleapis.com/) === null) {<br/>        return false;<br/>    } else {<br/>        return true;<br/>    }<br/>}<br/>...<br/>before(async function() {<br/>    browser = await puppeteer.launch({ slomo: 500 });<br/>    page = await browser.newPage();<br/>    page.on('console', msg =&gt; {<br/>        console.log(`${msg.type()} ${msg.text()} ${msg.args().join(' ')}`);<br/>    });<br/>    page.on('error', err =&gt; {<br/>        console.error(`page ERROR ${err.stack}`);<br/>    });<br/>    page.on('pageerror', err =&gt; {<br/>        console.error(`page PAGEERROR ${err.stack}`);<br/>    });<br/>    page.on('request', req =&gt; {<br/>        if (ignoreURL(req.url())) return;<br/>        console.log(`page request ${req.method()} ${req.url()}`);<br/>    });<br/>    page.on('response', async (res) =&gt; {<br/>        if (ignoreURL(res.url())) return;<br/>        console.log(`page response ${res.status()} ${res.url()}`);<br/>    });<br/>    page.on('frameattached', async (frame) =&gt; frameEvent('frameattached', await frame));<br/>    page.on('framedetached', async (frame) =&gt; frameEvent('framedetached', await frame));<br/>    page.on('framenavigated', async (frame) =&gt; frameEvent('framenavigated', await frame));<br/>    await page.goto(process.env.NOTES_HOME_URL);<br/>});<br/>...</pre>
+<p>That is, the Page object offers several event listeners in which we can output details about various events, including HTTP requests and responses. We can even print out the HTML text of the response. The <kbd>ignoreURL</kbd> function lets us suppress a few select URLs so we're not inundated with unimportant requests and responses.</p>
+<p>You can trace Puppeteer itself using its DEBUG environment variable. See the README for more information: <a href="https://github.com/GoogleChrome/puppeteer">https://github.com/GoogleChrome/puppeteer.</a></p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Inserting pauses</h1>
+                </header>
+            
+            <article>
+                
+<p>It can be useful to insert a long pause at certain points to give the browser time to do something. Try this function:</p>
+<pre>function waitFor(timeToWait) {<br/>    return new Promise(resolve =&gt; {<br/>      setTimeout(() =&gt; { resolve(true); }, timeToWait);<br/>    });<br/>};</pre>
+<p>This is how we implement the equivalent of a <kbd>sleep</kbd> function using Promises. Using <kbd>setTimeOut</kbd> this way, along with a timeout value, simply causes a delay for the given number of milliseconds. </p>
+<p>To use this function, simply insert this into the test scenarios:</p>
+<pre>await waitFor(3000);</pre>
+<p>A variant on this is to wait for things to fully render in the browser. For example, you might have seen a pause before the <span class="packt_screen">Home</span> icon in the upper-left corner fully renders. That pause can cause spurious errors, and this function can wait until that button fully renders itself:</p>
+<pre>async function waitForBtnGoHome() {<br/>    return page.waitForSelector('#btnGoHome');<br/>}</pre>
+<p>To use it:</p>
+<pre>await waitForBtnGoHome();</pre>
+<p>If you don't want to maintain this extra function, it's easy enough to add the <kbd>waitForSelector</kbd> call into your test cases instead.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Avoiding WebSockets conflicts</h1>
+                </header>
+            
+            <article>
+                
+<p>An error, <kbd>Cannot find context with specified id undefined</kbd>, can be thrown by Puppeteer. According to an issue in the Puppeteer issue queue, this can arise from unplanned interactions between Puppeteer and WebSockets:  <a href="https://github.com/GoogleChrome/puppeteer/issues/1325">https://github.com/GoogleChrome/puppeteer/issues/1325</a>  This issue in turn affects the Socket.IO support in the Notes application, and therefore it may be useful to disable Socket.IO support during test runs.</p>
+<p>It's fairly simple to allow disabling of Socket.IO. In <kbd>app.mjs,</kbd> add this exported function:</p>
+<pre>export function enableSocketio() {<br/>  var ret = true;<br/>  const env = process.env.NOTES_DISABLE_SOCKETIO;<br/>  if (!env || env !== 'true') {<br/>    ret = true;<br/>  }<br/>  return ret;<br/>}</pre>
+<p>This looks for an environment variable to cause the function to return <kbd>true</kbd> or <kbd>false</kbd>.</p>
+<p>In <kbd>routes/index.mjs</kbd> and <kbd>routes/notes.mjs,</kbd> add this line:</p>
+<pre>import { enableSocketio, sessionCookieName } from '../app';</pre>
+<p>We do this to import the preceding function. It also demonstrates some of the flexibility we get from ES6 Modules, because we can import just the required functions.</p>
+<p>In <kbd>routes/index.mjs</kbd> and <kbd>routes/notes.mjs</kbd>, for every router function that calls <kbd>res.render</kbd> to send results, use the <kbd>enableSocketio</kbd> function as so:</p>
+<pre>res.render('<em>view-name</em>', { <br/>  ...<br/>  enableSocketio: enableSocketio()<br/>});</pre>
+<p>Hence, we've imported the function and for every view we pass <kbd>enableSocketio</kbd> as data to the view template.</p>
+<p>In <kbd>views/index.hbs</kbd> and <kbd>views/noteview.hbs</kbd>, we have a section of JavaScript code to implement SocketIO-based semi-real-time features. Surround each such section like so:</p>
+<pre>{{#if enableSocketio}}<br/>...  JavaScript code for SocketIO support<br/>{{/if}}</pre>
+<p>By eliminating the client-side SocketIO code, we ensure the user interface does not open a connection to the SocketIO service. The point of this exercise was to avoid using WebSockets to avoid issues with Puppeteer.</p>
+<p>Similarly, in <kbd>views/noteview.hbs</kbd> support disabling the <span class="packt_screen">Comment</span> button like so:</p>
+<pre>{{#if enableSocketio}}<br/>    &lt;button id="btnComment" type="button" class="btn btn-outline-dark" <br/>        data-toggle="modal" data-target="#notes-comment-modal"&gt;Comment&lt;/button&gt;<br/>{{/if}}</pre>
+<p>The final step would be to set the environment variable, <kbd>NOTES_DISABLE_SOCKETIO</kbd>, in the Docker Compose file.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Taking screenshots</h1>
+                </header>
+            
+            <article>
+                
+<p>One of Puppeteer's core features is to take screenshots, either as PNG or PDF files. In our test scripts, we can take screenshots to track what was on the screen at any given time during the test. For example, if the Login scenario spuriously fails to log in, we can see that in the screenshots:</p>
+<pre>await page.screenshot({<br/>      type: 'png',<br/>      path: `./screen/login-01-start.png`<br/>});</pre>
+<p>Simply add code snippets like this throughout your test script. The filename shown here follows a convention where the first segment names the test scenario, the number is a sequence number within the test scenario, and the last describes the step within the test scenario.</p>
+<p>Taking screenshots also provides another stage of validation. You may want to do visual validation of your application as well. The <kbd>pixelmatch</kbd> module can compare two PNG files, and therefore a set of so-called Golden Images can be maintained for comparison during test runs. </p>
+<p>For an example of using Puppeteer this way, see: <a href="https://meowni.ca/posts/2017-puppeteer-tests/">https://meowni.ca/posts/2017-puppeteer-tests/</a>.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p><span>We've covered a lot of territory in this chapter, looking at three distinct areas of testing: unit testing, REST API testing, and UI functional tests. Ensuring that an application is well tested is an important step on the road to software success. A team that does not follow good testing practices is often bogged down with fixing regression after regression.</span></p>
+<p>We've talked about the potential simplicity of simply using the <span class="CodeInTextPACKT">assert</span> module for testing. While the test frameworks, such as Mocha, provide great features, we can go a long way with a simple script.</p>
+<p>There is a place for test frameworks, such as Mocha, if only to regularize our test cases, and to produce test results reports. We used Mocha and Chai for this, and these tools were quite successful. We even found a couple of bugs with a small test suite.</p>
+<p>When starting down the unit testing road, one design consideration is mocking out dependencies. But it's not always a good use of our time to replace every dependency with a mock version.</p>
+<p><span>To ease the administrative burden of running tests, we used Docker to automate setting up and tearing down the test infrastructure. Just as Docker was useful in automating deployment of the Notes application, it's also useful in automating test infrastructure deployment.</span></p>
+<p>Finally, we were able to test the Notes web user interface in a real web browser. We can't trust that unit testing will find every bug; some bugs will only show up in the web browser. Even so, we've only touched the beginning of what could be tested in Notes.</p>
+<p>In this book, we've covered the gamut of Node.js development, giving you a strong foundation from which to start developing Node.js applications.</p>
+<p>In the next chapter, we'll explore RESTful web services. </p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  </body></html>

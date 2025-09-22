@@ -1,0 +1,417 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;2.&#xA0;Building a Coupon Site"><div class="titlepage"><div><div><h1 class="title"><a id="ch02"/>Chapter 2. Building a Coupon Site</h1></div></div></div><p>The best way to understand Seneca and microservices architecture is by building a server-side application that would benefit from the microservices architecture. In previous chapter, we saw how large and complex server-side application benefits from the microservices architecture and why enterprises use microservices architecture. In this chapter, we will build a coupon website to practically demonstrate the benefits of using microservices architecture and Seneca to create a server-side application. While building this coupon site, you will also learn how to design a server-side application using the microservices architecture from scratch, how to split the functionality of the application into services, how a client can directly communicate with the services, and many other things.</p><p>Some of the things that we will cover in this chapter, apart from things related to Seneca and microservices architecture, are as follows:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Using the <code class="literal">seneca-mongo-store</code> plugin to store data in MongoDB</li><li class="listitem" style="list-style-type: disc">Creating a basic image storage server</li><li class="listitem" style="list-style-type: disc">Discussing HTTP basic authentication using the basic-auth npm package</li><li class="listitem" style="list-style-type: disc">Using the connect-multiparty npm package to parse HTTP POST requests with the <code class="literal">multipart/form-data</code> content type</li><li class="listitem" style="list-style-type: disc">Moving, deleting, and renaming files in Node.js using the <code class="literal">fs</code> npm package</li><li class="listitem" style="list-style-type: disc">Implementing pagination with MongoDB and Express</li></ul></div><div class="section" title="Getting started"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec11"/>Getting started</h1></div></div></div><p>The coupon site <a id="id48" class="indexterm"/>that we will build will allow users to submit coupons. For the coupon to be publicly visible, the administrator of the site should accept the coupon. Every coupon will have an image attached to it that will be stored and served by an image storage server.</p><p>We will be using MongoDB to store the coupons. Before you continue further, make sure that you <a id="id49" class="indexterm"/>have MongoDB installed and running. I am assuming that you have basic knowledge of MongoDB.</p><p>The exercise files contain two directories: <code class="literal">Initial</code> and <code class="literal">Final</code>. Inside the <code class="literal">Final</code> directory, you will find the complete coupon site source code. In the <code class="literal">Initial</code> directory, you will find the HTML code and directories for the monolithic core, services, image storage server, and so on. You will put code related to them in their respective directories. The <code class="literal">Initial</code> directory will help you quickly get started with building the coupon site.</p><p>We won't get into designing the frontend of our coupon site. We will only be concentrating on building the architecture and functionalities of the site. Therefore, the HTML code is already included in the <code class="literal">Initial</code> directory.</p></div></div>
+<div class="section" title="Architecture of our site"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec12"/>Architecture of our site</h1></div></div></div><p>Our server-side application will be composed of a monolithic <a id="id50" class="indexterm"/>core, three services, MongoDB server, and image storage server.</p><p>The monolithic core will serve pages to the site visitors and administrators.</p><p>The three services are database service, URL configuration service, and upload service. The following is what each of these services do:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Database service</strong></span>: Adding, retrieving, updating, and deleting coupons in MongoDB <a id="id51" class="indexterm"/>is done through database service. The monolithic core retrieves coupons from MongoDB through database service, and upload service stores coupons through database service.</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Upload service</strong></span>: When <a id="id52" class="indexterm"/>a user submits a coupon, the HTML form is submitted to the upload service. The upload service then sends the image to the image storage server and adds metadata about the coupon to the database using the database service. We moved these operations to a different service, because if we are resizing and converting the uploaded image, then it will consume more memory and CPU time and keep the port open for more time, which will flood the server and break the monolithic core in case there are a large number of submissions at a time, so moving these operations to a different service makes sure that if there is a rise in submissions, it doesn't affect the site visitors who are looking for the coupons. We won't be resizing and converting images, but if you want to add this functionality, you can add this by simply updating the upload service. While the upload service is being updated, the form submissions will not work, but everything else will work. Therefore, we can say that this functionality can be independently updated without affecting other functionalities.</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>URL config service</strong></span>: The <a id="id53" class="indexterm"/>client communicates with the monolithic core, image storage server, and upload service. In a production site, these three servers will remain in three different physical computers with three different IP addresses. So, for the client to be able to communicate with them, these three need to be exposed via different domain names (that is the monolithic core can be pointed using the main domain and the other two using sub domains) or we can use a load balancer or reverse proxy that supports URL rerouting so that we can have a single domain name and route the requests to the respective server based on the path of the URL. The URL config service will serve the base URL to communicate with these three servers. To follow this chapter, you can simply run these servers in the same physical computer using different ports, and when you are ready to make the site live, you can change the base URLs in the URL config service, depending on what technique you used to make the client able to communicate with the servers. You don't have to modify the source code of the servers directly, which is a cumbersome and risky task.</li></ul></div><p>We <a id="id54" class="indexterm"/>will be creating our own image storage server. However, in a <a id="id55" class="indexterm"/>production site, I would recommend that you use Amazon S3 or something similar to store images, as it makes it easy to serve images via CDN. You don't have to worry about scaling and reliability, and it's low cost. The image storage server that we will be creating will be a basic one to just demonstrate how to store images in a separate server and serve from there.</p><p>The following is the diagram that shows all the architecture's looks and how the servers in the architecture communicate with each other:</p><div class="mediaobject"><img src="graphics/B05154_02_01.jpg" alt="Architecture of our site"/></div></div>
+<div class="section" title="Creating the services"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec13"/>Creating the services</h1></div></div></div><p>Let's first <a id="id56" class="indexterm"/>build the services before building the image storage server and monolithic core.</p><p>We will build the database service first, as it only depends on the MongoDB server, which is already running. The upload service and monolithic core depend on it, therefore it needs to be built before these.</p><div class="section" title="Database service"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec13"/>Database service</h2></div></div></div><p>The database service <a id="id57" class="indexterm"/>will provide actions to add coupons, list verified coupons, list unverified coupons, verify a coupon, and delete a coupon. These actions will be used by the upload service and monolithic core.</p><p>Open the <code class="literal">Initial/database-service</code> directory. Inside the directory, you will find a <code class="literal">package.json</code> file and an <code class="literal">app.js</code> file. The <code class="literal">app.js</code> file is where you will write the code, and <code class="literal">package.json</code> lists the dependencies for the database service. The database service is dependent on the <code class="literal">seneca</code> and <code class="literal">seneca-mongo-store</code> plugins. Run the <code class="literal">npm install</code> command inside <code class="literal">Initial/database-service</code> to install the dependencies locally.</p><p>Here is the code to import the <code class="literal">seneca</code> module, create the <code class="literal">seneca</code> instance, attach the <code class="literal">seneca-mongo-store</code> plugin, and initialize the plugin to connect to MongoDB:</p><div class="informalexample"><pre class="programlisting">var seneca = require("seneca")();
+
+seneca.use("mongo-store", {
+  name: "gocoupons",
+  host: "127.0.0.1",
+  port: 27017
+});</pre></div><p>Here we are using <code class="literal">gocoupons</code> as the database name. I am assuming that the MongoDB server is running locally on the default port <code class="literal">27017</code>.</p><p>The following is the code to create an action that allows you to add a coupon:</p><div class="informalexample"><pre class="programlisting">seneca.add({role: "coupons-store", cmd: "add"}, function(args, respond){
+  var coupons = seneca.make$("coupons");
+  var data = coupons.data$({title: args.title, desc: args.desc, email: args.email, url: args.url, price: args.price, discount: args.discount, thumbnail_id: args.thumbnail_id, verified: false});
+  data.save$(function(err, entity){
+    if(err) return respond(err);
+
+    respond(null, {value: true});
+  });
+});</pre></div><p>We will store the coupons in a collection named <code class="literal">coupons</code>. Here we are setting the <code class="literal">verified</code> property of the document to <code class="literal">false</code>, that is, whenever a new coupon is submitted by a user, we will make it unverified so that the administrator can retrieve this newly submitted coupon and verify it manually.</p><p>The<code class="literal"> thumbnail_id</code> property doesn't hold the complete URL of the coupon thumbnail, instead it's just the filename.</p><p>Here is the code to create an action to retrieve the verified coupons:</p><div class="informalexample"><pre class="programlisting">seneca.add({role: "coupons-store", cmd: "list"}, function(args, respond){
+  var coupons = seneca.make$("coupons");
+  coupons.list$({verified: true, limit$:21, skip$: args.skip}, function (err, entity){
+    if(err) return respond(err);
+
+    respond(null, entity);
+  })
+});</pre></div><p>This action <a id="id58" class="indexterm"/>retrieves maximum 21 coupons and it takes a <code class="literal">skip</code> argument that is used to skip some documents, making it possible to implement pagination using this action.</p><p>The following is the code to create an action to retrieve the unverified coupons:</p><div class="informalexample"><pre class="programlisting">seneca.add({role: "coupons-store", cmd: "admin_list"}, function(args, respond){
+  var coupons = seneca.make$("coupons");
+  coupons.list$({verified: false}, function (err, entity){
+    if(err) return respond(err);
+
+    respond(null, entity);
+  })
+});</pre></div><p>This action will be used to retrieve coupons to display on the admin panel for the administrator to accept or reject a coupon.</p><p>Here is the code to create an action to verify a coupon, that is, change the <code class="literal">verified</code> property from <code class="literal">false</code> to <code class="literal">true</code>:</p><div class="informalexample"><pre class="programlisting">seneca.add({role: "coupons-store", cmd: "verified"}, function(args, respond){
+  var coupons = seneca.make$("coupons");
+  var data = coupons.data$({id: args.id, verified: true});
+  data.save$(function(err, entity){
+  if(err) return respond(error);
+
+    respond(null, {value: true});
+  });
+});</pre></div><p>This action will be invoked when the admin accepts a coupon to be displayed publicly.</p><p>Here is the code to create an action to delete a coupon:</p><div class="informalexample"><pre class="programlisting">seneca.add({role: "coupons-store", cmd: "delete"}, function(args, respond){
+  var coupons = seneca.make$("coupons");
+  coupons.remove$({id: args.id});
+  respond(null, {value: true});	
+});</pre></div><p>This <a id="id59" class="indexterm"/>action will be invoked when the admin rejects a coupon.</p><p>Now that we have created all the actions for our database service, let's expose these actions via the network so that the other servers can call them. Here is the code to do this:</p><div class="informalexample"><pre class="programlisting">seneca.listen({port: "5010", pin: {role: "coupons-store"}});</pre></div><p>Now go ahead and run the database service using the <code class="literal">node app.js</code> command.</p></div><div class="section" title="URL config service"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec14"/>URL config service</h2></div></div></div><p>The upload services <a id="id60" class="indexterm"/>use the URL config service to find the base URL of the monolithic core so that it can redirect the user there once the coupon is submitted successfully. Also, the monolithic core uses this service to find the base URL of the image storage server and upload service so that it can include them in the HTML code.</p><p>Open the <code class="literal">Initial/config-service</code> directory. Inside the directory, you will find a <code class="literal">package.json</code> file and an <code class="literal">app.js</code> file. The <code class="literal">app.js</code> file is where you will write the code and <code class="literal">package.json</code> lists the dependencies for the config service. URL config service is only dependent on seneca. Run the <code class="literal">npm install</code> command inside <code class="literal">Initial/config-service</code> to install the dependencies locally.</p><p>The following is the code to import the <code class="literal">seneca</code> module and create actions to return the base URLs of the upload service, monolithic core, and image storage server:</p><div class="informalexample"><pre class="programlisting">var seneca = require("seneca")();
+
+seneca.add({role: "url-config", cmd: "upload-service"}, function(args, respond){
+  respond(null, {value: "http://localhost:9090"});
+});
+
+seneca.add({role: "url-config", cmd: "monolithic-core"}, function(args, respond){
+  respond(null, {value: "http://localhost:8080"});
+});
+
+seneca.add({role: "url-config", cmd: "image-storage-service"}, function(args, respond){
+  respond(null, {value: "http://localhost:7070"});
+});
+
+seneca.listen({port: "5020", pin: {role: "url-config"}});</pre></div><p>Now go ahead and run the URL config service using the <code class="literal">node app.js</code> command.</p></div><div class="section" title="Upload service"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec15"/>Upload service</h2></div></div></div><p>The upload service <a id="id61" class="indexterm"/>handles the new coupon form submission. The form consists of a coupon title, URL, description, price, discount price, and a thumbnail. The content type of form submission is <code class="literal">multipart/form-data</code>, as it is uploading an image file.</p><p>Open the <code class="literal">Initial/upload-service</code> directory. Inside the directory, you will find a <code class="literal">package.json</code> file and an <code class="literal">app.js</code> file. The <code class="literal">app.js</code> file is where you will write the code and <code class="literal">package.json</code> lists the dependencies for the upload service. The upload service is dependent on <code class="literal">seneca</code>, <code class="literal">express</code>, <code class="literal">connect-multiparty</code>, <code class="literal">path</code>, <code class="literal">fs</code> and <code class="literal">request</code> packages. Run the <code class="literal">npm install</code> command inside <code class="literal">Initial/upload-service</code> to install the dependencies locally.</p><p>The following is the code to import the modules:</p><div class="informalexample"><pre class="programlisting">var seneca = require("seneca")();
+var app = require("express")();
+var multipart = require("connect-multiparty")();
+var path = require("path");
+var fs = require("fs");
+var request = require("request");</pre></div><p>There are chances that the users may upload images with the same name. We don't want images with the same name to overwrite each other. Therefore, we need rename every image with a unique name. The following is the code for defining a function to generate a unique number, which will be used as an image name:</p><div class="informalexample"><pre class="programlisting">function uniqueNumber() {
+  var date = Date.now();
+
+  if (date &lt;= uniqueNumber.previous) {
+    date = ++uniqueNumber.previous;
+  } else {
+    uniqueNumber.previous = date;
+  }
+
+  return date;
+}
+
+uniqueNumber.previous = 0;
+
+function ID(){
+  return uniqueNumber();
+};</pre></div><p>Now, <a id="id62" class="indexterm"/>for the upload service to be able to communicate with the database and URL config services, we need to add them to the upload service <code class="literal">seneca</code> instance. The following is the code to do this:</p><div class="informalexample"><pre class="programlisting">seneca.client({port: "5020", pin: {role: "url-config"}});
+seneca.client({port: "5010", pin: {role: "coupons-store"}});</pre></div><p>Now we need to define an express route to handle POST requests submitted to the <code class="literal">/submit</code> path. Inside the route handler, we will rename the image, upload the image to image storage server, add the metadata of the coupon to MongoDB using the database service, and redirect to the monolithic core with the status stating that the form was submitted successfully. Here is the code to define the route:</p><div class="informalexample"><pre class="programlisting">//declare route and add callbacks
+app.post('/submit', multipart, function(httpRequest, httpResponse, next){
+
+  var tmp_path = httpRequest.files.thumbnail.path;
+  var thumbnail_extension = path.extname(tmp_path);
+  var thumbnail_directory = path.dirname(tmp_path);
+  var thumbnail_id = ID();
+  var renamed_path = thumbnail_directory + '/' + ID() + thumbnail_extension;
+
+  //rename file
+  fs.rename(tmp_path, renamed_path, function(err) {
+    if(err) return httpResponse.status(500).send("An error occured");
+
+    //upload file to image storage server
+    seneca.act({role: "url-config", cmd: "image-storage-service"}, function(err, storage_server_url){
+      var req = request.post(storage_server_url.value + "/store", function (err, resp, body){
+        fs.unlink(renamed_path);
+
+        if(err) return httpResponse.status(500).send("An error occured");
+
+        if(body == "Done")
+        {
+          //store the coupon
+          seneca.act({role: "coupons-store", cmd: "add", title: httpRequest.body.title, email: httpRequest.body.email, url: httpRequest.body.url, desc: httpRequest.body.desc, price: httpRequest.body.price, discount: httpRequest.body.price, thumbnail_id: thumbnail_id + thumbnail_extension}, function(err, response){
+            if(err)
+            {
+              //delete the stored image
+              request.get(storage_server_url + "/delete/" + thumbnail_id + thumbnail_extension);
+              httpResponse.status(500).send("An error occured");
+              return;
+            }
+            seneca.act({role: "url-config", cmd: "monolithic-core"}, function(err, response){
+              if(err) return httpResponse.status(500).send("An error occured");
+
+              //redirect to monolithic core
+              httpResponse.redirect(response.value + "/?status=submitted");  
+            });
+          });
+        }
+      });
+
+      var form = req.form();
+      form.append("thumbnail", fs.createReadStream(renamed_path));
+      form.append("name", thumbnail_id + thumbnail_extension);
+    });
+  });
+});</pre></div><p>Here is <a id="id63" class="indexterm"/>how the preceding code works:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">First we added a callback provided by the connect-multiparty module, which parses the <code class="literal">multipart/form-data</code> body and moves the files to a temporary location.</li><li class="listitem" style="list-style-type: disc">In the second callback, we performed our custom operations. In the second callback, we first renamed the file so that every image file gets a unique name. Renaming is done using the <code class="literal">rename</code> method of the filesystem module.</li><li class="listitem" style="list-style-type: disc">Then we uploaded the image file to the image storage server using the <code class="literal">post</code> method of the request module.</li><li class="listitem" style="list-style-type: disc">After this, we deleted the local version of the image file using the <code class="literal">unlink</code> method of the filesystem module.</li><li class="listitem" style="list-style-type: disc">If uploading the image to the image storage server failed for some reason, then we will return an HTTP internal server error to the client.</li><li class="listitem" style="list-style-type: disc">If the image got uploaded to the image storage server successfully, then we will add the coupon metadata to MongoDB via the database service.</li><li class="listitem" style="list-style-type: disc">If, for some reason, the metadata did not get added, we will delete the previously stored image in the image storage server and then return an HTTP internal server error to the client.</li><li class="listitem" style="list-style-type: disc">If the coupon metadata got added successfully, we will retrieve the base URL of monolithic core from the URL config service and redirect there with a <code class="literal">/?status=submitted</code> query string, which indicates that the form was submitted successfully. When the monolithic core sees this query string, it displays a message saying that the coupon was submitted successfully.</li><li class="listitem" style="list-style-type: disc">In case the URL config service didn't respond for some reason, we will return an HTTP internal server error to the client.</li></ul></div><p>So what <a id="id64" class="indexterm"/>you need to keep in mind while coding such services is that you need to handle all sorts of failures and also roll back changes if a failure occurs. Now, this also makes it easy to update and redeploy the database service, URL config service, and image storage server as the upload service handles the failure of these services and provides a feedback to the user.</p><p>Now we have defined our routes. Finally, we need to start the Express server. The following is the code to do so:</p><div class="informalexample"><pre class="programlisting">app.listen(9090);</pre></div><p>Now go ahead and run the upload service using the <code class="literal">node app.js</code> command.</p></div></div>
+<div class="section" title="Creating the image upload server"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec14"/>Creating the image upload server</h1></div></div></div><p>We have <a id="id65" class="indexterm"/>finished building the services. Now let's build the image storage server. The image storage server defines the routes using which an image can be stored, deleted, or retrieved.</p><p>Open the <code class="literal">Initial/image-storage</code> directory. Inside the directory, you will find a <code class="literal">package.json</code> file and an <code class="literal">app.js</code> file. The <code class="literal">app.js</code> file is where you will write the code, and <code class="literal">package.json</code> lists the dependencies for the image storage server. The upload service is dependent on <code class="literal">express</code>, <code class="literal">connect-multiparty</code>, <code class="literal">path</code>, and <code class="literal">fs</code>. Run the <code class="literal">npm install</code> command inside <code class="literal">Initial/image-storage</code> to install the dependencies locally.</p><p>The following is the code to import the modules:</p><div class="informalexample"><pre class="programlisting">var express = require("express");
+var app = express();
+var fs = require("fs");
+var multipart = require("connect-multiparty")();</pre></div><p>Now let's <a id="id66" class="indexterm"/>define the route using which the upload service can store images in the image storage server. The upload service makes the POST request to the <code class="literal">/store</code> URL path to store the image. Here is the code to define the route:</p><div class="informalexample"><pre class="programlisting">app.post("/store", multipart, function(httpRequest, httpResponse, next){
+  var tmp_path = httpRequest.files.thumbnail.path;
+  var target_path = "public/images/" + httpRequest.body.name;
+  fs.rename(tmp_path, target_path, function(err) {
+    if(err) return httpResponse.status(500).send("An error occured");
+
+    httpResponse.send("Done");
+  });
+});</pre></div><p>Here, at first, we are adding the callback provided by the connect-multiparty module, which parses the <code class="literal">multipart/form-data</code> content type body and also moves the files to a temporary location.</p><p>Then, we are moving the file from temporary directory to another directory. The directory we are moving the file to is <code class="literal">public/images/</code>. We are moving the file using the <code class="literal">rename</code> method of the filesystem module. Finally, we are sending a <code class="literal">Done</code> string as the body of HTTP response to tell the upload service that the file is stored successfully.</p><p>Now let's define the route using which the upload service can delete an image stored in the image storage server. The upload service makes the GET request to the <code class="literal">/delete/:id</code> URL path, where the <code class="literal">id</code> parameter indicates the image name. The following is the code to define the route:</p><div class="informalexample"><pre class="programlisting">app.get("/delete/:id", function(httpRequest, httpResponse, next){
+  fs.unlink("public/images/" + httpRequest.params.id, function(err) {
+    if(err) return httpResponse.status(500).send("An error occured");
+
+    httpResponse.send("Done");
+  });
+});</pre></div><p>Here we are deleting the image file using the <code class="literal">unlink</code> method of the <code class="literal">fs</code> module.</p><p>Finally, we need to serve images to the browser. Looking for static file in the <code class="literal">public/images/</code> directory can do this. The following is the code to do this:</p><div class="informalexample"><pre class="programlisting">app.use(express.static(__dirname + "/public/images"));</pre></div><p>Here we are using the static middleware that looks for static files in the directory provided <a id="id67" class="indexterm"/>by arguments and serves directly to the browser.</p><p>Now we have defined our routes. Finally, we need to start the Express server. Here is the code to do so:</p><div class="informalexample"><pre class="programlisting">app.listen(9090);</pre></div><p>Now go ahead and run the image storage server using the <code class="literal">node app.js</code> command.</p></div>
+<div class="section" title="Creating the monolithic core"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec15"/>Creating the monolithic core</h1></div></div></div><p>We have <a id="id68" class="indexterm"/>finished creating the services and image storage server. The users interact with the monolithic core to view coupons and the admin interacts with the monolithic core to view unverified coupons, and then it either rejects or accepts a coupon. Other than new coupon submission by the user, everything else by the user and admin is done in the monolithic core.</p><p>Open the <code class="literal">Initial/monolithic</code> directory. Inside the directory, you will find a <code class="literal">package.json</code> file and an <code class="literal">app.js</code> file. The <code class="literal">app.js</code> file is where you will write the code, and <code class="literal">package.json</code> lists the dependencies for the monolithic core. The monolithic core is dependent on <code class="literal">express</code>, <code class="literal">seneca</code>, <code class="literal">request</code> and <code class="literal">basic-auth npm</code> packages. Run the <code class="literal">npm install</code> command inside <code class="literal">Initial/monolithic</code> to install the dependencies locally.</p><p>We will use the <code class="literal">ejs</code> template engine with Express. Inside the <code class="literal">views</code> directory, you will find <code class="literal">ejs</code> files for home, new coupon submit forms, and admin pages. The files already contain the templates and HTML code. The site is designed using Bootstrap.</p><p>The following is the code to import the modules:</p><div class="informalexample"><pre class="programlisting">var seneca = require("seneca")();
+var express = require("express");
+var app = express();
+var basicAuth = require("basic-auth");
+var request = require("request");</pre></div><p>Now, for the monolithic core to be able to communicate with the database and <code class="literal">url- config</code> services, we need to add them to the monolithic core <code class="literal">seneca</code> instance. The following is the code to do this:</p><div class="informalexample"><pre class="programlisting">seneca.client({port: "5020", pin: {role: "url-config"}});
+seneca.client({port: "5010", pin: {role: "coupons-store"}});</pre></div><p>Now we need to set <code class="literal">ejs</code> as the <code class="literal">view engine</code>. Here is the code to set <code class="literal">ejs</code> as the view engine:</p><div class="informalexample"><pre class="programlisting">app.set("view engine", "ejs");</pre></div><p>All the static files such as CSS, JS, and fonts are kept on the <code class="literal">public</code> directory. We need to serve them to the client. Here is the code to serve the static files:</p><div class="informalexample"><pre class="programlisting">app.use(express.static(__dirname + "/public"));</pre></div><p>Here <a id="id69" class="indexterm"/>we are serving the static files in the same way as we served the static files (that is, images) in the image upload server.</p><p>Now we need to add a route to the server of the home page of our website that displays the first 20 coupons. It also displays the <span class="strong"><strong>Next</strong></span> and <span class="strong"><strong>Previous</strong></span> buttons to navigate between the next or previous 20 buttons.</p><p>The home page is accessed via the root URL. The following is the code to add a route to the server of the home page:</p><div class="informalexample"><pre class="programlisting">app.get("/", function(httpRequest, httpResponse, next){
+  if(httpRequest.query.status == "submitted") {
+    seneca.act({role: "coupons-store", cmd: "list", skip: 0}, function(err, coupons){
+      if(err) return httpResponse.status(500).send("An error occured");
+
+      seneca.act({role: "url-config", cmd: "image-storage-service"}, function(err, image_url){
+        if(err) return httpResponse.status(500).send("An error occured");
+
+        if(coupons.length &gt; 20)
+        {
+          var next = true;
+        }
+        else
+        {
+          var next = false;
+        }
+
+        var prev = false;
+
+        httpResponse.render("index", {prev: prev, next: next, current: 0, coupons: coupons, image_url: image_url.value, submitted: true});
+      })
+    })
+    
+    return;
+  };
+
+  if(parseInt(httpRequest.query.current) !== undefined &amp;&amp; httpRequest.query.next == "true")
+  {
+    seneca.act({role: "coupons-store", cmd: "list", skip: parseInt(httpRequest.query.current) + 20}, function(err, coupons){
+      if(err) return httpResponse.status(500).send("An error occured");
+
+      seneca.act({role: "url-config", cmd: "image-storage-service"}, function(err, image_url){
+        if(err) return httpResponse.status(500).send("An error occured");
+
+        if(coupons.length &gt; 20)
+        {
+          var next = true;
+        }
+        else
+        {
+          var next = false;
+        }
+
+        var prev = true;
+
+        httpResponse.render("index", {prev: prev, next: next, current: parseInt(httpRequest.query.current) + 20, coupons: coupons, image_url: image_url.value});
+      })
+    })
+  }
+  else if(parseInt(httpRequest.query.current) != undefined &amp;&amp; httpRequest.query.prev == "true")
+  {
+    seneca.act({role: "coupons-store", cmd: "list", skip: parseInt(httpRequest.query.current) - 20}, function(err, coupons){
+      if(err) return httpResponse.status(500).send("An error occured");
+
+      seneca.act({role: "url-config", cmd: "image-storage-service"}, function(err, image_url){
+        if(err) return httpResponse.status(500).send("An error occured");
+
+        if(coupons.length &gt; 20)
+        {
+          var next = true;
+        }
+        else
+        {
+          var next = false;
+        }
+
+        if(parseInt(httpRequest.query.current) &lt;= 20)
+        {
+          var prev = false;
+        }
+        else
+        {
+          prev = true;
+        }
+
+        httpResponse.render("index", {prev: prev, next: next, current: parseInt(httpRequest.query.current) - 20, coupons: coupons, image_url: image_url.value});
+      })
+    })
+  }
+  else
+  {
+    seneca.act({role: "coupons-store", cmd: "list", skip: 0}, function(err, coupons){
+      if(err) return httpResponse.status(500).send("An error occured");
+
+      seneca.act({role: "url-config", cmd: "image-storage-service"}, function(err, image_url){
+        if(err) return httpResponse.status(500).send("An error occured");
+
+        if(coupons.length &gt; 20)
+        {
+          var next = true;
+        }
+        else
+        {
+          var next = false;
+        }
+
+        var prev = false;
+
+        httpResponse.render("index", {prev: prev, next: next, current: 0, coupons: coupons, image_url: image_url.value});
+      })
+    })
+  }
+});</pre></div><p>The <code class="literal">index.ejs</code> file is the view of the home page of our site. The preceding code renders this view to generate the final HTML code for the home page.</p><p>The <a id="id70" class="indexterm"/>preceding code implements pagination by checking whether <code class="literal">prev</code> or <code class="literal">next</code> keys are present in the query string. If these keys are undefined, then it displays the first 20 coupons, otherwise it calculates the <code class="literal">skip</code> value argument by adding 20 to the value of the <code class="literal">current</code> key in the query string.</p><p>Then, the code checks whether the total number of coupons retrieved is 21 or less. If they are less than 21, then it doesn't display the <span class="strong"><strong>Next</strong></span> button by assigning the <code class="literal">next</code> variable to <code class="literal">false</code>, otherwise it displays the <span class="strong"><strong>next</strong></span> button by assigning the <code class="literal">next</code> variable to <code class="literal">true</code>. However, the total number of coupons it displays is <code class="literal">20</code>. We retrieved an extra coupon to just check whether we should display the <span class="strong"><strong>next</strong></span> button or not. To find out whether we should display the <span class="strong"><strong>previous</strong></span> button or not is fairly easy, that is, if the <code class="literal">next</code> key is <code class="literal">true</code> in the query string, then we must display the <span class="strong"><strong>previous</strong></span> button.</p><p>The preceding code also checks for the <code class="literal">status=submitted</code> query string that indicates the user was redirected back from the upload service. If it's present, then it assigns the <code class="literal">submitted</code> local variable for the view to <code class="literal">true</code>. This is the <code class="literal">ejs</code> template present in the view that checks whether the <code class="literal">submitted</code> local variable is <code class="literal">true</code> or <code class="literal">undefined</code> and displays a successful form submission message:</p><div class="informalexample"><pre class="programlisting">&lt;% if(typeof submitted !== "undefined"){ %&gt;
+  &lt;% if(submitted == true){ %&gt;
+    &lt;div class="alert alert-success" role="alert"&gt;Coupon has been submitted. Our administrator will review and the coupon shortly.&lt;/div&gt;
+  &lt;% } %&gt;
+&lt;% } %&gt; </pre></div><p>Here is the <code class="literal">ejs</code> template present in the view that displays the coupons and the <span class="strong"><strong>next</strong></span> and <span class="strong"><strong>previous</strong></span> buttons:</p><div class="informalexample"><pre class="programlisting">&lt;% if(coupons.length &lt; 21){ %&gt;
+  &lt;% var cut = 0; %&gt;
+&lt;% } %&gt;
+&lt;% if(coupons.length == 21){ %&gt;
+  &lt;% var cut = 1; %&gt;
+&lt;% } %&gt;
+&lt;% for(var i = 0; i &lt; coupons.length - cut; i++) {%&gt;
+  &lt;div class="col-sm-3 col-lg-3 col-md-3"&gt;
+    &lt;div class="thumbnail"&gt;
+      &lt;img src="&lt;%= image_url + '/' + coupons[i].thumbnail_id %&gt;" alt=""&gt;
+      &lt;div class="caption"&gt;
+        &lt;h4 class="pull-right"&gt;&lt;del&gt;&lt;%= coupons[i].price %&gt;&lt;/del&gt; &lt;%= coupons[i].discount %&gt;&lt;/h4&gt;
+        &lt;h4&gt;&lt;a href="&lt;%= coupons[i].url %&gt;"&gt;&lt;%= coupons[i].title %&gt;&lt;/a&gt;
+        &lt;/h4&gt;
+        &lt;p&gt;&lt;%= coupons[i].desc %&gt;&lt;/p&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;% } %&gt;
+&lt;/div&gt;
+
+&lt;ul class="pager"&gt;
+&lt;% if(prev == true){ %&gt;
+  &lt;li class="previous"&gt;&lt;a href="/?prev=true&amp;current=&lt;%= current %&gt;"&gt;Previous&lt;/a&gt;&lt;/li&gt;
+&lt;% } %&gt;
+&lt;% if(next == true){ %&gt;
+  &lt;li class="next"&gt;&lt;a href="/?next=true&amp;current=&lt;%= current %&gt;"&gt;Next&lt;/a&gt;&lt;/li&gt;
+&lt;% } %&gt;
+&lt;/ul&gt;</pre></div><p>We are <a id="id71" class="indexterm"/>done creating our home page. Now we need to create a route with the <code class="literal">/add</code> URL path that will display a form to submit a new coupon. The view for this coupon submission page is <code class="literal">add.ejs</code>. Here is the code to create the route:</p><div class="informalexample"><pre class="programlisting">app.get("/add", function(httpRequest, httpResponse, next){
+  seneca.act({role: "url-config", cmd: "upload-service"}, function(err, response){
+    if(err) return httpResponse.status(500).send("An error occured");
+
+    httpResponse.render("add", {upload_service_url: response.value});
+  })
+});</pre></div><p>Here we are retrieving the base URL of the upload service from the URL config service and assigning it to the <code class="literal">upload_service_url</code> local variable so that the form knows where to submit the POST request.</p><p>The following is the template in the <code class="literal">add.ejs</code> view that displays the coupon submission form:</p><div class="informalexample"><pre class="programlisting">&lt;form role="form" method="post" action="&lt;%= upload_service_url %&gt;/submit" enctype="multipart/form-data"&gt;
+  &lt;div class="form-group"&gt;
+    &lt;label for="email"&gt;Your Email address:&lt;/label&gt;
+    &lt;input type="email" class="form-control" id="email" name="email"&gt;
+  &lt;/div&gt;
+  &lt;div class="form-group"&gt;
+    &lt;label for="title"&gt;Product Title:&lt;/label&gt;
+    &lt;input type="text" class="form-control" id="title" name="title"&gt;
+  &lt;/div&gt;
+  &lt;div class="form-group"&gt;
+    &lt;label for="desc"&gt;Product Description:&lt;/label&gt;
+    &lt;textarea class="form-control" id="desc" name="desc"&gt;&lt;/textarea&gt;
+  &lt;/div&gt;
+  &lt;div class="form-group"&gt;
+    &lt;label for="url"&gt;Product URL: &lt;/label&gt;
+    &lt;input type="text" class="form-control" id="url" name="url"&gt;
+  &lt;/div&gt;
+  &lt;div class="form-group"&gt;
+    &lt;label for="price"&gt;Original Price:&lt;/label&gt;
+    &lt;input type="text" class="form-control" id="price" name="price"&gt;
+  &lt;/div&gt;
+  &lt;div class="form-group"&gt;
+    &lt;label for="discount"&gt;Discount Price:&lt;/label&gt;
+    &lt;input type="text" class="form-control" id="discount" name="discount"&gt;
+  &lt;/div&gt;
+  &lt;div class="form-group"&gt;
+    &lt;label for="thumbnail"&gt;Product Image: &lt;i&gt;(320 x 150)&lt;/i&gt;&lt;/label&gt;
+    &lt;input type="file" class="form-control" id="thumbnail" name="thumbnail"&gt;
+  &lt;/div&gt;
+  &lt;button type="submit" class="btn btn-default"&gt;Submit&lt;/button&gt;
+&lt;/form&gt;</pre></div><p>Now <a id="id72" class="indexterm"/>we need to provide a path for the site admin to access the admin panel. The path to access admin panel is going to be <code class="literal">/admin</code>. The admin panel will be protected using HTTP basic authentication.</p><p>We will create two more routes that will be used by the admin to accept or reject a coupon. The routes are <code class="literal">/admin/accept</code> and <code class="literal">/admin/reject</code>.</p><p>The <a id="id73" class="indexterm"/>following is the code to protect the admin panel using the HTTP basic authentication:</p><div class="informalexample"><pre class="programlisting">var auth = function (req, res, next){
+  var user = basicAuth(req);
+
+  if (!user || !user.name || !user.pass) 
+  {
+    res.set("WWW-Authenticate", "Basic realm=Authorization Required");
+    res.sendStatus(401);
+  }
+
+  //check username and password
+  if (user.name === "narayan" &amp;&amp; user.pass === "mypassword") 
+  {
+    next();
+  } 
+  else 
+  {
+    res.set("WWW-Authenticate", "Basic realm=Authorization Required");
+    res.sendStatus(401);
+  }
+}
+
+app.all("/admin/*", auth);
+app.all("/admin", auth);</pre></div><p>Here we are executing the <code class="literal">auth</code> callback for all the admin panel paths. The callback checks whether the user is logged in or not. If user is not logged in, we will ask the user to log in. If the user tries to log in, then we will check whether the username and password is correct. If the username and password are wrong, we will ask the user to log in again. We will parse the HTTP basic authentication based the headers using the <code class="literal">basic-auth</code> module, that is, we will pass the <code class="literal">req</code> object to the <code class="literal">basicAuth</code> function to parse it. Here we are hardcoding the username and password.</p><p>Now we need to define the routes to access the admin panel. The <code class="literal">admin.ejs</code> file is the view for the admin panel. The following is the code to add the routes:</p><div class="informalexample"><pre class="programlisting">app.get("/admin", function(httpRequest, httpResponse, next){
+  seneca.act({role: "coupons-store", cmd: "admin_list", skip: 0}, function(err, coupons){
+    if(err) return httpResponse.status(500).send("An error occured");
+
+    seneca.act({role: "url-config", cmd: "image-storage-service"}, function(err, image_url){
+      httpResponse.render("admin", {coupons: coupons, image_url: image_url.value});
+    });
+  });
+});
+
+app.get("/admin/accept", function(httpRequest, httpResponse, next){
+  seneca.act({role: "coupons-store", cmd: "verified", id: httpRequest.query.id}, function(err, verified){
+    if(err) return httpResponse.status(500).send("An error occured");
+
+    if(verified.value == true)
+    {
+      httpResponse.redirect("/admin");  
+    }
+    else
+    {
+      httpResponse.status(500).send("An error occured");
+    }
+  });
+});
+
+app.get("/admin/reject", function(httpRequest, httpResponse, next){
+  seneca.act({role: "url-config", cmd: "image-storage-service"}, function(err, storage_server_url){
+    if(err) return httpResponse.status(500).send("An error occured");
+
+    request.get(storage_server_url.value + "/delete/" + httpRequest.query.thumbnail_id, function(err, resp, body){
+      if(err) return httpResponse.status(500).send("An error occured");
+
+      seneca.act({role: "coupons-store", cmd: "delete", id: httpRequest.query.id}, function(err, deleted){
+        if(err) return httpResponse.status(500).send("An error occured");
+
+        if(deleted.value == true)
+        {
+          httpResponse.redirect("/admin");  
+        }
+        else
+        {
+          httpResponse.status(500).send("An error occured");
+        }
+      });
+    });
+  })
+});</pre></div><p>When the admin visits <code class="literal">/admin</code>, unverified coupons are displayed along with buttons to accept <a id="id74" class="indexterm"/>or reject a coupon. When the admin clicks on the <span class="strong"><strong>Accept</strong></span> button, then a request is made to the <code class="literal">/admin/accept</code> path to mark the coupon as verified, and when the admin clicks on the <span class="strong"><strong>Reject</strong></span> button, a request is made to the <code class="literal">/admin/reject</code> path to delete the coupon. After accepting or deleting a coupon, the admin is redirected to the <code class="literal">/admin</code> path.</p><p>The following is the template that displays the <span class="strong"><strong>coupons</strong></span> and <span class="strong"><strong>verification</strong></span> buttons to the admin:</p><div class="informalexample"><pre class="programlisting">&lt;% for(var i = 0; i &lt; coupons.length; i++) {%&gt;
+  &lt;tr&gt;
+    &lt;td&gt;&lt;%= coupons[i].title %&gt;&lt;/td&gt;
+    &lt;td&gt;&lt;%= coupons[i].desc %&gt;&lt;/td&gt;
+    &lt;td&gt;&lt;%= coupons[i].url %&gt;&lt;/td&gt;
+    &lt;td&gt;&lt;img style="width: 300px !important" src="&lt;%= image_url + '/' + coupons[i].thumbnail_id %&gt;" alt=""&gt;&lt;/td&gt;
+    &lt;td&gt;&lt;%= coupons[i].price %&gt;&lt;/td&gt;
+    &lt;td&gt;&lt;%= coupons[i].discount %&gt;&lt;/td&gt;
+    &lt;td&gt;
+      &lt;form role="form" method="get" action="/admin/accept"&gt;
+        &lt;div class="form-group"&gt;
+          &lt;input type="hidden" value="&lt;%= coupons[i].id %&gt;" name="id"&gt;
+          &lt;input type="hidden" value="&lt;%= coupons[i].thumbnail_id %&gt;" name="thumbnail_id"&gt;
+          &lt;input type="submit" value="Accept" class="btn btn-default"&gt;
+        &lt;/div&gt;
+      &lt;/form&gt;
+    &lt;/td&gt;
+    &lt;td&gt;
+      &lt;form role="form" method="get" action="/admin/reject"&gt;
+        &lt;div class="form-group"&gt;
+          &lt;input type="hidden" value="&lt;%= coupons[i].id %&gt;" name="id"&gt;
+          &lt;input type="hidden" value="&lt;%= coupons[i].thumbnail_id %&gt;" name="thumbnail_id"&gt;
+          &lt;input type="submit" value="Reject" class="btn btn-default"&gt;
+        &lt;/div&gt;
+      &lt;/form&gt;
+    &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;% } %&gt;</pre></div><p>We <a id="id75" class="indexterm"/>have defined our routes. Finally, we need to start the Express server. Here is the code to do so:</p><div class="informalexample"><pre class="programlisting">app.listen(9090);</pre></div><p>Now go ahead and run the monolithic core server using the <code class="literal">node app.js</code> command.</p></div>
+<div class="section" title="Website walkthrough"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec16"/>Website walkthrough</h1></div></div></div><p>We have <a id="id76" class="indexterm"/>completed creating our website. Now, let's walkthrough our site to see how it works overall. Before that, make sure that everything is running.</p><p>You can visit the home page of the website using the <code class="literal">http://localhost:8080/ </code>URL. The following is how the web page will look when you will visit it for the first time:</p><div class="mediaobject"><img src="graphics/B05154_02_02.jpg" alt="Website walkthrough"/></div><p>Now to add a coupon, click on the <span class="strong"><strong>Submit Coupon</strong></span> button. Now you will see a form. Fill in the form. Here is how it looks:</p><div class="mediaobject"><img src="graphics/B05154_02_03.jpg" alt="Website walkthrough"/></div><p>Now <a id="id77" class="indexterm"/>submit the form. After submitting the form, you will be redirected to the home page. The following is how the home page will look after redirect:</p><div class="mediaobject"><img src="graphics/B05154_02_04.jpg" alt="Website walkthrough"/></div><p>Now <a id="id78" class="indexterm"/>click on the <span class="strong"><strong>Admin</strong></span> button to visit the admin panel and accept the coupon. Here is how the admin panel will look:</p><div class="mediaobject"><img src="graphics/B05154_02_05.jpg" alt="Website walkthrough"/></div><p>Click on the <span class="strong"><strong>Accept</strong></span> button to accept it. Now go back to the home page. This is how the home page will look now:</p><div class="mediaobject"><img src="graphics/B05154_02_06.jpg" alt="Website walkthrough"/></div><p>In the preceding image, you can see that the product is listed.</p></div>
+<div class="section" title="Further improvements to the site"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec17"/>Further improvements to the site</h1></div></div></div><p>Here is a list of things <a id="id79" class="indexterm"/>we can do now to make the site architecture even better and add some extra features. You will also get some practice writing code involving the microservices architecture by performing the following actions:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Create a separate service for the admin panel. The benefit of this is that you can update the admin panel without affecting the visitors, that is, while the admin panel is being updated, the users will still be able to visit and browse coupons. For this, you need to move the route of the admin panel to a new service.</li><li class="listitem" style="list-style-type: disc">Fetch the username and password from the database. For this, you need to add some actions to the database service.</li><li class="listitem" style="list-style-type: disc">Resize or crop images to thumbnail size, as that's the size of an image being displayed on the frontend. This will save the disk space. This needs to be done with the help of the upload service.</li><li class="listitem" style="list-style-type: disc">You can create a mobile app for the website. For this, you need to create a service that provides APIs for the mobile app. New coupons can be submitted to the upload service by adding a query string, indicating that the request has arrived from the mobile app so that it won't redirect, instead send a <a id="id80" class="indexterm"/>response once coupon is submitted successfully.</li></ul></div><p>These are just some ideas to make the site even better.</p></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec18"/>Summary</h1></div></div></div><p>In this chapter, we saw how to build a website using Seneca and microservices architecture from scratch. The website we built was simple in terms of features, but involved a lot of important techniques that are used while building sites using the microservices architecture. Now you are ready to choose the architecture that suits your site best. I also mentioned the things you can do to make the site even better.</p><p>In the next chapter, we will discuss real-time communication among browsers using WebRTC.</p></div></body></html>

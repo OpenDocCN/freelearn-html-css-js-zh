@@ -1,0 +1,1431 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Cameras</h1>
+                </header>
+            
+            <article>
+                
+<p>In the previous chapter, we covered the vertex shader, fragment shader, and ESSL to a define a lighting model in our 3D scene. In this chapter, we will leverage these concepts to learn more about the matrices that we have seen in the source code. These matrices represent transformations that, when applied to our scene, allow us to display and move things around. In one case, we've already used them to set the camera to a distance to see all the objects in our scene, and in another case, we've used them to spin our 3D car model.</p>
+<p>Even though we have a camera within our 3D application, there is no camera object in the WebGL API—only matrices. That is because having matrices instead of a camera object gives WebGL the flexibility to represent complex projections and animations. In this chapter, we will learn what these matrix transformations mean and how we can use them to define and operate a virtual camera.</p>
+<p>In this chapter, we will look at the following topics:</p>
+<ul>
+<li>Understanding the transformations that the scene undergoes from a 3D world to a 2D screen.</li>
+<li>Learning about affine transformations.</li>
+<li>Mapping matrices to ESSL uniforms.</li>
+<li>Working with the Model-View and Projection matrix.</li>
+<li>Appreciating the value of the Normal matrix.</li>
+<li>Creating a camera and using it to move around a 3D scene.</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">WebGL Does Not Have Cameras</h1>
+                </header>
+            
+            <article>
+                
+<p>How is it that there are no cameras in a 3D computer-graphics technology? Well, let's rephrase this: WebGL does not have a camera object that you can manipulate. However, we can assume that what we render in the <kbd>canvas</kbd> is what our camera captures. In this chapter, we are going to solve the problem of how to represent a camera in WebGL. The short answer is that we need 4x4 matrices.</p>
+<p>Every time we move our camera around, we will need to update the objects according to the new camera position. To do this, we need to systematically process each vertex and apply a transformation that produces the new viewing position. Similarly, we need to make sure that the object normals and light directions are still consistent after the camera has moved. In summary, we need to analyze two different types of transformations: vertex (points) and normal (vectors).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Vertex Transformations</h1>
+                </header>
+            
+            <article>
+                
+<p>Objects in a WebGL scene go through different transformations before we see them on our screen. Each transformation is encoded by a 4x4 matrix. How do we multiply vertices that have three components, <kbd>(x, y, z)</kbd>, by a 4x4 matrix? The short answer is that we need to augment the cardinality of our tuples by one dimension. Each vertex will then have a fourth component called the Homogeneous coordinate. Let's see what they are and why they are useful.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Homogeneous Coordinates</h1>
+                </header>
+            
+            <article>
+                
+<p><strong>Homogeneous coordinates</strong> are a key component of any computer-graphics program. These coordinates make it possible to represent <em>affine</em> transformations (such as rotation, scaling, shear, and translation) and <em>projective</em> transformations as 4x4 matrices.</p>
+<p>In <span>Homogeneous</span> coordinates, vertices have four components: <kbd>x</kbd>, <kbd>y</kbd>, <kbd>z</kbd>, and <kbd>w</kbd><em>.</em> The first three components are the vertex coordinates in <strong>Euclidian Space</strong>. The fourth is the perspective component. The four-tuple <kbd>(x, y, z, w)</kbd> take us to a new space: the <strong>Projective Space</strong>.</p>
+<p>Homogeneous coordinates make it possible to solve a system of linear equations where each equation represents a line that is parallel with all the others in the system. Remember that in Euclidian Space, a system like that does not have solutions, because there are no intersections. However, in Projective Space, this system has a solution—the lines will intersect at infinity. This fact is represented by the perspective component having a value of <kbd>0</kbd>. A good analogy of this idea is the image of train tracks: parallel lines that converge at the vanishing point when you look at them in the distance:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/aaaad883-8a76-4af7-bb65-2e4fe9fef713.png" style="width:40.75em;height:20.92em;"/></p>
+<p>It's easy to convert from Homogeneous coordinates to non-Homogeneous, old-fashioned, Euclidean coordinates. All you need to do is divide the coordinate by <kbd>w</kbd>:</p>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/14f802f8-556c-4f60-8512-d83af4b481fb.png" style="width:21.08em;height:1.83em;"/></pre>
+<p>Consequently, if you want to go from Euclidean to Projective space, you add the fourth component, <kbd>w</kbd>, and make it <kbd>1</kbd>:</p>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/7be27661-e795-4c15-8f8b-e6af812ceb2e.png" style="width:15.08em;height:1.83em;"/></pre>
+<p>In fact, this is what we've been doing throughout the first three chapters of this book! Let's go back to one of the shaders we discussed in <span>the last chapter</span>: the Phong vertex shader. The code looks as follows:</p>
+<div>
+<pre><span>#version </span><span>300 </span>es<br/><span>precision </span><span>mediump </span><span>float</span><span>;<br/></span><span><br/></span><span>uniform </span><span>mat4 </span>uModelViewMatrix<span>;<br/></span><span>uniform </span><span>mat4 </span>uProjectionMatrix<span>;<br/></span><span>uniform </span><span>mat4 </span>uNormalMatrix<span>;<br/></span><span><br/></span><span>in </span><span>vec3 </span>aVertexPosition<span>;<br/></span><span>in </span><span>vec3 </span>aVertexNormal<span>;<br/></span><span><br/></span><span>out </span><span>vec3 </span>vVertexNormal<span>;<br/></span><span>out </span><span>vec3 </span>vEyeVector<span>;<br/></span><span><br/></span><span>void </span>main(<span>void</span>) {<br/>  <span>// Transformed vertex position<br/></span><span>  </span><span>vec4 </span>vertex = uModelViewMatrix * <span>vec4</span>(aVertexPosition<span>, </span><span>1.0</span>)<span>;<br/></span><span><br/></span><span>  </span><span>// Transformed normal position<br/></span><span>  </span>vVertexNormal = <span>vec3</span>(uNormalMatrix * <span>vec4</span>(aVertexNormal<span>, </span><span>0.0</span>))<span>;<br/></span><span><br/></span><span>  </span><span>// Eye vector<br/></span><span>  </span>vEyeVector = -<span>vec3</span>(vertex.xyz)<span>;<br/></span><span><br/></span><span>  </span><span>// Final vertex position<br/></span><span>  </span>gl_Position = uProjectionMatrix * uModelViewMatrix * <span>vec4</span>(aVertexPosition<span>, </span><span>1.0</span>)<span>;<br/></span>}</pre></div>
+<p>Please note that for the <kbd>aVertexPosition</kbd> attribute, which contains a vertex of our geometry, we create a four-tuple from the three-tuple that we receive. We do this with the ESSL construct, <kbd>vec4()</kbd>. ESSL knows that <kbd>aVertexPosition</kbd> is a <kbd>vec3</kbd> and therefore, we only need the fourth component to create a <kbd>vec4</kbd>.</p>
+<div class="packt_infobox"><span class="packt_screen">Coordinates Transformations</span><br/>
+<br/>
+To pass from Homogeneous coordinates to Euclidean coordinates, we divide by <kbd>w</kbd><em>.<br/></em><br/>
+To pass from Euclidean coordinates to Homogeneous coordinates, we add <kbd>w = 1</kbd>.<br/>
+<br/>
+Homogeneous coordinates with <kbd>w = 0</kbd> represent a point at infinity.</div>
+<p>There is one more thing to note about Homogeneous coordinates: while vertices have a Homogeneous coordinate, <kbd>w = 1</kbd>, vectors have a <span>Homogeneous</span> coordinate, <kbd>w = 0</kbd>. This is because in the Phong vertex shader, the line that processes the normals looks like this:</p>
+<div>
+<pre>vVertexNormal = <span>vec3</span>(uNormalMatrix * <span>vec4</span>(aVertexNormal<span>, </span><span>0.0</span>))<span>;<br/></span></pre></div>
+<p>To code vertex transformations, we will use Homogeneous coordinates unless indicated otherwise. Now, let's see the different transformations that our geometry undergoes to be displayed on screen.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Model Transform</h1>
+                </header>
+            
+            <article>
+                
+<p>We start our analysis from the object-coordinate system. This is the space where vertex coordinates are specified. If we want to translate or move objects around, we use a matrix that encodes these transformations. This matrix is known as the <strong>Model matrix</strong>. Once we multiply the vertices of our object by the Model matrix, we obtain new vertex coordinates. These new vertices will determine the position of the object in our 3D world.</p>
+<p>In object coordinates, each object is free to define where its origin is and to specify where its vertices are with respect to this origin. In world coordinates, the origin is shared by all of the objects. World coordinates allow us to know where objects are located with respect to each other. It is with the model transform that we determine where the objects are in the 3D world:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/1fb7b0ee-7885-45c3-bae4-9be31fcfa2bc.png"/></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">View Transform</h1>
+                </header>
+            
+            <article>
+                
+<p>The next transformation, the view transform, shifts the origin of the coordinate system to the view origin. The view origin is where our <em>eye</em> or <em>camera</em> is located with respect to the world origin. In other words, the view transform switches world coordinates by view coordinates. This transformation is encoded in the <strong>View matrix</strong>. We multiply this matrix by the vertex coordinates obtained by the model transform. The result of this operation is a new set of vertex coordinates whose origin is the view origin. It is in this coordinate system that our camera is going to operate.</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/005ef6cc-2933-4bb1-9153-f40e9ec6ee5d.png"/></p>
+<p>We will return to this later in the chapter!</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Projection Transform</h1>
+                </header>
+            
+            <article>
+                
+<p>The next operation is called the <strong>projection transform</strong>. This operation determines how much of the view space will be rendered and how it will be mapped onto the computer screen. This region is known as the <strong>frustum</strong> and it is defined by six planes (near, far, top, bottom, right, and left planes), as shown in the following diagram:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/2385e5e7-aed6-45b2-9087-7baa5b57d092.png"/></p>
+<p>These six planes are encoded in the <strong>Projection matrix</strong>. Any vertices lying outside the frustum after applying the transformation are <em>clipped out</em> and discarded from further processing. Therefore, the frustum <em>defines</em> clipping coordinates, and the Projection matrix that encodes the frustum <em>produces</em> clipping coordinates.</p>
+<p>The shape and extent of the frustum determines the type of projection from the 3D viewing space to the 2D screen. If the far and near planes have the same dimensions, the frustum will then determine an <em>orthographic</em> projection. Otherwise, it will be a <em>perspective</em> projection, as shown in the following diagram:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/5e8adaa6-e7e7-4747-9762-b2903df547a4.png"/></p>
+<p>Up to this point, we are still working with Homogeneous coordinates, so the clipping coordinates have four components: <kbd>x</kbd>, <kbd>y</kbd>, <kbd>z</kbd>, and <kbd>w</kbd>. The clipping is done by comparing the <kbd>x</kbd>, <kbd>y</kbd>, and <kbd>z</kbd> components against the Homogeneous coordinate, <kbd>w</kbd>. If any of them is more than, <kbd>+w</kbd>, or less than, <kbd>-w</kbd>, then that vertex lies outside the frustum and is discarded.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Perspective Division</h1>
+                </header>
+            
+            <article>
+                
+<p>Once it has been determined how much of the viewing space will be rendered, the frustum is mapped into the <em>near plane</em> in order to produce a 2D image. The near plane is what is going to be rendered on your computer screen.</p>
+<p>Different operative systems and displaying devices can have mechanisms to represent 2D information on screen. To provide robustness for all possible cases, WebGL and OpenGL ES provide an intermediate coordinate system that is independent from any specific hardware. This space is known as the <strong>Normalized Device Coordinates (NDC)</strong>.</p>
+<p>Normalized device coordinates are obtained by dividing the clipping coordinates by the <kbd>w</kbd> component. This is why this step is known as <em>perspective division</em>. Also, please remember that when we divide by the Homogeneous coordinate, we go from projective space (4 components) to Euclidean space (3 components), so NDC only has three components. In the NDC space, the <kbd>x</kbd> and <kbd>y</kbd> coordinates represent the location of your vertices on a normalized 2D screen, while the z-coordinate encodes depth information, which is the relative location of the objects with respect to the near and far planes. Although at this point we are working on a 2D screen, we still keep the depth information. This will allow WebGL to later determine how to display overlapping objects based on their distance from the nearest plane. When using normalized device coordinates, the depth is encoded in the z-component.</p>
+<p>The perspective division transforms the viewing frustum into a cube centered in the origin with the minimum coordinates of <kbd>[-1, -1, -1]</kbd> and the maximum coordinates of <kbd>[1, 1, 1]</kbd>. Also, the direction of the z-axis is inverted, as shown in the following diagram:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/4ad69e23-68dd-4781-88f2-974d9c1b4122.png"/></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Viewport Transform</h1>
+                </header>
+            
+            <article>
+                
+<p>Finally, NDCs are mapped to <strong>viewport coordinates</strong>. This step maps these coordinates to the available space in your screen. In WebGL, this space is provided by the HTML5 <kbd>canvas</kbd>, as shown in the following diagram:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/cb84407b-0550-4cff-b474-35d21601c539.png"/></p>
+<p>Unlike the previous cases, the viewport transform is not generated by a matrix transformation. In this case, we use the WebGL viewport function. We will learn more about this function <span>later in this chapter</span>. Now, it's time to see how these transformations affect normals.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Normal Transformations</h1>
+                </header>
+            
+            <article>
+                
+<p>Whenever vertices are transformed, <strong>normal vectors</strong> should also be transformed so that they point in the right direction. We could consider using the Model-View matrix that transforms vertices to do this, but this approach is problematic: the Model-View matrix will not always keep the perpendicularity of normals, as illustrated by the following diagram:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/df8dc082-2ebd-496e-a8a9-8eddfd3d3304.png" style="width:28.25em;height:10.58em;"/></p>
+<p>This problem occurs if there is a unidirectional (one axis) scaling transformation or a shearing transformation in the Model-View matrix. In our example, we have a triangle that has undergone a scaling transformation on the y-axis. As you can see, the <kbd>N'</kbd> normal is no longer perpendicular after this kind of transformation. How do we solve this?</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Calculating the Normal Matrix</h1>
+                </header>
+            
+            <article>
+                
+<p>If you are not interested in finding out how we calculate the Normal matrix and just want the answer, feel free to jump to the end of this section. Otherwise, stick around to see some linear algebra in action!</p>
+<p>Let's start with the mathematical definition of perpendicularity. Two vectors are perpendicular if their dot product is <kbd>0</kbd>. In our example, this will be:</p>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/66e8aff9-33f1-4879-8b6f-d69884aa49eb.png" style="width:5.42em;height:1.08em;"/></pre>
+<p>Here, <em><kbd>S</kbd></em> is the surface vector and can be calculated as the difference of two vertices, as shown in the diagram at the beginning of this section.</p>
+<p>Let <em><kbd>M</kbd></em> be the Model-View matrix. We can use <em><kbd>M</kbd></em> to transform <kbd><em>S</em></kbd> as follows:</p>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/6442a3ad-287e-4c39-91aa-62eddf0a44c8.png" style="width:6.50em;height:1.25em;"/></pre>
+<p>This is because <kbd><em>S</em></kbd> is the difference of two vertices. We use <kbd><em>M</em></kbd> to transform vertices onto the viewing space.</p>
+<p>We want to find a matrix, <kbd><em>K</em></kbd>, that allows us to transform normals in a similar way. For the <kbd><em>N</em></kbd> normal, we want the following:</p>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/956bb0ab-af60-42a4-80cf-222c59182d20.png" style="width:6.33em;height:1.17em;"/></pre>
+<p>For the scene to be consistent after obtaining <kbd><em>N'</em></kbd> and <kbd><em>S'</em></kbd>, these two need to keep the perpendicularity that the original vectors <kbd><em>N</em></kbd> and <kbd><em>S</em></kbd> had. This is as follows:</p>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/a5f53ca9-bd66-4f68-bf66-e9198faeab84.png" style="width:6.50em;height:1.25em;"/></pre>
+<p>Substituting <kbd><em>N'</em></kbd> and <kbd><em>S'</em></kbd>:</p>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/c7664b69-259b-4888-83f1-1d23f13f080e.png" style="width:9.42em;height:1.50em;"/></pre>
+<p>A dot product can also be written as a vector multiplication by transposing the first vector so that this still holds:</p>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/7c140d83-e69f-4bc4-bd48-02ea1890ab6d.png" style="width:8.42em;height:1.50em;"/></pre>
+<p>The transpose of a product is the product of the transposes in the reverse order:</p>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/66706a73-3824-45c3-9b56-ddce660b81f7.png" style="width:7.67em;height:1.25em;"/></pre>
+<p>Grouping the inner terms:</p>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/a489d0ae-b912-48c0-9173-5ce055331057.png" style="width:9.00em;height:1.67em;"/></pre>
+<p>Now, remember that <kbd><img class="fm-editor-equation" src="assets/00bae9ac-8ccb-4a47-8de1-1af208c087b6.png" style="width:5.17em;height:1.17em;"/></kbd> so <kbd><img class="fm-editor-equation" src="assets/a116585c-c195-4728-9ab9-787eedfce48a.png" style="width:5.00em;height:1.33em;"/></kbd> (again, a dot product can be written as a vector multiplication). This means that in the previous equation, (<kbd><img class="fm-editor-equation" src="assets/f425b4f3-3626-49fe-9a88-1c4ee7bf9967.png" style="width:3.25em;height:1.42em;"/></kbd>) needs to be the Identity matrix, <kbd><em>I</em></kbd>, so the original condition of <kbd><em>N</em></kbd> and <kbd><em>S</em></kbd> being perpendicular holds:</p>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/715da3b5-a693-4613-9311-a3ab76108746.png" style="width:4.58em;height:1.08em;"/></pre>
+<p>Applying a bit of algebra:</p>
+<table border="1" style="border-collapse: collapse;width: 100%;border-color: #000000">
+<tbody>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd><img class="fm-editor-equation" src="assets/e6602643-ef8e-4240-bc57-034d777c70e3.png" style="width:14.75em;height:1.33em;"/></kbd></td>
+<td class="CDPAlignLeft CDPAlign"><span>Multiply by the inverse of <kbd><em>M</em></kbd> on both sides.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd><img class="fm-editor-equation" src="assets/61e70e3d-b8ee-4d60-aa72-7a6524de722e.png" style="width:6.67em;height:1.33em;"/></kbd></td>
+<td class="CDPAlignLeft CDPAlign"><span>Because <kbd><img class="fm-editor-equation" src="assets/81925c34-d45d-44ae-b40f-e82f8bb46d56.png" style="width:5.58em;height:1.17em;"/></kbd></span><em>.</em></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd><img class="fm-editor-equation" src="assets/ca32723e-31ba-411f-bc04-2726d4b085f5.png" style="width:9.42em;height:1.67em;"/></kbd></td>
+<td class="CDPAlignLeft CDPAlign"><span>Transposing on both sides.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd><img class="fm-editor-equation" src="assets/e23e25a6-159e-49a5-8578-2f0e783bc3a0.png" style="width:7.00em;height:1.67em;"/></kbd></td>
+<td class="CDPAlignLeft CDPAlign"><span>Double transpose of </span><kbd><em>K</em></kbd><span> is the original matrix </span><kbd><em>K</em></kbd><span>.</span></td>
+</tr>
+</tbody>
+</table>
+<p> </p>
+<p>Conclusions:</p>
+<ul>
+<li><em><kbd>K</kbd> </em>is the correct matrix transform that keeps the normal vectors perpendicular to the surface of the object. We call <kbd><em>K</em></kbd> the <strong>Normal matrix</strong>.</li>
+<li><em><kbd>K</kbd> </em>is obtained by transposing the inverse of the Model-View matrix (<kbd><em>M</em></kbd>, in this example).</li>
+<li>We need to use <em><kbd>K</kbd> </em>to multiply the normal vectors so that they keep being perpendicular to the surface when transformed.</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">WebGL Implementation</h1>
+                </header>
+            
+            <article>
+                
+<p>Now, let's take a look at how we can implement vertex and normal transformations in WebGL. The following diagram shows the theory we have learned so far, along with the relationships between the steps in the theory and the implementation in WebGL:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/800122be-4528-4269-a431-5e723273c0e0.png"/></p>
+<p>In WebGL, the five transformations that we apply to object coordinates to obtain viewport coordinates are grouped into three matrices and one WebGL method:</p>
+<ul>
+<li>The <strong>Model-View </strong>matrix that groups the <em>model</em> and <em>view</em> transform in one single matrix. When we multiply our vertices by this matrix, we end up in view coordinates.</li>
+<li>The <strong>Normal matrix </strong>is obtained by inverting and transposing the Model-View matrix. This matrix is applied to normal vectors to ensure that they continue to be perpendicular to the surface. This is very important in cases such as lighting.</li>
+<li>The <strong>Projection matrix </strong>groups the <em>projection transformation</em> and <em>the perspective division</em>, and as a result, we end up in normalized device coordinates.</li>
+</ul>
+<p>Finally, we use the <kbd>gl.viewport</kbd> operation to map NDCs to viewport coordinates:</p>
+<div>
+<pre>gl.viewport(minX, minY, width, height);</pre></div>
+<p>The viewport coordinates originate in the lower-left corner of the HTML5 <kbd>canvas</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">JavaScript Matrices</h1>
+                </header>
+            
+            <article>
+                
+<p>The WebGL JavaScript API does not provide its own methods to perform operations on matrices. WebGL simply provides a way to pass matrices to the shaders (as uniforms). So, we need to use a JavaScript library that enables us to manipulate matrices in JavaScript. In this book, we have used <strong>glMatrix</strong> for all matrix operations. However, there are other libraries available online that can do this for you.</p>
+<div class="packt_infobox"><span class="packt_screen">glMatrix</span><br/>
+<br/>
+We used <strong>glMatrix</strong> for all matrix operations in this book. You can find more information about this library at <a href="https://github.com/toji/gl-matrix">https://github.com/toji/gl-matrix.</a></div>
+<p>Here are some of the operations that you can perform with <strong>glMatrix</strong>:</p>
+<table border="1" style="border-collapse: collapse;width: 100%;border-color: #000000">
+<tbody>
+<tr>
+<td class="CDPAlignLeft CDPAlign" style="width: 9.94012%"><strong>Operation</strong></td>
+<td class="CDPAlignLeft CDPAlign" style="width: 30.6587%"><strong>Syntax</strong></td>
+<td class="CDPAlignLeft CDPAlign" style="width: 58.3234%"><strong>Description</strong></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign" style="width: 9.94012%"><span>Creation</span></td>
+<td class="CDPAlignLeft CDPAlign" style="width: 30.6587%"><kbd><span>const m = mat4.create();</span></kbd></td>
+<td class="CDPAlignLeft CDPAlign" style="width: 58.3234%"><span>Creates the <kbd>m</kbd> matrix.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign" style="width: 9.94012%"><span>Identity</span></td>
+<td class="CDPAlignLeft CDPAlign" style="width: 30.6587%"><kbd><span>mat4.identity(m);</span></kbd></td>
+<td class="CDPAlignLeft CDPAlign" style="width: 58.3234%"><span>Set</span>s <kbd>m</kbd> as t<span>he Identity matrix of rank 4.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign" style="width: 9.94012%"><span>Copy</span></td>
+<td class="CDPAlignLeft CDPAlign" style="width: 30.6587%"><kbd><span>mat4.copy(target, origin);</span></kbd></td>
+<td class="CDPAlignLeft CDPAlign" style="width: 58.3234%"><span>Copies the matrix origin onto the matrix target.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign" style="width: 9.94012%"><span>Transpose</span></td>
+<td class="CDPAlignLeft CDPAlign" style="width: 30.6587%"><kbd><span>mat4.transpose(target, m);</span></kbd></td>
+<td class="CDPAlignLeft CDPAlign" style="width: 58.3234%"><span>Transposes the <kbd>m</kbd> matrix onto the matrix target.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign" style="width: 9.94012%"><span>Invert</span></td>
+<td class="CDPAlignLeft CDPAlign" style="width: 30.6587%"><kbd><span>mat4.invert(target, m);</span></kbd></td>
+<td class="CDPAlignLeft CDPAlign" style="width: 58.3234%"><span>Inverts <kbd>m</kbd> onto the matrix target.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign" style="width: 9.94012%"><span>Rotate</span></td>
+<td class="CDPAlignLeft CDPAlign" style="width: 30.6587%"><kbd><span>mat4.rotate(target, m, r, a);</span></kbd></td>
+<td class="CDPAlignLeft CDPAlign" style="width: 58.3234%"><span>Rotates the <kbd>m</kbd> matrix by <kbd>r</kbd> radians around the <kbd>a</kbd>  axis (this is a three-element array, </span><kbd>[x, y, z]</kbd><span>) onto the matrix target.</span></td>
+</tr>
+</tbody>
+</table>
+<p> </p>
+<p>It's important to note that the <strong>glMatrix</strong> provides many more functions to perform other linear algebra operations. To get the full list, visit <a href="http://glmatrix.net/docs/">http://glmatrix.net/docs/</a>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Mapping JavaScript Matrices to ESSL Uniforms</h1>
+                </header>
+            
+            <article>
+                
+<p>Since the Model-View and Perspective matrices do not change during a single rendering step, they are passed as <em>uniforms</em> to the shaders. For example, if we were applying a translation to an object in our scene, we would have to paint the whole object in the new coordinates given by the translation. Painting the whole object in the new position is achieved in exactly one rendering step.</p>
+<p>However, before the rendering step is invoked (by calling <kbd>drawArrays</kbd> or <kbd>drawElements</kbd>), we need to make sure that the shaders have an updated version of our matrices. We already know how to do that for other uniforms, such as light and color properties. The method to map JavaScript matrices to uniforms is similar to the following:</p>
+<ol>
+<li>Get a JavaScript reference to the uniform with the following code:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px">const reference = getUniformLocation(program, uniformName);</pre></div>
+<ol start="2">
+<li>Use the reference to pass the matrix to the shader with the following code:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>// Matrix is the JavaScript matrix variable</span><br/>gl.uniformMatrix4fv(reference, transpose, matrix);</pre></div>
+<p>As is the case for other uniforms, ESSL supports two-, three-, and four-dimensional matrices: <kbd>uniformMatrix[234]fv(reference, transpose, matrix)</kbd>. This will load 2x2, 3x3, or 4x4 matrices (corresponding to 2, 3, or 4 in the command name) of floating points into the uniform referenced by <kbd>reference</kbd>. The type of <kbd>reference</kbd> is <kbd>WebGLUniformLocation</kbd>. For practical purposes, it is an integer number. According to the specification, the transpose value must be set to <kbd>false</kbd>. The matrix uniforms are always of the floating point type (<kbd>f</kbd>). The matrices are passed as <kbd>4</kbd>, <kbd>9</kbd>, or <kbd>16</kbd> element vectors (<kbd>v</kbd>) and are always specified in a column-major order. The matrix parameter can also be of the <kbd>Float32Array</kbd> type. This is one of JavaScript's typed arrays. These arrays are included in the language to provide access to and the manipulation of raw binary data, and thus increase efficiency.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Working with Matrices in ESSL</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's revisit the Phong vertex shader, which was introduced in <a href="0dcbfd9d-5446-48e9-90c1-841f4d160232.xhtml">Chapter 3</a>, <em>Lights</em>. Please remember that matrices are defined as uniform <kbd>mat4</kbd>.</p>
+<p>In this shader, we have defined three matrices:</p>
+<ul>
+<li><kbd>uModelViewMatrix</kbd>: The Model-View matrix</li>
+<li><kbd>uProjectionMatrix</kbd>: The Projection matrix</li>
+<li><kbd>uNormalMatrix</kbd>: The Normal matrix</li>
+</ul>
+<div>
+<pre><span>#version </span><span>300 </span>es<br/><span>precision </span><span>mediump </span><span>float</span><span>;<br/></span><span><br/></span><span>uniform </span><span>mat4 </span>uModelViewMatrix<span>;<br/></span><span>uniform </span><span>mat4 </span>uProjectionMatrix<span>;<br/></span><span>uniform </span><span>mat4 </span>uNormalMatrix<span>;<br/></span><span><br/></span><span>in </span><span>vec3 </span>aVertexPosition<span>;<br/></span><span>in </span><span>vec3 </span>aVertexNormal<span>;<br/></span><span><br/></span><span>out </span><span>vec3 </span>vVertexNormal<span>;<br/></span><span>out </span><span>vec3 </span>vEyeVector<span>;<br/></span><span><br/></span><span>void </span>main(<span>void</span>) {<br/>  <span>// Transformed vertex position<br/></span><span>  </span><span>vec4 </span>vertex = uModelViewMatrix * <span>vec4</span>(aVertexPosition<span>, </span><span>1.0</span>)<span>;<br/></span><span><br/></span><span>  </span><span>// Transformed normal position<br/></span><span>  </span>vVertexNormal = <span>vec3</span>(uNormalMatrix * <span>vec4</span>(aVertexNormal<span>, </span><span>0.0</span>))<span>;<br/></span><span><br/></span><span>  </span><span>// Eye vector<br/></span><span>  </span>vEyeVector = -<span>vec3</span>(vertex.xyz)<span>;<br/></span><span><br/></span><span>  </span><span>// Final vertex position<br/></span><span>  </span>gl_Position = uProjectionMatrix * uModelViewMatrix * <span>vec4</span>(aVertexPosition<span>, </span><span>1.0</span>)<span>;<br/></span>}</pre></div>
+<p>In ESSL, the multiplication of matrices is straightforward; that is, you do not need to multiply element by element. ESSL knows that you are working with matrices, so it performs the multiplications for you:</p>
+<div>
+<pre>gl_Position = uProjectionMatrix * uModelViewMatrix * <span>vec4</span>(aVertexPosition<span>, </span><span>1.0</span>)<span>;<br/></span></pre></div>
+<p>The last line of this shader assigns a value to the predefined <kbd>gl_Position</kbd> variable. This will contain the clipping coordinates for the vertex that is currently being processed by the shader. We need to remember that the shaders work in parallel: each vertex is processed by an instance of the vertex shader.</p>
+<p>To obtain the clipping coordinates for a given vertex, we first need to multiply the Model-View matrix by the Projection matrix. To achieve this, we multiply from right to left, because matrix multiplication is not commutative and order matters.</p>
+<p>Also, notice that we needed to augment the <kbd>aVertexPosition</kbd> attribute by including the Homogeneous coordinate. This is because we have defined our geometry in Euclidean space. Luckily, ESSL allows us to do this by simply adding the missing component and creating a <kbd>vec4</kbd> on the fly. We need to do this because both the Model-View matrix and the Projection matrix are described in Homogeneous coordinates (<kbd>4</kbd> rows by <kbd>4</kbd> columns).</p>
+<p>Now that we've seen how to map JavaScript matrices to ESSL uniforms in our shaders, let's talk about how to operate with the three matrices: the Model-View matrix, the Normal matrix, and the Projection matrix.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The Model-View Matrix</h1>
+                </header>
+            
+            <article>
+                
+<p>The <strong>Model-View matrix</strong> allows us to perform <em>affine transformations</em> in our scene. <strong>Affine</strong> is a mathematical name that describes transformations that do <em>not</em> change the structure of the object undergoing such transformations. In our 3D world scene, such transformations are rotation, scaling, reflection shearing, and translation. Fortunately, we do not need to understand how to represent such transformations with matrices. We just need to use one of the many JavaScript matrix libraries that are available online (such as <strong>glMatrix</strong>).</p>
+<div class="packt_infobox"><span class="packt_screen">Affine Transformations</span><br/>
+<br/>
+You can find more information on how transformation matrices work at <a href="https://en.wikipedia.org/wiki/Affine_transformation">https://en.wikipedia.org/wiki/Affine_transformation</a>.</div>
+<p>Understanding the structure of the Model-View matrix will not help you if you just want to apply transformations to the scene or to objects in the scene. For that effect, simply use a library, such as <strong>glMatrix</strong>, to do the transformations on your behalf. However, the structure of this matrix could be invaluable information when you are trying to troubleshoot your 3D application. Let's take a look at how the Model-View matrix is constructed.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Spatial Encoding of the World</h1>
+                </header>
+            
+            <article>
+                
+<p>By default, when you render a scene, you are looking at it from the origin of the world in the negative direction of the z-axis. As shown in the following diagram, the z-axis is coming out of the screen (which means that you're looking at the negative z-axis):</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/2cbdaa70-dc4a-437e-9eee-ca17e62fa791.png"/></p>
+<p>From the center of the screen to the right, you will have the positive x-axis, and from the center of the screen up, you will have the positive y-axis. This is the initial configuration and it is the reference for affine transformations.</p>
+<p>In this configuration, the Model-View matrix is the <strong>Identity matrix</strong> of rank four.</p>
+<p>The first three rows of the Model-View matrix contain information about rotations and translations that are affecting the world.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Rotation Matrix</h1>
+                </header>
+            
+            <article>
+                
+<p>The intersection of the first three rows with the first three columns defines the 3x3 Rotation matrix. This matrix contains information about rotations around the standard axis. In the initial configuration, this corresponds to the following:</p>
+<p class="CDPAlignCenter CDPAlign"><kbd>[m1, m2, m3]</kbd> = <kbd>[1, 0, 0]</kbd> = x-axis<br/>
+<kbd>[m5, m6, m7]</kbd> = <kbd>[0, 1, 0]</kbd> = y-axis<br/>
+<kbd>[m9, m10, m11]</kbd> = <kbd>[0, 0, 1]</kbd> = z-axis</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Translation Vector</h1>
+                </header>
+            
+            <article>
+                
+<p>The intersection of the first three rows with the last column defines a three-component Translation vector. This vector indicates how much the origin, and the world, have been translated. In the initial configuration, this corresponds to the following:</p>
+<p class="CDPAlignCenter CDPAlign"><kbd>[m13, m14, m15]</kbd> = <kbd>[0, 0, 0]</kbd> = origin (no translation)</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The Mysterious Fourth Row</h1>
+                </header>
+            
+            <article>
+                
+<p><span>The fourth row does not have any special meaning.</span></p>
+<ul>
+<li>The <kbd>m4</kbd>, <kbd>m8</kbd>, and <kbd>m12</kbd><em> </em>elements<em> </em>are always <kbd>0</kbd>.</li>
+<li>The <kbd>m16</kbd><em> </em>element<em> </em>(the Homogeneous coordinate) will always be <kbd>1</kbd>.</li>
+</ul>
+<p>As we described at the beginning of this chapter, there are no cameras in WebGL. However, all the information that we need to operate a camera (mainly rotations and translations) can be extracted from the Model-View matrix itself.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The Camera Matrix</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's say, for a moment, that we <em>do</em> have a camera in WebGL. A camera should be able to rotate and translate to explore this 3D world. As we saw in <span>the previous section</span>, a 4x4 matrix can encode rotations and translations. Therefore, you should use one such matrix to represent our hypothetical camera.</p>
+<p>Let's assume that our camera is located at the origin of the world and that it's oriented so that it's looking toward the negative z-axis direction. This is a good starting point; we already know what transformation represents such a configuration in WebGL (Identity matrix of rank four).</p>
+<p>For the sake of analysis, let's break the problem down into two subproblems: camera-translation and camera-rotation. We will have a practical demo for each one.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Camera Translation</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's move the camera to <kbd>[0, 0, 4]</kbd> in world coordinates. This means four units from the origin on the positive z-axis. Remember, at this point, we do not know about a matrix that moves the camera. We only know how to move the <em>world</em> (with the Model-View matrix). If we applied:</p>
+<div>
+<pre>mat4.translate(modelViewMatrix, modelViewMatrix, [0, 0, 4]);</pre></div>
+<p>In such a case, the world would be translated <kbd>4</kbd> units on the positive z-axis, and since the camera position has not been changed, it would be located at <kbd>[0, 0, -4]</kbd>, which is exactly the opposite of what we want.</p>
+<p>Now, say that we applied the translation in the opposite direction:</p>
+<div>
+<pre>mat4.translate(modelViewMatrix, modelViewMatrix, [0, 0, -4]);</pre></div>
+<p>In such a case, the world would be moved <kbd>4</kbd> units on the negative z-axis and then the camera would be located at <kbd>[0, 0, 4]</kbd> in the new world-coordinate system.</p>
+<p>In the following section, we will explore translations in both world space and camera space.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Time for Action: Translations in World Space vs Camera Space</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's cover an example showcasing these differences in action:</p>
+<ol>
+<li>Open <kbd>ch04_01_model-view-translation.html</kbd> in your browser:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/045a2200-5097-476d-aad1-c2d9e1bffa29.png"/></p>
+<ol start="2">
+<li>From a distance, we are looking at the positive z-axis of a cone located at the origin of the world. There are three sliders that allow you to translate either the world or the camera on the <kbd>x</kbd>, <kbd>y</kbd>, and <kbd>z</kbd> axes, respectively. The world space is activated by default.</li>
+<li>By looking at the World matrix on the screen, can you tell where the origin of the world is? Is it <kbd>[0, 0, 0]</kbd>?</li>
+</ol>
+<div class="packt_tip"><span class="packt_screen">Hint</span><span><br/>
+<br/>
+Check where we define translations in the Model-View matrix.</span></div>
+<ol start="4">
+<li>We can think of the <kbd>canvas</kbd> as the image that our camera sees. If the world's center is at <kbd>[0, -2, -50]</kbd>, where is the camera?</li>
+</ol>
+<ol start="5">
+<li>If we want to get closer to the cone, we need to move the center of the world toward the camera. We know that the camera is far on the positive z-axis of the world, so the translation will occur on the z-axis. Given that we are on world coordinates, do we need to increase or decrease the z-axis slider? Go ahead and test your answer.</li>
+<li>Switch to camera coordinates. What is the translation component of this matrix? What do you need to do if you want to move the camera closer to the cone? What does the final translation look like? What can you conclude?</li>
+<li>Try to move the camera on the x-axis and the y-axis. Check what the corresponding transformations would be on the Model-View matrix.</li>
+</ol>
+<p><em><strong>What just happened?</strong></em></p>
+<p>We saw that the camera translation is the inverse of the Model-View matrix translation. We also learned where to find translation information in a transformation matrix.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Camera Rotation</h1>
+                </header>
+            
+            <article>
+                
+<p>Similarly, if we want to rotate the camera, say, <kbd>45</kbd> degrees to the right, this would be equivalent to rotating the world <kbd>45</kbd> degrees to the left. Using <strong>glMatrix</strong> to achieve this, we can write the following:</p>
+<div>
+<pre>mat4.rotate(modelViewMatrix, modelViewMatrix, 45 * Math.PI/180, [0, 1, 0]);</pre></div>
+<p>Similar to the previous section where we explored translations, in the <em>Time for Action: Rotations in World Space vs Camera Space</em> section, we will experiment with rotations in both world and camera spaces. <span>Let's see this behavior in action!</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Time for Action: Rotations in World Space vs Camera Space</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's cover an example showing the different rotations in different spaces:</p>
+<ol>
+<li>Open <kbd>ch04_02_model-view-rotation.html</kbd> in your browser:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/b58a3fc1-8141-4ecf-b641-856e83194a2b.png"/></p>
+<ol start="2">
+<li>As we did in the previous example, we will see the following:
+<ul>
+<li>A cone at the origin of the world</li>
+<li>The camera is located at <kbd>[0, 2, 50]</kbd> in world coordinates</li>
+<li>Three sliders that allow us to rotate either the world or the camera</li>
+<li>A matrix where we can see the result of different rotations</li>
+</ul>
+</li>
+<li>Let's see what happens to the axis after we apply a rotation. With the <strong>World </strong>coordinates selected, rotate the world <kbd>90</kbd> degrees around the x-axis. What does the Model-View matrix look like?</li>
+<li>Let's see where the axes end up after a <kbd>90</kbd> degree rotation around the x-axis:
+<ul>
+<li>By looking at the first column, we can see that the x-axis has not changed. It's still <kbd>[1, 0, 0]</kbd>. This makes sense since we are rotating around this axis.</li>
+<li>The second column of the matrix indicates where the y-axis is after the rotation. In this case, we went from <kbd>[0, 1, 0]</kbd>, which is the original configuration, to <kbd>[0, 0, 1]</kbd>, which is the axis that is coming out of the screen. This is the z-axis in the initial configuration. This makes sense since we are now looking from above, down at the cone.</li>
+<li>The third column of the matrix indicates the new location of the z-axis. It changed from <kbd>[0, 0, 1]</kbd>, which as we know, is the z-axis in the standard spatial configuration (without transforms), to <kbd>[0, -1, 0]</kbd>, which is the negative portion of the y-axis in the original configuration. This makes sense since we rotated around the x-axis:</li>
+</ul>
+</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/550f79c0-2aae-40c1-acdd-53533394c9b2.png" style="width:48.92em;height:20.92em;"/></p>
+<ol start="5">
+<li>As we've just seen, understanding the rotation matrix (the 3x3 upper-left corner of the Model-View matrix) is simple: the first 3 columns always tell us where the axis is.</li>
+<li>Where are the axes in the following transformation? Take a look at the following diagram:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/66b15f33-519b-4d5a-b1f8-e3c1ae04d520.png" style="width:17.58em;height:13.33em;"/></p>
+<ol start="7">
+<li>Check your answer by using the sliders to achieve the rotation that you believe produces this matrix.</li>
+<li>Let's see how rotations work in <strong>Camera </strong>space by changing the coordinates, selection.</li>
+<li>Increase the angle of rotation in the x-axis by incrementing the slider position. What do you notice?</li>
+<li>Using the sliders, try different rotations in camera space.</li>
+<li>Are the rotations <em>commutative</em>? That is, do you get the same result if you rotate, for example, <kbd>5</kbd> degrees on the x-axis and <kbd>90</kbd> degrees on the z-axis, compared to the case where you rotate <kbd>90</kbd> degrees on the z-axis and then <kbd>5</kbd> degrees on the x-axis?</li>
+<li>Return to <span class="packt_screen">World </span>space. Please remember that when you're in <span class="packt_screen">World </span>space, you need to reverse the rotations to obtain the same pose, for example, if you were applying <kbd>5</kbd> degrees on the x-axis and <kbd>90</kbd> degrees on the z-axis, verify that when you apply <kbd>-5</kbd> degrees on the x-axis and <kbd>-90</kbd> degrees on the z-axis, you obtain the same result.</li>
+</ol>
+<p><em><strong>What just happened?</strong></em></p>
+<p>We've just learned that the Camera matrix rotation is the inverse of the Model-View matrix rotation. We've also learned how to identify the orientation of our world or camera after analyzing the rotation matrix (3x3 upper-left corner of the correspondent transformation matrix).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Have a Go: Combining Rotations and Translations</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's see how we can combine rotations and translations together:</p>
+<ol>
+<li>The <kbd>ch04_03_model-view.html</kbd> file contains the combination of rotations and translations. When you open it your browser, you will see something like this:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/3217cdd4-7f3c-4dfe-9a47-8f5ce6254b89.png"/></p>
+<ol start="2">
+<li>Try different configurations of rotations and translations in both the <strong>World </strong>and <strong>Camera</strong> spaces.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Camera Matrix Is the Inverse of the Model-View Matrix</h1>
+                </header>
+            
+            <article>
+                
+<p>These two scenarios help us appreciate that a Camera matrix is the exact opposite of the Model-View matrix. In linear algebra, this property is known as the <strong>inverse</strong> of a matrix.</p>
+<p>The inverse of a matrix is such that when multiplying it by the original matrix, we obtain the Identity matrix. In other words, if <kbd>M</kbd> is the Model-View matrix and <kbd>C</kbd> is the Camera matrix, we get the following:</p>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/4fde1b9b-5f95-44ea-8155-af074dd591fb.png" style="width:4.25em;height:1.00em;"/></pre>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/00356717-11e7-4781-84b3-41f566d0ad8e.png" style="width:8.42em;height:1.25em;"/></pre>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/0f5e87a3-ff6c-4e65-90dc-164b444425a0.png" style="width:4.92em;height:1.25em;"/></pre>
+<p>We can create the Camera matrix using <strong>glMatrix</strong> by writing something like the following:</p>
+<div>
+<pre>const cameraMatrix = mat4.create();<br/>mat4.invert(cameraMatrix, modelViewMatrix);</pre></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Thinking About Matrix Multiplications in WebGL</h1>
+                </header>
+            
+            <article>
+                
+<p>Before moving forward, we should note that in WebGL, matrix operations are written in the <em>reverse order</em> in which they are applied to the vertices. This is an important note that's often confusing for developers new to 3D graphics.</p>
+<p>Let's assume, for a moment, that you are writing the code to rotate/move the world; that is, you rotate your vertices around the origin and then you move away. The final transformation would look like this:</p>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/110dbcfd-214c-46ea-af35-9ad5bc52d951.png" style="width:3.00em;height:1.33em;"/></pre>
+<p>Here, <kbd>R</kbd> is the 4x4 matrix-encoding pure rotation;  <kbd>T</kbd> is the 4x4 matrix-encoding pure translation, and <kbd>v</kbd> corresponds to the vertices present in your scene (in Homogeneous coordinates).</p>
+<p>Now, you should have noticed that the first transformation we apply to the vertices is the translation, and then we apply the rotation. Vertices need to be multiplied first by the matrix that is to the left. In this scenario, that matrix is <kbd>T</kbd>. Then, the result needs to be multiplied by <kbd>R</kbd>.</p>
+<p>This fact is reflected in the order of the operations (here, <kbd>modelViewMatrix</kbd> is the Model-View matrix):</p>
+<div>
+<pre><span>mat4</span>.<span>identity</span>(modelViewMatrix)<span>;<br/></span><span>mat4</span>.<span>translate</span>(modelViewMatrix<span>, </span>modelViewMatrix<span>, </span>position)<span>;<br/></span><span>mat4</span>.<span>rotateX</span>(modelViewMatrix<span>, </span>modelViewMatrix<span>, </span>rotation[<span>0</span>] * Math.<span>PI </span>/ <span>180</span>)<span>;</span></pre>
+<pre><span>mat4</span>.<span>rotateY</span>(modelViewMatrix<span>, </span>modelViewMatrix<span>, </span>rotation[<span>1</span>] * Math.<span>PI </span>/ <span>180</span>)<span>;<br/></span><span>mat4</span>.<span>rotateZ</span>(modelViewMatrix<span>, </span>modelViewMatrix<span>, </span>rotation[<span>2</span>] * Math.<span>PI </span>/ <span>180</span>)<span>;</span></pre></div>
+<p>If we were working in camera coordinates and we wanted to apply the same transformation as before, we need to apply a bit of linear algebra first:</p>
+<table border="1" style="border-collapse: collapse;width: 100%;border-color: #000000">
+<tbody>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd><img class="fm-editor-equation" src="assets/9939b32a-17f2-4507-9908-c217f9f203e7.png" style="width:4.83em;height:1.08em;"/></kbd></td>
+<td class="CDPAlignLeft CDPAlign"><span>The Model-View </span><kbd>M</kbd><span> matrix is the result of multiplying rotation and translation together.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd><img class="fm-editor-equation" src="assets/26b36e70-d5d1-4191-aaa2-53d7cf4bbbdf.png" style="width:5.17em;height:1.25em;"/></kbd></td>
+<td class="CDPAlignLeft CDPAlign"><span>We know that the Camera matrix is the inverse of the Model-View matrix.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd><img class="fm-editor-equation" src="assets/7f5d4ad7-8a38-4b86-ae6d-42d714b82152.png" style="width:6.17em;height:1.50em;"/></kbd></td>
+<td class="CDPAlignLeft CDPAlign"><span><span>By </span></span><span>substitution.</span></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><kbd><img class="fm-editor-equation" src="assets/f6ad6044-8aac-4a75-8262-21f97d2c571a.png" style="width:6.83em;height:1.25em;"/></kbd></td>
+<td class="CDPAlignLeft CDPAlign"><span>The inverse of a matrix product is the reverse product of the inverses.</span></td>
+</tr>
+</tbody>
+</table>
+<p> </p>
+<p>Fortunately, when we're working in camera coordinates in this chapter's examples, we have the inverse translation and the inverse rotation already calculated in the global variables position and rotation. Therefore, we would write something such as this in the code (here, <kbd>cameraMatrix</kbd> is the Camera matrix):</p>
+<div>
+<pre><span>mat4</span>.<span>identity</span>(cameraMatrix)<span>;</span><span><br/></span><span>mat4</span>.<span>rotateX</span>(cameraMatrix<span>, </span>cameraMatrix<span>, </span>rotation[<span>0</span>] * Math.<span>PI </span>/ <span>180</span>)<span>;<br/></span><span>mat4</span>.<span>rotateY</span>(cameraMatrix<span>, </span>cameraMatrix<span>, </span>rotation[<span>1</span>] * Math.<span>PI </span>/ <span>180</span>)<span>;<br/></span><span>mat4</span>.<span>rotateZ</span>(cameraMatrix<span>, </span>cameraMatrix<span>, </span>rotation[<span>2</span>] * Math.<span>PI </span>/ <span>180</span>)<span>;<br/></span><span>mat4</span>.<span>translate</span>(cameraMatrix<span>, </span>cameraMatrix<span>, </span>position)<span>;</span><span> </span></pre></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Basic Camera Types</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we will discuss the following two camera types:</p>
+<ul>
+<li>Orbiting camera</li>
+<li>Tracking camera</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Orbiting Camera</h1>
+                </header>
+            
+            <article>
+                
+<p>So far, we've learned how to generate rotations and translations in either world or camera coordinates. In both cases, however, we are always generating the rotations around the center of the world. This may be ideal when we're orbiting around a 3D object, such as our car model. In that example, you put the object at the center of the world, and then examine the object at different angles (rotation); after that, you can move away (translation) to see the result. We will refer to this type of camera as an <strong>orbiting camera</strong>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Tracking Camera</h1>
+                </header>
+            
+            <article>
+                
+<p>If we return to the example of the first-person shooting game, we need to have a camera that can look up when we want to check whether there are enemies above us. We should also be able to look left and right (rotations) and then move in the direction in which our camera is pointing (translation). This camera type can be designated as a <strong>first-person</strong> camera. This same type is used when the game follows the main character. Therefore, it is generally known as a <strong>tracking camera</strong>.</p>
+<p>To implement first-person cameras, we need to set up the rotations on the camera axis instead of using the world origin.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Rotating the Camera Around Its Location</h1>
+                </header>
+            
+            <article>
+                
+<p>When multiplying matrices, the order in which we multiply them is relevant. Say, for instance, we have two 4x4 matrices. Let <kbd>R</kbd> be the first matrix and let's assume that this matrix encodes pure rotation; let <kbd>T</kbd> be the second matrix and let's assume that <kbd>T</kbd> encodes pure translation. Now:</p>
+<pre class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/b60b88ca-08f2-4676-bb08-2d5f8ac36d33.png" style="width:4.92em;height:1.25em;"/></pre>
+<p>In other words, the order of the operations affects the result. It is not the same to rotate around the origin and then translate away from it (orbiting camera), as compared to translating the origin and then rotating around it (tracking camera)! Your success depends on understanding this critical difference.</p>
+<p>In order to set the location of the camera as the center for rotations, we need to invert the order in which operations are called. This is equivalent to converting from an orbiting camera to a tracking camera.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Translating the Camera in the Line of Sight</h1>
+                </header>
+            
+            <article>
+                
+<p>With an orbiting camera, the camera will always look toward the center of the world. Therefore, we will always use the z-axis to move to and from the object we are examining. However, with a tracking camera, since the rotation occurs at the camera location, we can end up looking to any position in the world (which is ideal if you want to move around and explore it). Thus, we need to know the direction in which the camera is pointing in world coordinates (camera axis). We will see how to obtain this next.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The Camera Model</h1>
+                </header>
+            
+            <article>
+                
+<p>Just like its counterpart, the Model-View matrix, the Camera matrix encodes information about the camera orientation. As we can see in the following diagram, the upper-left 3x3 matrix corresponds to the camera axes:</p>
+<ul>
+<li>The first column corresponds to the x-axis of the camera. We will call it <kbd>RightVector</kbd>.</li>
+<li>The second column is the y-axis of the camera. This will be <kbd>UpVector</kbd>.</li>
+<li>The third column determines the vector in which the camera can move back and forth. This is the z-axis of the camera and we will call it <kbd>CameraAxis</kbd>.</li>
+</ul>
+<p>Because the Camera matrix is the inverse of the Model-View matrix, the upper-left 3x3 rotation matrix contained in the Camera matrix gives us the orientation of the camera axes in world space. This is a plus, because it means that we can tell the orientation of our camera in world space just by looking at the columns of this 3x3 rotation matrix (and we now know what each column means):</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/eab3b14f-8d24-47d3-b581-e454c012cbc3.png" style="width:47.25em;height:23.50em;"/></p>
+<p>In the following section, we will play with orbiting and tracking cameras to see how we can change the camera position using mouse gestures and sliders. In addition, we will look at a graphical representation of the resulting Model-View matrix. In this exercise, we will integrate both rotations and translations and we will see how they behave under the two basic types of cameras we are studying.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Time for Action: Exploring the Showroom</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's cover an example covering various camera types:</p>
+<ol>
+<li>Open the <kbd>ch04_04_camera-types.html</kbd> file in your browser. You will see something like the following:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/fb4de108-cebd-42b7-ac5c-f233ebd5693e.png"/></p>
+<ol start="2">
+<li>Go around the world using the sliders in <span class="packt_screen">Tracking</span><strong> </strong>mode. Cool, huh?</li>
+<li>Change the camera type to <span class="packt_screen">Orbiting</span><strong> </strong>mode and do the same.</li>
+<li>Check that besides the slider controls, both in <span class="packt_screen">Tracking</span><strong> </strong>and <span class="packt_screen">Orbiting</span> mode, you can use your mouse and keyboard to move around the world.</li>
+<li>In this exercise, we have implemented a camera using two new classes:
+<ul>
+<li><kbd>Camera</kbd>: To manipulate the camera.</li>
+<li><kbd>Controls</kbd>: To connect the camera to the <kbd>canvas</kbd>. The <kbd>canvas</kbd> will now receive mouse and keyboard events and pass them along to the camera.</li>
+</ul>
+</li>
+</ol>
+<ol start="6">
+<li>If you are curious, you can see the source code of these two classes in the <kbd>common/js</kbd> directory. We have applied the concepts explained in this chapter to build these two classes.</li>
+<li>So far, we have seen a cone in the center of the world. As we explore, let's change it to something more interesting. Open the file <kbd>ch04_04_camera-types.html</kbd> file in your source code editor.</li>
+<li>Go to the <kbd>load</kbd> function. Let's add the car to the scene. Rewrite the contents of this function to the following:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>function </span><span>load</span>() {<br/>  scene.<span>add</span>(<span>new </span>Floor(<span>2000</span><span>, </span><span>100</span>))<span>;</span><span><br/></span><span>  </span>scene.<span>add</span>(<span>new </span>Axis(<span>2000</span>))<span>;<br/></span><span>  </span>scene.<span>loadByParts</span>(<span>'/common/models/nissan-gtr/part'</span><span>, </span><span>178</span>)<span>;<br/></span>}</pre></div>
+<ol start="9">
+<li>You will see that we've increased the size of the axis and the floor so that we can see them. We need to do this because the car model is a much larger object than the original cone.</li>
+<li>There are a few steps we need to take in order to see the car correctly. We need to make sure that we have a large enough view volume. Go to the <kbd>updateTransforms</kbd> function and update this line:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px">mat4.<span>perspective</span>(projectionMatrix, <span>45</span><span>, </span>canvas.<span>width </span>/ canvas.<span>height</span><span>, </span><span>0.1</span><span>, </span><span>1000</span>)<span>;</span></pre></div>
+<p style="padding-left: 60px">Replace it with this:</p>
+<div>
+<pre style="padding-left: 60px">mat4.<span>perspective</span>(projectionMatrix, <span>45</span><span>, </span>canvas.<span>width </span>/ canvas.<span>height</span><span>, </span><span>0.1</span><span>, </span><span>5000</span>)<span>;</span></pre></div>
+<ol start="11">
+<li>Change the type of camera so that when we load the page, we have an orbiting camera by default. In the <kbd>configure</kbd> function, change this line:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px">camera = new Camera(Camera.TRACKING_TYPE);</pre></div>
+<p style="padding-left: 60px">Replace it with this:</p>
+<div>
+<pre style="padding-left: 60px">camera = new Camera(Camera.ORBITING_TYPE);</pre></div>
+<ol start="12">
+<li>Another thing we must consider is the location of the camera. For a large object such as this car, we need to be farther away from the center of the world. For that purpose, we need to change the home location of <kbd>camera.goHome</kbd> from <kbd>[0, 2, 50]</kbd> to <kbd>[0, 25, 300]</kbd>.</li>
+<li>Let's modify our scene's lighting so that it better fits into the model we are displaying. In the <kbd>configure</kbd> function, update the following:</li>
+</ol>
+<pre style="padding-left: 60px">gl.<span>uniform3fv</span>(program.uLightPosition<span>, </span>[<span>0</span><span>, </span><span>120</span><span>, </span><span>120</span>])<span>;<br/></span>gl.<span>uniform4fv</span>(program.uLightAmbient<span>, </span>[<span>0.2</span><span>, </span><span>0.2</span><span>, </span><span>0.2</span><span>, </span><span>1</span>])<span>;<br/></span>gl.<span>uniform4fv</span>(program.uLightDiffuse<span>, </span>[<span>1</span><span>, </span><span>1</span><span>, </span><span>1</span><span>, </span><span>1</span>])<span>;</span></pre>
+<p style="padding-left: 60px">Replace it with this:</p>
+<div>
+<pre style="padding-left: 60px">gl.<span>uniform4fv</span>(program.<span>uLightAmbient</span><span>, </span>[<span>0.1</span><span>, </span><span>0.1</span><span>, </span><span>0.1</span><span>, </span><span>1</span>])<span>;<br/></span>gl.<span>uniform3fv</span>(program.<span>uLightPosition</span><span>, </span>[<span>0</span><span>, </span><span>0</span><span>, </span><span>2120</span>])<span>;<br/></span>gl.<span>uniform4fv</span>(program.<span>uLightDiffuse</span><span>, </span>[<span>0.7</span><span>, </span><span>0.7</span><span>, </span><span>0.7</span><span>, </span><span>1</span>])<span>;</span></pre></div>
+<ol start="14">
+<li>Save the file with a different name and then load this new file in your browser. You should see something like the following screenshot:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/3aed3547-ab9c-46ca-978c-38cb4712309b.png" style="width:53.67em;height:32.92em;"/></p>
+<ol start="15">
+<li>Using the mouse, keyboard, and/or the sliders, explore the new scene.</li>
+<li>Use orbiting mode to explore the car from different angles.</li>
+<li>See how the Camera matrix is updated when you move around the scene.</li>
+<li>You can see what the final exercise looks like by opening the <kbd>ch04_05_car.html</kbd> file.</li>
+</ol>
+<p><em><strong>What just happened?</strong></em></p>
+<p>We added mouse and keyboard interaction to our scene. We also experimented with the two basic camera types: <em>tracking</em> and <em>orbiting</em> cameras. Finally, we modified the settings of our scene to visualize a complex model.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Have a Go: Updating Light Positions</h1>
+                </header>
+            
+            <article>
+                
+<p>As we've seen, by moving the camera, we're applying the inverse transformation to the world. If we do not update the light position, the light source will be located at the same static point, regardless of the final transformation applied to the world.</p>
+<p>This is very convenient when we're moving around or exploring an object in the scene. We can always see whether the light is located on the same axis of the camera. This is the case for the exercises in this chapter. Nevertheless, we can also simulate the case when the camera movement is independent from the light source. To do so, we need to calculate the new light position whenever we move the camera.</p>
+<p>First, we calculate the light direction. We can do this by simply calculating the difference vector between our target and our origin. Say the light source is located at <kbd>[0, 2, 50]</kbd>. If we want to direct our light source toward the origin, we calculate the <kbd>[0, 0, 0] - [0, 2, 50]</kbd> vector <em>(target - origin)</em>. This vector has the correct orientation of the light when we target the origin. We repeat the same procedure if we have a different target that needs to be lit. In that case, we just use the coordinates of the target and from them, we subtract the location of the light.</p>
+<p>As we are directing our light source toward the origin, we can find the direction of the light just by inverting the light position. As you may have noticed, we do this in ESSL in the vertex shader:</p>
+<div>
+<pre>vec3 L = normalize(-uLightPosition);</pre></div>
+<p>As <kbd>light</kbd> is a vector, if we want to update the direction of the light, we need to use the Normal matrix, discussed earlier in this chapter, to update this vector under any world transformation. This step is optional in the vertex shader:</p>
+<div>
+<pre>if (uFixedLight) {<br/>  L = vec3(uNormalMatrix * vec4(L, 0.0));<br/>}</pre></div>
+<p>In the previous fragment of code, light is augmented to four components, so we can use the direct multiplication provided by ESSL. (Remember that <kbd>uNormalMatrix</kbd> is a 4x4 matrix and, as such, the vectors it transforms need to be four-dimensional.) Please bear in mind that, as explained at the beginning of this chapter, the Homogeneous coordinates of vectors are always set to <kbd>0</kbd>, while the Homogeneous coordinates of vertices are set to <kbd>1</kbd>.</p>
+<ol>
+<li>After the multiplication, we reduce the result to three components before assigning the result back to light.</li>
+<li>You can test the effects of updating the light position by using the <kbd>Static Light Position</kbd><span> button, provided in the <kbd>ch04_05_car.html</kbd> file.</span></li>
+<li>We connect a global variable that keeps track of the state of this button with the <kbd>uUpdateLight</kbd> uniform.</li>
+<li>Edit <kbd>ch04_05_car.html</kbd> and set the light position to a different location. To do this, edit the configure function. Go to the following position:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px">gl.<span>uniform3fv</span>(program.<span>uLightPosition</span><span>, </span>[<span>0</span><span>, </span><span>0</span><span>, </span><span>2120</span>])<span>;<br/></span></pre></div>
+<ol start="5">
+<li>Try different light positions:
+<ul>
+<li><kbd>[2120, 0, 0]</kbd></li>
+<li><kbd>[0, 2120, 0]</kbd></li>
+<li><kbd><kbd>[100, 100, 100]</kbd></kbd></li>
+</ul>
+</li>
+<li>For each option, save the file and try it with and without updating the light position (use the <kbd>Static Light Position</kbd> button):</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/e7f5ba57-bda1-4a0f-93c8-fbb99a68b10d.png"/></p>
+<ol start="7">
+<li>For a better visualization, use an <strong>Orbiting </strong>camera.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The Projection matrix</h1>
+                </header>
+            
+            <article>
+                
+<p>At the beginning of this chapter, we learned that the <strong>Projection matrix</strong> combines the projection transformation and the perspective division. These two steps take a 3D scene and convert it into a cube, which is then mapped to the 2D <kbd>canvas</kbd> by the viewport transformation.</p>
+<p>In practice, the Projection matrix determines the geometry of the image that is captured by the camera. In a real-world camera, the lens of the camera would determine how distorted the final images are. In a WebGL world, we use the Projection matrix to simulate that effect. Also, unlike in the real world where our images are always affected by perspective, in WebGL, we can pick a different representation (such as the orthographic projection).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Field of View</h1>
+                </header>
+            
+            <article>
+                
+<p>The Projection matrix determines the <strong>field of view</strong> (<strong>FOV</strong>) of the camera, that is, how much of the 3D space will be captured by the camera. The field of view is a measure given in degrees, and the term is used interchangeably with the term <strong>angle of view</strong>:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/f51e256f-69dd-4828-b355-86e1d7969e46.png"/></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Perspective or Orthogonal Projection</h1>
+                </header>
+            
+            <article>
+                
+<p>A perspective projection assigns more space to details that are closer to the camera than details that are farther away. In other words, the geometry that is close to the camera will appear larger than the geometry that is farther from it. This is the way our eyes see the real world. Perspective projection allows us to assess the distance because it gives our brain a <em>depth cue</em>.</p>
+<p>In contrast, an orthogonal projection uses parallel lines; this means that lines will appear to be the same size, regardless of their distance to the camera. Therefore, the depth cue is lost when using orthogonal projection.</p>
+<p>While perspective projection offers a more realistic view of the scene, orthographic is commonly used in engineering as a means to produce object specifications that communicate dimensions unambiguously. Each line of one unit length (cm, meter) will appear to have the same length everywhere on the drawing. This allows the drafter to dimension only a subset of lines and let the reader know that other lines of that length on the drawing are also that length in reality. Every parallel line in the drawing is also parallel in the object.</p>
+<p>If you are looking at a larger scene with buildings, then orthographic rendering gives an exact measure of the distance between the buildings and their relative sizes.</p>
+<p>With perspective mode, lines of identical real-world lengths will appear different due to foreshortening. It becomes difficult to judge relative dimensions and object size in the distance.</p>
+<p>Using <strong>glMatrix</strong>, we can set up the perspective or the orthogonal projection by calling <kbd>mat4.perspective</kbd> or <kbd>mat4.ortho</kbd>, respectively. The signatures for these methods are as follows:</p>
+<table border="1" style="border-collapse: collapse;width: 100%;border-color: #000000">
+<tbody>
+<tr>
+<td class="CDPAlignLeft CDPAlign"><strong>Function</strong></td>
+<td class="CDPAlignLeft CDPAlign"><strong>Description</strong></td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign">
+<pre><span>mat4</span>.<span>perspective</span>(<br/>  dest<span>,<br/></span><span>  </span>fovy<span>,<br/></span><span>  </span>aspect<span>,<br/></span><span>  </span>near<span>,<br/></span><span>  </span>far<br/>)<span>;</span></pre></td>
+<td class="CDPAlignLeft CDPAlign">
+<p class="mce-root">Generates a perspective projection matrix with the given bounds.</p>
+<p class="mce-root"><strong>Parameters:</strong></p>
+<ul>
+<li><kbd>dest</kbd>:<span> </span><kbd>mat4</kbd> frustum the matrix will be written into</li>
+<li><kbd>fovy</kbd>: Vertical field of view</li>
+<li><kbd>aspect</kbd>: Aspect ratio, typically the <kbd>width / height</kbd> viewport</li>
+<li><kbd>near</kbd>, <kbd>far</kbd>: Near and far bounds of the frustum</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td class="CDPAlignLeft CDPAlign">
+<pre><span>mat4</span>.<span>ortho</span>(<br/>  dest<span>,<br/></span><span>  </span><span>left</span><span>,<br/></span><span>  </span>right<span>,<br/></span><span>  </span>bottom<span>,<br/></span><span>  </span>top<span>,<br/></span><span>  </span>near<span>,<br/></span><span>  </span>far<br/>)<span>;</span></pre></td>
+<td class="CDPAlignLeft CDPAlign">
+<p>Generates an orthogonal projection matrix with the given bounds:</p>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><kbd>dest</kbd>:<span> </span><kbd>mat4</kbd> frustum the matrix will be written into</li>
+<li><kbd>left</kbd>, <kbd>right</kbd>: Left and right bounds of the frustum</li>
+<li><kbd>bottom</kbd>, <kbd>top</kbd>: Bottom and top bounds of the frustum</li>
+<li><kbd>near</kbd>, <kbd>far</kbd>: Near and far bounds of the frustum</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<p> </p>
+<p class="mce-root">In the <em>Time for Action: Orthographic and Perspective Projections</em> section, we will test how the field of view and the perspective projection affect the image that our camera captures. We will experiment with perspective and orthographic projections for both orbiting and tracking cameras.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Time for Action: Orthographic and Perspective Projections</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's look at an example covering the different types of projections:</p>
+<ol>
+<li>Open the <kbd>ch04_06_projection-modes.html</kbd> file in your browser.</li>
+<li>This exercise is very similar to the previous one. However, there are two new options under <span class="packt_screen">Projection Mode</span>: <span class="packt_screen">Perspective</span> and <span class="packt_screen">Orthogonal Projection</span>. As you can see, <span class="packt_screen">Perspective</span><strong> </strong>is activated by default.</li>
+<li>Change the camera type to <span class="packt_screen">Orbiting</span>.</li>
+<li>Change the projective mode to <span class="packt_screen">Orthographic</span>.</li>
+<li>Explore the scene. Notice the lack of the depth cues characteristic of orthogonal projections:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/d8173bc0-3ec2-4833-85b1-bddb0d1e8d6b.png" style="width:58.33em;height:32.42em;"/></p>
+<ol start="6">
+<li>Switch to <span class="packt_screen">Perspective </span>mode:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/3c05ed7f-ab40-49e3-8132-904154678bb6.png" style="width:42.50em;height:23.58em;"/></p>
+<ol start="7">
+<li>Explore the source code. Go to the <kbd>updateTransforms</kbd> function:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>function </span><span>updateTransforms</span>() {<br/>  <span>const </span>{ width<span>, </span>height } = canvas<span>;<br/></span><span>  <br/></span><span>  </span><span>if </span>(projectionMode === PERSPECTIVE_PROJECTION) {<br/>    <span>mat4</span>.<span>perspective</span>(<br/>      projectionMatrix<span>, <br/></span><span>      </span>fov<span>, <br/></span><span>      </span>width / height<span>, <br/></span><span>      </span><span>10</span><span>, <br/></span><span>      </span><span>5000<br/></span><span>    </span>)<span>;<br/></span><span>  </span>}<br/>  <span>else </span>{<br/>    <span>mat4</span>.<span>ortho</span>(projectionMatrix<span>,<br/></span><span>      </span>-width / fov<span>,<br/></span><span>      </span>width / fov<span>,<br/></span><span>      </span>-height / fov<span>,<br/></span><span>      </span>height / fov<span>,<br/></span><span>      </span>-<span>5000</span><span>,<br/></span><span>      </span><span>5000<br/></span><span>    </span>)<span>;<br/></span><span>  </span>}<br/>}</pre></div>
+<ol start="8">
+<li>Take a look at the parameters we are using to set up the projective view.</li>
+<li>Notice that as you increase the field of view (<kbd>fov</kbd>), your camera will capture more of the 3D space. Think of this as the lens of a real-world camera. With a wide-angle lens, you capture more space with the tradeoff of deforming the objects as they move toward the boundaries of your viewing box.</li>
+</ol>
+<p><em><strong>What just happened?</strong></em></p>
+<p>We experimented with different configurations for the Projection matrix and we saw how these configurations produce different results in the scene.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Have a Go: Integrating the Model-View and the Projective Transform</h1>
+                </header>
+            
+            <article>
+                
+<p>Recall that once we've applied the Model-View transformation to the vertices, the next step is to transform the view coordinates to NDC coordinates:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/d9523810-bf63-4ea2-9b26-7cac86821c59.png"/></p>
+<p>We do this by simple multiplication by using ESSL in the vertex shader:</p>
+<div>
+<pre>gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aVertexPosition,1.0);</pre></div>
+<p>The predefined variable, <kbd>gl_Position</kbd>, stores the NDC coordinates for each vertex of every object defined in the scene.</p>
+<p>In the previous multiplication, we augment the shader attribute, <kbd>aVertexPosition</kbd>, to a 4-component vertex because our matrices are 4x4. Unlike normals, vertices have a Homogeneous coordinate equal to one (<kbd>w=1</kbd>).</p>
+<p>After this step, WebGL will convert the computed clipping coordinates to normalized device coordinates and from there to <kbd>canvas</kbd> coordinates using the WebGL <kbd>viewport</kbd> function. Let's see what happens when we change this mapping:</p>
+<ol>
+<li>Open the <kbd>ch04_06_projection-modes.html</kbd> file in your source code editor.</li>
+<li>Go to the <kbd>draw</kbd> function. This is the rendering function that is invoked every time we interact with the scene (by using the mouse, the keyboard, or the widgets on the page).</li>
+<li>Find the following line:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px">gl.viewport(0, 0, canvas.width, canvas.height);</pre></div>
+<ol start="4">
+<li>Try each of the following three operations:</li>
+</ol>
+<div>
+<pre style="padding-left: 60px"><span>const </span>width = canvas.<span>width</span><span>,<br/></span>  height = canvas.<span>height</span><span>,<br/></span><span>  </span>halfWidth = width / <span>2</span><span>,<br/></span><span>  </span>halfHeight = height / <span>2</span><span>;<br/></span><span><br/>// First<br/></span>gl.<span>viewport</span>(<span>0</span><span>, </span><span>0</span><span>, </span>halfWidth<span>, </span>halfHeight)<span>;<br/><br/>// Second<br/></span>gl.<span>viewport</span>(halfWidth<span>, </span>halfHeight<span>, </span>width<span>, </span>height)<span>;<br/><br/>// Third<br/></span>gl.<span>viewport</span>(<span>50</span><span>, </span><span>50</span><span>, </span>width - <span>100</span><span>, </span>height - <span>100</span>)<span>;</span></pre></div>
+<ol start="5">
+<li>For each option, save the file and open it on your browser.</li>
+<li>What do you see? Please note that you can interact with the scene just like before.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Structure of the WebGL Examples</h1>
+                </header>
+            
+            <article>
+                
+<p>We have improved the structure of the code examples in this chapter. As the complexity of our WebGL applications increases, it is wise to have a good, maintainable, and clear design. We have saved this section until the end of this chapter so that you can use it as a reference when working on the exercises.</p>
+<p>Just as in previous exercises, our entry point is the <kbd>init</kbd> function, which is called when the page is loaded. We have included several <kbd>scripts</kbd> in the <kbd>head</kbd> of our document that point to various components to build our 3D application.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Supporting Objects</h1>
+                </header>
+            
+            <article>
+                
+<p>We have created the following components, each one in its own file inside the <kbd>common/js</kbd> directory:</p>
+<ul>
+<li><kbd>Program.js</kbd>: Creates the program using the shader definitions. Provides the mapping between JavaScript variables (<kbd>program.*</kbd>) and program attributes and uniforms.</li>
+<li><kbd>Scene.js</kbd>: Maintains a list of objects to be rendered. Contains the AJAX/JSON functionality to retrieve remote objects. It also allows us to add local objects to the scene.</li>
+<li><kbd>Floor.js</kbd>: Defines a grid on the X-Z plane. This object is added to <kbd>scene</kbd> to have a reference to the floor and its properties</li>
+<li><kbd>Axis.js</kbd>: Represents the axis in world space. When added to <kbd>scene</kbd>, we will have a reference to the origin.</li>
+<li><kbd>Camera.js</kbd>: Creates a camera instance to manipulate the various matrices and operations covered in this chapter with a simple interface.</li>
+<li><kbd>EventEmitter.js</kbd>: A simple pub-sub event emitter for decoupling various components in our WebGL application. Instead of passing hard references around between unrelated functionality, we can leverage the pub-sub pattern to emit and listen to actions.</li>
+<li><kbd>Clock.js</kbd>: A simple class that abstracts away the <kbd>requestAnimationFrame</kbd> API to have the entire WebGL application update from a single source of truth (such as <kbd>clock</kbd>).</li>
+</ul>
+<div class="packt_infobox"><span class="packt_screen">requestAnimationFrame</span><strong><br/>
+<br/></strong> <span>The</span><span> </span><kbd>window.requestAnimationFrame()</kbd><span> method tells the browser that you wish to perform an animation and requests that the browser call a specified function to update an animation before the next repaint. This will request that your animation function be called before the browser performs the next repaint.</span></div>
+<ul>
+<li><kbd>Controls.js</kbd>: Provides the ability to capture various <kbd>canvas</kbd> DOM events to drive interactions.</li>
+<li><kbd>utils.js</kbd>: Utility functions that we covered in earlier chapters.</li>
+</ul>
+<p>Although we have enough foundation to understand how each components works, we will cover each component in <a href="fe7815dc-66ca-4ee5-9d88-9b7d840509a3.xhtml" target="_blank">Chapter 9</a><em>, Putting It All Together</em>. That being said, if you can't wait, feel free to inspect the source code to get an idea of what's to come.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Life Cycle Functions</h1>
+                </header>
+            
+            <article>
+                
+<p>The following functions define the life cycle of a WebGLApp application.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The configure Function</h1>
+                </header>
+            
+            <article>
+                
+<p>The <kbd>configure</kbd> function sets some parameters of our <kbd>gl</kbd> context, such as the color for clearing the <kbd>canvas</kbd>. After configuring the necessary states.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The load Function</h1>
+                </header>
+            
+            <article>
+                
+<p>The <kbd>load</kbd> function sets up objects to be added to our <kbd>scene</kbd>. For example, the two locally-created objects, <kbd>floor</kbd> and <kbd>axis</kbd>, are added to <kbd>scene</kbd> by calling the <kbd>add</kbd> method. After that, a remote object (AJAX call) is loaded using the <kbd>scene.load</kbd> method.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The draw Function</h1>
+                </header>
+            
+            <article>
+                
+<p><span>The <kbd>draw</kbd> function calls <kbd>updateTransforms</kbd> to calculate the matrices for the new position (that is, when we move), and then iterates over the objects in <kbd>scene</kbd> to render them. Inside this loop, it calls <kbd>setMatrixUniforms</kbd> for every object to be rendered.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Matrix-Handling Functions</h1>
+                </header>
+            
+            <article>
+                
+<p>Open up <kbd>ch04_02_model-view-rotation.html</kbd> in your editor. The following are the functions that initialize, update, and pass matrices to the shaders.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">initTransforms</h1>
+                </header>
+            
+            <article>
+                
+<p>As you can see, the Model-View matrix, the Camera matrix, the Projection matrix, and the Normal matrix are set up here:</p>
+<div>
+<pre><span>function </span><span>initTransforms</span>() {<br/>  mat4.<span>identity</span>(modelViewMatrix)<span>;<br/></span><span>  </span>mat4.<span>translate</span>(modelViewMatrix<span>, </span>modelViewMatrix<span>, </span>home)<span>;<br/></span><span><br/></span><span>  </span>mat4.<span>identity</span>(cameraMatrix)<span>;<br/></span><span>  </span>mat4.<span>invert</span>(cameraMatrix<span>, </span>modelViewMatrix)<span>;<br/></span><span><br/></span><span>  </span>mat4.<span>identity</span>(projectionMatrix)<span>;<br/></span><span><br/></span><span>  </span>mat4.<span>identity</span>(normalMatrix)<span>;<br/></span><span>  </span>mat4.<span>copy</span>(normalMatrix<span>, </span>modelViewMatrix)<span>;<br/></span><span>  </span>mat4.<span>invert</span>(normalMatrix<span>, </span>normalMatrix)<span>;<br/></span><span>  </span>mat4.<span>transpose</span>(normalMatrix<span>, </span>normalMatrix)<span>;<br/></span>}</pre></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">updateTransforms</h1>
+                </header>
+            
+            <article>
+                
+<p>In <kbd>updateTransforms</kbd>, we use the contents of the global variables' position and rotation to update the matrices. This is, of course, as follows::</p>
+<div>
+<pre><span>function </span><span>updateTransforms</span>() {<br/>  mat4.<span>perspective</span>(projectionMatrix<span>, </span><span>45</span><span>,</span>canvas.<span>width </span>/gl.<span>canvas</span>.<span>height</span><span>, <br/></span><span>   0.1</span><span>, </span><span>1000</span>)<span>;<br/></span><span><br/></span><span>  </span><span>if </span>(coordinates === WORLD_COORDINATES) {<br/>    mat4.<span>identity</span>(modelViewMatrix)<span>;<br/></span><span>    </span>mat4.<span>translate</span>(modelViewMatrix<span>, </span>modelViewMatrix<span>, </span>position)<span>;<br/></span><span>    </span>mat4.<span>rotateX</span>(modelViewMatrix<span>, </span>modelViewMatrix<span>, </span>rotation[<span>0</span>] * Math.<span>PI </span>/ <br/><span>     180</span>)<span>;<br/></span><span>    </span>mat4.<span>rotateY</span>(modelViewMatrix<span>, </span>modelViewMatrix<span>, </span>rotation[<span>1</span>] * Math.<span>PI </span>/ <br/><span>     180</span>)<span>;<br/></span><span>    </span>mat4.<span>rotateZ</span>(modelViewMatrix<span>, </span>modelViewMatrix<span>, </span>rotation[<span>2</span>] * Math.<span>PI </span>/ <br/><span>     180</span>)<span>;<br/></span><span>  </span>}<br/>  <span>else </span>{<br/>    mat4.<span>identity</span>(cameraMatrix)<span>;<br/></span><span>    </span>mat4.<span>translate</span>(cameraMatrix<span>, </span>cameraMatrix<span>, </span>position)<span>;<br/></span><span>    </span>mat4.<span>rotateX</span>(cameraMatrix<span>, </span>cameraMatrix<span>, </span>rotation[<span>0</span>] * Math.<span>PI </span>/ <span>180</span>)<span>;<br/></span><span>    </span>mat4.<span>rotateY</span>(cameraMatrix<span>, </span>cameraMatrix<span>, </span>rotation[<span>1</span>] * Math.<span>PI </span>/ <span>180</span>)<span>;<br/></span><span>    </span>mat4.<span>rotateZ</span>(cameraMatrix<span>, </span>cameraMatrix<span>, </span>rotation[<span>2</span>] * Math.<span>PI </span>/ <span>180</span>)<span>;<br/></span><span>  </span>}<br/>}</pre></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">setMatrixUniforms</h1>
+                </header>
+            
+            <article>
+                
+<p>This function performs the mapping:</p>
+<div>
+<pre><span>function </span><span>setMatrixUniforms</span>() {<br/>  <span>if </span>(coordinates === WORLD_COORDINATES) {<br/>    mat4.<span>invert</span>(cameraMatrix<span>, </span>modelViewMatrix)<span>;<br/></span><span>    </span>gl.<span>uniformMatrix4fv</span>(program.<span>uModelViewMatrix</span><span>, </span><span>false</span><span>, </span>modelViewMatrix)<span>;<br/></span><span>  </span>}<br/>  <span>else </span>{<br/>    mat4.<span>invert</span>(modelViewMatrix<span>, </span>cameraMatrix)<span>;<br/></span><span>  </span>}<br/><br/>  gl.<span>uniformMatrix4fv</span>(program.<span>uProjectionMatrix</span><span>, </span><span>false</span><span>, </span>projectionMatrix)<span>;<br/></span><span>  </span>gl.<span>uniformMatrix4fv</span>(program.<span>uModelViewMatrix</span><span>, </span><span>false</span><span>, </span>modelViewMatrix)<span>;<br/></span><span>  </span>mat4.<span>transpose</span>(normalMatrix<span>, </span>cameraMatrix)<span>;<br/></span><span>  </span>gl.<span>uniformMatrix4fv</span>(program.<span>uNormalMatrix</span><span>, </span><span>false</span><span>, </span>normalMatrix)<span>;<br/></span>}</pre></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's summarize what we've learned in this chapter:</p>
+<ul>
+<li>There is no camera object in WebGL. However, we can build one using the Model-View matrix.</li>
+<li>3D objects undergo several transformations to be displayed on a 2D screen. These transformations are represented as 4x4 matrices.</li>
+<li>Scene transformations are affine. Affine transformations are constituted by a linear transformation followed by a translation. The WebGL groups affine transforms into three matrices: the Model-View matrix, the Projection matrix, and the Normal matrix, and one WebGL operation: <kbd>gl.viewport()</kbd>.</li>
+<li>Affine transforms are applied in projective space, so they can be represented by 4x4 matrices. To work in projective space, vertices need to be augmented to contain an extra term, namely <kbd>w</kbd>, which is called the perspective coordinate. The four-tuple <kbd>(x, y, z, w)</kbd> is called Homogeneous coordinates. Homogeneous coordinates allow representation of lines that intersect on infinity by making the perspective coordinate <kbd>w = 0</kbd>. Vectors always have a Homogeneous coordinate, <kbd>w = 0</kbd>, while points have a <span>Homogeneous</span> coordinate, namely, <kbd>w = 1</kbd> (unless they are at infinity, in which case <kbd>w = 0</kbd>).</li>
+<li>By default, a WebGL scene is viewed from the world origin in the negative direction of the z-axis. This can be altered by changing the Model-View matrix.</li>
+<li>The Camera matrix is the inverse of the Model-View matrix. The camera and world operations are opposites. There are two basic types of cameras: <em>orbiting</em> and <em>tracking</em>.</li>
+<li>Normals receive special treatment whenever the object undergoes an affine transform. Normals are transformed by the Normal matrix, which can be obtained from the Model-View matrix.</li>
+<li>The Projection matrix allows us to determine two basic projective modes: <em>orthographic</em> projection and <em>perspective</em> projection.</li>
+</ul>
+<p>In the next chapter, we will take what we've learned here about transformations to distinguish between global and local transformations. We will look at transformations that are <em>global</em>, as we've covered here, and transformations that are <em>local</em> to individual objects in our 3D scene.</p>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

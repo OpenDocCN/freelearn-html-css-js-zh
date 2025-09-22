@@ -1,0 +1,389 @@
+<html><head></head><body><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Building a Typical Web API</h1>
+                </header>
+            
+            <article>
+                
+<p>Our first draft API will be a read-only version and will not support creating or updating items in the catalog as real-world applications do. Instead, we will concentrate on the API definition itself, and will worry about data storage later on. Of course, using file storage for data exposed to millions of users is anything but an option, so a database layer will be provided to our application further in the book, after we have looked into modern NoSQL database solutions.</p>
+<p>We will also cover the topic of content negotiation, a mechanism that allows consumers to specify the expected format of requested data. Finally, we will take a look at several ways to expose different versions of a service, in case it evolves in a backward-incompatible way.</p>
+<p>To sum up, in this chapter, you will learn the following:</p>
+<ul>
+<li>How to specify a web API</li>
+<li>How to implement routes</li>
+<li>How to query your API</li>
+<li>Content negotiation</li>
+<li>API versioning</li>
+</ul>
+<p>After this chapter, you should be able to completely specify a RESTful API and will be almost ready to start implementing real-life Node.js RESTful services.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Specifying the API</h1>
+                </header>
+            
+            <article>
+                
+<p>The very first thing a project usually starts with is a definition of the operations the API will expose. According to the REST principles, an operation is exposed by an HTTP method and a URI. The action performed by each operation should not contradict the natural meaning of its HTTP method. The following table specifies the operations of our API in detail:</p>
+<table style="border-collapse: collapse" class="table" border="1">
+<tbody>
+<tr>
+<td><strong>Method</strong></td>
+<td><strong>URI</strong></td>
+<td><strong>Description</strong></td>
+</tr>
+<tr>
+<td><kbd>GET</kbd></td>
+<td><kbd>/category</kbd></td>
+<td>Retrieves all available categories in the catalog.</td>
+</tr>
+<tr>
+<td><kbd>GET</kbd></td>
+<td><kbd>/category/{category-id}/</kbd></td>
+<td>Retrieves all the items available under a specific category.</td>
+</tr>
+<tr>
+<td><kbd>GET</kbd><span> </span></td>
+<td><span> </span><kbd>/category/{category-id}/{item-id}</kbd><span> </span></td>
+<td>Retrieves an item by its ID under a specific category.</td>
+</tr>
+<tr>
+<td><kbd>POST</kbd></td>
+<td><kbd>/category</kbd></td>
+<td>
+<p class="mce-root">Creates a new category; if it exists, it will update it.</p>
+</td>
+</tr>
+<tr>
+<td><span><kbd>POST</kbd> </span></td>
+<td><kbd>/category/{category-id}/</kbd> <span><br/></span></td>
+<td>Creates a new item in a specified category. If the item exists, it will update it.</td>
+</tr>
+<tr>
+<td><kbd>PUT</kbd><span> </span></td>
+<td><span> </span><kbd>/category/{category-id}</kbd><span> </span></td>
+<td>Updates a category.</td>
+</tr>
+<tr>
+<td><kbd>PUT</kbd></td>
+<td><kbd>/category/{category-id}/{item-id}</kbd></td>
+<td>Updates an item in a specified category.</td>
+</tr>
+<tr>
+<td><kbd>DELETE</kbd></td>
+<td><kbd>/category/{category-id}</kbd></td>
+<td>Deletes an existing category.</td>
+</tr>
+<tr>
+<td><kbd>DELETE</kbd></td>
+<td><kbd>/<span>category</span>/{category-id}/{item-id}</kbd></td>
+<td>Deletes an item in a specified category.</td>
+</tr>
+</tbody>
+</table>
+<p> </p>
+<p>The second step is to choose an appropriate format for our catalog application's data. JSON objects are natively supported by JavaScript. They are easy to extend during the evolution of an application and are consumable by almost any platform available. Thus, the JSON format seems to be our logical choice for us. Here is the JSON representation of an item, and category objects that will be used throughout this book:</p>
+<pre>{ 
+    "itemId": "item-identifier-1", 
+    "itemName": "Sports Watch", 
+    "category": "Watches", <br/>    "categoryId": 1,
+    "price": 150, <br/>    "currency": "EUR"
+} <br/><br/>{<br/>    "categoryName" : "Watches",<br/>    "categoryId" : "1",<br/>    "itemsCount" : 100,<br/>    "items" : [{<br/>            "itemId" : "item-identifier-1",<br/>            "itemName":"Sports Watch",<br/>            "price": 150,<br/>            "currency" : "EUR"    <br/>     }]<br/>}</pre>
+<p>So far, our API has defined a set of operations and the data format to be used. The next step is to implement a  module that will export functions serving each of the operations in the route.</p>
+<p>To begin with, let's create a new Node.js Express project. Select a directory where your projects will be stored and from your shell Terminal, execute <kbd>express chapter3</kbd>. If you are using Windows, you will need to install the <kbd>express-generator</kbd> module before generating the project. The <kbd>express-generator</kbd> will create your an initial express project layout in the selected directory. This layout provides the default project structure for you, ensuring that your Express project follows the standard project structure. It makes your project easier to navigate.</p>
+<p>The next step is to import the project into the Atom IDE. Right-click anywhere in the <span class="packt_screen">Projects</span> tab and select <span class="packt_screen">Add project folder</span> then select the directory Express generated for you.</p>
+<p>As you can see, Express has done some background work for us and has created a starting point for our application: <kbd>app.js</kbd>. It has also created the <kbd>package.json</kbd> file for us. Let's take a look at each of these files, starting with <kbd>package.json</kbd>:</p>
+<pre>{<br/>  "name": "chapter3",<br/>  "version": "1.0.0",<br/>  "description": "",<br/>  "main": "app.js",<br/>  "scripts": {<br/>    "test": "test"<br/>  },<br/>  "author": "",<br/>  "license": "ISC",<br/>  "dependencies": {<br/> "dependencies": {<br/>    "body-parser": "~1.13.2",<br/>    "cookie-parser": "~1.3.5",<br/>    "debug": "~2.2.0",<br/>    "express": "~4.16.1",<br/>    "jade": "~1.11.0",<br/>    "morgan": "~1.6.1",<br/>    "serve-favicon": "~2.3.0"<br/><br/>  }<br/>}</pre>
+<p>As we created a blank Node.js Express project, we initially have dependencies only to the Express framework, some middleware modules such as <kbd>morgan</kbd>, <kbd>body-parser</kbd>, and <kbd>cookie-parser</kbd>, and the Jade template language. Jade is a straightforward template language used to produce HTML code inside templates. If you are interested in it, you can find out more about it at <span class="URLPACKT"><a href="http://www.jade-lang.com/">http://www.jade-lang.com</a></span>.</p>
+<p>The current version of the Express framework at the time of writing is 4.16.1; to update it, e<span>xecute</span> <kbd>npm install express@4.16.1 --save</kbd><span> from the <kbd>chapter3</kbd> directory. This command will update the dependency of the application to the desired version. The <kbd>--save</kbd> option will update and save the new version of the dependency in the project's <kbd>package.json</kbd> file.</span></p>
+<div class="packt_infobox">When you introduce new module dependencies, it is up to you to keep the <kbd>package.json</kbd> file up to date in order to maintain an accurate state of the modules your application depends on. </div>
+<p>We will come to what middleware modules are a bit later in the chapter.</p>
+<p>For now, we will ignore the content of the <kbd>public</kbd> and <kbd>view</kbd> directories as it is not relevant to our RESTful service. They contain the auto-generated stylesheets and template files that might be helpful, if we decide to develop a web-based consumer of the services at a later stage.</p>
+<p>We've already mentioned that the Express project created a starting point for our web application in <kbd>app.js</kbd>. Let's take a deeper look at it:</p>
+<pre>var express = require('express');<br/>var path = require('path');<br/>var favicon = require('serve-favicon');<br/>var logger = require('morgan');<br/>var cookieParser = require('cookie-parser');<br/>var bodyParser = require('body-parser');<br/><br/>var routes = require('./routes/index');<br/>var users = require('./routes/users');<br/><br/>var app = express();<br/><br/>// view engine setup<br/>app.set('views', path.join(__dirname, 'views'));<br/>app.set('view engine', 'jade');<br/><br/>// uncomment after placing your favicon in /public<br/>//app.use(favicon(path.join(__dirname, 'public', 'favicon.ico')));<br/>app.use(logger('dev'));<br/>app.use(bodyParser.json());<br/>app.use(bodyParser.urlencoded({ extended: false }));<br/>app.use(cookieParser());<br/>app.use(express.static(path.join(__dirname, 'public')));<br/><br/>app.use('/', routes);<br/>app.use('/users', users);<br/><br/>// catch 404 and forward to error handler<br/>app.use(function(req, res, next) {<br/>  var err = new Error('Not Found');<br/>  err.status = 404;<br/>  next(err);<br/>});<br/><br/>// error handlers<br/><br/>// development error handler<br/>// will print stacktrace<br/>if (app.get('env') === 'development') {<br/>  app.use(function(err, req, res, next) {<br/>    res.status(err.status || 500);<br/>    res.render('error', {<br/>      message: err.message,<br/>      error: err<br/>    });<br/>  });<br/>}<br/><br/>// production error handler<br/>// no stacktraces leaked to user<br/>app.use(function(err, req, res, next) {<br/>  res.status(err.status || 500);<br/>  res.render('error', {<br/>    message: err.message,<br/>    error: {}<br/>  });<br/>});<br/><br/><br/>module.exports = app;</pre>
+<p>Obviously, the Express generator has done a lot for us as it has instantiated the Express framework and has assigned a complete development environment around it. It has done the following:</p>
+<ul>
+<li>Configured the middleware to be used in our application, <kbd>body-parser</kbd>, the default router, as well as error handler middleware for our development environment</li>
+<li>Injected a logger instance of the morgan middleware module</li>
+<li>Configured the Jade template, as it has been selected as the default template for our application</li>
+<li>Configured the default URI that our Express application will be listening to, <kbd>/</kbd> and <kbd>/users</kbd>, and created dummy handle functions for them</li>
+</ul>
+<p>You will have to install all the modules used in <kbd>app.js</kbd> in order to start the generated application successfully. Also, make sure you update the dependencies of your <kbd>package.json</kbd> file using the <kbd>--save</kbd> option after installing them.</p>
+<p>The Express generator also created a starting script for the application. It is under the  <kbd>bin/www</kbd><strong> </strong>directory of your project and looks like the following snippet:</p>
+<pre>#!/usr/bin/env node<br/><br/>/**<br/> * Module dependencies.<br/> */<br/><br/>var app = require('../app');<br/>var debug = require('debug')('chapter3:server');<br/>var http = require('http');<br/><br/>/**<br/> * Get port from environment and store in Express.<br/> */<br/><br/>var port = normalizePort(process.env.PORT || '3000');<br/>app.set('port', port);<br/><br/>/**<br/> * Create HTTP server.<br/> */<br/><br/>var server = http.createServer(app);<br/><br/>/**<br/> * Listen on provided port, on all network interfaces.<br/> */<br/><br/>server.listen(port);<br/>server.on('error', onError);<br/>server.on('listening', onListening);<br/><br/>/**<br/> * Normalize a port into a number, string, or false.<br/> */<br/><br/>function normalizePort(val) {<br/>  var port = parseInt(val, 10);<br/><br/>  if (isNaN(port)) {<br/>    // named pipe<br/>    return val;<br/>  }<br/><br/>  if (port &gt;= 0) {<br/>    // port number<br/>    return port;<br/>  }<br/><br/>  return false;<br/>}<br/><br/>/**<br/> * Event listener for HTTP server "error" event.<br/> */<br/><br/>function onError(error) {<br/>  if (error.syscall !== 'listen') {<br/>    throw error;<br/>  }<br/><br/>  var bind = typeof port === 'string'<br/>    ? 'Pipe ' + port<br/>    : 'Port ' + port;<br/><br/>  // handle specific listen errors with friendly messages<br/>  switch (error.code) {<br/>    case 'EACCES':<br/>      console.error(bind + ' requires elevated privileges');<br/>      process.exit(1);<br/>      break;<br/>    case 'EADDRINUSE':<br/>      console.error(bind + ' is already in use');<br/>      process.exit(1);<br/>      break;<br/>    default:<br/>      throw error;<br/>  }<br/>}<br/><br/>/**<br/> * Event listener for HTTP server "listening" event.<br/> */<br/><br/>function onListening() {<br/>  var addr = server.address();<br/>  var bind = typeof addr === 'string'<br/>    ? 'pipe ' + addr<br/>    : 'port ' + addr.port;<br/>  debug('Listening on ' + bind);<br/>}</pre>
+<p>To start the application, execute <kbd>node bin/www</kbd>; this will execute the script above and will start the Node.js application. So requesting <kbd>http://localhost:3000</kbd> in your browser will result in calling the default<span> </span><kbd>GET</kbd><span> </span>handler, which gives a warm welcome response:</p>
+<div class="mce-root CDPAlignCenter CDPAlign"><img src="Images/24aad7c8-9bf3-4b2e-8b01-6d47d0b6e8ba.png" width="889" height="443"/></div>
+<div class="packt_figure packt_figref CDPAlignCenter CDPAlign">Default welcome message from an Express application</div>
+<p>The generator created a dummy <kbd>routes/users.js</kbd>; it exposes a route linked to a dummy module available at the <kbd>/users</kbd> location. Requesting it will result in calling the <kbd>list</kbd> function of the user's route, which outputs a static response: <kbd>respond with a resource</kbd>.</p>
+<p>Our application will not be using a template language and style sheets, so let's get rid of the lines that set the views and view engine properties in the application configuration. In addition, we will be implementing our own routes. Thus, we don't need the binding of the <kbd>/</kbd> and <kbd>/users</kbd> URIs for our app, neither do we need the <kbd>user</kbd> module; instead, we will utilize a <kbd>catalog</kbd> module and from a route:</p>
+<pre>var express = require('express');<br/>var path = require('path');<br/>var favicon = require('serve-favicon');<br/>var logger = require('morgan');<br/>var cookieParser = require('cookie-parser');<br/>var bodyParser = require('body-parser');<br/><br/>var routes = require('./routes/index');<br/>var catalog = require('./routes/catalog')<br/>var app = express();<br/><br/>//uncomment after placing your favicon in /public<br/>//app.use(favicon(path.join(__dirname, 'public', 'favicon.ico')));<br/>app.use(logger('dev'));<br/>app.use(bodyParser.json());<br/>app.use(bodyParser.urlencoded({ extended: false }));<br/>app.use(cookieParser());<br/>app.use(express.static(path.join(__dirname, 'public')));<br/><br/>app.use('/', routes);<br/>app.use('/catalog', catalog);<br/><br/><br/>// catch 404 and forward to error handler<br/>app.use(function(req, res, next) {<br/>  var err = new Error('Not Found');<br/>  err.status = 404;<br/>  next(err);<br/>});<br/><br/>//development error handler will print stacktrace<br/>if (app.get('env') === 'development') {<br/>  app.use(function(err, req, res, next) {<br/>    res.status(err.status || 500);<br/>    res.render('error', {<br/>      message: err.message,<br/>      error: err<br/>    });<br/>  });<br/>}<br/><br/>// production error handler no stacktraces leaked to user<br/>app.use(function(err, req, res, next) {<br/>  res.status(err.status || 500);<br/>  res.render('error', {<br/>    message: err.message,<br/>    error: {}<br/>  });<br/>});<br/><br/>module.exports = app;<br/><br/></pre>
+<p>So after this cleanup, our application looks a lot cleaner and we are ready to move forward.</p>
+<div class="packt_infobox">
+<div class="wp-menu-name"><span>Before doing that, though, there is one term that needs further explanation: middleware. It is a subset of chained functions called by the</span> <kbd>Еxpress.js</kbd> <span>routing layer before а user-defined handler is invoked. Middleware functions have full access to the</span> <kbd>request</kbd> <span>and</span> <kbd>response</kbd> <span>objects and can modify either of them. The middleware chain is always called in the exact order in which it has been defined, so it is vital for you to know exactly what a specific piece of middleware is doing. Once a middleware function finishes, it calls the next function in the chain by invoking its next argument as a function. After the complete chain gets executed, the user-defined request handler is called.</span></div>
+</div>
+<p>Here are the basic rules that apply to the middleware chain:</p>
+<ul>
+<li>A middleware function has the following signature: <kbd>function (request, response, next)</kbd>.</li>
+<li>Middleware functions are executed in the exact order in which they have been added to the application chain. This means that if you want your middleware function to be called before a specific route, you need to add it before declaring the route.</li>
+<li>Middleware functions use their third parameter, <kbd>next</kbd>, as a function to indicate that they have completed their work and to exit. When the <kbd>next()</kbd> parameter of the last function in the chain has been called, the chained execution is completed and the <kbd>request</kbd> and the <kbd>response</kbd> objects reach the defined handlers, in the state set by the middleware.</li>
+</ul>
+<p>Now that we know what a middleware function is, let's clarify what the currently used middleware functions provide our application with. The <kbd>body-parser</kbd> middleware is the Express framework built in a parser. It parses the <kbd>request</kbd> body and populates the <kbd>request</kbd> object after the middleware execution finishes, that is, it provides JSON payload handling.</p>
+<p>Now it is time to move on and implement our user module that will be mapped to our URIs. The module will be named <kbd>modules/catalog.js</kbd>:</p>
+<pre>var fs = require('fs');<br/><br/>function readCatalogSync() {<br/>   var file = './data/catalog.json';<br/>   if (fs.existsSync(file)) {<br/>     var content = fs.readFileSync(file);<br/>     var catalog = JSON.parse(content);<br/>     return catalog;<br/>   }<br/>   return undefined;<br/> }<br/><br/>exports.findItems = function(categoryId) {<br/>  console.log('Returning all items for categoryId: ' + categoryId);<br/>  var catalog = readCatalogSync();<br/>  if (catalog) {<br/>    var items = [];<br/>    for (var index in catalog.catalog) {<br/>        if (catalog.catalog[index].categoryId === categoryId) {<br/>          var category = catalog.catalog[index];<br/>          for (var itemIndex in category.items) {<br/>            items.push(category.items[itemIndex]);<br/>          }<br/>        }<br/>    }<br/>    return items;<br/>  }<br/>  return undefined;<br/>}<br/><br/>exports.findItem = function(categoryId, itemId) {<br/>  console.log('Looking for item with id' + itemId);<br/>  var catalog = readCatalogSync();<br/>  if (catalog) {<br/>    for (var index in catalog.catalog) {<br/>        if (catalog.catalog[index].categoryId === categoryId) {<br/>          var category = catalog.catalog[index];<br/>          for (var itemIndex in category.items) {<br/>            if (category.items[itemIndex].itemId === itemId) {<br/>              return category.items[itemIndex];<br/>            }<br/>          }<br/>        }<br/>    }<br/>  }<br/>  return undefined;<br/>}<br/><br/>exports.findCategoryies = function() {<br/>  console.log('Returning all categories');<br/>  var catalog = readCatalogSync();<br/>  if (catalog) {<br/>    var categories = [];<br/>    for (var index in catalog.catalog) {<br/>        var category = {};<br/>        category["categoryId"] = catalog.catalog[index].categoryId;<br/>        category["categoryName"] = catalog.catalog[index].categoryName;<br/><br/>        categories.push(category);<br/>    }<br/>    return categories;<br/>  }<br/>  return [];<br/>}</pre>
+<p>The catalog module is built around the <kbd>catalog.json</kbd> file, stored in the <kbd>data</kbd> directory. The content of the source file is read synchronously using the File System module, <kbd>fs</kbd>, within the <kbd>readCatalogSync</kbd> function. The File System module provides multiple useful filesystem operations such as functions for creating, renaming, or deleting files or directories; truncating; linking; <kbd>chmod</kbd> functions; as well as synchronous and asynchronous file access for reading and writing data. In our sample application, we aim to use the most straightforward approach, so we implement functions that read the <kbd>catalog.json</kbd> file by utilizing the <kbd>readFileSync</kbd> function of the File System module. It returns the content of a file as a string, within a synchronous call. All other functions of the module are exported and can be used to query the content of the source file, based on different criteria.</p>
+<p>The catalog module exports the following functions:</p>
+<ul>
+<li><kbd>findCategories</kbd>: This returns an array of JSON objects containing all the categories in the <kbd>catalog.json</kbd> file</li>
+<li><kbd>findItems (categoryId)</kbd>: This returns an array JSON objects representing all the items in a given category</li>
+</ul>
+<ul>
+<li><kbd>findItem(categoryId, itemId)</kbd>: This returns a JSON object representing a single item in a given category</li>
+</ul>
+<p>Now that we have three complete functions, let's see how to bind them to our Express application.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Implementing routes</h1>
+                </header>
+            
+            <article>
+                
+<p>In Node.js terms, a route is a binding between a URI and function. The Express framework provides built-in support for routing. An <kbd>express</kbd> object instance contains functions named after each HTTP verb: <kbd>get</kbd>, <kbd>post</kbd>, <kbd>put</kbd>, and <kbd>delete</kbd>. They have the following syntax: <kbd>function(uri, handler);</kbd>.</p>
+<p class="mce-root"/>
+<p>They are used to bind a handler function to a specific HTTP action executed over a URI. The handler function usually takes two arguments: <kbd>request</kbd> and <kbd>response</kbd>. Let's see it with a simple <kbd>Hello route</kbd> application:</p>
+<pre>var express = require('express'); 
+var app = express(); 
+ 
+app.get('/hello', function(request, response){ 
+  response.send('Hello route'); 
+}); 
+ 
+app.listen(3000); </pre>
+<p>Running this sample at localhost and accessing <kbd>http://localhost:3000/hello</kbd> will result in calling your handler function and it will respond saying <kbd>Hello route</kbd>, but routing can give you much more. It allows you to define a URI with parameters; for example, let's use <kbd>/hello/:name</kbd> as a routing string. It tells the framework that the URI used consists of two parts: a static part (<kbd>hello</kbd>) and a variable part (the <kbd>name</kbd> parameter).</p>
+<p>Furthermore, when the routing string and the handler function are defined in line with the <kbd>get</kbd> function of an Express instance, a parameter collection is made available directly in the <kbd>request</kbd> argument of the handler function. To demonstrate this, let's modify our previous example a bit:</p>
+<pre>var express = require('express'); 
+var app = express(); 
+ 
+app.get('/hello:name', function(request, response){ 
+  response.send('Hello ' + request.params.name); 
+}); 
+ 
+app.listen(3000); </pre>
+<p>As you can see in the preceding code snippet, we used a colon (<kbd>:</kbd>) to separate the parameter part of the URI from the static part. You can have multiple parameters in an Express route; for example, <kbd>/category/:category-id/items/:item-id</kbd><em><strong> </strong></em>defines a route for displaying an item that belongs to a category, where the <kbd>category-id</kbd> and <kbd>item-id</kbd> are parameters.</p>
+<p>Now let's try it out. Requesting <kbd>http://localhost:3000/hello/friend</kbd> will result in the following output:</p>
+<pre><strong>hello friend</strong></pre>
+<p class="mce-root"/>
+<p>This is how we can provide parameterized URIs with Express. It is a nice feature, but it is often not enough. In web applications, we are used to providing additional parameters with <kbd>GET</kbd> parameters.</p>
+<p>Unfortunately, the Express framework is not so good with <kbd>GET</kbd> parameters. Thus, we have to utilize the <kbd>url</kbd> module. It is built into Node.js to provide an easy way of using URL parsing. Let's use our <kbd>hello</kbd> result with other parameters in the application again, but extend it in a way that it outputs <kbd>hello all</kbd> when <kbd>/hello</kbd> is requested and <kbd>hello friend</kbd> when the requested URI is <kbd>/hello?name=friend</kbd>:</p>
+<pre>var express = require('express'); 
+var url = require('url'); 
+var app = express(); 
+ 
+app.get('/hello', function(request, response){ 
+   var getParams = url.parse(request.url, true).query; 
+ 
+   if (Object.keys(getParams).length == 0) {       
+      response.end('Hello all');    
+   } else {<br/>      response.end('Hello ' + getParams.name); 
+   }    
+}); 
+ 
+app.listen(3000); </pre>
+<p>There are a few things worth mentioning here. We used the <kbd>url</kbd> module's function <kbd>parse</kbd>. It takes a URL as its first argument and a Boolean as an optional second argument, which specifies whether the query string should be parsed or not. The <kbd>url.parse</kbd> function returns an associative object. We used <kbd>Object.keys</kbd> with it to transform the keys in these associative objects into an array so that we can check its length. This will help us check whether our URI has been called with <kbd>GET</kbd> parameters or not. In addition to the routing functions named after each HTTP verb, there is also a function named <kbd>all</kbd>. When used, it routes all the HTTP actions to the specified URI.</p>
+<p>Now that we know how routing and the <kbd>GET</kbd> parameters work within Node.js and the Express environment, we are ready to define a route for the <kbd>catalog</kbd> module and bind it in our application. The following is the route as defined in <kbd>routes/catalog.js</kbd>. </p>
+<pre>var express = require('express');<br/>var catalog = require('../modules/catalog.js')<br/><br/>var router = express.Router();<br/><br/>router.get('/', function(request, response, next) {<br/>  var categories = catalog.findCategoryies();<br/>  response.json(categories);<br/>});<br/><br/>router.get('/:categoryId', function(request, response, next) {<br/>  var categories = catalog.findItems(request.params.categoryId);<br/>  if (categories === undefined) {<br/>    response.writeHead(404, {'Content-Type' : 'text/plain'});<br/>    response.end('Not found');<br/>  } else {<br/>    response.json(categories);<br/>  }<br/>});<br/><br/>router.get('/:categoryId/:itemId', function(request, response, next) {<br/>  var item = catalog.findItem(request.params.categoryId, request.params.itemId);<br/>  if (item === undefined) {<br/>    response.writeHead(404, {'Content-Type' : 'text/plain'});<br/>    response.end('Not found');<br/>  } else {<br/>  response.json(item);<br/>  }<br/>});<br/>module.exports = router;<br/><br/></pre>
+<p>First, a <kbd>Router</kbd> instance is created from the Express module. Here is a table that nicely describes the routing we just implemented. This will be helpful later when we test our API:</p>
+<table style="border-collapse: collapse" class="table" border="1">
+<tbody>
+<tr>
+<td><strong>HTTP method</strong></td>
+<td><strong>Route</strong></td>
+<td><strong>Catalog's module function</strong></td>
+</tr>
+<tr>
+<td><kbd>GET</kbd></td>
+<td><kbd>/catalog</kbd></td>
+<td><kbd>findCategories()</kbd></td>
+</tr>
+<tr>
+<td><kbd>GET</kbd></td>
+<td><kbd>/catalog/:categoryId</kbd></td>
+<td><kbd>findItems(categoryId)<br/></kbd></td>
+</tr>
+<tr>
+<td><kbd>GET</kbd></td>
+<td><kbd>/catalog/:categoryId/:itemId</kbd></td>
+<td><kbd>findItem(categoryId, itemId)<br/></kbd></td>
+</tr>
+</tbody>
+</table>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Querying the API using test data</h1>
+                </header>
+            
+            <article>
+                
+<p>We need some test data in order to test our service, so let's use the <kbd>catalog.json</kbd> file in the <kbd>data</kbd> directory of our project. This data will allow us to test all our three functions, but to do that, we would need a client that can send REST requests against an endpoint. If you still haven't created a Postman project for testing your application, now is an appropriate time to create it.</p>
+<p>Requesting <kbd>/catalog</kbd> should return all the categories in the <kbd>test</kbd> file:</p>
+<div class="mce-root CDPAlignCenter CDPAlign"><img src="Images/beefd605-bf6b-4ab7-aa35-58d6c3f95993.png" width="930" height="588"/></div>
+<p><span>Thus, requesting</span> <kbd>/catalog/1</kbd> <span>should result in returning a list with all the items under the <kbd>Watches</kbd> category:<br/></span></p>
+<div class="mce-root CDPAlignCenter CDPAlign"><img src="Images/c351f2a1-0fc3-4b5e-94a8-ffe16d6c93d6.png" width="934" height="640"/></div>
+<p>Finally, requesting <kbd>http://localhost:3000/catalog/1/item-identifier-1</kbd> would display only the item identified by <kbd>item-identifier-1</kbd>, and requesting a nonexistent item would result in response with status code <kbd>404</kbd>:</p>
+<div class="mce-root CDPAlignCenter CDPAlign"><img src="Images/001e4cab-3ebc-4c40-a1b3-00552b89ac3a.png" style="width:44.17em;height:25.67em;" width="935" height="544"/></div>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Content negotiation</h1>
+                </header>
+            
+            <article>
+                
+<p>So far, the catalog service supports only the JSON format, and thus works only with the media type <kbd>application/json</kbd>. Let's assume our service has to offer data in different formats, for example, both JSON and XML. Then, the consumer needs to explicitly define the data format they need. The best way to carry out content negotiation in REST has been a very debatable subject for a long time.</p>
+<p>In his famous discussion on implementing content negotiation correctly, Roy Fielding states the following:</p>
+<div class="packt_quote">All important resources must have URIs.</div>
+<p>However, that leaves a gap on how to expose the same resource in a different data format, so Roy continues with the following:</p>
+<div class="packt_quote">Agent-driven negotiation is far more effective, but there was a huge disagreement between myself and the chair of the HTTP working group and my original agent-driven design for HTTP/1.1 was effectively buried in committee. To do negotiation right, the client needs to be aware of all the alternatives and what it should use as a bookmark.</div>
+<p>While one can still choose to stick with a URI-driven negotiation by providing the desired format with custom <kbd>GET</kbd> parameters, the REST community has chosen to stick to Roy's suggestion for agent-driven negotiation. Now that it has been almost a decade since this argument was initiated, it has been proven that they took the right decision. Agent-driven negotiation makes use of the <kbd>Accept</kbd> HTTP header.</p>
+<p>The <kbd>Accept</kbd> HTTP header specifies the media type of the resource that the consumer is willing to process. In addition to the <kbd>Accept</kbd> header, the consumer may also make use of the <kbd>Accept-Language</kbd> and <kbd>Accept-Encoding</kbd> headers to specify what language and encoding the results should be provided in. If the server fails to provide the results in the expected format, it can either return a default value or make use of <kbd>HTTP 406 Not acceptable</kbd> in order not to cause data confusion errors on the client side.</p>
+<p>The Node.js HTTP <kbd>response</kbd> object contains a method, <kbd>format</kbd>, that performs content negotiation based on the <kbd>Accept</kbd> HTTP header if set in the <kbd>request</kbd> object. It uses the built-in <kbd>request.accepts()</kbd> to select an appropriate handler for the request. If that is not found, the server invokes the default handler, which responds with <kbd>HTTP 406 Not acceptable</kbd>. Let's create a demo on how to use the <kbd>format</kbd> method within one of our routes. For that purpose, let's assume we have implemented a function within our <kbd>catalog</kbd> module, named <kbd>list_groups_in_xml</kbd>, that provides the group data in XML format:</p>
+<pre>app.get('/catalog', function(request, response) { 
+    response.format( { 
+      'text/xml' : function() { 
+         response.send(catalog.findCategoiesXml()); 
+      }, 
+      'application/json' : function() { 
+         response.json(catalog.findCategoriesJson()); 
+      }, 
+      'default' : function() {. 
+         response.status(406).send('Not Acceptable'); 
+      }    
+    }); 
+}); </pre>
+<p>This is how you can implement content negotiation in a clear and straightforward way.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">API versioning</h1>
+                </header>
+            
+            <article>
+                
+<p>It is an inevitable fact that all application APIs evolve. However, the evolution of public APIs with an unknown number of consumers, such as RESTful services, is a sensitive topic. As consumers may not be able to handle the modified data appropriately and there is no way of notifying all of them, we need to keep our APIs as backward-compatible as possible. One way to do so is to use different URIs for different versions of our application. Currently, our catalog API is available at <kbd>/catalog</kbd>.</p>
+<p>When the time is right for a new version, for example, Version 2, we may need to keep the previous version available at another URI for backward-compatibility. Best practice is to encode the version number in the URI, such as <kbd>/v1/catalog</kbd>, and keep <kbd>/catalog</kbd> mapped to the latest version. Thus, requesting <kbd>/catalog</kbd> will cause a redirect to <kbd>/v2/catalog</kbd> and will make use of the HTTP <kbd>3xx</kbd> status codes to indicate the redirection to the latest version.</p>
+<p>Another option for versioning would be to keep the URI of your API stable and rely on custom HTTP headers that will specify the version. But that's not very stable approach concerning backward-compatibility as it is much more natural to modify a URL of a request in an application rather than modify the headers that are sent within the request.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Self-test questions</h1>
+                </header>
+            
+            <article>
+                
+<p>To get additional confidence, go through this set of statements and state whether they are true or false:</p>
+<ol>
+<li>A REST-enabled endpoint must support all HTTP methods relevant to the REST principles</li>
+<li>When content negotiation fails, due to an unsupported media type passed as a value of the accepts header, 301 is the appropriate status code.</li>
+<li>When using parameterized routes, the developer can specify the type of the parameter, for example, whether it is a numeric or a literal type.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we dived into some more complex topics. Let's sum up what we covered. We started by specifying the operations of our web API and defined that an operation is a combination of a URI and HTTP action. Next, we implemented routes and bound them to an operation. Then, we requested each operation using the Postman REST client to request the URIs that we routed. In the content negotiation section, we handled the <kbd>Accept</kbd> HTTP header to provide the results in the format requested by consumers.  Finally, we covered the topic of API versions, which allow us to develop backward-compatible APIs.</p>
+<p>We used old-fashioned filesystem storage for our data in this chapter. This is not suitable for a web application. Thus, we will look into modern, scalable, and reliable NoSQL storage in the next chapter.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  </body></html>
