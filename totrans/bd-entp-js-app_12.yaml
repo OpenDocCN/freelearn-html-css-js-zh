@@ -1,0 +1,3310 @@
+- en: Security – Authentication and Authorization
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 安全性 – 身份验证和授权
+- en: So far in this book, we have developed a simple API that allows anonymous users to
+    create, retrieve, modify, and delete users. This is insecure and impractical for
+    any real-world applications. Therefore, in this chapter, we will begin to secure
+    our API by implementing a rudimentary **authentication** and **authorization**
+    layer on top of it. This will also give us a chance to practice the TDD process
+    and work with the CI servers.
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到目前为止，在这本书中，我们已经开发了一个简单的API，允许匿名用户创建、检索、修改和删除用户。这在实际应用中是不安全的，也是不实用的。因此，在本章中，我们将通过在API上实施基本的**身份验证**和**授权**层来开始保护我们的API。这还将给我们一个机会来练习TDD过程并与CI服务器一起工作。
+- en: The purpose of this chapter is to show you how to implement a *stateless* authentication
+    and authorization scheme using **JSON Web Tokens** (**JWTs**). Being stateless
+    is extremely important to ensure the scalability of our application, something
+    which we will discuss in [Chapter 18](5d093a43-720f-4ea8-aac0-b64b13f96d12.xhtml),
+    *Robust Infrastructure with Kubernetes*.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章的目的是向您展示如何使用**JSON Web Tokens**（JWT）实现一个**无状态**的身份验证和授权方案。无状态对于确保我们应用程序的可扩展性至关重要，这一点我们将在第18章“使用Kubernetes的强大基础设施”中讨论。
+- en: By the end of this chapter, our API will be *more* secure than its current state,
+    but there'll still be a lot more steps we need to take to truly secure it. It'll
+    be impossible to cover all security-related topics, and thus we will focus on
+    the basics, and we'll provide you with pointers at the end of the chapter if you
+    are interested in implementing further security measures.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到本章结束时，我们的API将比当前状态更**安全**，但为了真正确保其安全性，我们还需要采取更多步骤。不可能涵盖所有安全相关主题，因此我们将专注于基础知识，并在本章末尾为您提供进一步实施安全措施的指南。
+- en: 'By completing this chapter, you will:'
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过完成本章，您将：
+- en: Understand **encoding**, **hashing**, **salting**, **encryption**, **block ciphers**,
+    and other cryptographic techniques
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 理解**编码**、**哈希**、**加盐**、**加密**、**块加密**和其他加密技术
+- en: Understand and implement **password-based authentication**
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用JSON Web Tokens (JWT)理解和实现**基于密码的身份验证**
+- en: Understand and implement **token-based authentication** using JSON Web Tokens
+    (JWTs)
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用JSON Web Tokens (JWT)理解和实现**基于令牌的身份验证**
+- en: Implement authorization checks to make sure users can only perform actions that
+    we allow
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实施授权检查以确保用户只能执行我们允许的操作
+- en: What is Authentication?
+  id: totrans-9
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 什么是身份验证？
+- en: '*Authentication* is a way for a user to identify themselves, for example, using
+    a combination of a username and password. Once the server is able to determine
+    the identity of the user (the user has authenticated), the server can then grant
+    this user limited permissions to perform certain actions. This process of granting
+    permissions is known as *authorization*:'
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*身份验证*是用户识别自己的方式，例如，通过用户名和密码的组合。一旦服务器能够确定用户的身份（用户已进行身份验证），服务器就可以授予该用户有限的权限以执行某些操作。这种授予权限的过程被称为**授权**：'
+- en: '![](img/3f6e2895-e10a-4317-b0bc-07627daa60f9.jpg)'
+  id: totrans-11
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/3f6e2895-e10a-4317-b0bc-07627daa60f9.jpg)'
+- en: For example, we might want to allow anonymous users to create new user accounts,
+    but we don't allow them to update existing users. For an authenticated user, we
+    might allow them to update their own user profile, but not the profile of a different
+    user; if the user tries to edit someone else's profile, they'll get an error.
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，我们可能允许匿名用户创建新的用户账户，但不允许他们更新现有用户。对于已认证的用户，我们可能允许他们更新自己的用户资料，但不允许更新其他用户的资料；如果用户尝试编辑其他人的资料，他们将收到错误。
+- en: Introduction to password-based authentication
+  id: totrans-13
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 基于密码的身份验证简介
+- en: When the client sends a request to create a new user, our server already requires
+    them to provide an email and password. Therefore, the simplest way for us to implement
+    an authentication layer is to use the users' passwords.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当客户端发送创建新用户的请求时，我们的服务器已经要求他们提供电子邮件和密码。因此，我们实现身份验证层的最简单方法就是使用用户的密码。
+- en: In the most simplistic scheme, the user must send their email and password with
+    every request. Upon receipt of the request, our API server can then compare these
+    credentials with the ones stored in our database; if there's a match, then the
+    user is authenticated, otherwise, they are not.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在最简单的方案中，用户必须在与每个请求一起发送他们的电子邮件和密码。在收到请求后，我们的API服务器可以将其与存储在我们数据库中的凭证进行比较；如果匹配，则用户已进行身份验证，否则没有。
+- en: 'While the preceding process allows us to authenticate a user, it is not necessarily
+    secure for the following reasons:'
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然上述过程允许我们验证用户身份，但它并不一定安全，以下是一些原因：
+- en: 'The password is kept in plaintext. According to a report by Ofcom ([ofcom.org.uk/about-ofcom/latest/media/media-releases/2013/uk-adults-taking-online-password-security-risks](https://www.ofcom.org.uk/about-ofcom/latest/media/media-releases/2013/uk-adults-taking-online-password-security-risks))
+    the communications regulator in the UK, more than half of internet users reuse
+    their passwords across multiple sites. Therefore, whoever has the user''s plaintext
+    password for one platform can potentially access the user''s account on other
+    platforms, such as social media and banking accounts. Therefore, having the password
+    kept as plaintext means the following:'
+  id: totrans-17
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 密码以明文形式保存。根据英国通信管理局（Ofcom）[ofcom.org.uk/about-ofcom/latest/media/media-releases/2013/uk-adults-taking-online-password-security-risks](https://www.ofcom.org.uk/about-ofcom/latest/media/media-releases/2013/uk-adults-taking-online-password-security-risks)的报告，超过一半的互联网用户在多个网站上重复使用他们的密码。因此，任何拥有用户在一个平台上的明文密码的人可能都能访问用户在其他平台上的账户，例如社交媒体和银行账户。因此，将密码保留为明文意味着以下情况：
+- en: The client must trust our API server not to do anything erroneous with the password
+  id: totrans-18
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 客户端必须信任我们的API服务器不会对密码进行任何错误操作
+- en: If the server and/or database was ever compromised, the hacker would be able
+    to read the plaintext passwords
+  id: totrans-19
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果服务器和/或数据库曾经被入侵，黑客将能够读取明文密码
+- en: Malicious third parties may eavesdrop on the communication between the client
+    and the server using **Man-in-the-Middle** (**MITM**) attacks and be able to extract
+    the user's plaintext password
+  id: totrans-20
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 恶意第三方可能会通过**中间人攻击**（**MITM**）窃听客户端与服务器之间的通信，并能够提取用户的明文密码
+- en: Passwords can be **brute-forced**: a malicious party can try out common passwords
+    or even just attempt every combination of characters until one succeeds.
+  id: totrans-21
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 密码可以被**暴力破解**：恶意方可以尝试常见的密码，甚至尝试所有可能的字符组合，直到成功为止。
+- en: Therefore, we should enforce strong passwords to prevent brute-force attacks,
+    and also **cryptographically hash** the password before sending it over the wire.
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，我们应该强制执行强密码以防止暴力攻击，并在通过网络发送密码之前对其进行**加密哈希**。
+- en: Hashing passwords
+  id: totrans-23
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 哈希密码
+- en: 'Generally speaking, a **hashing function** maps data of an arbitrary size (called
+    a **message**, or **initialization vectors**) to data of a fixed size (called
+    a **digest**):'
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一般而言，**哈希函数**将任意大小的数据（称为**消息**或**初始化向量**）映射到固定大小的数据（称为**摘要**）：
+- en: '[PRE0]'
+  id: totrans-25
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: When used in a security context, a hashing algorithm is used to obfuscate a
+    piece of information, such as a password.
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在安全环境中使用时，哈希算法用于混淆信息的一部分，例如密码。
+- en: For example, if we use the hashing function **MD5** to hash the passphrases `healer
+    cam kebab poppy` and `peppermint green matcha ceylon`, it will produce the hash
+    digests `b9f624315c5fb5dca09aa194091fccff` and `e6d4da56a185ff78721ab5cf07790a2c`.
+    Both digests have a fixed size of 128 bits (represented as hexadecimal) and both
+    strings look pretty random. The MD5 algorithm also has the property of being **deterministic**,
+    which means if we run the algorithm using the same message again, it will always
+    produce the same digest.
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，如果我们使用哈希函数**MD5**对密码短语`healer cam kebab poppy`和`peppermint green matcha ceylon`进行哈希，它将产生哈希摘要`b9f624315c5fb5dca09aa194091fccff`和`e6d4da56a185ff78721ab5cf07790a2c`。这两个摘要都具有固定的128位大小（以十六进制表示），并且看起来都很随机。MD5算法还具有**确定性**的特性，这意味着如果我们再次使用相同的信息运行该算法，它将始终产生相同的摘要。
+- en: Therefore, in theory, when the user first registers, we can require the client
+    to hash their password before sending it over to the server; this way, no one
+    except for the client will know what the original password is. The server would
+    then store the digest in the database.
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，从理论上讲，当用户首次注册时，我们可以要求客户端在将其发送到服务器之前对密码进行哈希处理；这样，除了客户端之外，没有人会知道原始密码是什么。然后服务器将在数据库中存储摘要。
+- en: The next time the same user wishes to authenticate with the server, they should
+    again hash the password and send the digest to the server. Because MD5 is deterministic,
+    the same password should result in the same digest. This allows the server to
+    compare the digest provided in the request with the digest stored in the database;
+    if they match, the server can authenticate the user, *without knowing what the
+    password actually is*.
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下次同一用户希望与服务器进行身份验证时，他们应该再次散列密码并将摘要发送到服务器。因为MD5是确定性的，相同的密码应该产生相同的摘要。这使得服务器可以将请求中提供的摘要与数据库中存储的摘要进行比较；如果它们匹配，服务器就可以验证用户，*而无需知道密码的实际内容*。
+- en: Cryptographic hash functions
+  id: totrans-30
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 加密散列函数
+- en: 'However, MD5 is not a suitable algorithm for hashing passwords because although
+    the digests look like gibberish, there are now tools that can use the digest to
+    reverse-engineer the password. To hash passwords, we need to use a special class
+    of hash functions called **cryptographic hash functions**, which have the following
+    special properties:'
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，MD5不是一个适合散列密码的算法，因为尽管摘要看起来像是乱码，但现在有工具可以使用摘要来逆向工程密码。为了散列密码，我们需要使用一类特殊的散列函数，称为**加密散列函数**，它们具有以下特殊属性：
+- en: '**Deterministic***:* Given the same message, they will always produce the same
+    digest.'
+  id: totrans-32
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**确定性**: 给定相同的信息，它们将始终产生相同的摘要。'
+- en: '**One-way**: The message, or a part of the message, cannot be reverse-engineered
+    from the digest. The only way to obtain the original message from the hash is
+    to try every possible value for the message to see if the generated hash matches.'
+  id: totrans-33
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**单向性**: 消息或消息的一部分不能从摘要中逆向工程。从散列中获取原始消息的唯一方法是通过尝试消息的每个可能值来查看生成的散列是否匹配。'
+- en: '**Exhibits the avalanche effect**: A small change in the message would produce
+    a drastically different digest. This prevents a cryptoanalyst from finding patterns
+    between hashes and narrowing down the possible combinations for the message.'
+  id: totrans-34
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**显示雪崩效应**: 消息的微小变化会产生截然不同的摘要。这阻止了密码分析员在散列之间找到模式并缩小消息可能的组合。'
+- en: '**Collision-resistant**: Two different messages should produce two different
+    digests. The chance of two different messages producing the same digest is minuscule.'
+  id: totrans-35
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**抗碰撞性**: 两个不同的消息应该产生两个不同的摘要。两个不同消息产生相同摘要的可能性极小。'
+- en: '**Slow**: This may seem counterintuitive, but when hashing is used for security,
+    a slower algorithm discourages brute-force attacks. Here''s a case in point: a
+    hashing function that takes 1 ms to execute can produce 1 billion hashes in 11.5
+    days. A hashing function that takes 40 ms to execute can produce 1 billion hashes
+    in 463 days, which is a significantly longer time. However, to a normal user,
+    the difference between 1 ms and 40 ms is negligible. In other words, we want our
+    algorithm to be slow for an attacker, but not for legitimate users.'
+  id: totrans-36
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**慢速**: 这可能看起来有些反直觉，但当散列用于安全时，一个较慢的算法会阻止暴力攻击。以下是一个例子：一个执行时间为1毫秒的散列函数可以在11.5天内产生10亿个散列。一个执行时间为40毫秒的散列函数可以在463天内产生10亿个散列，这是一个显著更长的时间。然而，对于一个普通用户来说，1毫秒和40毫秒之间的差异是可以忽略不计的。换句话说，我们希望我们的算法对攻击者来说很慢，但对合法用户来说不是。'
+- en: '**Robust**: It must stand the test of time.'
+  id: totrans-37
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**鲁棒性**: 它必须经得起时间的考验。'
+- en: Picking a cryptographic hashing algorithm
+  id: totrans-38
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 选择一个加密散列算法
+- en: Since MD5 violates the one-way constraint, we must pick a more suitable cryptographic
+    hash function. There are a myriad of hashing algorithms available. Here's a list
+    of some of the most popular ones: **MD4**, **MD5**, **MD6**, **SHA1**, **SHA2**
+    series (including **SHA256**, **SHA512**), **SHA3** series (including **SHA3-512**,
+    **SHAKE256**), **RIPEMD**, **HAVAL**, **BLAKE2**, **RipeMD**, **WHIRLPOOL**, **Argon2**, **PBKDF2**,
+    and **bcrypt**.
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于MD5违反了一致性约束，我们必须选择一个更合适的加密散列函数。有大量的散列算法可供选择。以下是一些最受欢迎的算法列表：**MD4**、**MD5**、**MD6**、**SHA1**、**SHA2**系列（包括**SHA256**、**SHA512**）、**SHA3**系列（包括**SHA3-512**、**SHAKE256**）、**RIPEMD**、**HAVAL**、**BLAKE2**、**RipeMD**、**WHIRLPOOL**、**Argon2**、**PBKDF2**和**bcrypt**。
+- en: MD5 and SHA-1 were extremely popular when they were introduced, and were seen
+    as robust cryptographic hashing algorithms at the time, but have since been replaced
+    by more modern cryptographic hash functions such as PBKDF2 and bcrypt.
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: MD5和SHA-1在它们被引入时非常受欢迎，当时被视为鲁棒的加密散列算法，但后来被更现代的加密散列函数如PBKDF2和bcrypt所取代。
+- en: 'Algorithms can become unsuitable due to the following factors:'
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 算法可能由于以下因素变得不合适：
+- en: '**Collisions can be engineered**: Collisions are inevitable, and given enough
+    time and resources, the original message can be brute-forced from the hash.'
+  id: totrans-42
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**可以人为制造碰撞**：碰撞是不可避免的，如果给定足够的时间和资源，原始消息可以从哈希值中暴力破解出来。'
+- en: However, if someone can *purposefully* engineer two different messages to produce
+    the same hash, this means they could potentially authenticate another user without
+    knowing the password. This usually requires a lot of computing power and time.
+  id: totrans-43
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 然而，如果有人能够**故意**设计两条不同的消息以产生相同的哈希值，这意味着他们可能在不了解密码的情况下验证另一个用户。这通常需要大量的计算能力和时间。
+- en: Thus, an algorithm can be assumed to be collision-resistant if it would take
+    an unworldly amount of time/resources to generate a collision, so that the information
+    they may potentially obtain is not worth the time and resources they must invest
+    into obtaining it.
+  id: totrans-44
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 因此，如果一个算法生成碰撞需要超乎寻常的时间/资源，那么可以假设该算法具有抗碰撞性，因为这样他们可能获得的信息不值得他们投入的时间和资源去获取。
+- en: However, since cryptography plays such a fundamental role in security, cryptographic
+    hashing algorithms are heavily analyzed in academia. Often, researchers would
+    intentionally try to generate collisions in algorithms (both MD5 and SHA-1 were
+    dethroned in this fashion).
+  id: totrans-45
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 然而，由于密码学在安全中扮演着如此基础的角色，因此密码学哈希算法在学术界受到了严格的审查。通常，研究人员会故意尝试在算法中生成碰撞（MD5和SHA-1都是通过这种方式被推翻的）。
+- en: '**Advances in processing speeds**: Cryptographic algorithms are meant to be
+    slow. If the speed of processors increases, it means a malicious party can spend
+    less time/resources to crack a password. Eventually, advances in processing speed
+    can make an algorithm unsuitable.'
+  id: totrans-46
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**处理速度的进步**：加密算法旨在慢速。如果处理器的速度增加，这意味着恶意方可以花费更少的时间/资源来破解密码。最终，处理速度的进步可能会使算法变得不适用。'
+- en: To mitigate collisions, an algorithm should be complex enough and hard to reverse-engineer.
+    It should also produce a digest of sufficient length to reduce the probability
+    of collision (it would be harder to generate collisions for 1024-bit digests than
+    for, say, 128-bit digests).
+  id: totrans-47
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 为了减轻碰撞，算法应该足够复杂且难以逆向工程。它还应该生成足够长的摘要以降低碰撞的概率（对于1024位的摘要来说，生成碰撞比128位的摘要要困难得多）。
+- en: To mitigate the advances in processing speeds, modern algorithms employ a method
+    called **hash stretching** (such as **key stretching**), which allows the algorithm
+    to dynamically change the speed of the algorithm.
+  id: totrans-48
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 为了减轻处理速度的进步，现代算法采用了一种称为**哈希拉伸**（例如**密钥拉伸**）的方法，这允许算法动态地改变算法的速度。
+- en: Hash stretching
+  id: totrans-49
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 哈希拉伸
+- en: 'Hash stretching slows down an algorithm by repeating the cryptographic hash
+    function many times over. For example, instead of hashing the password once with
+    SHA-256, we run the SHA-256 on the resulting hash again and again:'
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 哈希拉伸通过多次重复加密哈希函数来减慢算法的速度。例如，我们不是用SHA-256对密码进行一次哈希，而是反复对生成的哈希值运行SHA-256：
+- en: '[PRE1]'
+  id: totrans-51
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: The benefit of this method is that you can change the number of iterations to
+    change the time required to run the function. For instance, if the computing power
+    has doubled in the past few years, you can simply double the number of iterations
+    to keep the same level of security.
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种方法的优点是你可以通过改变迭代次数来改变函数运行所需的时间。例如，如果过去几年计算能力翻倍了，你只需简单地加倍迭代次数以保持相同的安全级别。
+- en: Hash stretching algorithms
+  id: totrans-53
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 哈希拉伸算法
+- en: There are three modern algorithms that utilize hash stretching: **Password-Based
+    Key Derivation Function 2** (**PBKDF2**), **bcrypt**, and **scrypt**. The difference
+    between PBKDF2 and bcrypt is that bcrypt costs more to run on GPU than PBKDF2,
+    and is therefore harder for an attacker to parallelize the operations using many
+    GPUs.
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有三种现代算法利用哈希拉伸：**基于密码的密钥派生函数2**（**PBKDF2**）、**bcrypt**和**scrypt**。PBKDF2和bcrypt之间的区别在于bcrypt在GPU上运行的成本比PBKDF2高，因此攻击者更难使用多个GPU并行化操作。
+- en: Both PBKDF2 and bcrypt use a small and constant amount of memory, which makes
+    them vulnerable to brute-force attacks using **application-specific integrated
+    circuit chips** (**ASICs**) and/or **field-programmable gate arrays** (**FPGA**).
+    scrypt was invented to tackle this issue, and allows you to adjust the amount
+    of RAM required to compute the hash. However, scrypt was only published in 2009,
+    and has not been battle-tested as much as the other two algorithms.
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: PBKDF2和bcrypt都使用少量且恒定的内存，这使得它们容易受到使用**应用特定集成电路芯片**（**ASICs**）和/或**现场可编程门阵列**（**FPGA**）进行的暴力破解攻击的影响。scrypt是为了解决这个问题而发明的，它允许你调整计算散列所需的RAM量。然而，scrypt仅在2009年发布，并且不像其他两种算法那样经过充分的实战测试。
+- en: Therefore, in this book, we will use the bcrypt algorithm, since it's been around
+    since 1999 and no vulnerabilities have yet been found.
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，在这本书中，我们将使用bcrypt算法，因为它自1999年以来一直存在，并且尚未发现任何漏洞。
+- en: Preventing brute-force attacks against a single user
+  id: totrans-57
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 防御针对单个用户的暴力破解攻击
+- en: 'While hashing our password obfuscates it, a malicious party may still be able
+    to obtain the password of a targeted victim through the following means:'
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们对密码进行散列以混淆它时，恶意方仍然可能通过以下方式获取目标受害者的密码：
+- en: '**Dictionary attacks**: Exploit the fact that many users use common passwords
+    (such as `qwertyuiop`). In dictionary attacks, a malicious party would use a program
+    to try tens of thousands of the most likely passwords in the hope that one would
+    succeed.'
+  id: totrans-59
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**字典攻击**：利用许多用户使用常见密码（如`qwertyuiop`）的事实。在字典攻击中，恶意方会使用程序尝试成千上万的最可能密码，希望其中之一能够成功。'
+- en: '**Brute-force attacks**: This is similar to a dictionary attack, but the program
+    is run through **all** possible messages within a defined range (for example,
+    all strings with lowercase letters under 13 characters, starting at `a`, `b`... `aa`, `ab`, `ac`, and
+    going all the way to `zzzzzzzzzzzzz`).'
+  id: totrans-60
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**暴力破解攻击**：这与字典攻击类似，但程序会遍历定义范围内的所有可能消息（例如，所有长度小于13个字符的小写字母字符串，从`a`、`b`...`aa`、`ab`、`ac`开始，一直到最后`zzzzzzzzzzzzz`）。'
+- en: Even if our passwords are hashed, a malicious party can pre-generate a table
+    of pre-hashed entries (also called **lookup tables** or **rainbow tables**) and
+    attempt to authenticate with the hashes instead of the plaintext passwords; the
+    underlying principle is the same.
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 即使我们的密码已经散列，恶意方也可以预先生成一个预散列条目表（也称为**查找表**或**彩虹表**），并尝试使用散列而不是明文密码进行身份验证；其基本原理是相同的。
+- en: Furthermore, if the malicious party is able to obtain the password hash of the
+    user (for example, by eavesdropping on the communication), it can search for the
+    same hash in the lookup table, and be able to determine the original password
+    from the lookup.
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，如果恶意方能够获取用户的密码散列（例如，通过监听通信），它可以在查找表中搜索相同的散列，并能够从查找表中确定原始密码。
+- en: Protecting against brute-force attacks
+  id: totrans-63
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 防御暴力破解攻击
+- en: Fortunately, there's a very simple mechanism we can employ to mitigate lookup
+    table/rainbow table attacks, by making the password very long.
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 幸运的是，我们可以采用一个非常简单的机制来减轻查找表/彩虹表攻击，那就是使密码非常长。
+- en: 'The number of possible hashes scales exponentially with the following:'
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可能的散列数量随着以下因素呈指数级增长：
+- en: The length of the password
+  id: totrans-66
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 密码的长度
+- en: The range of possible characters for each character in the password
+  id: totrans-67
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 密码中每个字符可能的字符范围
+- en: Let's suppose our passwords can contain lowercase letters, uppercase letters,
+    and numbers; this gives us 62 unique possibilities for each character. If we have
+    a one-character password, that means we only have to generate a rainbow table
+    with 62 (62¹) entries to be guaranteed a match. If we have a password that has
+    a maximum of two characters, there are now 3,906 (62¹ + 62²) possible combinations.
+    If we allow passwords up to 10 characters, that's 853,058,371,866,181,866, or
+    853 quadrillion combinations (62¹ + 62² + 62³ + 62⁴ + 62⁵ + 62⁶ + 62⁷ + 62⁸ + 62⁹ +
+    62^(10)). Although that sounds like an unimaginably large number, there are machines
+    that can calculate hundreds of billions of hashes per second. Therefore, it'll
+    take about a month to go through all those combinations—still not very secure.
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设我们的密码可以包含小写字母、大写字母和数字；这为我们每个字符提供了62种独特的可能性。如果我们有一个字符的密码，这意味着我们只需要生成一个包含62（62¹）个条目的彩虹表，就可以保证找到匹配项。如果我们有一个最多两个字符的密码，现在有3,906（62¹
+    + 62²）种可能的组合。如果我们允许密码最长为10个字符，那么就有853,058,371,866,181,866，或853万亿种组合（62¹ + 62²
+    + 62³ + 62⁴ + 62⁵ + 62⁶ + 62⁷ + 62⁸ + 62⁹ + 62^(10)）。虽然这听起来像是一个难以想象的大数字，但有些机器每秒可以计算数百亿个哈希值。因此，要遍历所有这些组合大约需要一个月——仍然不是很安全。
+- en: However, if the maximum length of the password becomes 20 characters, then it'll
+    take 715, 971, 350, 555, 965, 203, 672, 729, 121, 413, 359, 850, or 715 decillion,
+    iterations to generate all passwords of 20 characters. Those extra 10 characters
+    mean it's now 839 quadrillion times harder to generate all password combinations.
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，如果密码的最大长度变为20个字符，那么将需要715,971,350,555,965,203,672,729,121,413,359,850，或715
+    decillion，次迭代来生成所有20个字符的密码。这额外的10个字符意味着现在生成所有密码组合要难839 quadrillion倍。
+- en: 'Therefore, by implementing a reasonable password policy, it will deter hackers
+    from even attempting to brute-force attack you. A reasonable policy may read as
+    follows:'
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，通过实施合理的密码策略，可以阻止黑客尝试暴力破解攻击。一个合理的策略可能如下所示：
+- en: Password must be at least 12 characters long
+  id: totrans-71
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 密码长度必须至少为12个字符
+- en: Password must include at least one special character (`!£$^&()+-=[]}{:@;<>.,`)
+  id: totrans-72
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 密码必须包含至少一个特殊字符（`!£$^&()+-=[]}{:@;<>.,`）
+- en: With our list of 21 special characters, our character range is now increased
+    to 83\. Therefore, a hacker would have to calculate 108193544418400894220040,
+    or 108 sextillion, hashes in order to guarantee a match on the password.
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用我们的21个特殊字符列表，我们的字符范围现在增加到83。因此，黑客必须计算10,819,354,441,840,089,422,004,000，或108
+    sextillion，个哈希值，才能保证密码匹配。
+- en: Alternatively, you may encourage the user to use a **passphrase**, which is
+    a few unrelated words chained together; for example, `correct horse battery staple` (a
+    reference to this XKCD comic: [xkcd.com/936](https://xkcd.com/936/)). This ensures
+    that the password is long enough that the lack of character range doesn't matter.
+    The attacker would have to try a huge number of combinations before it arrives
+    at your passphrase.
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 或者，你可以鼓励用户使用一个**口令短语**，即几个无关的单词连在一起；例如，`correct horse battery staple`（这是对XKCD漫画的引用：[xkcd.com/936](https://xkcd.com/936/)）。这确保了密码足够长，以至于字符范围不足的问题不再重要。攻击者必须尝试大量的组合，才能到达你的口令短语。
+- en: Reverse lookup table attacks
+  id: totrans-75
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 反向查找表攻击
+- en: By hashing the password on the client before it is transmitted and enforcing
+    a strong password policy will protect against brute-force attacks against a single
+    user. However, if a malicious party is able to obtain a substantial portion of
+    the user database, they can instead perform another type of attack called a **reverse
+    lookup table attack**.
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在将密码在客户端哈希之前进行哈希处理并强制执行强大的密码策略可以防止针对单个用户的暴力破解攻击。然而，如果恶意方能够获取用户数据库的大部分，他们可以执行另一种称为**反向查找表攻击**的攻击。
+- en: In this attack method, the malicious party would search the compromised database
+    for digests whose original message is already known, in order to obtain a list
+    of user accounts that use that digest, and thus the same password.
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这种攻击方法中，恶意方会搜索受损害的数据库，寻找已知原始消息的摘要，以获取使用该摘要的用户账户列表，从而获得相同的密码。
+- en: Protecting against reverse lookup table attacks
+  id: totrans-78
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 防御反向查找表攻击
+- en: Fortunately, we can easily prevent reverse lookup table attacks by appending
+    a long, high-entropy, random string to the beginning or end of the user's password
+    before it gets hashed. This random string is called a **salt** and can be publicly
+    known.
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 幸运的是，我们可以在对用户密码进行哈希处理之前，在密码的开始或末尾附加一个长的高熵随机字符串，从而轻松防止反向查找表攻击。这个随机字符串被称为**盐**，可以是公开的。
+- en: 'Here''s how it works: on the client, instead of hashing only the password,
+    the client would first generate a random salt (for example, using the `crypto` package),
+    and hash the concatenated string made up of the password and the salt:'
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是它的工作原理：在客户端，不是只散列密码，客户端首先会生成一个随机盐（例如，使用`crypto`包），然后将密码和盐的连接字符串进行散列：
+- en: '[PRE2]'
+  id: totrans-81
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: The client would then send the salted password's digest, alongside the salt,
+    to the server. The server would then store both the digest and the salt in the
+    user document.
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，客户端会将加盐密码的散列值以及盐发送到服务器。服务器随后会将散列值和盐都存储在用户文档中。
+- en: The next time the user wants to log in, they would first submit their user ID/username
+    to the server. The server would find the salt associated with the user and send
+    it back to the client. Next, the client would hash the password with the salt
+    and send the digest back to the server. The server then compares the digest in
+    the request against the digest in the database; if it matches, it would authenticate
+    the user.
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下次用户想要登录时，他们首先会将他们的用户ID/用户名提交给服务器。服务器会找到与该用户关联的盐，并将其发送回客户端。接下来，客户端会用盐对密码进行散列，并将散列值发送回服务器。然后，服务器会将请求中的散列值与数据库中的散列值进行比较；如果匹配，就会验证用户的身份。
+- en: The purpose of the salt is to make a potentially common password uncommon. So,
+    even if two users have the same password, the final password digest would be different.
+    Therefore, even when an attacker has deciphered the password to a hash, they would
+    not be able to use a lookup table to identify any other users that use that same
+    password, because their password digests would be different.
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 盐的作用是使可能常见的密码变得不常见。因此，即使两个用户有相同的密码，最终的密码散列值也会不同。因此，即使攻击者已经将密码解密为散列值，他们也无法使用查找表来识别使用相同密码的其他用户，因为他们的密码散列值是不同的。
+- en: The longer the salt, the more uncommon the password and salt combination is
+    likely to be. A 16-character string would probably be enough, but since data storage
+    and bandwidth at this scale is cheap, it's not a bad idea to go overkill. Therefore,
+    we recommend a 256-bit salt, which means a 32-character salt.
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 盐越长，密码和盐的组合就越不常见。16个字符的字符串可能就足够了，但由于在这个规模上的数据存储和带宽都很便宜，所以过度使用也不是什么坏事。因此，我们建议使用256位的盐，这意味着32个字符的盐。
+- en: The salt is not something that needs to remain a secret. If an attacker wishes
+    to target a specific account, they can easily obtain the salt for that user. But
+    because each salt is different, an attacker would need to generate a new rainbow
+    table for each unique salt. And if the user already has a relatively long password
+    to begin with, this would not be feasible. (Imagine if the user's password is
+    10 characters, that's hundreds of quadrillions of calculations just to crack one
+    user account.) Therefore, salting renders lookup and reverse lookup tables ineffective,
+    as an attacker cannot practically pre-compute a list of hashes for all salts.
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 盐并不是需要保密的东西。如果攻击者想要针对特定账户，他们可以轻松地获取该用户的盐。但是，由于每个盐都不同，攻击者需要为每个唯一的盐生成一个新的彩虹表。而且如果用户一开始就有相对较长的密码，这就不切实际了。（想象一下，如果用户的密码是10个字符，那么仅破解一个用户账户就需要数百亿次的计算。）因此，加盐使得查找和反向查找表无效，因为攻击者实际上无法预先计算所有盐的散列值列表。
+- en: Implementing password-base authentication
+  id: totrans-87
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现基于密码的认证
+- en: Armed with the knowledge of hashing and salting, we'll now implement a password-based authentication
+    layer on top of our existing API using the bcrypt algorithm. First, we'll need
+    to update our `Create User` endpoint to accept a bcrypt digest instead of a password. Since
+    we are following TDD, we will update the E2E tests first, before updating the
+    implementation.
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在掌握了散列和加盐的知识后，我们现在将使用bcrypt算法在我们的现有API上实现基于密码的认证层。首先，我们需要更新我们的`Create User`端点，使其接受bcrypt散列值而不是密码。由于我们遵循TDD，我们将首先更新端到端测试，然后再更新实现。
+- en: Updating existing E2E tests
+  id: totrans-89
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 更新现有的端到端测试
+- en: 'First, in the Gherkin specifications and Cucumber code, update anything related
+    to passwords to use digests instead; this includes both the step description,
+    step definitions, and sample data. For example, you may make the following changes
+    in the E2E tests for the Bad Client Requests scenario of the `Create User` feature:'
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，在Gherkin规范和Cucumber代码中，更新所有与密码相关的部分以使用散列值；这包括步骤描述、步骤定义和示例数据。例如，你可以在`Create
+    User`功能的“Bad Client Requests”场景的端到端测试中进行以下更改：
+- en: '[PRE3]'
+  id: totrans-91
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: Try doing a global search and in the `spec/cucumber` directory, replacing the
+    word `password` with `digest`.
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尝试在 `spec/cucumber` 目录中进行全局搜索，将单词 `password` 替换为 `digest`。
+- en: To generate a dummy bcrypt digest, try Googling online bcrypt generator; there
+    are many free online tools available.
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要生成一个虚拟的 bcrypt 摘要，尝试在网上搜索在线 bcrypt 生成器；有许多免费的在线工具可用。
+- en: Generating a random digest
+  id: totrans-94
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 生成随机摘要
+- en: Inside our code bundle, there is a `createUser` function that we use to generate
+    dummy users for our tests. At the moment, it is using the `crypto.randomBytes()`
+    method to generate a random 32-character hexadecimal string to use as the password.
+    To produce a digest from this password, we can use a package from the [npmjs.com](https://npmjs.com)
+    registry.
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的代码包中，有一个 `createUser` 函数，我们用它来为测试生成虚拟用户。目前，它正在使用 `crypto.randomBytes()`
+    方法生成一个随机的 32 位十六进制字符串作为密码。要从这个密码生成摘要，我们可以使用来自 [npmjs.com](https://npmjs.com) 注册表的包。
+- en: Picking a bcrypt library
+  id: totrans-96
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 选择 bcrypt 库
+- en: 'There are several bcrypt libraries that are available for JavaScript:'
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有几个 bcrypt 库可供 JavaScript 使用：
+- en: '`bcrypt` ( `node.bcrypt.js`): This is the most performant and efficient implementation
+    of the bcrypt algorithm because it uses the C++ implementation and simply binds
+    it to Node. However, it has a lot of dependencies and restrictions that make it
+    messy to work with, notably:'
+  id: totrans-98
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`bcrypt` (`node.bcrypt.js`)：这是 bcrypt 算法最性能和最有效的实现，因为它使用了 C++ 实现，并将其简单地绑定到
+    Node 上。然而，它有许多依赖和限制，使得使用起来很复杂，特别是：'
+- en: Python 2.x.
+  id: totrans-99
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Python 2.x。
+- en: '`node-gyp`: Because `bcrypt` is written as a Node.js add-on, it is written
+    in C++ and must be compiled for your machine''s architecture before it can be
+    used. This means that it must depend on `node-gyp` for its building and installation
+    process. `node-gyp` only works with Long Term Support (LTS) versions of Node.'
+  id: totrans-100
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`node-gyp`：因为 `bcrypt` 是作为一个 Node.js 插件编写的，它是用 C++ 编写的，在可以使用之前必须为你的机器架构编译。这意味着它必须依赖于
+    `node-gyp` 进行构建和安装过程。`node-gyp` 只与 Node 的长期支持（LTS）版本一起工作。'
+- en: '`bcryptjs` ([npmjs.com/package/bcryptjs](https://www.npmjs.com/package/bcryptjs)): A
+    standalone JavaScript implementation of bcrypt that does not have external dependencies.
+    Because it is not running on a low-level language like C++, it is slightly (30%)
+    slower. This means that it cannot process as many iterations per unit time as
+    a more efficient implementation. It has the same interface as the `bcrypt` package
+    and can also be run in the browser, where it relies on the standardized Web Crypto
+    API to generate random numbers.'
+  id: totrans-101
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`bcryptjs` ([npmjs.com/package/bcryptjs](https://www.npmjs.com/package/bcryptjs))：bcrypt
+    的独立 JavaScript 实现，没有外部依赖。因为它不是在像 C++ 这样的底层语言上运行，所以它稍微慢一些（30%）。这意味着它每单位时间内无法像更有效的实现那样处理那么多迭代。它具有与
+    `bcrypt` 包相同的接口，也可以在浏览器中运行，其中它依赖于标准化的 Web Crypto API 生成随机数。'
+- en: '`bcrypt-nodejs`: An unmaintained predecessor to `bcryptjs`.'
+  id: totrans-102
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`bcrypt-nodejs`：`bcryptjs` 的一个未维护的先行者。'
+- en: Therefore, the choice is between performance (`bcrypt`) and the ease of setup
+    (`bcryptjs`).
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，选择是在性能（`bcrypt`）和设置简便（`bcryptjs`）之间。
+- en: Don't get confused. A cryptographic hashing algorithm should be slow; the slower
+    it is, the more secure it is. However, you should always assume that an attacker
+    uses the quickest *implementation* of the algorithm possible, and thus we should
+    also use the quickest implementation whenever possible. Therefore, purely from
+    a security point of view, the `bcrypt` package is preferred to `bcryptjs` because
+    it is the quickest implementation for JavaScript.
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 不要感到困惑。加密散列算法应该是慢的；它越慢，就越安全。然而，你应该始终假设攻击者会使用该算法可能的最快实现，因此我们应在可能的情况下也使用最快的实现。因此，纯粹从安全角度考虑，`bcrypt`
+    包比 `bcryptjs` 更受欢迎，因为它是 JavaScript 的最快实现。
+- en: We will use the `bcryptjs` package for now, as it is the simplest to set up.
+    But after you've completed all the exercises in this book, feel free to switch
+    to using the `bcrypt` package for an extra performance boost. Since the `bcryptjs` package
+    is 100% compatible with the `bcrypt` package, all you need to do is update the `import` statement;
+    everything else can be kept the same.
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们现在将使用 `bcryptjs` 包，因为它设置起来最简单。但当你完成这本书中的所有练习后，你可以自由地切换到使用 `bcrypt` 包以获得额外的性能提升。由于
+    `bcryptjs` 包与 `bcrypt` 包 100% 兼容，你只需要更新 `import` 语句；其他所有内容都可以保持不变。
+- en: Using the bcryptjs library
+  id: totrans-106
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 bcryptjs 库
+- en: 'First, let''s install it as a development dependency:'
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，让我们将其作为开发依赖项安装：
+- en: '[PRE4]'
+  id: totrans-108
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'Then, import the `genSaltSync` and `hashSync` methods from the `bcryptjs` module
+    and use them to generate a salt and digest. We will also store the salt and digest
+    in the context to help us make assertions in subsequent steps:'
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，从`bcryptjs`模块导入`genSaltSync`和`hashSync`方法，并使用它们生成盐和摘要。我们还将盐和摘要存储在上下文中，以帮助我们进行后续步骤的断言：
+- en: '[PRE5]'
+  id: totrans-110
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: Normally, we would use the asynchronous version of the hash method. However,
+    since we are writing a test, which cannot continue anyway unless this step has
+    completed execution, we can use the synchronous method to save us an extra line
+    returning a promise.
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通常，我们会使用hash方法的异步版本。然而，由于我们正在编写测试，而这个步骤无论如何都无法继续，除非这一步已经完成执行，因此我们可以使用同步方法来节省一行返回承诺的代码。
+- en: 'The `genSaltSync` function has the following function signature:'
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`genSaltSync`函数具有以下函数签名：'
+- en: '[PRE6]'
+  id: totrans-113
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: Here, `rounds` determines how many rounds of hash stretching bcrypt should perform;
+    the higher the number, the slower the digest is to generate and verify. The default
+    is `10`, which is what we are using here.
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，`rounds`决定了bcrypt应该执行多少轮哈希拉伸；数字越高，摘要生成和验证的速度越慢。默认值是`10`，这是我们在这里使用的。
+- en: If we run our tests now, the unit and integration tests should still pass, but
+    the E2E tests will fail.
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们现在运行测试，单元和集成测试应该仍然通过，但端到端测试将失败。
+- en: Validating a digest
+  id: totrans-116
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 验证摘要
+- en: 'Next, we need to specify a new scenario outline to assert that `POST /users`
+    requests with an invalid `digest` payload property should receive a `400 Bad Request`
+    response. Your scenario outline may look like this:'
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们需要指定一个新的场景概述，以断言带有无效`digest`有效负载属性的`POST /users`请求应收到`400 Bad Request`响应。你的场景概述可能看起来像这样：
+- en: '[PRE7]'
+  id: totrans-118
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: Updating an existing implementation
+  id: totrans-119
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 更新现有实现
+- en: 'Now that we have updated our existing tests, it''s time to update our implementation
+    to make the tests pass again. Let''s start with updating the Create User JSON
+    schema, replacing the `password` property with the `digest` property:'
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经更新了现有的测试，是时候更新我们的实现以使测试再次通过。让我们从更新创建用户JSON模式开始，将`password`属性替换为`digest`属性：
+- en: '[PRE8]'
+  id: totrans-121
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'However, it is not enough to simply validate the data type of the `digest`
+    property; we need to check that the `digest` string is a legitimate bcrypt digest.
+    Fortunately, all bcrypt digests have the same general structure:'
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，仅仅验证`digest`属性的 数据类型是不够的；我们需要检查`digest`字符串是否是合法的bcrypt摘要。幸运的是，所有bcrypt摘要都有相同的一般结构：
+- en: '![](img/c0ee0f6d-25b5-4736-93b2-458a37c59deb.jpg)'
+  id: totrans-123
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/c0ee0f6d-25b5-4736-93b2-458a37c59deb.jpg)'
+- en: 'Therefore, we can use the following regular expression to match valid digests:'
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，我们可以使用以下正则表达式来匹配有效的摘要：
+- en: '[PRE9]'
+  id: totrans-125
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'To explain this regular expression, let''s break it down:'
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了解释这个正则表达式，让我们将其分解：
+- en: '`\$2[aby]?\$`: This matches the algorithm that''s used. Valid values are `2`, `2a`, `2y`, and `2b`.'
+  id: totrans-127
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`\$2[aby]?\$`：这匹配使用的算法。有效值是`2`、`2a`、`2y`和`2b`。'
+- en: '`\d{1,2}\$`: This matches the cost, or the number of rounds, which is an integer
+    between 4 and 31 (inclusive).'
+  id: totrans-128
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`\d{1,2}\$`：这匹配成本或轮数，是一个介于4到31（包含）之间的整数。'
+- en: '`[.\/A-Za-z0-9]{53}`: This matches the salt and the hash, with the salt making
+    up the first 22 characters and the hashed password making up the last 31.'
+  id: totrans-129
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`[.\/A-Za-z0-9]{53}`：这匹配盐和哈希，盐占前22个字符，哈希密码占后31个字符。'
+- en: 'So, let''s update our digest sub-schema to include this pattern:'
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，让我们更新我们的摘要子模式以包括此模式：
+- en: '[PRE10]'
+  id: totrans-131
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: The pattern we used in the schema contains extra backslashes to escape the backslashes
+    in our regular expression.
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在模式中使用的模式包含额外的反斜杠来转义正则表达式中的反斜杠。
+- en: Now, if a client-provided password digest does not match against this pattern,
+    the Create User validator would return a `ValidationError` object where the `keyword`
+    property is set to `"pattern"`. We can use this fact to return a custom message
+    to inform the client that the provided digest is invalid.
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，如果客户端提供的密码摘要不匹配此模式，创建用户验证器将返回一个`ValidationError`对象，其中`keyword`属性设置为`"pattern"`。我们可以利用这个事实来返回一个自定义消息，通知客户端提供的摘要无效。
+- en: 'Add the following lines to `src/validators/errors/messages/index.js`:'
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将以下行添加到`src/validators/errors/messages/index.js`：
+- en: '[PRE11]'
+  id: totrans-135
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'Lastly, don''t forget to write unit tests that cover this new logical branch:'
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，别忘了编写覆盖这个新逻辑分支的单元测试：
+- en: '[PRE12]'
+  id: totrans-137
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'Then, in our Retrieve User and Search User engines (defined in `src/engines/users/`),
+    make sure we are excluding the `digest` field when querying for the User object,
+    for example:'
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，在我们的检索用户和搜索用户引擎（定义在`src/engines/users/`中），确保我们在查询用户对象时排除了`digest`字段，例如：
+- en: '[PRE13]'
+  id: totrans-139
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: Now, run the E2E tests again and confirm that they are passing. Once that's
+    done, update the unit and integration tests so they'll pass as well. Lastly, commit
+    the changes to a new branch called `authentication/main`, push that branch to
+    GitHub, and check the results on the Travis and Jenkins CI servers.
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，再次运行端到端测试并确认它们通过。完成之后，更新单元和集成测试，以确保它们也能通过。最后，将更改提交到一个名为 `authentication/main`
+    的新分支，将该分支推送到 GitHub，并在 Travis 和 Jenkins CI 服务器上检查结果。
+- en: Retrieving the salt
+  id: totrans-141
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 获取盐
+- en: The updated Create User endpoint now requires users to specify their credentials
+    in the form of a bcrypt digest, which we store in our Elasticsearch database.
+    The next thing we need to do is implement a system where we can authenticate any
+    subsequent requests by comparing the digest provided by the client and the digest
+    we store in our database.
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 更新后的创建用户端点现在要求用户以 bcrypt 摘要的形式指定其凭据，我们将它存储在我们的 Elasticsearch 数据库中。接下来，我们需要实现一个系统，我们可以通过比较客户端提供的摘要和我们存储在数据库中的摘要来验证任何后续请求。
+- en: But in order for the client to regenerate the same digest, they must be provided
+    with the same salt and parameters. Therefore, our API needs to create a new endpoint
+    for our client to retrieve the salt.
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但是，为了使客户端能够重新生成相同的摘要，它们必须提供相同的盐和参数。因此，我们的 API 需要为客户端创建一个新的端点来获取盐。
+- en: 'As with other features, we start our development by writing E2E tests. Create
+    a new feature specification at `spec/cucumber/features/auth/salt/main.feature` and
+    add the following scenarios:'
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就像其他功能一样，我们通过编写端到端测试来开始我们的开发。在 `spec/cucumber/features/auth/salt/main.feature`
+    中创建一个新的功能规范，并添加以下场景：
+- en: '[PRE14]'
+  id: totrans-145
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: Use what you have learned to implement the undefined steps.
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用你所学的知识来实现未定义的步骤。
+- en: Implementing the Retrieve Salt endpoint
+  id: totrans-147
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现获取盐端点
+- en: We should keep the implementation of the Retrieve Salt endpoint consistent with
+    our existing endpoints, and thus we should create a handler and an engine for
+    it.
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们应该保持获取盐端点的实现与现有的端点一致，因此我们应该为它创建一个处理程序和引擎。
+- en: Implementing a Retrieve Salt engine
+  id: totrans-149
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现获取盐引擎
+- en: 'Create a new Retrieve Salt engine at `src/engines/auth/salt/retrieve/index.js`.
+    In it, we need to use the Elasticsearch client''s `search` method to find the
+    user''s document by email, extract the digest from the document, and then extract
+    the salt from the digest:'
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 `src/engines/auth/salt/retrieve/index.js` 中创建一个新的获取盐引擎。在其中，我们需要使用 Elasticsearch
+    客户端的 `search` 方法通过电子邮件找到用户的文档，从文档中提取摘要，然后从摘要中提取盐：
+- en: '[PRE15]'
+  id: totrans-151
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'This function requires the `getSalt` method from the `bcrypt` library, which
+    would be injected by the handler function. Next, create a file at `src/handlers/auth/get-salt/index.js` to
+    house the handler function, which simply passes the request on to the engine and
+    generates standard responses based on the result of the engine:'
+  id: totrans-152
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此函数需要 `bcrypt` 库中的 `getSalt` 方法，该方法将由处理程序函数注入。接下来，在 `src/handlers/auth/get-salt/index.js`
+    中创建一个文件来存放处理程序函数，该函数简单地将请求传递给引擎，并根据引擎的结果生成标准响应：
+- en: '[PRE16]'
+  id: totrans-153
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'Lastly, in `src/index.js`, import the engine and handler and use it to create
+    a new endpoint:'
+  id: totrans-154
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，在 `src/index.js` 中导入引擎和处理程序，并使用它创建一个新的端点：
+- en: '[PRE17]'
+  id: totrans-155
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'Since we are now using the `bcryptjs` package in our implementation code, and
+    not just our test code, we should move it from `devDependencies` to `dependencies`:'
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于我们现在在实现代码中使用 `bcryptjs` 包，而不仅仅是测试代码，我们应该将其从 `devDependencies` 移动到 `dependencies`：
+- en: '[PRE18]'
+  id: totrans-157
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: 'Lastly, we should also modify the `injectHandlerDependencies` function to pass
+    through the `getSalt` dependency:'
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们还应该修改 `injectHandlerDependencies` 函数以传递 `getSalt` 依赖项：
+- en: '[PRE19]'
+  id: totrans-159
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: Now, when we run the E2E tests, they should all pass.
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，当我们运行端到端测试时，它们应该全部通过。
+- en: Generating a salt for non-existent users
+  id: totrans-161
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 为不存在的用户生成盐
+- en: However, what happens when the client tries to get the salt of a non-existent
+    user? At the moment, since we are not handling the case where Elasticsearch comes
+    back with zero search results, our API will respond with a `500 Internal Server`
+    error. But how *should* our API respond?
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，当客户端尝试获取不存在用户的盐时会发生什么？目前，由于我们没有处理 Elasticsearch 返回零搜索结果的情况，我们的 API 将响应 `500
+    内部服务器错误`。但我们的 API 应该如何响应呢？
+- en: If we respond with a `404 Not Found` error, then anyone with an API testing
+    tool such as Postman will be able to determine whether a user with that email
+    has an account on our platform. Imagine if our platform is not a public user directory,
+    but a customer portal for personal/medical services such as plastic surgery centers,
+    fertility clinics, or law firms; it'd be embarrassing for the clients if someone
+    found out that he/she is registered with the service simply by typing in his/her
+    email and not getting a "User not found" message.
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们响应一个`404 Not Found`错误，那么任何拥有API测试工具（如Postman）的人都能确定是否有用户在我们的平台上注册了该电子邮件。想象一下，如果我们的平台不是一个公开的用户目录，而是一个提供如整形手术中心、生育诊所或律师事务所等个人/医疗服务客户的门户；如果有人仅通过输入电子邮件就能发现他/她已注册该服务，而没有收到“用户未找到”的消息，这对客户来说将是尴尬的。
+- en: Whether the consequences are potentially embarrassing or not, it is generally
+    a good practice to expose as little information as possible. This is an extension
+    of the principle of least privilege, where a system should only expose the minimal
+    amount of information for an entity to carry out its functions.
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 无论后果是否可能令人尴尬，通常都是一个好习惯，即尽可能少地暴露信息。这是最小权限原则的扩展，即系统应仅向实体暴露执行其功能所需的最小信息量。
+- en: Therefore, returning a `404 Not Found` error is not appropriate.
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，返回一个`404 Not Found`错误是不合适的。
+- en: 'So, what''s the alternative? Since all our bcrypt salts have the same length
+    (the sequence `$2a$10$` followed by 22 characters) and a valid character range,
+    we can simply generate a new salt using `bcrypt.genSaltSync()` and return this
+    as the salt. For example, we can define the following catch block at the end of
+    our `getSalt` engine module:'
+  id: totrans-166
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 那么，替代方案是什么？由于我们所有的bcrypt盐都有相同的长度（序列`$2a$10$`后跟22个字符）和有效的字符范围，我们可以简单地使用`bcrypt.genSaltSync()`生成一个新的盐，并将其作为盐返回。例如，我们可以在`getSalt`引擎模块的末尾定义以下捕获块：
+- en: '[PRE20]'
+  id: totrans-167
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: However, someone looking to exploit our API can send multiple requests, observe
+    that each salt that is returned is different, and deduce that this is not a real
+    user (because a user is likely to have the same salt within a short space of time).
+    So, even though generating a new random string for non-existent users will slow
+    down such an attacker, our API would still be leaking too much information.
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，试图利用我们的API的人可以发送多个请求，观察返回的每个盐都是不同的，并推断出这不是一个真实用户（因为用户在短时间内很可能有相同的盐）。所以，即使为不存在的用户生成新的随机字符串会减缓这种攻击者的速度，但我们的API仍然会泄露太多信息。
+- en: Instead, we can use a **pseudorandom number generator** (a **PRNG**, which is
+    a type of **deterministic random bit generator** (**DRBG**)). PRNGs generate a
+    number sequence that appears to be random, but is actually determined based on
+    an initial value (called the **seed**). Therefore, we can use the user's email
+    address as the seed, and use it to generate a seemingly random number sequence,
+    somehow transform it into a 22-character string, prepend the sequence with `$2a$10$`,
+    and send it back to the client as the salt value for that user. This way, a persistent,
+    non-changing salt is returned, regardless of whether the user exists or not.
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 相反，我们可以使用一个**伪随机数生成器**（一个**PRNG**，它是一种**确定性随机比特生成器**（**DRBG**））。PRNG生成一个看似随机的数字序列，但实际上是基于一个初始值（称为**种子**）确定的。因此，我们可以使用用户的电子邮件地址作为种子，并使用它来生成一个看似随机的数字序列，将其转换成一个22个字符的字符串，在序列前面加上`$2a$10$`，并将其作为该用户的盐值发送回客户端。这样，无论用户是否存在，都会返回一个持久不变的盐。
+- en: Writing E2E tests
+  id: totrans-170
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 编写端到端测试
+- en: 'So first, let''s write a new scenario that''ll test two things:'
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所以，首先，让我们编写一个新的场景，这个场景将测试两个事情：
+- en: When querying for the salt of a non-existent user (identified by email), it
+    will return a string with the right character count and character range
+  id: totrans-172
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 当查询不存在用户的盐（通过电子邮件标识）时，它将返回具有正确字符数和字符范围的字符串
+- en: When querying for the salt of the same non-existent user over multiple requests,
+    the salt returned should be the same
+  id: totrans-173
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 当在多个请求中查询同一不存在用户的盐时，返回的盐应该是相同的
+- en: 'Your feature file might look something like this:'
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你的功能文件可能看起来像这样：
+- en: '[PRE21]'
+  id: totrans-175
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'You''d also need to define the following step definition:'
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你还需要定义以下步骤定义：
+- en: '[PRE22]'
+  id: totrans-177
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: Run the tests and see them fail. Once you've done that, we are ready to implement
+    the feature.
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 运行测试并观察它们失败。一旦你做到了这一点，我们就准备好实现这个功能了。
+- en: Implementation
+  id: totrans-179
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现
+- en: JavaScript's `Math.random()` does not provide an option to provide a seed, but
+    there are libraries out there that implement a PRNG in JavaScript. Two of the
+    most popular ones are `seedrandom` and `random-seed`. Out of the two, the `random-seed`
+    package provides a `string(count)` method that'll generate a random string instead
+    of a random number; because of this convenience, we will use the `random-seed`
+    package to generate our fake salt.
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JavaScript的`Math.random()`没有提供提供种子的选项，但有一些库实现了JavaScript中的伪随机数生成器。其中两个最受欢迎的是`seedrandom`和`random-seed`。在这两个中，`random-seed`包提供了一个`string(count)`方法，可以生成一个随机字符串而不是随机数；由于这种便利性，我们将使用`random-seed`包来生成我们的假盐。
+- en: 'First, let''s install it:'
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，让我们安装它：
+- en: '[PRE23]'
+  id: totrans-182
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'Now, create a new file at `utils/generate-fake-salt.js` and define a new `generateFakeSalt`
+    function that will output a fake salt based on the email of the user:'
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，在`utils/generate-fake-salt.js`中创建一个新文件，并定义一个新的`generateFakeSalt`函数，该函数将根据用户的电子邮件输出一个假盐：
+- en: '[PRE24]'
+  id: totrans-184
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: 'Next, inside the `retrieveSalt` engine, add a `catch` block at the end that
+    will use the `generateFakeSalt` function if the user cannot be found:'
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，在`retrieveSalt`引擎中，在末尾添加一个`catch`块，如果找不到用户，将使用`generateFakeSalt`函数：
+- en: '[PRE25]'
+  id: totrans-186
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: Again, import the `generateFakeSalt` utility function in `src/index.js`, and
+    pass it down to the engine through the handler.
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 再次，在`src/index.js`中导入`generateFakeSalt`实用函数，并通过处理器将其传递给引擎。
+- en: Now, run the E2E test suite again and the tests should pass. Add some unit and
+    integration tests to cover these new blocks of code. When you finish, commit the
+    changes and move on to the next step.
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，再次运行E2E测试套件，测试应该通过。添加一些单元和集成测试来覆盖这些新的代码块。完成之后，提交更改并继续下一步。
+- en: Login
+  id: totrans-189
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 登录
+- en: 'The client is now able to do the following:'
+  id: totrans-190
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 客户现在可以执行以下操作：
+- en: Specify a password digest when creating a new user
+  id: totrans-191
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在创建新用户时指定密码摘要
+- en: Query for the digest salt
+  id: totrans-192
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 查询摘要盐
+- en: This means that the client can now use the same salt and password combination
+    to regenerate the exact same hash that it provided when creating the user.
+  id: totrans-193
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这意味着客户端现在可以使用相同的盐和密码组合来重新生成它在创建用户时提供的确切相同的哈希值。
+- en: This means that when the client wants to perform an action that requires authorization
+    (such as updating its own profile), it can send its email and the digest to the
+    API server, and our server will try to match them with the database records; if
+    there's a match, the user is authenticated and the action is allowed to go ahead,
+    otherwise, an error response is returned.
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这意味着当客户端想要执行需要授权的操作（例如更新其个人资料）时，它可以将其电子邮件和摘要发送到API服务器，我们的服务器将尝试将它们与数据库记录匹配；如果匹配成功，用户将被认证并且操作可以继续，否则，将返回错误响应。
+- en: 'While globally carrying out this authentication process on each request would
+    work, it is not ideal for the following reasons:'
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然在每次请求中都全局执行此认证过程是可行的，但它有以下不理想的原因：
+- en: The client would have to store the credentials locally. If this is done improperly
+    (for example, as a cookie that has not been marked as secure), then other programs
+    may be able to read it.
+  id: totrans-196
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 客户端必须将凭据本地存储。如果这样做不正确（例如，作为一个未标记为安全的cookie），那么其他程序可能能够读取它。
+- en: The server would need to query the database on each request, which is a slow
+    operation. Furthermore, it could overload the database if the API is receiving
+    heavy traffic, making it a performance bottleneck.
+  id: totrans-197
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 服务器需要在每次请求时查询数据库，这是一个耗时的操作。此外，如果API正在接收大量流量，它可能会使数据库过载，从而成为性能瓶颈。
+- en: Therefore, instead of providing the full set of credentials with every request
+    that requires authorization, we should implement a Login endpoint, where our users
+    are able to provide their password just once. After successfully authenticating
+    themselves with the Login endpoint, the API would respond with some kind of identifier,
+    which the client can attach to subsequent requests to identify themselves. Let's
+    implement our Login endpoint now, and we will deal with what this identifier actually
+    is shortly after.
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，我们不应该在每次需要授权的请求中提供完整的凭据集，而应该实现一个登录端点，让我们的用户只需提供一次密码。在通过登录端点成功认证后，API将响应某种类型的标识符，客户端可以将该标识符附加到后续请求中，以识别自己。现在让我们实现我们的登录端点，稍后我们将处理这个标识符实际上是什么。
+- en: Writing tests
+  id: totrans-199
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 编写测试
+- en: 'First, we begin our development by writing tests. Since the validation logic
+    of the Login endpoint works in the same way as our endpoints, we can simply copy
+    those scenarios from our other tests:'
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，我们通过编写测试来开始我们的开发。由于登录端点的验证逻辑与我们的端点相同，我们可以直接从其他测试中复制那些场景：
+- en: '[PRE26]'
+  id: totrans-201
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'Next, we can specify scenarios specific to the Login endpoint:'
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们可以指定针对登录端点的特定场景：
+- en: '[PRE27]'
+  id: totrans-203
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: In the second scenario (`Login attaching a well-formed payload`), the response
+    body should be an identification object. However, before we decide on how to implement
+    this object, we can simply test that a string is returned.
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在第二种场景（`登录附加良好格式化的有效负载`）中，响应体应该是一个标识对象。然而，在我们决定如何实现这个对象之前，我们可以简单地测试是否返回了一个字符串。
+- en: Implementing Login
+  id: totrans-205
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现登录功能
+- en: 'As before, let''s implement the Login engine first. Like our other engines,
+    we are first using a validator to validate the request object. Once the request
+    is validated, we then use the Elasticsearch client''s `search` method to see how
+    many user documents match the email and digest provided. If there are non-zero
+    documents, then a user with these credentials exists, and the engine should resolve
+    with a token (we are using a placeholder string for now). If there are no users
+    that match these credentials, it means that those credentials are invalid, and
+    the engine should return with a rejected promise:'
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前所述，让我们首先实现登录引擎。像我们的其他引擎一样，我们首先使用验证器来验证请求对象。一旦请求被验证，我们就使用 Elasticsearch 客户端的
+    `search` 方法来查看有多少用户文档与提供的电子邮件和摘要匹配。如果有非零文档，则表示存在具有这些凭证的用户，引擎应解析为令牌（我们现在使用占位符字符串）。如果没有用户与这些凭证匹配，则表示这些凭证无效，引擎应返回一个拒绝的承诺：
+- en: '[PRE28]'
+  id: totrans-207
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'When searching in Elasticsearch, there are certain characters that must be
+    escaped. We are using the `special-escape` npm package to escape our email and
+    bcrypt digest before passing it to Elasticsearch. Therefore, we must add this
+    package to our repository:'
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 Elasticsearch 中搜索时，有一些字符必须转义。我们使用 `special-escape` npm 包在将电子邮件和 bcrypt 摘要传递给
+    Elasticsearch 之前对其进行转义。因此，我们必须将此包添加到我们的存储库中：
+- en: '[PRE29]'
+  id: totrans-209
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'Next, we move on to the request handler. Create a new file at `src/handlers/auth/loginindex.js` with
+    the following function:'
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们转向请求处理器。在 `src/handlers/auth/loginindex.js` 中创建一个新文件，包含以下函数：
+- en: '[PRE30]'
+  id: totrans-211
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: 'Then, we need to define a validator for the Login endpoint payload. Fortunately
+    for us, the Login payload has the same structure as the Create User payload, and
+    so we can simply reuse the Create User validator. However, to make it explicit,
+    let''s create a file at `src/validators/auth/login.js` with the following two
+    lines:'
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，我们需要为登录端点的有效负载定义一个验证器。幸运的是，对于我们的情况，登录有效负载的结构与创建用户有效负载相同，因此我们可以简单地重用创建用户的验证器。然而，为了明确起见，让我们在
+    `src/validators/auth/login.js` 中创建一个包含以下两行的文件：
+- en: '[PRE31]'
+  id: totrans-213
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: 'Lastly, import the handler, engine, and validator in `src/index.js` and define
+    a new route:'
+  id: totrans-214
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，在 `src/index.js` 中导入处理器、引擎和验证器，并定义一个新的路由：
+- en: '[PRE32]'
+  id: totrans-215
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: Now, run the E2E tests again and they should be green.
+  id: totrans-216
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，再次运行端到端测试，它们应该显示为绿色。
+- en: Keeping users authenticated
+  id: totrans-217
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 保持用户认证
+- en: 'Now that our API server can authenticate users, what identifier should we return
+    to the client so they can attach it in subsequent requests? Generally, there are
+    two types of identifiers:'
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在既然我们的 API 服务器可以认证用户，我们应该返回什么标识符给客户端，以便他们可以在后续请求中附加它？通常有两种类型的标识符：
+- en: '**Sessions IDs**: After the client has successfully authenticated, the server
+    assigns this client a session ID, stores the session ID in the database, and returns
+    it to the client. This session ID is simply a long, randomly generated text that
+    is used to identify the user''s session. When the client sends a request and supplies
+    the session ID, the server searches its database for a user with that **session**,
+    and assumes that the client is the user associated with that session ID. The idea
+    is that because the string is long and random enough that no one would be able
+    to guess a valid session ID, it''s also long enough that someone is unlikely to
+    be able to duplicate that session ID.'
+  id: totrans-219
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**会话 ID**：在客户端成功认证后，服务器为该客户端分配一个会话 ID，将会话 ID 存储在数据库中，并将其返回给客户端。这个会话 ID 只是一个长随机生成的文本，用于识别用户的会话。当客户端发送请求并提供会话
+    ID 时，服务器在其数据库中搜索具有该 **会话** 的用户，并假设客户端是该会话 ID 相关的用户。这个想法是，因为字符串足够长且随机，没有人能够猜出一个有效的会话
+    ID，而且它足够长，以至于不太可能有人能够复制该会话 ID。'
+- en: '**Claims (tokens)**: After the client has successfully authenticated, the server
+    retrieves information that can identify the user (for example, their ID, username,
+    or email). If the system also supports different levels of permissions (for example,
+    edit profile and delete profile) or roles (such as admin, moderator, and user),
+    these should also be retrieved.'
+  id: totrans-220
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**声明（令牌）**：客户端成功验证后，服务器检索可以识别用户的信息（例如，他们的ID、用户名或电子邮件）。如果系统还支持不同的权限级别（例如，编辑个人资料和删除个人资料）或角色（如管理员、版主和用户），这些信息也应被检索。'
+- en: All this information, called **claims** (or a **claim set***,* if there are
+    more than one), is formatted into a standardized format and signed using a key,
+    producing a **token**. This token is then sent back to the client, which attaches
+    it to every request that requires authentication. When the server receives a request
+    with a token, it will use the key to verify that the token originated from the
+    API server and has not been altered. Once a token is verified, the server can
+    trust the claims presented by the token.
+  id: totrans-221
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 所有这些信息，称为**声明**（或**声明集**，如果有多于一个），被格式化为标准格式，并使用密钥进行签名，生成**令牌**。然后，该令牌被发送回客户端，客户端将其附加到每个需要身份验证的请求上。当服务器收到带有令牌的请求时，它将使用密钥验证该令牌是否来自API服务器且未被篡改。一旦令牌被验证，服务器就可以信任令牌所呈现的声明。
+- en: 'We will use tokens over session IDs because of the following factors:'
+  id: totrans-222
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用令牌而不是会话ID，以下是一些原因：
+- en: '**Stateless**: With session IDs, the server still needs to perform database
+    reads in order to ascertain the identity and permission levels of a user, as well
+    as if the session has expired. With tokens, all the information is contained in
+    the claims of the token; the server does not need to store the token anywhere
+    and it can be verified without interaction with the database.'
+  id: totrans-223
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**无状态**：使用会话ID时，服务器仍然需要执行数据库读取操作，以确定用户的身份和权限级别，以及会话是否已过期。使用令牌时，所有信息都包含在令牌的声明中；服务器无需在任何地方存储令牌，并且可以在不与数据库交互的情况下进行验证。'
+- en: '**Reduced server load:** As an extension of being stateless, the server would
+    save a lot of memory and CPU cycles that would have gone into database reads.
+    Furthermore, if the user wishes to log out of the session, all they need to do
+    is delete the token. No actions are required on the server.'
+  id: totrans-224
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**降低服务器负载**：作为无状态的扩展，服务器将节省大量本应用于数据库读取的内存和CPU周期。此外，如果用户希望注销会话，他们只需删除令牌即可。服务器无需采取任何操作。'
+- en: '**Scalability:** With session-based authentication, if the user logs in on
+    one server, the session ID saved in the database on that server may not replicate
+    quickly enough so that if a subsequent request was routed to a different server,
+    that server would not be able to authenticate that user. But because tokens are
+    self-contained, they include all of the information required to identify *and*
+    authenticate a user. The user would be authenticated on any server that has the
+    decryption key.'
+  id: totrans-225
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**可扩展性**：在使用基于会话的身份验证时，如果用户在一台服务器上登录，该服务器上数据库中保存的会话ID可能无法快速复制，因此如果后续请求被路由到另一台服务器，该服务器将无法验证该用户。但是，由于令牌是自包含的，它们包含了识别和验证用户所需的所有信息。用户可以在任何拥有解密密钥的服务器上进行验证。'
+- en: '**Information-rich**: A token can carry much more information than a session
+    ID can. With a session ID, the server would need to read the database and possibly
+    process the user data in order to determine whether the request should be carried
+    out.'
+  id: totrans-226
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**信息丰富**：令牌可以携带比会话ID多得多的信息。使用会话ID时，服务器需要读取数据库，并可能处理用户数据，以确定是否应该执行请求。'
+- en: '**Portable/transferable**: Any party that has the token has permission to perform
+    actions that the token allows, and tokens can be passed freely from one party
+    to another. This is useful when a user wishes to grant a third-party platform
+    limited access to their account. Without a token, they must give the third party
+    their ID and password, and hope that they don''t do anything malicious. With a
+    token, the user, once authenticated, can request a token with a certain set of
+    permissions, after which he/she can send it to the third party. Now, the third-party
+    can perform the actions it says it will perform, without knowing the user''s actual
+    credentials.'
+  id: totrans-227
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**可移植/可转让**：任何拥有令牌的实体都有权执行令牌允许的操作，并且令牌可以自由地从一方传递到另一方。当用户希望授予第三方平台对其账户的有限访问权限时，这很有用。没有令牌，他们必须将他们的
+    ID 和密码提供给第三方，并希望他们不会做任何恶意的事情。使用令牌时，用户一旦经过身份验证，就可以请求一个具有特定权限集的令牌，然后将其发送给第三方。现在，第三方可以执行它所说的操作，而无需知道用户的实际凭据。'
+- en: '**More secure**: A session ID''s security depends on its implementation. If
+    the session ID can be easily guessed (for example, it''s a simple incremental
+    counter) then a malicious party can guess the session ID and hijack a legitimate
+    user''s session. With a token, the malicious party must know the key used to sign
+    the token in order to create a valid token.'
+  id: totrans-228
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**更安全**：会话 ID 的安全性取决于其实现。如果会话 ID 可以轻松猜测（例如，它是一个简单的增量计数器），那么恶意方可以猜测会话 ID 并劫持合法用户的会话。使用令牌时，恶意方必须知道用于签名字令牌的密钥才能创建一个有效的令牌。'
+- en: Therefore, using a token as a means of conveying user authentication information
+    is preferred. But since a token is simply a set of claims in a specific format
+    signed using a key, there are many standards available. Luckily, **JSON Web Tokens** (**JWTs**,
+    pronounced "jots") have become the *de facto* standard for tokens, so the choice
+    is a no-brainer. They are also formally defined in RFC7519 ([tools.ietf.org/html/rfc751](https://tools.ietf.org/html/rfc751)).
+    We will use JWTs as the format for representing our claims in this project.
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，使用令牌作为传达用户身份验证信息的方式是首选的。但由于令牌只是使用密钥签名的特定格式的声明集合，因此有许多标准可供选择。幸运的是，**JSON 网络令牌**（**JWTs**，发音为“jots”）已成为令牌的*事实标准*，因此选择变得不言而喻。它们也在
+    RFC7519 中正式定义（[tools.ietf.org/html/rfc751](https://tools.ietf.org/html/rfc751)）。在本项目中，我们将使用
+    JWTs 作为表示声明的格式。
+- en: JSON web tokens (JWTs)
+  id: totrans-230
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: JSON 网络令牌 (JWTs)
+- en: Generally, a token is a string issued by a server, which allows the owner of
+    the token to perform specific actions on the server, for a specific period of
+    time. A JWT is a standard of token that "*safely* passes *claims* in space-constrained
+    environments."
+  id: totrans-231
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通常，令牌是由服务器颁发的一个字符串，允许令牌所有者在一定时间内对服务器执行特定操作。JWT 是一种令牌标准，可以在*空间受限的环境中*“*安全*”地传递*声明*。
+- en: Anatomy of a JWT
+  id: totrans-232
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: JWT 的结构
+- en: 'A JWT is composed of three parts, separated by a period (`.`):'
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JWT 由三个部分组成，由点（`.`）分隔：
+- en: '[PRE33]'
+  id: totrans-234
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: '**Header**: a JSON object that contains information about the token, such as
+    its type and the algorithm used to produce the signature, for example, `{ "alg":
+    "HS512", "typ": "JWT" }`.'
+  id: totrans-235
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**头部**：一个包含有关令牌信息的 JSON 对象，例如其类型和用于生成签名的算法，例如，`{ "alg": "HS512", "typ": "JWT"
+    }`。'
+- en: '**Payload**: A JSON object contains a set of claims, such as its identity and
+    permissions, for example, `{ "sub": "e@ma.il" }`.'
+  id: totrans-236
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**载荷**：一个包含一组声明的 JSON 对象，例如其身份和权限，例如，`{ "sub": "e@ma.il" }`。'
+- en: '**Signature**: A string that is either a **Message Authentication Code** (**MAC**)
+    or **digital signature**. The purpose of the signature is to ensure the *authenticity*
+    and *integrity* of the payload.'
+  id: totrans-237
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**签名**：一个字符串，可以是**消息认证码**（**MAC**）或**数字签名**。签名的作用是确保载荷的*真实性*和*完整性*。'
+- en: 'The header and payload are then base-64 encoded to ensure they are compact.
+    A simple JWT may look like this (new lines have been inserted for readability):'
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，将头部和载荷进行 base-64 编码以确保它们紧凑。一个简单的 JWT 可能看起来像这样（为了可读性，已插入换行符）：
+- en: '[PRE34]'
+  id: totrans-239
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: 'When the header and payload are base-64 decrypted, their information is once
+    again revealed:'
+  id: totrans-240
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当头部和载荷被 base-64 解密时，它们的信息再次被揭示：
+- en: '[PRE35]'
+  id: totrans-241
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: Because JWTs are base-64 encoded, they are URL-safe. This means a JWT can be
+    supplied through the URL, in the body of an HTTP request, or as a value inside
+    an HTTP `Authorization` header.
+  id: totrans-242
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于 JWT 是 base-64 编码的，因此它们是 URL 安全的。这意味着 JWT 可以通过 URL、HTTP 请求体或 HTTP `Authorization`
+    头部中的值提供。
+- en: Now, let's examine each part of the JWT in more details, starting with the header.
+  id: totrans-243
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们更详细地检查 JWT 的每个部分，从头部开始。
+- en: Header
+  id: totrans-244
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 头部
+- en: 'The **Javascript Object Signing and Encryption** (**JOSE**) header is a JSON
+    object that provides information on a token''s type, method of construction, and
+    any metadata. The keys to the JOSE header have a special meaning:'
+  id: totrans-245
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**JavaScript对象签名和加密**（**JOSE**）头是一个JSON对象，它提供了有关令牌类型、构建方法和任何元数据的信息。JOSE头的键具有特殊含义：'
+- en: '`typ`: The media type of the JWT. It is recommended to use a value of `"JWT"`.'
+  id: totrans-246
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`typ`: JWT的媒体类型。建议使用值`"JWT"`。'
+- en: '`cty`: The content type of the JWT. This header should only be used in the
+    case of nested JWT, and its value must be `"JWT"` to indicate that the content
+    of the outermost JWT is also a JWT.'
+  id: totrans-247
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`cty`: JWT的内容类型。此头信息仅在嵌套JWT的情况下使用，其值必须是`"JWT"`，以指示最外层JWT的内容也是JWT。'
+- en: '`alg`: The algorithm used to generate the signature.'
+  id: totrans-248
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`alg`: 生成签名所使用的算法。'
+- en: There are additional headers that are available depending on whether the JWT
+    is a **JSON Web Signature** (**JWS**) or **JSON Web Encryption** (**JWE**). You
+    can find the full list of headers at [iana.org/assignments/jose/jose.xhtml](http://www.iana.org/assignments/jose/jose.xhtml).
+  id: totrans-249
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 根据JWT是**JSON Web Signature**（**JWS**）还是**JSON Web Encryption**（**JWE**），还有其他一些可用的头信息。您可以在[iana.org/assignments/jose/jose.xhtml](http://www.iana.org/assignments/jose/jose.xhtml)找到完整的头信息列表。
+- en: Payload and claims
+  id: totrans-250
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 有效载荷和声明
+- en: 'The payload of a JWT consists of one or more claims. There are three classes
+    of claims in JWT: registered, public, and private.'
+  id: totrans-251
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JWT的有效载荷由一个或多个声明组成。JWT中有三类声明：已注册的、公共的和私有的。
+- en: Registered claim names
+  id: totrans-252
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 已注册的声明名称
+- en: '**Registered claim names** are reserved claim names that have special meanings.
+    They are defined in the JWT specification and can be found on the **Internet Assigned
+    Numbers Authority** (**IANA**) *JSON Web Token Claims* registry. Although these
+    names are reserved and have a special meaning, the way the server processes these
+    claims is completely up to the servers itself. All registered claims are optional:'
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**已注册的声明名称**是具有特殊含义的保留声明名称。它们在JWT规范中定义，可以在**互联网数字分配机构**（**IANA**）的*JSON Web
+    Token Claims*注册表中找到。尽管这些名称是保留的，并且具有特殊含义，但服务器处理这些声明的方式完全由服务器本身决定。所有已注册的声明都是可选的：'
+- en: '`iss`: Issuer: The principal that issued the JWT. In our case, this would be
+    something like `hobnob`.'
+  id: totrans-254
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`iss`: 发行者：发行JWT的主要实体。在我们的例子中，这可能像`hobnob`一样。'
+- en: '`sub`: Subject: The entity that the claims apply to. In our case, this would
+    be the user''s email or ID.'
+  id: totrans-255
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`sub`: 主题：声明适用的实体。在我们的例子中，这可能是指用户的电子邮件或ID。'
+- en: '`aud`: Audience: A list of all principals that are intended to process the
+    JWT. If the principal processing the claim does not identify itself with a value
+    in the `aud` claim when this claim is present, then the JWT *must* be rejected.'
+  id: totrans-256
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`aud`: 受众：所有打算处理JWT的主要实体列表。如果处理声明的主体在存在此声明时没有使用`aud`声明中的值来识别自己，则JWT*必须*被拒绝。'
+- en: '`exp`: Expiration Time: The time, in UNIX timestamp (seconds), on or after
+    which the JWT must be considered as invalid. However, the server may provide some
+    leniency (up to a few minutes) to account for cases where server clocks are not
+    synchronized.'
+  id: totrans-257
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`exp`: 过期时间：JWT必须被视为无效的时间，以UNIX时间戳（秒）表示。然而，服务器可能提供一些宽容（最多几分钟），以应对服务器时钟未同步的情况。'
+- en: '`nbf`: Not Before: The time, in UNIX timestamp (seconds), before which the
+    JWT must be considered invalid.'
+  id: totrans-258
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`nbf`: 不早于：JWT必须被视为无效的时间，以UNIX时间戳（秒）表示。'
+- en: '`iat`: Issued At: The time, in UNIX timestamp (seconds), at which the JWT was
+    issued.'
+  id: totrans-259
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`iat`: 发行时间：JWT发行的时间，以UNIX时间戳（秒）表示。'
+- en: '`jti`: JWT ID: A unique identifier for the JWT. It can be used to prevent replay
+    attacks if the JWT is meant to be used as a **nonce** (that is, a **one-time token**).
+    It can also be used to revoke tokens.'
+  id: totrans-260
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`jti`: JWT ID：JWT的唯一标识符。如果JWT打算用作**nonce**（即一次性令牌），则可以使用它来防止重放攻击。它也可以用来撤销令牌。'
+- en: Claim names are short to minimize the overall size of the JWT, as a JWT needs
+    to be included in every request that requires authentication/authorization.
+  id: totrans-261
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 声明名称很短，以最大限度地减少JWT的整体大小，因为JWT需要包含在需要身份验证/授权的每个请求中。
+- en: Public claim names
+  id: totrans-262
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 公共声明名称
+- en: Anyone may define their own claim names as long as they don't clash with the
+    registered claim names. These claim names may be called **public claim names**
+    if reasonable precautions have been made to ensure that the name will not clash
+    with other claim names. Such precautions may include using namespaces that the
+    issuer controls, such as domain names.
+  id: totrans-263
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 只要它们不与已注册的声明名称冲突，任何人都可以定义自己的声明名称。如果已经采取了合理的预防措施以确保名称不会与其他声明名称冲突，这些声明名称可以称为**公共声明名称**。这些预防措施可能包括使用发行者控制的命名空间，例如域名。
+- en: Private claim names
+  id: totrans-264
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 私有声明名称
+- en: A **private claim name** is a user-defined claim name that's agreed upon between
+    the producer and consumer of the JWT. No effort is made to prevent a naming collision,
+    and so private claim names should be used with caution.
+  id: totrans-265
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**私有声明名称**是生产者和JWT消费者之间达成协议的用户定义的声明名称。没有努力去防止命名冲突，因此应谨慎使用私有声明名称。'
+- en: Example claim
+  id: totrans-266
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 示例声明
+- en: 'For example, if our server wishes to grant a user with the email `e@ma.il`
+    permission to delete its own profile for one day (25 October 2017), then we may
+    issue a JWT with a payload that looks like this:'
+  id: totrans-267
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，如果我们的服务器希望授予用户`e@ma.il`在一天内（2017年10月25日）删除其个人资料的权限，那么我们可以发行一个JWT，其有效载荷看起来像这样：
+- en: '[PRE36]'
+  id: totrans-268
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: The `iss`, `sub`, and `aud` claims must be of type `StringOrURI`. This means
+    that they can be any arbitrary string, but if they include a colon (`:`), they
+    must be a valid URI.
+  id: totrans-269
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`iss`、`sub`和`aud`声明必须是`StringOrURI`类型。这意味着它们可以是任何任意字符串，但如果它们包含冒号（`:`），则必须是有效的URI。'
+- en: Signature
+  id: totrans-270
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 签名
+- en: Once we have a list of claims, or assertions, written inside the token, we must
+    sign it. This is because anyone can create a token with those claims, or even
+    tokens with different claims! We don't want to honor these tokens; we only want
+    to honor tokens that are generated by our own servers (are *authentic*) and have
+    not been tampered with (have *integrity*). We can do this by first attaching a
+    JWS signature to the token, and then validating it when the token is processed.
+  id: totrans-271
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦我们在令牌内部写下了声明或断言的列表，我们必须对其进行签名。这是因为任何人都可以创建包含这些声明的令牌，甚至可以创建包含不同声明的令牌！我们不希望认可这些令牌；我们只想认可由我们自己的服务器生成的（是**真实的**）且未被篡改的（具有**完整性**）令牌。我们可以通过首先将JWS签名附加到令牌上，然后在处理令牌时验证它来实现这一点。
+- en: A **digital signature** is different from a **JWS signature**, as a JWS signature
+    may also include Message Authentication Codes (MACs). When talking about JWTs,
+    the term "signature" or "signing a token" usually refers to a JWS signature, not
+    specifically a digital signature.
+  id: totrans-272
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**数字签名**与**JWS签名**不同，因为JWS签名还可以包括消息认证码（MAC）。当谈论JWT时，“签名”或“签名令牌”通常指的是JWS签名，而不是特定的数字签名。'
+- en: 'The supported algorithms for signing tokens are defined in the **JSON Web Algorithms**
+    (**JWA**) specification. Generally, there are two types of algorithms used for
+    signing a token:'
+  id: totrans-273
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 用于签名令牌的支持算法在**JSON Web 算法**（**JWA**）规范中定义。通常，用于签名令牌的算法有两种类型：
+- en: '**Asymmetrically**, using a pair of **public/private keys** (for example, **RS256**,
+    **RS384**, and **RS512**)'
+  id: totrans-274
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**非对称地**，使用一对**公钥/私钥**（例如，**RS256**、**RS384**和**RS512**）'
+- en: '**Symmetrically**, using a **secret** (for example, **HS256**, **HS384**, and **HS512**)'
+  id: totrans-275
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**对称地**，使用**密钥**（例如，**HS256**、**HS384**和**HS512**）'
+- en: 'Regardless of which algorithm is chosen, the base-64 encoded header and payload
+    are first concatenated together, separated by a period (`.`). This combined string
+    (`[base64Header].[base64Payload]`) is then passed into the algorithm to generate
+    the JWS signature:'
+  id: totrans-276
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 无论选择哪种算法，首先将base-64编码的头部和有效载荷连接在一起，由一个点（`.`）分隔。然后将这个组合字符串（`[base64Header].[base64Payload]`）传递到算法中，以生成JWS签名：
+- en: '[PRE37]'
+  id: totrans-277
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: Here, `k` is the secret or private key required for the algorithm. This is *always*
+    kept private.
+  id: totrans-278
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，`k`是该算法所需的密钥或私钥。这**总是**被保留为私有的。
+- en: This JWS signature is then concatenated to the end of the header/payload to
+    generate the complete JWT, which has the format `[base64Header].[base64Payload].[base64JwsSignature]`.
+  id: totrans-279
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，将此JWS签名连接到头部/有效载荷的末尾，以生成完整的JWT，其格式为`[base64Header].[base64Payload].[base64JwsSignature]`。
+- en: When our server receives this JWT, it will regenerate a new JWS signature from
+    the header and payload values, as well as the secret key, and compare it with
+    the signature attached to the token. If there is a match, then our server can
+    be confident that whoever produced the token had access to our secret key. Since
+    our key is secret, then our server can be confident that we are the ones that
+    issued the token, and can trust the claims made by the token. However, if there
+    is a mismatch, it means that the token has either been signed with a different
+    key, or has been tampered with, and should not be trusted.
+  id: totrans-280
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们的服务器接收到这个JWT时，它将从头部和负载值以及密钥中重新生成一个新的JWS签名，并将其与附加到令牌上的签名进行比较。如果匹配，那么我们的服务器可以确信产生令牌的人有权访问我们的密钥。由于我们的密钥是保密的，因此我们的服务器可以确信我们就是发行令牌的人，并且可以信任令牌中做出的声明。然而，如果存在不匹配，这意味着令牌要么是用不同的密钥签名的，要么已被篡改，因此不应被信任。
+- en: Now, we understand *why* we need to sign the token (to ensure authenticity and
+    integrity), so let's take a look at the difference between the two types of signing
+    algorithms.
+  id: totrans-281
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们理解了*为什么*我们需要签名令牌（以确保真实性和完整性），那么让我们看看两种签名算法之间的区别。
+- en: Asymmetric signature generation
+  id: totrans-282
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 非对称签名生成
+- en: Asymmetric signature generation utilizes a pair of mathematically-related public
+    and private keys. They are related so that information encrypted by one key can
+    only be decrypted using the other key.
+  id: totrans-283
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 非对称签名生成利用一对数学上相关的公钥和私钥。它们是相关的，以至于由一个密钥加密的信息只能使用另一个密钥解密。
+- en: In the context of JWTs, you can encrypt the header/claim set using the private
+    key to produce a *digital signature*, which gets attached to the base-64 encoded
+    header/claim set to produce a complete JWT. We would also make the public key
+    public so consumers of the JWT can decrypt it.
+  id: totrans-284
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在JWT的上下文中，您可以使用私钥加密头部/声明集以生成一个*数字签名*，然后将它附加到base-64编码的头部/声明集上，以生成完整的JWT。我们还会使公钥公开，以便JWT的消费者可以解密它。
+- en: Since the public key can be publicly shared, the issuer (who generates the JWT)
+    and the consumer of the token (who validates it) can be different entities, as
+    they don't need to share the same key.
+  id: totrans-285
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于公钥可以公开共享，因此JWT的发行者（生成JWT）和令牌的消费者（验证它）可以是不同的实体，因为它们不需要共享相同的密钥。
+- en: 'Examples of asymmetric signature generation algorithms include the following:'
+  id: totrans-286
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 非对称签名生成算法的例子包括以下：
+- en: The **Rivest–Shamir–Adleman** (**RSA**) family, which uses the SHA hash algorithm,
+    and includes RS256, RS384, and RS512
+  id: totrans-287
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用SHA哈希算法的**Rivest–Shamir–Adleman**（**RSA**）系列，包括RS256、RS384和RS512
+- en: The **Elliptic Curve Digital Signature Algorithm** (**ECDSA**) uses the **P-256/P-384/P-521**
+    curve and SHA hash algorithm, and include **ES256,** **ES384**, and **ES512**
+  id: totrans-288
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**椭圆曲线数字签名算法**（**ECDSA**）使用**P-256/P-384/P-521**曲线和SHA哈希算法，包括**ES256**、**ES384**和**ES512**'
+- en: Symmetric signature generation
+  id: totrans-289
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 对称签名生成
+- en: With symmetric signature generation algorithms, both generation and validation
+    of the JWT require the same *secret*. Similar to before, we pass the base-64 encoded
+    header/claim set into the algorithm with the secret, and a **Message Authentication
+    Code** (**MAC**) is produced. The MAC is attached with the claim set and header
+    to produce the full JWT.
+  id: totrans-290
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用对称签名生成算法时，JWT的生成和验证都需要相同的*密钥*。类似于之前，我们将base-64编码的头部/声明集与密钥一起传递给算法，并生成一个**消息认证码**（**MAC**）。MAC附加到声明集和头部，以生成完整的JWT。
+- en: Examples of symmetric signature generation algorithms include the *Keyed-hash
+    message authentication code (HMAC) with the SHA* hash algorithm, and includes HS256,
+    HS384, and HS512.
+  id: totrans-291
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对称签名生成算法的例子包括使用SHA哈希算法的*密钥散列消息认证码（HMAC**），包括HS256、HS384和HS512。
+- en: Picking an algorithm
+  id: totrans-292
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 选择算法
+- en: If our token is intended to be read by third parties, then an asymmetric signature
+    generation algorithm makes sense. This is because, on top of providing authenticity
+    and integrity, it asymmetric signature generation also provides the property of **non-repudiation** where
+    the issuer of the JWT cannot deny (or repudiate) that they issued the token.
+  id: totrans-293
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们的令牌打算被第三方读取，那么使用非对称签名生成算法是有意义的。这是因为，除了提供真实性和完整性之外，非对称签名生成还提供了**不可否认性**的特性，即JWT的发行者不能否认（或拒绝）他们发行了令牌。
+- en: 'With an asymmetric signature, only our server would have access to the private
+    key; this provides consumers of the JWT with confidence that the token was issued
+    by our server and nobody else. If we instead use symmetric signature generation,
+    we must securely share the secret with third party consumers so that they can
+    decrypt the token. But it also means the third-parties can use that secret to
+    generate more tokens. Thus, consumers of those JWTs would not have confidence
+    as to the real issuer of the token:'
+  id: totrans-294
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用非对称签名，只有我们的服务器才能访问私钥；这为 JWT 的消费者提供了信心，即令牌是由我们的服务器签发的，而不是其他人。如果我们改用对称签名生成，我们必须安全地与第三方消费者共享密钥，以便他们可以解密令牌。但这也意味着第三方可以使用该密钥生成更多令牌。因此，那些
+    JWT 的消费者将无法确信令牌的真实发行者：
+- en: '| Cryptographic primitive | Integrity | Authentication | Non-repudiation |
+    Keys required |'
+  id: totrans-295
+  prefs: []
+  type: TYPE_TB
+  zh: '| 密码学原语 | 完整性 | 认证 | 不可抵赖性 | 所需密钥 |'
+- en: '| Hash | Yes | No | No | None |'
+  id: totrans-296
+  prefs: []
+  type: TYPE_TB
+  zh: '| 哈希 | 是 | 否 | 否 | 无 |'
+- en: '| Digital signature | Yes | Yes | Yes | Asymmetric keys |'
+  id: totrans-297
+  prefs: []
+  type: TYPE_TB
+  zh: '| 数字签名 | 是 | 是 | 是 | 非对称密钥 |'
+- en: '| MAC | Yes | Yes | No | Shared symmetric secret key |'
+  id: totrans-298
+  prefs: []
+  type: TYPE_TB
+  zh: '| MAC | 是 | 是 | 否 | 共享对称密钥 |'
+- en: However, in our use case, both the producer and consumer of the JWT are the
+    same entity (our API server); therefore, both types of algorithms can be used.
+  id: totrans-299
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，在我们的用例中，JWT 的生产者和消费者是同一实体（我们的 API 服务器）；因此，两种类型的算法都可以使用。
+- en: MACs are computationally easier to generate than digital signatures, and the
+    key size is also smaller for MACs; however, since asymmetric signature generation
+    provides more flexibility if we potentially want to allow third parties to decrypt
+    our tokens, we will go with the asymmetric algorithms.
+  id: totrans-300
+  prefs: []
+  type: TYPE_NORMAL
+  zh: MAC 的生成比数字签名计算上更容易，MAC 的密钥长度也更小；然而，由于非对称签名生成提供了更多的灵活性，如果我们可能希望允许第三方解密我们的令牌，我们将选择非对称算法。
+- en: 'Technically, ES512 would be the ideal choice, as we can use a shorter key while
+    maintaining the same level of security. Because of this, ECDSA also uses fewer
+    resources to compute than RSA:'
+  id: totrans-301
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从技术上讲，ES512 将是理想的选择，因为我们可以在保持相同安全级别的同时使用更短的关键字。正因为如此，ECDSA 在计算资源上比 RSA 使用更少：
+- en: '| Symmetric Key Length (AES) | Standard asymmetric Key Length (RSA) | Elliptic
+    Curve Key Length (ECDSA) |'
+  id: totrans-302
+  prefs: []
+  type: TYPE_TB
+  zh: '| 对称密钥长度（AES） | 标准非对称密钥长度（RSA） | 椭圆曲线密钥长度（ECDSA） |'
+- en: '| 80 | 1024 | 160 |'
+  id: totrans-303
+  prefs: []
+  type: TYPE_TB
+  zh: '| 80 | 1024 | 160 |'
+- en: '| 112 | 2048 | 224 |'
+  id: totrans-304
+  prefs: []
+  type: TYPE_TB
+  zh: '| 112 | 2048 | 224 |'
+- en: '| 128 | 3072 | 256 |'
+  id: totrans-305
+  prefs: []
+  type: TYPE_TB
+  zh: '| 128 | 3072 | 256 |'
+- en: '| 192 | 7680 | 384 |'
+  id: totrans-306
+  prefs: []
+  type: TYPE_TB
+  zh: '| 192 | 7680 | 384 |'
+- en: '| 256 | 15360 | 512 |'
+  id: totrans-307
+  prefs: []
+  type: TYPE_TB
+  zh: '| 256 | 15360 | 512 |'
+- en: However, as ECDSA is still a relatively new set of algorithms, it does not receive
+    as much support from tools as the more established algorithms, such as RSA. Therefore,
+    we will use RSA with a key size of 4,096.
+  id: totrans-308
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，由于 ECDSA 仍然是一套相对较新的算法，它不像 RSA 这样的更成熟的算法那样得到工具的广泛支持。因此，我们将使用 4096 位长度的 RSA。
+- en: A note on encryption
+  id: totrans-309
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 关于加密的说明
+- en: At the moment, the header and payload are only base-64 encoded, which means
+    anyone can decode them and read their content. This also means that if we include
+    any sensitive information in the payload, anyone can read it. Ideally, we should
+    ensure that the JWT carries as little sensitive information as possible, just
+    enough for the consumer of the JWT to identify and grant permissions to the user. For
+    our use case, we will include only the user ID in the payload, which we'll be
+    treating as public information anyway, and so encrypting our token does not bring
+    much value.
+  id: totrans-310
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 目前，头部和有效载荷仅使用 base-64 编码，这意味着任何人都可以解码它们并读取其内容。这也意味着，如果我们将在有效载荷中包含任何敏感信息，任何人都可以读取它。理想情况下，我们应该确保
+    JWT 尽可能携带最少的敏感信息，仅足够 JWT 的消费者识别并授予用户权限。对于我们的用例，我们将在有效载荷中仅包含用户 ID，这无论如何都将被视为公开信息，因此加密我们的令牌并不带来太多价值。
+- en: However, it's important to understand that a JWT can be encrypted.
+  id: totrans-311
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，重要的是要理解 JWT 可以被加密。
+- en: Terminology and summary
+  id: totrans-312
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 术语和总结
+- en: The preceding sections introduced a lot of new terms, which can be overwhelming.
+    Therefore, before we move forward, let's quickly review and expand on some of
+    the terminology used.
+  id: totrans-313
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面的章节介绍了很多新术语，可能会让人感到不知所措。因此，在我们继续前进之前，让我们快速回顾并扩展一些使用的术语。
+- en: A *claim* is made up of a key-value pair of a *claim name* and *claim value*.
+    A group of claims represented as a JSON object is a *claim set*; individual claims
+    within a claim set may also be referred to as *members* of a claim set.
+  id: totrans-314
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*声明* 由一个 *声明名称* 和 *声明值* 的键值对组成。一组表示为 JSON 对象的声明是一个 *声明集*；声明集中的单个声明也可以称为声明集的
+    *成员*。'
+- en: A *JSON Web Token* (JWT) is a string that includes the *JOSE Header* and the
+    claim set, and is signed and (optionally) encrypted.
+  id: totrans-315
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*JSON Web Token*（JWT）是一个字符串，它包括*JOSE头部*和声明集，并已签名（可选）加密。'
+- en: To generate the signature, the server must sign the header and claim set using
+    algorithms specified in the** JSON Web Algorithms** (**JWA**) specification, which
+    uses cryptographic keys as defined in the **JSON Web Key** (**JWK**) specification.
+    The combination of the header, claim set, and signature becomes the **JSON Web
+    Signature **(**JWS**).
+  id: totrans-316
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要生成签名，服务器必须使用**JSON Web算法**（**JWA**）规范中指定的算法对头部和声明集进行签名，该规范使用**JSON Web密钥**（**JWK**）规范中定义的加密密钥。头部、声明集和签名的组合成为**JSON
+    Web签名**（**JWS**）。
+- en: However, the claim set can be base-64 decoded into plaintext and so the content
+    of the token is not private. Therefore, we can encrypt our claim set and JOSE
+    header using another algorithm defined in the JWA specification to ensure that
+    the sensitive data is kept private. This encrypted JWT is then a **JSON Web Encryption**
+    (**JWE**).
+  id: totrans-317
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，声明集可以被base64解码成明文，因此令牌的内容不是私密的。因此，我们可以使用JWA规范中定义的另一个算法来加密我们的声明集和JOSE头部，以确保敏感数据保持私密。这个加密的JWT然后是一个**JSON
+    Web加密**（**JWE**）。
+- en: JWS and JWE are two different representations of a JWT. In other words, a JWT
+    may have two flavors. In yet more words, the JWT must conform to either the JWS
+    or JWE specification. For authentication purposes, the usual procedure is to sign
+    a claim set to produce a JWS, and then encrypt the resulting JWS to produce a
+    JWE. The JWS is said to be *nested* inside the JWE structure.
+  id: totrans-318
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JWS和JWE是JWT的两种不同表示形式。换句话说，JWT可能有两种风味。换句话说，JWT必须符合JWS或JWE规范。为了认证目的，通常的流程是对声明集进行签名以生成JWS，然后加密生成的JWS以生成JWE。JWS被称为嵌套在JWE结构中。
+- en: A JWT neither signed nor encrypted is said to be unsecured.
+  id: totrans-319
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个既未签名也未加密的JWT被称为不安全。
+- en: Responding with a token
+  id: totrans-320
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 返回令牌
+- en: Now that we know how JWTs work, let's start implementing JWTs by first returning
+    a JWT when the user successfully authenticates for the first time. For our simple
+    use case, which does not require different permission levels, we'll simply include
+    a single `sub` claim in the payload and set its value to the user's email.
+  id: totrans-321
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们知道了JWT是如何工作的，让我们开始实现JWT，首先在用户首次成功认证时返回一个JWT。对于我们的简单用例，它不需要不同的权限级别，我们只需在负载中包含一个单一的`sub`声明，并将其值设置为用户的电子邮件。
+- en: Adding E2E Tests
+  id: totrans-322
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 添加端到端测试
+- en: 'To get started, we will simply test that our `POST /login` endpoint returns
+    with a JWT that contains the user''s email as the payload. At the end of the `Login
+    attaching a well-formed payload` scenario, add the following steps:'
+  id: totrans-323
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要开始，我们将简单地测试我们的`POST /login`端点返回一个包含用户电子邮件作为负载的JWT。在`Login attaching a well-formed
+    payload`场景的末尾，添加以下步骤：
+- en: '[PRE38]'
+  id: totrans-324
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: 'The second step (`And the JWT payload should have a claim with name sub equal
+    to context.email`) is undefined. To implement it, we must split the token up into
+    three parts, header, payload, and signature; perform base64-decoding on the JWT
+    payload; and then check that its `sub` property is equal to the expected user
+    ID. Instead of implementing this logic ourselves, however, we can simply use the
+    `jsonwebtoken` package. So let''s add it as a normal dependency, as we will need
+    it for the implementation code as well:'
+  id: totrans-325
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第二步（`JWT的有效负载应该有一个名为sub的声明，其值等于context.email`）未定义。要实现它，我们必须将令牌分成三部分，即头部、负载和签名；对JWT负载进行base64解码；然后检查其`sub`属性是否等于预期的用户ID。然而，我们不必自己实现这个逻辑，我们可以简单地使用`jsonwebtoken`包。因此，让我们将其添加为一个正常依赖项，因为我们还需要它来实现代码：
+- en: '[PRE39]'
+  id: totrans-326
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: 'Then, in `spec/cucumber/steps/response.js`, add the following step definition:'
+  id: totrans-327
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，在`spec/cucumber/steps/response.js`中添加以下步骤定义：
+- en: '[PRE40]'
+  id: totrans-328
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: Run the tests, and these two steps should fail.
+  id: totrans-329
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 运行测试，这两个步骤应该失败。
+- en: Implementation
+  id: totrans-330
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现
+- en: 'As discussed previously, we will be using the RSA algorithm to generate the
+    signature of our JWT, which requires the generation of private and public keys.
+    Therefore, the first thing we must do is to generate the key pair. We can do this
+    locally using the `ssh-keygen` command:'
+  id: totrans-331
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前所述，我们将使用RSA算法来生成JWT的签名，这需要生成私钥和公钥。因此，我们必须做的第一件事是生成密钥对。我们可以使用`ssh-keygen`命令在本地执行此操作：
+- en: '[PRE41]'
+  id: totrans-332
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: 'Here, we are using the `-t` flag to specify that we want to generate an RSA
+    key pair, and the `-b` flag to specify a key with a bit size of 4,096\. Lastly,
+    we use the `-f` flag to specify where we want the key to be stored. This will
+    generate a private key that looks like this (truncated for brevity):'
+  id: totrans-333
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们使用 `-t` 标志来指定我们想要生成 RSA 密钥对，并使用 `-b` 标志来指定位大小为 4,096 的密钥。最后，我们使用 `-f`
+    标志来指定密钥要存储的位置。这将生成一个类似这样的私钥（为了简洁而截断）：
+- en: '[PRE42]'
+  id: totrans-334
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: 'It will also generate a public key that looks like this (truncated for brevity):'
+  id: totrans-335
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 它还将生成一个类似这样的公钥（为了简洁而截断）：
+- en: '[PRE43]'
+  id: totrans-336
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: 'However, the `jsonwebtoken` package expects our RSA key to be PEM-encoded,
+    and thus we must perform one more step to export the public key as an encoded
+    PEM file:'
+  id: totrans-337
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，`jsonwebtoken` 包期望我们的 RSA 密钥是 PEM 编码的，因此我们必须执行一个额外的步骤来将公钥导出为编码的 PEM 文件：
+- en: '[PRE44]'
+  id: totrans-338
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: 'This will produce a key similar to the following (truncated for brevity):'
+  id: totrans-339
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将生成一个类似以下密钥（为了简洁而截断）：
+- en: '[PRE45]'
+  id: totrans-340
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: 'Now, we don''t want to commit these key files into the history of our repository,
+    for several reasons:'
+  id: totrans-341
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们不想将这些密钥文件提交到我们仓库的历史记录中，有以下几个原因：
+- en: Anyone with access to the repository will be able to get a copy of the keys
+    (most importantly the private key), and be able to impersonate the real server.
+    The private key should be known by as few parties as possible; not even the developers
+    should need to know the production keys. The only people who need to know are
+    the system administrators who manage the server.
+  id: totrans-342
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 任何有权访问仓库的人都可以获取密钥的副本（最重要的是私钥），并能够冒充真实的服务器。私钥应该尽可能少的人知道；甚至开发者也不需要知道生产密钥。唯一需要知道的人是管理服务器的系统管理员。
+- en: If our keys are hardcoded into the code, then if we want to change these keys,
+    we'd have to update the code, make a commit to the repository, and redeploy the
+    entire application.
+  id: totrans-343
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果我们的密钥硬编码在代码中，那么如果我们想要更改这些密钥，我们就必须更新代码，提交到仓库，并重新部署整个应用程序。
+- en: So, what's a better alternative?
+  id: totrans-344
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 那么，更好的替代方案是什么？
+- en: The most secure alternative is to use a **Trusted Platform Module** (**TPM**),
+    which is a microcontroller (a computer chip) that is embedded into the motherboard
+    of the server and allows you to securely store cryptographic keys. If you encrypt
+    your development machine, the key it uses to encrypt and decrypt your machine
+    is stored in the TPM. Similarly, you can use a **Hardware Security Module** (**HSM**),
+    which is similar to a TPM, but instead of being embedded into the motherboard,
+    is a removable external device.
+  id: totrans-345
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最安全的替代方案是使用 **可信平台模块**（**TPM**），这是一个嵌入到服务器主板上的微控制器（一个计算机芯片），允许你安全地存储加密密钥。如果你加密了你的开发机器，用于加密和解密机器的密钥存储在
+    TPM 中。同样，你可以使用 **硬件安全模块**（**HSM**），它与 TPM 类似，但不是嵌入到主板中，而是一个可拆卸的外部设备。
+- en: However, using a TPM and HSM are not a viable option for most cloud servers.
+    Therefore, the next best thing is to store the keys as environment variables.
+    However, our keys span across multiple lines; how do we define multi-line environment
+    variables?
+  id: totrans-346
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，使用 TPM 和 HSM 对于大多数云服务器来说不是一个可行的选项。因此，最好的选择是将密钥作为环境变量存储。然而，我们的密钥跨越多行；我们如何定义多行环境变量？
+- en: Multiline environment variables
+  id: totrans-347
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 多行环境变量
+- en: 'At the moment, we are using the `dotenv-cli` package to load our environment
+    variables when running our application, which supports multi-line variables as
+    long as you enclose the variable in double quotes (`"`) and replacing the newline
+    characters with `\n`. Therefore, we can define our keys by adding the following
+    entries (truncated for brevity) into our `.env`, `.env.example`, `test.env`, and
+    `test.env.example` files:'
+  id: totrans-348
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 目前，我们在运行应用程序时使用 `dotenv-cli` 包来加载我们的环境变量，它支持多行变量，只要你在双引号 (`"`) 中包含变量，并用 `\n`
+    替换换行符。因此，我们可以通过将以下条目（为了简洁而截断）添加到我们的 `.env`、`.env.example`、`test.env` 和 `test.env.example`
+    文件中来定义我们的密钥：
+- en: '[PRE46]'
+  id: totrans-349
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: Generating the token
+  id: totrans-350
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 生成令牌
+- en: 'Then, in `src/index.js`, import the `sign` method from the `jsonwebtoken` package
+    and pass it down to the engine through the handlers. Then, update the engine function
+    to return a signed JWT when a user is found with those credentials. Note that
+    we are using the private key, stored at `process.env.PRIVATE_KEY`, to sign the
+    token:'
+  id: totrans-351
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，在 `src/index.js` 中，从 `jsonwebtoken` 包中导入 `sign` 方法，并通过处理程序将其传递给引擎。然后，更新引擎函数，当找到具有这些凭证的用户时，返回已签名的
+    JWT。请注意，我们正在使用存储在 `process.env.PRIVATE_KEY` 中的私钥来签名令牌：
+- en: '[PRE47]'
+  id: totrans-352
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: Now, run our tests again and they should all pass.
+  id: totrans-353
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，再次运行我们的测试，它们应该都会通过。
+- en: Attaching the token
+  id: totrans-354
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 附加令牌
+- en: 'We are now providing the client with a token they can use in place of their
+    email/password, but how should they attach it to subsequent requests? Generally,
+    there are five ways of attaching information to an HTTP request:'
+  id: totrans-355
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们现在正在向客户端提供一个他们可以用作电子邮件/密码的令牌，但他们应该如何将其附加到后续请求中？一般来说，有五种方法可以将信息附加到 HTTP 请求中：
+- en: As a URL parameter
+  id: totrans-356
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 作为 URL 参数
+- en: As a query string
+  id: totrans-357
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 作为查询字符串
+- en: Inside the request body
+  id: totrans-358
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在请求体内部
+- en: As an HTTP cookie
+  id: totrans-359
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 作为 HTTP Cookie
+- en: As a header field
+  id: totrans-360
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 作为头字段
+- en: The URL parameter is used for routing and it makes no sense to attach a digest
+    there. Query strings are for things related to the query, such as setting the `limit` to
+    limit the number of results returned in our search endpoint; it also makes no
+    sense to attach information unrelated to the query here. As for the request body; we
+    can't always have the digest in the request body, as some endpoints, such as Update
+    Profile, use the request body to carry the payload. This leaves us with using
+    a cookie or a header field.
+  id: totrans-361
+  prefs: []
+  type: TYPE_NORMAL
+  zh: URL 参数用于路由，将其附加到摘要没有意义。查询字符串用于与查询相关的事物，例如设置 `limit` 以限制搜索端点返回的结果数量；将信息附加到与查询无关的地方也没有意义。至于请求体；我们并不总是可以在请求体中包含摘要，因为一些端点，如更新个人资料，使用请求体来携带有效负载。这使我们只剩下使用
+    Cookie 或头字段。
+- en: HTTP cookies
+  id: totrans-362
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: HTTP Cookie
+- en: 'An HTTP cookie (such as a web cookie or browser cookie) is a very simple dictionary/key-value
+    store that a server can send to the client. It is sent by the server using the
+    `Set-Cookie` header. For example, a `Set-Cookie` header may look like this:'
+  id: totrans-363
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个 HTTP Cookie（如网页 Cookie 或浏览器 Cookie）是一个服务器可以发送到客户端的非常简单的字典/键值存储。它是通过 `Set-Cookie`
+    头由服务器发送的。例如，一个 `Set-Cookie` 头可能看起来像这样：
+- en: '[PRE48]'
+  id: totrans-364
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: Multiple `Set-Cookie` headers can be sent in the same response message to compose
+    the key-value store.
+  id: totrans-365
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以在同一个响应消息中发送多个 `Set-Cookie` 头，以组成键值存储。
+- en: 'What''s special about cookies is the fact that most browser clients will automatically
+    send this key-value store back with each subsequent request, this time inside
+    a `Cookie` header:'
+  id: totrans-366
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Cookie 的特别之处在于，大多数浏览器客户端都会在后续请求中自动将这个键值存储发送回去，这次是在 `Cookie` 头内部：
+- en: '[PRE49]'
+  id: totrans-367
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE49]'
+- en: Therefore, if we use a cookie to store the user's session ID in the browser,
+    it'll allow the server to determine whether the request comes from the same client,
+    because it will have the same session ID in the cookie.
+  id: totrans-368
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，如果我们使用 Cookie 在浏览器中存储用户的会话 ID，它将允许服务器确定请求是否来自同一客户端，因为 Cookie 中将包含相同的会话 ID。
+- en: The `Domain` directive of the cookie determines which domain (or subdomain)
+    the client will set the `Cookie` header for. For instance, a cookie set by `abc.xyz`
+    would only be sent back by the client for requests to `abc.xyz`, but not if the
+    request is going to `foo.bar`.
+  id: totrans-369
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Cookie 的 `Domain` 指令决定了客户端将为哪个域名（或子域名）设置 `Cookie` 头。例如，由 `abc.xyz` 设置的 Cookie
+    只会在客户端向 `abc.xyz` 发送请求时返回，而不会在请求将发送到 `foo.bar` 时返回。
+- en: Although cookies sound like a great idea, there are many disadvantages of using
+    cookies, especially if we are dealing with cross-domain and CORS. Because cookies
+    only work for that domain (or its subdomains), they are unable to authenticate
+    with a related service if it is under a different domain. For example, when our
+    platform expands from a simple user directory (deployed at `hobnob.social`) to,
+    say, a event organization application (`hobnob.events`), and we want to let users
+    who have logged in to `hobnob.social` also be automatically logged in to `hobnob.events`; this
+    cannot be done using cookies as the cookies are set by a different domain.
+  id: totrans-370
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然Cookie听起来是个好主意，但使用Cookie有很多缺点，尤其是在处理跨域和 CORS 的情况下。因为 Cookie 只适用于该域名（或其子域名），如果相关服务位于不同的域名下，它们将无法进行身份验证。例如，当我们的平台从简单的用户目录（部署在
+    `hobnob.social`）扩展到，比如说，一个活动组织应用（`hobnob.events`），并且我们希望让已经登录到 `hobnob.social`
+    的用户也能自动登录到 `hobnob.events`；由于 Cookie 是由不同域名设置的，这无法通过 Cookie 实现。
+- en: Cookies are also more convenient only for browsers; having to manage cookies
+    for non-browser clients is more of a hassle.
+  id: totrans-371
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于浏览器来说，Cookie 更加方便；对于非浏览器客户端来说，管理 Cookie 则更加麻烦。
+- en: Furthermore, cookies are also vulnerable to **Cross-Site Scripting** (**XSS**)
+    and **Cross-Site Request Forgery** (**XSRF**) attacks.
+  id: totrans-372
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，Cookie 也容易受到 **跨站脚本**（**XSS**）和 **跨站请求伪造**（**XSRF**）攻击。
+- en: Cross-Site Scripting (XSS)
+  id: totrans-373
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 跨站脚本（XSS）
+- en: 'XSS is where a malicious party injects some JavaScript into the page served
+    by the server. For instance, if the server does not sanitize comments, then a
+    malicious party can write the following comment:'
+  id: totrans-374
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 跨站脚本（XSS）是指恶意方将一些JavaScript注入由服务器提供的页面中。例如，如果服务器没有对评论进行清理，那么恶意方可以写入以下评论：
+- en: '[PRE50]'
+  id: totrans-375
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE50]'
+- en: '`document.cookie` is a global property that contains all the cookies set for
+    the current domain. Therefore, when the next visitor visits your site, they will
+    output the value of `document.cookie` and send it as a query string to `some.malicious.endpoint`.
+    Once the malicious party has obtained the visitor''s session IDs or tokens from
+    their cookies, they will be able to impersonate that user.'
+  id: totrans-376
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`document.cookie` 是一个全局属性，包含为当前域名设置的所有的cookie。因此，当下一个访问者访问您的网站时，他们将输出 `document.cookie`
+    的值，并将其作为查询字符串发送到 `some.malicious.endpoint`。一旦恶意方从访问者的cookie中获取到会话ID或令牌，他们就能冒充该用户。'
+- en: Cross-Site Request Forgery (XSRF)
+  id: totrans-377
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 跨站请求伪造（XSRF）
+- en: 'With XSRF, the malicious party will attempt to send a request to the target
+    application without the victim''s knowledge. For example, the malicious party
+    might have a website at `malicious.com`, and contains an `img` tag with the following
+    definition:'
+  id: totrans-378
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在XSRF的情况下，恶意方将尝试在受害者不知情的情况下向目标应用程序发送请求。例如，恶意方可能有一个位于 `malicious.com` 的网站，并包含以下定义的
+    `img` 标签：
+- en: '[PRE51]'
+  id: totrans-379
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE51]'
+- en: Now, when the victim visits `malicious.com`, their browser will send a `GET`
+    request to `http://target.app/change-password/?newPassword=foobar`, along with
+    any cookies for that domain. Therefore, if the user is already authenticated in
+    another browser tab, then this `GET` request would be received as if it was initiated
+    by the user.
+  id: totrans-380
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，当受害者访问 `malicious.com` 时，他们的浏览器将向 `http://target.app/change-password/?newPassword=foobar`
+    发送一个 `GET` 请求，并附带该域的任何cookie。因此，如果用户已经在另一个浏览器标签中进行了认证，那么这个 `GET` 请求就会像是由用户发起的一样被接收。
+- en: Cross-Site Scripting (XSS) is one of the OWASP Foundation's Top 10 Application
+    Security Risks. You can read more about XSS on OWASP's website ([owasp.org/index.php/Top_10-2017_A7-Cross-Site_Scripting_(XSS)](https://www.owasp.org/index.php/Top_10-2017_A7-Cross-Site_Scripting_(XSS))).
+    Similarly, XSRF also has a page on OWASP ([owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)](https://www.owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)))
+  id: totrans-381
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 跨站脚本（XSS）是OWASP基金会十大应用安全风险之一。您可以在OWASP网站上了解更多关于XSS的信息([owasp.org/index.php/Top_10-2017_A7-Cross-Site_Scripting_(XSS)](https://www.owasp.org/index.php/Top_10-2017_A7-Cross-Site_Scripting_(XSS))).
+    类似地，XSRF在OWASP上也有一个页面([owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)](https://www.owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF))).
+- en: HTTP headers
+  id: totrans-382
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: HTTP头部
+- en: Because using cookies is less secure, especially for browser clients, and because
+    it requires much more work for us to secure our API, we should not store and send
+    back our token using cookies. Instead, we should store the token using one of
+    the modern web storage APIs (`sessionStorage` or `localStorage`), and send it
+    back using HTTP header fields.
+  id: totrans-383
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于使用cookie的安全性较低，尤其是对于浏览器客户端，并且因为它需要我们做更多的工作来保护我们的API，所以我们不应该存储和发送我们的令牌使用cookie。相反，我们应该使用现代Web存储API（`sessionStorage`
+    或 `localStorage`）来存储令牌，并使用HTTP头部字段将其发送回来。
+- en: The Authorization header
+  id: totrans-384
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 授权头部
+- en: 'So, which HTTP header should we use? The common convention is to use the `Authorization` header,
+    which has the following syntax:'
+  id: totrans-385
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 那么，我们应该使用哪个HTTP头部呢？常见的做法是使用 `Authorization` 头部，其语法如下：
+- en: '[PRE52]'
+  id: totrans-386
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE52]'
+- en: The `type` is the **authentication type**, and the `credentials` are a representation
+    of the user's credentials. There are many types of authentication schemes supported,
+    such as `Basic`, `Bearer`, `Digest`, `Negotiate`, and `OAuth`, plus many more.
+    The most common schemes are `Basic` and `Bearer`.
+  id: totrans-387
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`type` 是 **认证类型**，而 `credentials` 是用户凭证的表示。支持许多类型的认证方案，例如 `Basic`、`Bearer`、`Digest`、`Negotiate`
+    和 `OAuth`，以及更多。最常见的是 `Basic` 和 `Bearer`。'
+- en: The **Internet Assigned Numbers Authority** (**IANA**) keeps a list of valid authentication
+    schemes in its registry at [iana.org/assignments/http-authschemes/http-authschemes.xhtml](http://www.iana.org/assignments/http-authschemes/http-authschemes.xhtml).
+  id: totrans-388
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**互联网数字分配机构**（**IANA**）在其注册表中维护一份有效的认证方案列表，该注册表位于[iana.org/assignments/http-authschemes/http-authschemes.xhtml](http://www.iana.org/assignments/http-authschemes/http-authschemes.xhtml)。'
+- en: The `Basic` scheme sends the credentials as a username/password pair separated
+    by a colon (for example, `username:password`), which are Base64-encoded. It is
+    also the most primitive and insecure form of authentication scheme, as the usernames
+    and passwords are transmitted as plaintext.
+  id: totrans-389
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`Basic` 方案将凭证作为冒号分隔的用户名/密码对发送（例如，`username:password`），这些凭证是 Base64 编码的。它也是最原始和不安全的认证方案，因为用户名和密码以明文形式传输。'
+- en: 'Instead, we will use the `Bearer` scheme, where the credential is the token
+    itself:'
+  id: totrans-390
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 相反，我们将使用 `Bearer` 方案，其中凭证是令牌本身：
+- en: '[PRE53]'
+  id: totrans-391
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE53]'
+- en: Writing tests
+  id: totrans-392
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 编写测试
+- en: Now that we have decided to attach our token using the `Authorization` header
+    with the `Bearer` scheme, our next action is to write the tests for this authentication
+    system. For our use cases, let's say that all endpoints that alter a user's document
+    (that is, all `POST`, `PATCH`, and `PUT` requests except `/login`) will require
+    a token where the `sub` property matches the ID of the user.
+  id: totrans-393
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 既然我们已经决定使用 `Bearer` 方案通过 `Authorization` 头部附加我们的令牌，我们的下一步是为此认证系统编写测试。对于我们的用例，让我们假设所有更改用户文档的端点（即，所有
+    `POST`、`PATCH` 和 `PUT` 请求，除了 `/login`）都需要一个令牌，其中 `sub` 属性与用户的 ID 匹配。
+- en: 'As always, we begin development by writing tests. Let''s start with the Delete
+    User endpoint, which should respond with the following:'
+  id: totrans-394
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 和往常一样，我们通过编写测试开始开发。让我们从删除用户端点开始，它应该响应如下：
+- en: '`200 OK` if the `Authorization` header is set to a well-formed credential (for
+    example, it has the structure `username:bcrypt-digest`. We will verify whether
+    these credentials correspond with a real user in the next step; right now, we
+    just care whether it has the correct structure.)'
+  id: totrans-395
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`200 OK` 如果 `Authorization` 头部设置为格式良好的凭证（例如，它具有 `username:bcrypt-digest` 的结构。我们将在下一步验证这些凭证是否与真实用户相对应；现在，我们只关心它是否有正确的结构。）'
+- en: '`400 Bad Request` if the `Authorization` header is set but its value is not
+    well-formed.'
+  id: totrans-396
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果 `Authorization` 头部已设置但其值不是格式良好的，则返回 `400 Bad Request`。
+- en: '`401 Unauthorized` if the `Authorization` header is not set at all, or if the
+    credentials do not match the specified user''s.'
+  id: totrans-397
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果 `Authorization` 头部根本未设置，或者凭证与指定的用户不匹配，则返回 `401 Unauthorized`。
+- en: '`403 Forbidden` if the user is trying to delete another user.'
+  id: totrans-398
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果用户尝试删除另一个用户，则返回 `403 Forbidden`。
+- en: '`404 Not Found` if the user to be deleted cannot be found.'
+  id: totrans-399
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果要删除的用户找不到，则返回 `404 Not Found`。
+- en: Features and scenarios
+  id: totrans-400
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 特性和场景
+- en: 'We must modify our existing E2E tests for Delete User to include these new
+    scenarios; the end result may look something like this:'
+  id: totrans-401
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们必须修改现有的删除用户 E2E 测试，以包括这些新场景；最终结果可能看起来像这样：
+- en: '[PRE54]'
+  id: totrans-402
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE54]'
+- en: First, we changed the background of the tests to create two users instead of
+    one; we do this so that, later on, we can test for the scenario where one user
+    tries to delete another user. Furthermore, we are also logging in the user in
+    the background and saving the authentication token returned into the context.
+  id: totrans-403
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，我们将测试的背景从创建一个用户改为创建两个用户；我们这样做是为了稍后测试一个用户尝试删除另一个用户的场景。此外，我们还在后台登录用户并将返回的认证令牌保存到上下文中。
+- en: Then, we added some tests for the authorization header, ensuring its format
+    is correct, its value looks well-formed, and the signature is valid. Lastly, we
+    added tests that ensure that only the user can delete him/herself. If he/she tries
+    to delete another user, it'll come back with a `403 Forbidden` error.
+  id: totrans-404
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，我们为 `Authorization` 头部添加了一些测试，确保其格式正确，其值看起来格式良好，并且签名有效。最后，我们添加了确保只有用户可以删除自己的测试。如果他/她尝试删除另一个用户，将会返回一个
+    `403 Forbidden` 错误。
+- en: Implementation step definitions
+  id: totrans-405
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现步骤定义
+- en: 'Then, in `spec/cucumber/steps/request.js`, implement the following step definition:'
+  id: totrans-406
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，在 `spec/cucumber/steps/request.js` 中实现以下步骤定义：
+- en: '[PRE55]'
+  id: totrans-407
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE55]'
+- en: Verifying the digest in the request
+  id: totrans-408
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 验证请求中的摘要
+- en: Now that we have added our tests, it's time to implement the feature. Since
+    we know that we want to check the token for most requests, we should not define
+    the token validation logic solely within the Delete User engine. Instead, we should
+    abstract all the generic validation steps (for example, the token is a valid JWT,
+    the signature is well-formed, and so on) into middleware.
+  id: totrans-409
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经添加了测试，是时候实现这个功能了。既然我们知道我们想要检查大多数请求的令牌，我们不应该仅在删除用户引擎中定义令牌验证逻辑。相反，我们应该将所有通用验证步骤（例如，令牌是有效的
+    JWT，签名格式良好等）抽象到中间件中。
+- en: 'To start, create a file at `src/middlewares/authenticate/index.js` with the
+    following boilerplate:'
+  id: totrans-410
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，在 `src/middlewares/authenticate/index.js` 创建一个包含以下模板的文件：
+- en: '[PRE56]'
+  id: totrans-411
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE56]'
+- en: 'First, we want to allow anyone to get a single user and search for users; therefore,
+    when the request is a `GET` request, we don''t need to validate the token. At
+    the top of the authenticate function, add the following check:'
+  id: totrans-412
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，我们希望允许任何人获取单个用户和搜索用户；因此，当请求是`GET`请求时，我们不需要验证令牌。在认证函数的顶部添加以下检查：
+- en: '[PRE57]'
+  id: totrans-413
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE57]'
+- en: 'Usually, before a browser sends a CORS request, it will send a **preflight
+    request** that checks to see whether the CORS protocol is understood. This request
+    uses the `OPTIONS` method, and thus we also don''t need to validate the token
+    for `OPTIONS` requests either:'
+  id: totrans-414
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通常，在浏览器发送CORS请求之前，它会发送一个**预检请求**来检查是否理解CORS协议。此请求使用`OPTIONS`方法，因此我们也不需要验证`OPTIONS`请求的令牌：
+- en: '[PRE58]'
+  id: totrans-415
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE58]'
+- en: 'Next, we also want unauthenticated users to be able to call the Create User
+    and Login endpoints. Just below the previous line, add the following early return
+    checks:'
+  id: totrans-416
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们还想让未认证的用户能够调用创建用户和登录端点。在上一行下面，添加以下早期返回检查：
+- en: '[PRE59]'
+  id: totrans-417
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE59]'
+- en: 'For any other endpoints, an `Authorization` header is required. Therefore,
+    we''ll next check for the presence of the `Authorization` header. If the header
+    is not set, then we will return with a `401 Unauthorizated` error:'
+  id: totrans-418
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于任何其他端点，都需要`Authorization`头。因此，我们将接下来检查`Authorization`头是否存在。如果头未设置，则返回`401
+    Unauthorizated`错误：
+- en: '[PRE60]'
+  id: totrans-419
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE60]'
+- en: 'Next, we check that the value of the Authorization is valid. First, we can
+    use the following code to check that a scheme is specified and is set to the value
+    `"Bearer"`:'
+  id: totrans-420
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们检查`Authorization`的值是否有效。首先，我们可以使用以下代码来检查是否指定了方案，并将其设置为值`"Bearer"`：
+- en: '[PRE61]'
+  id: totrans-421
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE61]'
+- en: 'Then, we will check that the token is a valid JWT. We do this by specifying
+    a regular expression and checking that the token specified in the header conforms
+    to this regular expression. This uses the `jsonwebtoken` library, so be sure to
+    import it at the top:'
+  id: totrans-422
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，我们将检查令牌是否是有效的JWT。我们通过指定一个正则表达式并检查在头中指定的令牌是否符合此正则表达式来完成此操作。这使用了`jsonwebtoken`库，所以请确保在顶部导入它：
+- en: '[PRE62]'
+  id: totrans-423
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE62]'
+- en: 'We have done all the relatively resource-light tasks, and exits early if these
+    base conditions are not met. In the last step for this middleware, we will actually
+    use the verify method to check that the payload is a valid JSON object and that
+    the signature is valid. If it is, then we will add a `user` property to the `req`
+    object with the ID of the user:'
+  id: totrans-424
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经完成了所有相对资源密集型任务，并在这些基本条件不满足时提前退出。在这个中间件的最后一步，我们将实际上使用验证方法来检查负载是否是有效的JSON对象，签名是否有效。如果是，那么我们将向`req`对象添加一个带有用户ID的`user`属性：
+- en: '[PRE63]'
+  id: totrans-425
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE63]'
+- en: 'To apply the middleware, add it inside `src/index.js` after all the other middlewares,
+    but before the route definitions:'
+  id: totrans-426
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要应用中间件，请将其添加到`src/index.js`中，在其他所有中间件之后，但在路由定义之前：
+- en: '[PRE64]'
+  id: totrans-427
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE64]'
+- en: 'However, we''re not quite done yet. The middleware only validates the token,
+    but it still doesn''t prevent a user from deleting another user. To implement
+    this, add the following lines to the top of the Delete User engine:'
+  id: totrans-428
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，我们还没有完成。中间件仅验证令牌，但它仍然不能阻止用户删除另一个用户。为了实现这一点，请将以下行添加到删除用户引擎的顶部：
+- en: '[PRE65]'
+  id: totrans-429
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE65]'
+- en: 'And in the Delete User handler, define an if block to catch the `Forbidden`
+    error and return a `403 Forbidden` status code:'
+  id: totrans-430
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在删除用户处理程序中，定义一个if块来捕获`Forbidden`错误并返回`403 Forbidden`状态码：
+- en: '[PRE66]'
+  id: totrans-431
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE66]'
+- en: If we run the E2E tests for the Delete User endpoint, they should all pass!
+    Now, follow the same steps to add authentication and authorization logic to the
+    Replace Profile and Update Profile endpoints. Start by updating the E2E tests,
+    and then update the engine and handlers to handle scenarios where a user is trying
+    to perform an operation they are not allowed to.
+  id: totrans-432
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们运行删除用户端点的端到端测试，它们都应该通过！现在，按照相同的步骤将身份验证和授权逻辑添加到替换个人资料和更新个人资料端点。首先更新端到端测试，然后更新引擎和处理程序以处理用户尝试执行他们无权执行的操作的情况。
+- en: Also, update the unit and integration tests, add more tests if you feel it's
+    necessary, and then commit your code to the remote repository.
+  id: totrans-433
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，更新单元和集成测试，如果觉得有必要，添加更多测试，然后将代码提交到远程仓库。
+- en: If you get stuck, check out our implementation from the code bundle we've provided.
+    Do this before moving on to the next chapter.
+  id: totrans-434
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果遇到困难，请查看我们提供的代码包中的实现。在进入下一章之前做这件事。
+- en: Next steps
+  id: totrans-435
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 下一步
+- en: As we mentioned at the beginning of this chapter, the authentication/authorization
+    scheme we have presented here is very basic, and you'll need to take further steps
+    to truly secure it. Here, we will briefly cover some more measures you can implement
+    to further improve the security of your API.
+  id: totrans-436
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如我们在本章开头提到的，我们在这里提出的认证/授权方案非常基础，你需要采取进一步的步骤来真正确保其安全性。在这里，我们将简要介绍一些你可以实施的措施来进一步提高你API的安全性。
+- en: Preventing man-in-the-middle (MITM) attacks
+  id: totrans-437
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 防止中间人（MITM）攻击
+- en: At the moment, we rely on the client to hash their password before sending it
+    over the wire. We do this so that our clients don't have to trust our API server
+    with their credentials. The digest is now effectively being used as a password.
+  id: totrans-438
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 目前，我们依赖于客户端在发送到网络之前对他们的密码进行哈希处理。我们这样做是为了让我们的客户端不必信任我们的API服务器来处理他们的凭证。摘要现在实际上被用作密码。
+- en: However, any proxy servers which sits between our client and our server would
+    be able to read the digest, and can authenticate using those "stolen" credentials
+    and masquerade as our client.
+  id: totrans-439
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，任何位于我们的客户端和服务器之间的代理服务器都能够读取摘要，并可以使用这些“被盗”的凭证进行认证，伪装成我们的客户端。
+- en: Another issue is that although our API server is able to authenticate the client,
+    the client has no way of verifying our server's identity. Again, proxy servers
+    can masquerade as our API server and trick the client into sending sensitive information
+    to them.
+  id: totrans-440
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个问题是我们虽然能够验证客户端，但客户端没有验证我们服务器身份的方法。同样，代理服务器可以伪装成我们的API服务器，诱骗客户端向它们发送敏感信息。
+- en: To only way to reliably prevent both of these issues is to implement **end-to-end
+    encryption** (**E2EE**) of the connection using **Hyper Text Transfer Protocol
+    Secure** (**HTTPS**), the secure version of HTTP. To use HTTPS, you'd need to
+    set up an SSL/TLS certificate for your domain, and register that certificate with
+    an established and reputable **Certificate Authority** (**CA**).
+  id: totrans-441
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要可靠地防止这两个问题的唯一方法是在连接上实施**端到端加密**（**E2EE**），使用**超文本传输协议安全**（**HTTPS**），这是HTTP的安全版本。要使用HTTPS，你需要为你的域名设置SSL/TLS证书，并将该证书注册到一个建立良好且信誉良好的**证书颁发机构**（**CA**）。
+- en: When a client wants to securely send an HTTP message (which may contain credentials)
+    over HTTPS, they would ask the CA for our site's certificate, and encrypt the
+    HTTP message using the certificate. Encryption obfuscates the message and prevents
+    third parties from deciphering the message. Only the server has the key to decrypt
+    this message, so even if there are malicious proxy servers intercepting the messages,
+    they would not be able to understand it.
+  id: totrans-442
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当客户端想要通过HTTPS安全地发送一个HTTP消息（可能包含凭证）时，他们会向CA请求我们网站的证书，并使用该证书加密HTTP消息。加密会隐藏消息并防止第三方解密消息。只有服务器才有解密此消息的密钥，所以即使有恶意代理服务器拦截消息，它们也无法理解它。
+- en: Read more about MITM attacks on OWASP's website at [owasp.org/index.php/Man-in-the-middle_attack](https://www.owasp.org/index.php/Man-in-the-middle_attack).
+  id: totrans-443
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在OWASP网站上了解更多关于中间人攻击的信息：[owasp.org/index.php/Man-in-the-middle_attack](https://www.owasp.org/index.php/Man-in-the-middle_attack)。
+- en: If you want to enable HTTPS on the API, the Linux Foundation provides a free
+    CA called Let's Encrypt ([letsencrypt.org](https://letsencrypt.org/)). It also
+    provides a tool called Certbot ([certbot.eff.org](https://certbot.eff.org/)),
+    which enables you to automatically deploy Let's Encrypt certificates. Feel free
+    to try it out!
+  id: totrans-444
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你想在API上启用HTTPS，Linux Foundation提供了一个名为Let's Encrypt的免费CA（[letsencrypt.org](https://letsencrypt.org/)）。它还提供了一个名为Certbot的工具（[certbot.eff.org](https://certbot.eff.org/)），它允许你自动部署Let's
+    Encrypt证书。不妨试试看！
+- en: Encrypting digests
+  id: totrans-445
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 加密摘要
+- en: Using our current scheme, the digests created by the client are stored directly
+    in the database. Now, if hackers were to gain access to the database server, they
+    would be able to authenticate as any user. Furthermore, since the attacker would
+    have both the digest and salt, they could potentially brute-force a user's password.
+  id: totrans-446
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用我们当前的方案，客户端创建的摘要直接存储在数据库中。现在，如果黑客能够访问数据库服务器，他们就能够以任何用户的身份进行认证。此外，由于攻击者将同时拥有摘要和盐值，他们可能能够通过暴力破解用户的密码。
+- en: 'One way to mitigate this issue is to use a **pepper**—a variation of a salt,
+    with the following differences:'
+  id: totrans-447
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一种减轻这种问题的方法是用一个**盐值**——盐值的一种变体，具有以下不同之处：
+- en: The pepper is not public
+  id: totrans-448
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 盐值不是公开的
+- en: The pepper is not stored in the database, but on another application server,
+    so that the pepper is separate from the salt
+  id: totrans-449
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 盐值不存储在数据库中，而是在另一个应用服务器上，这样盐值和盐值就分开了
+- en: The pepper may be a constant that's set in the application server as an environment
+    variable
+  id: totrans-450
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: pepper 可能是一个在应用程序服务器中设置为环境变量的常量
+- en: 'Here''s how the authentication method would work with the pepper: the client
+    sends the salted password digest to the server, who hashes the digest again with
+    the pepper and stores the double-hashed digest in the database.'
+  id: totrans-451
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是使用 pepper 的身份验证方法将如何工作：客户端将加盐的密码摘要发送到服务器，服务器再次使用 pepper 对摘要进行哈希处理，并将双哈希摘要存储在数据库中。
+- en: Now, if a hacker were to gain access to the database server (but not the application
+    code), he/she will have the password digest and salt, but since he/she does not
+    know the pepper (or, better still, even of the existence of a pepper), he/she
+    would not be able to use the digest to authenticate (because our server would
+    hash it again, and the resulting hash would not match the digest we have in the
+    database). Furthermore, the attacker won't be able to derive the original password,
+    even if they spent the time and resources to brute-force it.
+  id: totrans-452
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，如果一个黑客能够访问数据库服务器（但不是应用程序代码），他/她将能够获得密码摘要和盐，但由于他/她不知道 pepper（或者更好的是，甚至不知道
+    pepper 的存在），他/她将无法使用摘要进行身份验证（因为我们的服务器会再次对其进行哈希处理，而得到的哈希值将不会与数据库中我们拥有的摘要匹配）。此外，即使攻击者花费时间和资源进行暴力破解，他们也无法推导出原始密码。
+- en: However, peppers are only useful if your application server is secure. If the
+    secret pepper is ever known, it cannot be retracted, as all our passwords were
+    hashed with the pepper; since hashing is a one-way process, we cannot regenerate
+    all password hashes with a new pepper. The inability to rotate this secret pepper
+    makes this type of pepper unmaintainable.
+  id: totrans-453
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，只有当您的应用程序服务器安全时，pepper 才是有用的。如果秘密 pepper 任何时候被知晓，它就不能被撤回，因为所有我们的密码都是与 pepper
+    哈希的；由于哈希是一个单向过程，我们无法使用新的 pepper 重新生成所有密码哈希。无法轮换这个秘密 pepper 使得这种类型的 pepper 无法维护。
+- en: An alternative to this is to not re-hash the salted password digest, but use
+    a reversible **block cipher** to reversibly encrypt the digests instead.
+  id: totrans-454
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 作为替代方案，可以不重新哈希加盐的密码摘要，而是使用可逆的**块加密**来可逆地加密摘要。
+- en: Block cipher
+  id: totrans-455
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 块加密
+- en: 'A block cipher, an algorithm for **symmetric-key encryption**, takes two parameters—a **plaintext** and
+    a **key**—and runs them through the algorithm to generate a **ciphertext**. The
+    idea is to generate a seemingly random ciphertext so that the plaintext input
+    cannot be deduced from the ciphertext (much like hashing):'
+  id: totrans-456
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 块加密是一种用于**对称密钥加密**的算法，它接受两个参数——一个**明文**和一个**密钥**，并将它们通过算法进行处理以生成一个**密文**。其想法是生成一个看似随机的密文，以便无法从密文中推断出明文输入（就像哈希一样）：
+- en: '[PRE67]'
+  id: totrans-457
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE67]'
+- en: 'However, unlike hashing, block ciphers are reversible; given the ciphertext
+    and the key, the plaintext can be regenerated:'
+  id: totrans-458
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，与哈希不同，块加密是可逆的；给定密文和密钥，可以重新生成明文：
+- en: '[PRE68]'
+  id: totrans-459
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE68]'
+- en: Using a block cipher on our digest instead of applying a pepper means that if
+    our application server (and thus the pepper) was compromised, we can run a simple
+    function on our database that decrypts the ciphertext back to the digest and re-encrypt
+    it using a new key.
+  id: totrans-460
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的摘要上使用块加密而不是应用 pepper 意味着，如果我们的应用程序服务器（以及因此 pepper）被破坏，我们可以在数据库上运行一个简单的函数，将密文解密回摘要，并使用新的密钥重新加密。
+- en: Exploring the Secure Remote Password (SRP) protocol
+  id: totrans-461
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 探索安全的远程密码（SRP）协议
+- en: '**Secure Remote Password protocol** (**SRP**) is an industry-standard protocol
+    for password-based authentication and key exchange. Like our rudimentary scheme,
+    the password never has to leave the client. It is able to securely authenticate
+    a user even in the following situations:'
+  id: totrans-462
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**安全远程密码协议**（**SRP**）是一个行业标准协议，用于基于密码的认证和密钥交换。像我们的基本方案一样，密码永远不需要离开客户端。它能够在以下情况下安全地验证用户：'
+- en: Attackers have complete knowledge of the protocol
+  id: totrans-463
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 攻击者完全了解协议
+- en: Attackers have access to a large dictionary of commonly used passwords
+  id: totrans-464
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 攻击者可以访问一个常用密码的大字典
+- en: Attackers can eavesdrop on all communications between client and server
+  id: totrans-465
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 攻击者可以监听客户端和服务器之间的所有通信
+- en: Attackers can intercept, modify, and forge arbitrary messages between client
+    and server
+  id: totrans-466
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 攻击者可以拦截、修改和伪造客户端和服务器之间的任意消息
+- en: A mutually trusted third party is not available
+  id: totrans-467
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 没有可用的相互信任的第三方
+- en: This list was extracted from SRP's official website ([srp.stanford.edu/whatisit.html](http://srp.stanford.edu/whatisit.html))
+  id: totrans-468
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此列表是从 SRP 的官方网站提取的 ([srp.stanford.edu/whatisit.html](http://srp.stanford.edu/whatisit.html))
+- en: SRP is used by **Amazon Web Services** (**AWS**) and Apple's iCloud, among others.
+    So if security is something that interests you, I'd recommend doing some reading
+    on SRP!
+  id: totrans-469
+  prefs: []
+  type: TYPE_NORMAL
+  zh: SRP被**亚马逊网络服务**（**AWS**）和苹果的iCloud等使用。所以如果你对安全性感兴趣，我建议你阅读一些关于SRP的资料！
+- en: Summary
+  id: totrans-470
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 摘要
+- en: In this chapter, we implemented the logic to allow users to authenticate themselves
+    to our API server. We also used JSON web tokens to keep our application stateless;
+    this is important when we want to scale your application, something which we will
+    discuss in [Chapter 18](5d093a43-720f-4ea8-aac0-b64b13f96d12.xhtml), *Robust Infrastructure
+    with Kubernetes*.
+  id: totrans-471
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们实现了允许用户对我们的API服务器进行身份验证的逻辑。我们还使用了JSON Web Tokens来保持我们的应用程序无状态；当我们想要扩展应用程序时，这一点很重要，我们将在[第18章](5d093a43-720f-4ea8-aac0-b64b13f96d12.xhtml)“使用Kubernetes的强大基础设施”中讨论这一点。
+- en: However, it is important to remember that security is not an easy undertaking.
+    What we've covered in this chapter is only a small part of the puzzle. You should
+    view this chapter as a first step in securing your application, and always stay
+    informed about the latest security holes and best practices.
+  id: totrans-472
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，重要的是要记住，安全性并非易事。在本章中我们所涵盖的只是这个谜题的一小部分。你应该将本章视为保护你的应用程序的第一步，并且始终关注最新的安全漏洞和最佳实践。
+- en: In the next chapter, we will finish up our backend API by documenting our API
+    using **OpenAPI** and **Swagger**.
+  id: totrans-473
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一章中，我们将通过使用**OpenAPI**和**Swagger**来记录我们的API，来完成我们的后端API。
