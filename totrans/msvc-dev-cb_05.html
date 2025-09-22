@@ -1,11 +1,11 @@
 <html><head></head><body>
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">Reliability Patterns</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <p class="mce-root">In this chapter, we will cover the following recipes:</p>
 <ul>
@@ -19,64 +19,64 @@
 </ul>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">Introduction</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <p>Reliability is becoming an increasingly popular topic in the world of distributed systems. Job postings for <strong>Site Reliability Engineers</strong> (<strong>SRE</strong>) or <strong>chaos engineers</strong> are becoming common, and as more and more organizations move toward cloud-native technologies, it's becoming impossible to ignore that system failure is always a reality. Networks will experience congestion, switches, other hardware components will fail, and a whole host of potential failure modes in systems will surprise us in production. It is impossible to completely prevent failures, so we should try to design our systems to be as tolerant of failure as possible.  </p>
 <p>Microservices provide interesting and useful opportunities to design for reliability. Because microservices encourage us to break our systems into services encapsulating single responsibilities, we can use a number of useful reliability patterns to isolate failures when they do occur. Microservice architectures also present a number of challenges when planning for reliability. Increased reliance on network requests, heterogeneous configurations, multiple data stores and connection pools, and different technical stacks all contribute to an inherently more complex environment where different styles of failure modes can surface.</p>
 <p>Whether dealing with a microservice architecture or a monolith code base, we all find ourselves fundamentally surprised [1] (you can check this link for more information: <a href="https://www.youtube.com/watch?v=tZ2wj2pxO6Q">https://www.youtube.com/watch?v=tZ2wj2pxO6Q</a>) by the behavior of a system under some kind of failure state at one point or another. Building resiliency into our systems from the start allows us to optimize how we react in these situations. In this chapter, we'll discuss a number of useful reliability patterns that can be used when designing and building microservices to prepare for and reduce the impact of system failures, both expected and unexpected.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">Using circuit breakers</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <p>Failures in distributed systems can be difficult to debug. A symptom (spikes in latency or a high error rate) can appear far away from the underlying cause (slow database query, garbage collection cycles causing a service to slow down the processing of requests). Sometimes a complete outage can be the result of a failure in a small part of the system, especially when components of the system are having difficulty handling increases in load.</p>
 <p>Whenever possible, we want to prevent failures in one part of a system from cascading to other parts, causing widespread and hard-to-debug production issues. Furthermore, if a failure is temporary, we'd like our system to be able to self-repair when the failure is over. If a specific service is experiencing problems because of a temporary spike in load, we should design our system in such a way that it prevents requests to the unhealthy service, allowing it time to recover before beginning to send it traffic again. </p>
 <p>Circuit breakers are used in houses to prevent the overuse of electricity from heating up the internal wiring and burning the house down. A circuit is tripped if the breaker detects that it is being overused and cannot handle the amount of current being drawn from it. After some time passes, the circuit can be closed again, allowing the system to function normally.</p>
 <p>This same approach can be translated to software and applied to microservice architectures. When a service invokes another service, we should wrap the RPC call in a circuit breaker. If the request fails repeatedly, indicating that the service is unhealthy, the circuit breaker is opened, preventing any further requests from being attempted. The invoking service can then "fail fast" and decide how to handle the failure mode. After a configurable period of time, we can allow another request through, and if it succeeds, close the circuit again, allowing the system to resume normal operation. You can a look at the following related flowchart:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/e1b37656-3fa1-43e4-9872-321809e991ed.png" style="width:29.42em;height:12.25em;"/></div>
+<div><img src="img/e1b37656-3fa1-43e4-9872-321809e991ed.png" style="width:29.42em;height:12.25em;"/></div>
 <p>Libraries that implement circuit breakers are available for most popular programming languages. The Hystrix fault-tolerance library, built by Netflix and used in previous recipes is one such library. Some frameworks, such as Twitter's Finagle, automatically wrap RPCs in circuit breakers, keeping track of failures and automatically managing the state of the breaker. Open source service-mesh software, such as <strong>Conduit</strong> and <strong>Linkerd</strong>, automatically add circuit breakers to RPCs as well. In this recipe, we'll introduce a library called <kbd>resilience4j</kbd> and use its circuit breaker implementation to allow calls from one service to another to fail fast in the event of a failure threshold being reached. To make the example more concrete, we'll modify a message service, which calls a socialgraph service to determine whether two users follow each other, and wrap RPC calls in a circuit breaker.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">How to do it...</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <p>To demonstrate wrapping service invocations in circuit breakers, we're going to create a version of the <kbd>pichat</kbd> message service that exposes endpoints for sending and retrieving messages. To send a message from a sender to a recipient, those two users must have a friendship. Friendships are handled by a social-graph-service. For the sake of simplicity, we'll code up a simple mock social-graph-service in Ruby, as we have done in previous recipes. The mock service will expose a single endpoint that lists friendships for a specified user. Here is the source code for the mock social-graph-service in Ruby:</p>
 <pre>require 'sinatra'<br/>require 'json'<br/><br/>get '/friendships/:username' do<br/>  content_type :json<br/>  {<br/>    'username': params[:username],<br/>    'friendships': [<br/>      'pichat:users:johndoe',<br/>      'pichat:users:janesmith',<br/>      'pichat:users:anotheruser'<br/>    ]<br/>  }.to_json<br/>end</pre>
-<div class="packt_infobox">In our mock service, we're using strings in the <kbd>pichat:users:username</kbd> format to identify users in our system. These are pseudo-URIs, which uniquely identify users in our system. For now, just know that these are unique strings used to identify users in our system.</div>
+<p>In our mock service, we're using strings in the <kbd>pichat:users:username</kbd> format to identify users in our system. These are pseudo-URIs, which uniquely identify users in our system. For now, just know that these are unique strings used to identify users in our system.</p>
 <p>Our mock social-graph-service exposes the following single endpoint:</p>
 <pre>GET /friendships/paulosman</pre>
 <p>The preceding endpoint returns a JSON response body representing the friendships that the requested user has:</p>
@@ -131,23 +131,23 @@
 <p>Now our service wraps dangerous network calls in a circuit breaker, preventing failures in the social-graph-service from cascading to the message service. In the event of a temporary failure in the social-graph-service, the message service will eventually fail fast and allow the social-graph-service time to recover. You can test this by forcing the mock-social-graph service to return an error code—that's left as a fun exercise for the reader! </p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">Retrying requests with exponential backoff</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <p>Failure in distributed systems is inevitable. Instead of trying to prevent failure entirely, we want to design systems that are capable of self-repair. To accomplish this, it is essential to have a good strategy for clients to follow when initiating retries. A service may become temporarily unavailable or experience a problem that requires manual response from an on-call engineer. In either scenario, clients should be able to queue and then retry requests to be given the best chance of success. </p>
 <p>Retrying endlessly in the event of an error is not an effective tactic. Imagine a service starts to experience a higher-than-normal failure rate, perhaps even failing 100% of requests. If clients all continuously enqueue retries without ever giving up, you'll end up with a thundering-herd problem—clients continuously retrying requests without limit. As the timeline of the failure progresses, more clients will experience failures, resulting in more retries. You'll end up with a traffic pattern, illustrated by the following diagram, which is a similar graph to the one you'll see during a denial-of-service attack. The end result will be the same—cascading failures due to overwhelmed services and a shedding of legitimate traffic. Your application will become unusable and the failing service will be harder to isolate and repair:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/9ab2b33d-c4c1-4421-bd88-deaecaf2d6c1.png" style="width:40.08em;height:24.17em;"/></div>
+<div><img src="img/9ab2b33d-c4c1-4421-bd88-deaecaf2d6c1.png" style="width:40.08em;height:24.17em;"/></div>
 <p>The solution to prevent thundering herds is to add a backoff algorithm that exponentially increases the wait period between retries and gives up after a certain number of failures. This approach is referred to as capped exponential backoff. Adding an exponentially-increasing sleep function between retries accomplishes half of what we're after—clients will slow down their retry attempts, distributing load over time. Unfortunately, client retries will still be clustered, resulting in periods of time where your service is being hammered by many concurrent requests. The second half of our strategy addresses this problem by adding a randomized value or jitter to our sleep function to distribute the retries over time. To summarize, our retry strategy has the following three requirements:</p>
 <ul>
 <li>Retries must be spaced out using an exponential backoff</li>
@@ -157,19 +157,19 @@
 <p>Most HTTP libraries will have support for a retry strategy that meets these requirements. In this recipe, we'll look at the HTTP <kbd>client</kbd> library for Java written by Google.  </p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">How to do it...</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <ol>
 <li>To demonstrate using exponential backoff and jitter, we're going to create a sample service in Ruby that has one simple job: to return an HTTP status that indicates a failure. In previous recipes, we've used the <kbd>sinatra</kbd> Ruby library to do this, so we'll continue with this, a service that simply returns a <kbd>503</kbd> HTTP status code for every request, as shown here:</li>
@@ -192,38 +192,38 @@
 </ol>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">Improving performance with caching</h1>
-                </header>
-            
-            <article>
                 
-<p>Microservices should be designed in such a way that a single service is usually the only thing that reads or writes to a particular data store. In this model, services have full ownership over the domain models involved in the business capability they provide. Having clean boundaries makes it easier to think about the life cycle of data in a system. Some <span>models</span> in our system will change frequently, but many will be read much more often than they are written. In these cases, we can use a cache to store infrequently changed data, saving us from having to make a request to the database every time the object is requested. Database queries are typically more expensive than cache lookups, so it's ideal to use a cache whenever possible. </p>
+            
+            
+                
+<p>Microservices should be designed in such a way that a single service is usually the only thing that reads or writes to a particular data store. In this model, services have full ownership over the domain models involved in the business capability they provide. Having clean boundaries makes it easier to think about the life cycle of data in a system. Some models in our system will change frequently, but many will be read much more often than they are written. In these cases, we can use a cache to store infrequently changed data, saving us from having to make a request to the database every time the object is requested. Database queries are typically more expensive than cache lookups, so it's ideal to use a cache whenever possible. </p>
 <p>In addition to help improve performance, having an effective caching layer can help improve the reliability of a service. It's impossible to guarantee 100% availability for a database, so in the event of a database failure, a service can revert to serving cached data. In most cases, it's preferable for a user to receive some data, even if it's old and potentially out of date, than to receive no data at all. Having a cache layer allows you to configure your service to use it as another source of available data to serve to users of your service.</p>
 <p>In this recipe, we'll create a simple example service that serves information about users of your application. It will have two endpoints, the first will accept POST requests and will persist a properly formed user to a database. The second will retrieve a user representation by the ID specified. IDs are stored as UUIDs, which is preferable to autoincrementing IDs for many reasons, which we'll go into in later chapters. We'll start with the basic service, then add caching so we can see specifically what steps are required. In this recipe, we'll use Redis, a popular open source in-memory data-structure store that is particular useful for storing key-value pairs. </p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">How to do it...</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <ol>
 <li>Create a Gradle Java project called caching-user-service with the following <kbd>build.gradle</kbd> file. Note that we're adding dependencies for <strong>Java Persistence API</strong> (<strong>JPA</strong>) and a Java MySQL <kbd>client</kbd> library:</li>
@@ -263,42 +263,42 @@
 </ol>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">Fronting your services with a CDN</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <p>The <strong>Content Delivery Network</strong> (<strong>CDN</strong>) improves performance and availability by delivering content through a globally distributed network of proxy servers. When a user (usually through their mobile device) makes a request to your API through a CDN, they will create a network connection with one of many <strong>points of presence</strong> (<strong>PoPs</strong>), based on their geographic location. Instead of having to make roundtrips to the origin data center for every single request, content can be cached at the edge of a CDN, greatly reducing the response time for the user and reducing unnecessary, costly traffic to the origin. </p>
 <p>CDNs are a requirement if you plan to have a global user base. If every request to your application's API has to perform a full roundtrip to a single origin, you'll create a subpar experience for users in parts of the world physically distant from the data center that you host your applications in. Even if you host your applications in multiple data centers, you'll never be able to create as high-performing an experience for as many users as you can using a CDN. </p>
 <p>In addition to performance, CDNs can improve the availability of your application. As we discussed in the previous recipe, many entities in your system are read much more frequently than they are written. In these cases, you can configure your CDN to cache payloads from a service for a specific amount of time (commonly specified by a TTL or time-to-live). Caching responses from your service reduces the amount of traffic to your origin, making it harder to run out of capacity (compute, storage, or network). Additionally, if your service starts to experience high latency, or total or partial failure, the CDN can be configured to serve cached responses instead of continuing to send traffic to a failing service. This allows you to at least be able to serve content to users in the event of service downtime.</p>
 <p>Some CDN providers have APIs that allow you to automatically invalidate a resource. In these cases, you can instrument your microservice to invalidate a resource just as you would using a Redis- or Memcached-based cache, as discussed in the previous recipe. </p>
-<p>There are many different CDN providers out there. Some of the large ones include <strong>Akamai</strong> and <strong>Edgecast</strong>. Amazon Web Services provides a CDN offering, called CloudFront, that can be configured to serve requests to origin servers in AWS or static resources hosted in S3 buckets. One of the more developer-friendly offerings in the CDN market is from a company called <strong>Fastly</strong>. Fastly is built using <strong>Varnish</strong>, an<span> open source web-application accelerator</span><span>.</span></p>
-<p><span>As a provider, Fastly allows you to upload your own</span> <strong>Varnish Configuration Language</strong> <span>(</span><strong>VCL</strong><span>) files, effectively allowing you to create caching rules based on any aspect of the request (incoming headers, path segments, query string parameters, and so on). Additionally, Fastly provide a</span> <strong>Fast Purge API</strong> <span>that allows you to invalidate resources based on a URI. </span></p>
+<p>There are many different CDN providers out there. Some of the large ones include <strong>Akamai</strong> and <strong>Edgecast</strong>. Amazon Web Services provides a CDN offering, called CloudFront, that can be configured to serve requests to origin servers in AWS or static resources hosted in S3 buckets. One of the more developer-friendly offerings in the CDN market is from a company called <strong>Fastly</strong>. Fastly is built using <strong>Varnish</strong>, an open source web-application accelerator.</p>
+<p>As a provider, Fastly allows you to upload your own <strong>Varnish Configuration Language</strong> (<strong>VCL</strong>) files, effectively allowing you to create caching rules based on any aspect of the request (incoming headers, path segments, query string parameters, and so on). Additionally, Fastly provide a <strong>Fast Purge API</strong> that allows you to invalidate resources based on a URI. </p>
 <p>In this recipe, we'll go through the basic steps required to create an account with a CDN provider and start serving traffic through a CDN. We'll do this with a hypothetical service made accessible to the public internet with the hostname <kbd>api.pichat.me</kbd>. The service authenticates requests by inspecting the value of the Authorization header of the incoming request for a valid OAuth2 bearer token.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">How to do it...</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <ol>
 <li>Create an account with Fastly, the CDN provider we'll be using in this example. As of this writing, the signup URL is <kbd>https://www.fastly.com/signup</kbd>. </li>
@@ -308,37 +308,37 @@
 </ol>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">Gracefully degrading the user experience</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <p>We understand by now that a certain amount of failure is inevitable. In a sufficiently complex system, some amount of failure will occur some of the time. By using the techniques in this chapter, we can try and reduce the likelihood that one of these failures will impact customers. Regardless of how much we try to prevent it from happening, some kind of failure will probably impact the customer experience at some point in your applications lifespan. Users, however, can be surprisingly compassionate in the face of system outages, provided the user experience degrades gracefully. </p>
 <p>Consider this scenario: you are using an application that allows you to browse a catalog of products and look for local stores that carry that product, along with important information such as its address, phone number, and store hours. Let's say the service that provides information about local stores becomes unavailable. This clearly impacts the user experience in a less-than-ideal way, but the application can handle the failure in more than one way. The worst way, which would probably result in the worst user experience, would be to allow the failure to cascade and take down the product catalog. A slightly better way would be to allow the user to continue searching for products, but when they go to find a local store that carries the product, they're informed via some kind of information box that the local store information is currently unavailable. This is frustrating, but at least they can still look at product information, such as price, models, and colors. It would be better still to recognize that the service was not operating and have some kind of informational banner informing the user that local store information is temporarily unavailable. With this information, we can inform the user of the situation, allowing them to decide whether they'd still like to go ahead and search for products. The experience is suboptimal, but we would avoid unnecessarily frustrating the user.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">Verifying fault tolerance with Gameday exercises</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <p>This chapter contains recipes that should help you create more reliable, resilient microservice architectures. Each recipe documents a pattern or technique for anticipating and dealing with some kind of failure scenario. Our aim when building resilient systems is to tolerate failure with as little impact to our users as possible. Anticipating and designing for failure is essential when building distributed systems, but without verifying that our systems handle failure in the ways we expect, we aren't doing much more than hoping, and hope is definitely not a strategy! </p>
 <p>When building systems, unit and functional tests are necessary parts of our confidence-building toolkit. However, these tools alone are not enough. Unit and functional tests work by isolating dependencies, good unit tests, for instance, don't rely on network conditions, and functional tests don't involve testing under production-level traffic conditions, instead focusing on various software components working together properly under ideal conditions. To gain more confidence in the fault tolerance of a system, it's necessary to observe it responding to failure in production. </p>
@@ -347,37 +347,37 @@
 <p class="mce-root">Instead of walking through code, this recipe will demonstrate a process and template that can be used to run Gameday exercises. The following is not the only way to conduct Gameday exercises, but one that should serve as a good starting point for your organization.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">Prerequisites</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <p>As always, there are some prerequisites you should ensure you meet before attempting to run a Gameday exercise. Specifically, your teams should be used to instrumenting code with the necessary metrics and alerts to provide a good degree of observability into your production environment. Your teams should have experience working within a well-understood and practiced incident-response process that includes having regular retrospectives to continuously improve in light of production incidents.</p>
 <p>Finally, your organization should be accustomed to talking openly about failure and unexpected production incidents, and be committed to processes that encourage continuous improvement. These prerequisites should suggest that your teams have the necessary organizational support and psychological safety to conduct these kinds of resiliency exercises.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">How to do it...</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <ol>
 <li>The first step in a Gameday exercise is selecting a system that will be tested. When you're just getting started with Gamedays, it's wise to select a system that is well understood, has failed before, and has a limited blast radius in terms of the impact on users. </li>
@@ -392,19 +392,19 @@
 </ol>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">A template for Gameday exercises</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <p class="mce-root">The following template can be used for planning and executing a Gameday exercise.<br/>
 <br/>
@@ -426,19 +426,19 @@
 <p class="mce-root">Create tickets for any follow-up work that should be done as a result of the experiment.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">Introducing automated chaos</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <p>Running manual Gameday exercises is a great way to introduce the practice of failure injection. Forcing failures in production helps build confidence in the resilience of systems and identifies opportunities for improvement. Gameday helps teams gain a better overall understanding of how their systems behave when confronted with a number of failure scenarios. As a team conducts more exercises, it will start to accumulate tools for performing common tasks, such as introducing latency in the network or spiking CPU usage. Tooling helps automate mundane tasks, improving the efficiency of Gameday exercises. There are a variety of open source and commercial tools designed to automate chaos engineering that teams can take advantage of right away. </p>
 <p>Gameday exercises are planned and scheduled. Some organizations go one step further and introduce continuous failure injection as a way of ensuring that systems are handling common failure scenarios smoothly. In early 2011, Netflix announced the creation of the Simian Army—a suite of tools designed to inject common failures into a production environment. Arguably the most famous member of the Simian Army, Chaos Monkey, randomly shuts down nodes in a production environment. The Simian Army tools have been open sourced and are available to use in your own organization. They can be scheduled to run as part of a Gameday exercise, or set up to run on specific schedules (that is, Monday to Friday, 9 a.m. to 5 p.m., when on-call engineers are usually in the office).</p>
@@ -447,22 +447,22 @@
 <p>Another open source tool is the Chaos toolkit, a CLI tool designed to make it easier to design and run experiments. In this recipe, we'll install the Chaos toolkit and use it to execute a simple experiment against a hypothetical user service. The user service will be the same one we wrote in the <em>Improving performance with caching</em> recipe earlier in this chapter. </p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     
 
-        <section>
+        
 
-                            <header>
+                            
                     <h1 class="header-title">How to do it...</h1>
-                </header>
+                
             
-            <article>
+            
                 
 <ol>
-<li>The Chaos toolkit is written in Python and can be installed using <kbd>pip</kbd>. We'll need a working Python3 environment. This recipe will assume you are installing it on macOS X using Homebrew. First, install <kbd>pyen</kbd><span>—</span>a utility that supports managing multiple Python development environments, as shown here:</li>
+<li>The Chaos toolkit is written in Python and can be installed using <kbd>pip</kbd>. We'll need a working Python3 environment. This recipe will assume you are installing it on macOS X using Homebrew. First, install <kbd>pyen</kbd>—a utility that supports managing multiple Python development environments, as shown here:</li>
 </ol>
 <pre style="color: black;padding-left: 60px"><strong>$ brew install pyenv</strong></pre>
 <ol start="2">
@@ -472,7 +472,7 @@
 <ol start="3">
 <li>With a newly-installed Python3 environment, go ahead and install the Chaos toolkit by executing the following command line:</li>
 </ol>
-<pre class="mce-root" style="padding-left: 60px"><span> </span><strong>$ pip install -U chaostoolkit</strong></pre>
+<pre class="mce-root" style="padding-left: 60px"> <strong>$ pip install -U chaostoolkit</strong></pre>
 <ol start="4">
 <li>The Chaos toolkit uses the JSON files to describe experiments. Each experiment should have a title, description, and optionally some tags used to categorize experiments. The <kbd>steady-state-hypothesis</kbd> section describes how the service is expected to behave under normal conditions. In our situation, we assume that the service will return either <kbd>200</kbd> in the event that a user is found, or <kbd>404</kbd> in the event that a user has not been found:</li>
 </ol>
@@ -486,8 +486,8 @@
 </ol>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </body></html>
