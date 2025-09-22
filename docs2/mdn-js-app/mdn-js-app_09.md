@@ -1,4 +1,4 @@
-# 第九章 Bootstrap 4 的新特性
+Bootstrap 4 的新特性
 
 **Bootstrap 4** 是撰写本文时的最新版本 Bootstrap。这个版本使 Bootstrap 更加强大、易于自定义和使用。在本章中，你将通过示例了解 Bootstrap 4 的新特性。我将假设你已经对 Bootstrap 有一些了解，并且知道如何使用它创建响应式网站。如果你是 Bootstrap 或响应式网页设计的新手，你可以在 Packt 目录中找到从零开始学习 Bootstrap 的好书。从本章开始，我们将使用 Bootstrap 4 设计我们将要构建的所有项目。
 
@@ -14,7 +14,7 @@
 
 +   响应式 CSS 单位
 
-# 下载 Bootstrap 4
+# 第九章：下载 Bootstrap 4
 
 要下载 Bootstrap 4，首先访问 [`v4-alpha.getbootstrap.com/getting-started/download/`](http://v4-alpha.getbootstrap.com/getting-started/download/)。在这里，你可以找到根据你使用的包管理器下载 Bootstrap 4 的各种方法。如果你使用的包管理器不在列表中，或者你根本不使用包管理器，你也可以直接下载编译版本。此页面还提供了一个下载源文件的链接。
 

@@ -1,4 +1,4 @@
-# 使用 RGB LED 构建交互式项目
+# 第三章：使用 RGB LED 构建交互式项目
 
 现在我们已经使用 Johnny-Five 和 Raspi-IO 构建了一个项目，现在是时候处理 GPIO 扩展器和 PWM 输出了，并使用 RGB LED 构建一个交互式项目。我们还将了解更多关于 Johnny-Five REPL 的信息，了解 PWM 引脚的工作原理，并使用这些知识从命令行控制 RGB LED。
 

@@ -1,4 +1,4 @@
-# 设置您的开发环境
+# 第一章：设置您的开发环境
 
 欢迎您！本书旨在帮助您开始使用 Raspberry Pi、Node.js 和 Johnny-Five 框架用 JavaScript 编写机器人代码。本章将详细介绍 Raspberry Pi 是什么以及我们将如何使用它，并帮助您准备好开发环境。
 

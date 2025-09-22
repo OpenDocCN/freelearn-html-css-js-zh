@@ -1,4 +1,4 @@
-# TypeScript 入门
+# 第一章：TypeScript 入门
 
 在本章中，我们将探讨 TypeScript 并了解如何在新的项目或现有的 JavaScript 项目中使用 TypeScript。我们将看到如何适应你当前的构建环境。TypeScript 可以由各种构建工具支持，例如 Grunt、Gulp、webpack 或简单地通过使用 **命令行界面**（**CLI**）。我们还探讨了在所有可用的选项中，开始使用 TypeScript 的最佳选项。
 

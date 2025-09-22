@@ -1,4 +1,4 @@
-# 创建您的第一个 Johnny-Five 项目
+# 第二章：创建您的第一个 Johnny-Five 项目
 
 现在我们已经设置了开发环境，是时候开始编写代码并让 LED 发光了！我们将从运行 Johnny-Five 机器人的“Hello World！”开始：让 LED 闪烁。在这个过程中，我们将了解如何导航 Johnny-Five 和 Raspi-IO API 文档，并检查 Johnny-Five 的事件系统。
 

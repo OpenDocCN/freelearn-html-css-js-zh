@@ -1,4 +1,4 @@
-# 介绍 TypeScript
+# 第一章：介绍 TypeScript
 
 本书旨在为您提供 TypeScript 的功能、其限制和其生态系统的广泛概述。您将了解 TypeScript 语言、开发工具、设计模式和推荐实践。
 

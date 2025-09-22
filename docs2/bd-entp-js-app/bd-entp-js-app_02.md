@@ -1,4 +1,4 @@
-# JavaScript 的现状
+# 第二章：JavaScript 的现状
 
 JavaScript 一直未被传统地视为后端语言；那个领域属于 Java、Python、C/C++、C#/.NET、PHP、Ruby 等语言。JavaScript 只是一个允许网页开发者添加动画以改善其美学的“玩具语言”。但随着 **Node.js** 的出现，这一切都改变了。有了 Node.js，开发者现在可以编写在服务器端以及客户端执行的 JavaScript 代码。换句话说，开发者现在可以使用 *同一种语言* 编写前后端代码！
 

@@ -1,4 +1,4 @@
-# 第七章 利用 MEAN 堆栈
+利用 MEAN 堆栈
 
 MEAN 堆栈是 MongoDB、Express、AngularJS 和 Node.js 的缩写。它代表仅使用 JavaScript 进行全栈开发的实践。自然，你需要一些 HTML 和 CSS 来将内容渲染到浏览器中，并使其看起来更美观。
 
@@ -22,7 +22,7 @@ AngularJS 是一个主要用于构建单页 Web 应用程序的前端 JavaScript
 
 +   使用 Angular 构建前端应用程序的基本组件
 
-# Node.js 环境
+# 第七章：Node.js 环境
 
 Node.js 是一个用于执行 JavaScript 的运行时环境。使用它，你可以构建强大的软件，例如完整的后端 Web 服务器。在*第一章*，*使用 NPM、Bower 和 Grunt 进行组织*中，你开始使用一些基于 Node.js 的工具，如 Grunt、NPM 和 Node 包管理器。
 

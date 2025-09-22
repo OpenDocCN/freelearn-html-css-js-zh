@@ -1,4 +1,4 @@
-# 从数据生成图形 - D3 的基础
+# 第三章：从数据生成图形 - D3 的基础
 
 我们已经获得了我们的工具箱并复习了 SVG 的基础知识。现在是时候探索 D3.js 了。D3 是 Protovis ([`mbostock.github.io/protovis/`](http://mbostock.github.io/protovis/)) 库的进化。如果你已经深入研究数据可视化并对为你的网络应用制作图表感兴趣，你可能已经使用过这个库。还存在其他库，它们可以通过渲染图形的速度以及与不同浏览器的兼容性来区分。例如，Internet Explorer 不支持 SVG，但使用其自己的实现，VML。这使得 `Raphaël.js` 库成为一个极佳的选择，因为它可以自动映射到 VML 或 SVG。另一方面，jqPlot 使用简单，其简单的 jQuery 插件界面允许开发者快速采用它。
 

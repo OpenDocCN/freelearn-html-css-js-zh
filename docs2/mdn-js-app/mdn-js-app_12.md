@@ -1,4 +1,4 @@
-# 第十二章 Angular 2 的新特性
+Angular 2 的新特性
 
 Angular 1 基于 MVC 架构，而 Angular 2 基于组件和服务架构。Angular 1 和 Angular 2 在架构和 API 方面完全不同，因此对 Angular 1 的了解不太可能对学习 Angular 2 有很大帮助。在本章中，我们将学习 Angular 2，而不将其与 Angular 1 进行比较，因为这样做会引发混淆，且不必要。即使你没有 Angular 1 的知识，你也可以继续本章。
 
@@ -22,7 +22,7 @@ Angular 1 基于 MVC 架构，而 Angular 2 基于组件和服务架构。Angula
 
 更多内容...
 
-# Angular 2 架构
+# 第十二章：Angular 2 架构
 
 Angular 2 是一个基于服务和组件架构构建 Web 应用程序客户端的框架。
 

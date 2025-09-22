@@ -1,4 +1,4 @@
-# 将您的聊天机器人发布到 Facebook、Slack、Twilio 和 HTTP
+# 第七章：将您的聊天机器人发布到 Facebook、Slack、Twilio 和 HTTP
 
 我们已经学习了如何使用 Amazon Lex 构建各种聊天机器人，但目前，其他人无法访问它们。在本章中，我们将学习如何将我们的聊天机器人部署到 Facebook、Slack 和 Twilio。我们还将学习如何将 Lex 与我们的前端集成，并创建一个 HTTP 端点，以实现更灵活的集成。
 

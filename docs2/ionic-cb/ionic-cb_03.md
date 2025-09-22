@@ -1,4 +1,4 @@
-# 使用 Angular 构建块扩展 Ionic
+# 第三章：使用 Angular 构建块扩展 Ionic
 
 在本章中，我们将介绍与创建自定义组件、指令和过滤器相关的以下任务，使用 Angular：
 

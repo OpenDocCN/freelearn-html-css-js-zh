@@ -1,4 +1,4 @@
-# 探索 ServiceNow Glide 类
+# 第二章：探索 ServiceNow Glide 类
 
 在本章中，我们将探索 ServiceNow Glide 类。我们将查看允许开发者方便且快速编写 ServiceNow 脚本的公开 JavaScript API。然后，我们将查看服务器和客户端上的不同类，最后查看一些常用类的示例。
 

@@ -1,4 +1,4 @@
-# 使用 Angular 和 TypeScript 进行前端开发
+# 第十二章：使用 Angular 和 TypeScript 进行前端开发
 
 在本章中，我们将学习如何使用 Angular 和 TypeScript 开发前端网页应用程序。就像在上一章一样，我们将尝试使用我们之前实现的后端 Node.js 应用程序。我们将开发的应用程序是上一章中开发的前端应用程序的克隆。
 
