@@ -1,0 +1,1241 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Migrating to Docker</h1>
+                </header>
+            
+            <article>
+                
+<p>So far, we have focused on developing the backend and frontend of our application, and have paid little attention to our infrastructure. In the next two chapters, we will focus on creating a scalable infrastructure using Docker and Kubernetes.</p>
+<p>So far, we’ve manually configured two Virtual Private Servers (VPSs), and deployed each of our backend APIs and client applications on them. As we continue to develop our applications on our local machine, we test each commit locally, on Travis CI, and on our own Jenkins CI server. If all tests pass, we use Git to pull changes from our centralized remote repository on GitHub and restart our application. <span>While this approach works for simple apps with a small user base, it will not hold up for enterprise software.</span></p>
+<p>Therefore, we'll begin this chapter by understanding why manual deployment should be a thing of the past, and the steps we can make towards full automation of the deployment process. Specifically, by following this chapter, you will learn:</p>
+<ul>
+<li>What <strong>Docker</strong> and what containers in general is,</li>
+<li>How to download and run Docker images</li>
+<li>How to compose your own <kbd>Dockerfile</kbd> and use it to containerize parts of our application</li>
+<li>How to optimize an image</li>
+</ul>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Problems with manual deployment</h1>
+                </header>
+            
+            <article>
+                
+<p class="FirstParagraph"><span>Here are some of the weaknesses in our current approach:</span></p>
+<ul>
+<li><strong>Lack of consistency</strong>: Most enterprise-level applications are developed by a team. It is likely that each team member will use a different operating system, or otherwise configure their machine differently from others. This means that the environment of each team members’ local machine will be different from each other, and by extension, from the production servers'. Therefore, even if all our tests pass locally, it does not guarantee that it will pass on production.</li>
+<li><strong>Lack of independence</strong>: When a few services depend on a shared library, they must all use the same version of the library.</li>
+<li><strong>Time-consuming and error-prone</strong>: Every time we want a new environment (staging/production) or the same environment in multiple locations, we need to manually deploy a new VPS instance and repeat the same steps to configure users, firewalls, and install the necessary packages. This produces two problems:
+<ul>
+<li><strong>Time-consuming</strong>: Manual setup can take anything from minutes to hours.</li>
+<li><strong>Error-prone</strong>: Humans are prone to errors. Even if we have carried out the same steps hundreds of times, a few mistakes will creep in somewhere.</li>
+<li>Furthermore, this problem scales with the complexity of the application and deployment process. It may be manageable for small applications, but for larger applications composed of dozens of microservices, this becomes too chaotic.</li>
+</ul>
+</li>
+<li><strong>Risky deployment</strong>: Because the job of server configuration, updating, building, and running our application can only happen at deployment time, there’s more risk of things going wrong when deploying.</li>
+<li><strong>Difficult to maintain</strong>: Managing a server/environment does not stop after the application has been deployed. There will be software updates, and your application itself will be updated. When that happens, you’d have to manually enter into each server and apply the update, which is, again, time-consuming and error-prone.</li>
+<li><strong>Downtime</strong>: Deploying our application on a single server means that there’s a single point of failure (SPOF). This means that if we need to update our application and restart, the application will be unavailable during that time. Therefore, applications developed this way cannot guarantee high availability or reliability.</li>
+<li><strong>Lack of version control</strong>: With our application code, if a bug was introduced and somehow slipped through our tests and got deployed on to production, we can simply rollback to the last-known-good version. The same principles should apply to our environment as well. If we changed our server configuration or upgraded a dependency that breaks our application, there’s no quick-and-easy way to revert these changes. The worse case is when we indiscriminately upgrade multiple packages without first noting down the previous version, then we won’t even know how to revert the changes!</li>
+<li><strong>Inefficient distribution of resources</strong>: Our API, frontend client, and Jenkins CI are each deployed on their own VPS, running their own operating system, and controlling their own isolated pool of resources. First of all, running each service on its own server can get expensive quickly. Right now, we only have three components, but a substantial application may have dozens to hundreds of individual services. Furthermore, it’s likely that each service is not utilizing the full capabilities of the server. It is important to have a buffer at times of higher load, but we should minimize unused/idle resources as much as possible:</li>
+</ul>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/4f9fb1b5-4f15-4c32-afd9-96feb2895d82.png" style="width:28.17em;height:9.33em;"/></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Introduction to Docker</h1>
+                </header>
+            
+            <article>
+                
+<p>Docker is an open source project that provides the tools and ecosystem for developers to build and run applications inside containers.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">What are containers?</h1>
+                </header>
+            
+            <article>
+                
+<p>Containerization is a method of virtualization. Virtualization is a method of running a virtual instance of a computer system inside a layer abstracted from the hardware. Virtualization allows you to run multiple operating systems on the same physical host machine.</p>
+<p class="mce-root"/>
+<p>From the view of an application running inside a virtualized system, it has no knowledge or interaction with the host machine, and may not even know that it is running in a virtual environment.</p>
+<p>Containers are a type of virtual system. Each container is allocated a set amount of resources (CPU, RAM, storage). When a program is running inside a container, its processes and child processes can only manipulate the resources allocated to the container, and nothing more.</p>
+<p>You can view a container as an isolated environment, or sandbox, on which to run your application.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Workflow</h1>
+                </header>
+            
+            <article>
+                
+<p>So, what's a typical workflow for running a program (or programs) inside a container?</p>
+<p>First, you'd specify the setup of your environment and application inside a <em>Dockerfile</em>, where each line is a step in the setup process:</p>
+<pre>FROM node:8<br/>RUN yarn<br/>RUN yarn run build<br/>CMD node dist/index.js</pre>
+<p>Then, you’d actually carry out the steps specified in the Dockerfile to generate an <em>image</em>. An image is a static, immutable file that contains the executable code of our application. The image is self-contained and includes our application code, as well as all of its dependencies such as system libraries and tools.</p>
+<p>Then, you'd use Docker to run the image. A running instance of an image is a container. Your application runs inside that container.</p>
+<p>By analogy, a Dockerfile contains the instructions on assembling an electric motor. You follow the instructions to generate the motor (image), and you can add electricity to the motor to make it run (container).</p>
+<p>The only difference between Docker and our analogy is that many Docker containers can run on top of the same Docker image.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How does Docker solve our issues?</h1>
+                </header>
+            
+            <article>
+                
+<p class="FirstParagraph"><span>Now that we know what Docker is, and have a rough idea of how to work with it, let’s see how Docker can patch up the flaws in our current workflow:</span></p>
+<ul>
+<li><strong>Provides consistency</strong>: We can run multiple containers on the same image. Because setup and configuration are done on the image, all of our containers will have the same environment. By extension, this means that a test that passes in our local Docker instance would pass on production. This is also known as <em>reproducibility</em>, and reduce cases where a developer says “But it works on my machine!”. Furthermore, a Docker container should have all dependencies packaged inside it. This means it can be deployed anywhere, regardless of the operating system. Ubuntu Desktop, Red Hat Enterprise Linux Server, MacOS <span>– </span>it doesn’t matter.</li>
+<li><strong>Provides independence</strong>: Every container includes all of its own dependencies, and can choose whichever version it wants to use.</li>
+<li><strong>Saves time and reduces errors</strong>: Each setup and configuration step used to build our image is specified in code. Therefore, the steps can be carried out automatically by Docker, mitigating the risk of human error. Furthermore, once the image is built, you can reuse the same image to run multiple containers. Both of these factors mean a huge saving in man-hours.</li>
+<li><strong>Risky deployment</strong>: Server configuration and building of our application happen at build time, and we can test the running of the container beforehand. The only difference between our local or staging environment, and the production environment, would be the differences in hardware and networking.</li>
+<li><strong>Easier to maintain</strong>: When an update to the application is required, you’d simply update your application code and/or Dockerfile, and build the image again. Then, you can run these new images and reconfigure your web server to direct requests at the new containers, before retiring the outdated ones.</li>
+<li><strong>Eliminate downtime</strong>: We can deploy as many instances of our application as we want with ease, as all it requires is a single <kbd>docker run</kbd> command. They can run in parallel as our web server begins directing new traffic to the updated instances, while waiting for existing requests to be fulfilled by the outdated instances.</li>
+<li><strong>Version control</strong>: The Dockerfile is a text file, and should be checked into the project repository. This means that if there’s a new dependency for our environment, it can be tracked, just like our code. If our environment starts to produce a lot of errors, rolling back to the previous version is as simple as deploying the last-known-good image.</li>
+<li><strong>Improve efficient usage of resources</strong>: Since containers are standalone, they can be deployed on any machine. However, this also means multiple containers can be deployed on the same machine. Therefore, we can deploy the more lightweight or less mission-critical services together on the same machine:</li>
+</ul>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/966d8339-227b-4649-ac48-407cc96aaf57.png" style="width:19.75em;height:7.08em;"/></div>
+<p>For instance, we can deploy our frontend client and Jenkins CI on the same host machine. The client is lightweight as it’s a simple static web server, and Jenkins is used in development and is fine if it is slow to respond at times.</p>
+<p>This has the added benefit that two services share the same OS, meaning the overall overhead is smaller. Furthermore, pooling resources, leads to an overall more efficient use of our resources:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/1d4e7ed3-59b2-4bde-8012-2d1c15738b19.png" style="width:23.83em;height:18.33em;"/></p>
+<p class="FirstParagraph"><span>All of these benefits stem from the fact that our environments are now specified as code.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Mechanics of Docker</h1>
+                </header>
+            
+            <article>
+                
+<p>So, now that you understand <em>why</em> we need Docker, and, at a high level, <em>how</em> to work with Docker, let’s turn our attention to <em>what</em> a Docker container and image actually are.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">What is a Docker container?</h1>
+                </header>
+            
+            <article>
+                
+<p>Docker is based on Linux Containers (LXC), a containerization technology built into Linux. LXC itself relies on two Linux kernel mechanisms <span>–</span> <strong>control groups</strong> and <strong>namespaces</strong>. So, let's briefly examine each one in more detail.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Control groups</h1>
+                </header>
+            
+            <article>
+                
+<p class="FirstParagraph"><span>Control groups (cgroups) separate processes by groups, and attach one or more subsystems to each group:</span></p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/9b2d9ba5-cda9-4fed-a028-fae6f8a8bd2b.png" style="width:12.92em;height:14.83em;"/></div>
+<div>
+<p>The subsystem can restrict the resource usage of each attached group. For example, we can place our application's process into the foo cgroup, attach the memory subsystem to it, and restrict our application to using, say, 50% of the host’s memory.</p>
+<p>There are many different subsystems, each responsible for different types of resources, such as CPU, block I/O, and network bandwidth.</p>
+</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Namespaces</h1>
+                </header>
+            
+            <article>
+                
+<p>Namespaces package system resources, such as filesystems, network access, and so on, and present them to a process. From the view of the process, it does not even know that there are resources outside of its allocation.</p>
+<p><span>One of the resources that can be namespaced is process IDs (PIDs). In Linux, PIDs are organized as a tree, with the system’s initiation process (</span><kbd>systemd</kbd><span>) given the PID 1, and located at the root of the tree.</span></p>
+<p>If we namespace PIDs, we are masking a child process from the rest of the processes, by resetting the root of the child process to have a PID of 1. This means descendant processes will treat the child process as if it is a root, and they will have no knowledge of any other processes past that point:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/68a3b66b-5163-4ad0-9d8b-64a34673e3fd.png" style="width:30.75em;height:23.75em;"/></div>
+<p>You can view your system's process tree by running <kbd>pstree</kbd> in your terminal.</p>
+<p>The combination of the two Linux kernel mechanisms described here allows us to have containers that are isolated from each other (using namespaces) and restricted in resources (using control groups). Each container can have its own filesystem, networks, and so on in isolation from other containers on the same host machine.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">LXC and Docker</h1>
+                </header>
+            
+            <article>
+                
+<p>It’s important to note that Docker is <em>not</em> a new containerization technology—it is not replacing LXC. Rather, it is providing a standard way to define, build, and run LXCs using Dockerfile and the wider Docker toolchain.</p>
+<p>In fact, on 22nd June 2015, Docker, CoreOS, and other leaders in the container industry established the Open Container Initiative (OCI: <a href="https://www.opencontainers.org/">opencontainers.org</a>), a project that aims to create open industry standards around container formats and runtimes. The OCI has an open governance structure, and has support from the Linux Foundation.</p>
+<p>Currently, the OCI provides two standard specifications:</p>
+<ul>
+<li>Image Specification (image-spec: <a href="https://github.com/opencontainers/image-spec">github.com/opencontainers/image-spec</a>): This specifies how an image definition should be formatted. For instance, the OCI image should be composed of an <em>image manifest</em>, an <em>image configuration</em>, and a <em>filesystem (layer) serialization</em>.</li>
+<li>Runtime Specification (runtime-spec: <a href="https://github.com/opencontainers/runtime-spec">github.com/opencontainers/runtime-spec</a>) This specifies how a system may run an OCI-compliant image. Docker donated its container format and runtime, runC (<a href="https://github.com/opencontainers/runc">github.com/opencontainers/runc</a>), to the OCI.</li>
+</ul>
+<p class="FirstParagraph"><span>Apart from heavily contributing to the OCI standards, Docker has also made working with containers easier by providing tools that abstract low-level processes (like managing control groups) away from the end user, and providing a registry (Docker Hub) where developers can share and fork each other's images.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Virtual Machines</h1>
+                </header>
+            
+            <article>
+                
+<p>It’s also important to note that containers are not the only method of virtualization. Another common method to provide an isolated, virtual environment is by using <em>Virtual Machines</em> (VMs).</p>
+<p>The purpose of a Virtual Machine is similar to that of a container—providing an isolated virtual environment—but the mechanics of it is quite different.</p>
+<p>A VM is an emulated computer system that runs on top of another computer system. It does this via a <em>hypervisor—</em>a program that has access to the physical hardware and manages the distribution and separation of resources between different VMs.</p>
+<p>The hypervisor is the software that separates the hardware layer from the virtual environments, as shown in the following diagram:</p>
+<p class="mce-root CDPAlignCenter CDPAlign"><img src="assets/916e129e-bbd7-4270-843e-4e1def882d1e.png" style="width:17.92em;height:11.67em;"/></p>
+<p>Hypervisors can be embedded in the system hardware and runs directly on it, at which point they are known as Type 1 hypervisors, that is, native, bare-metal, or embedded hypervisors. They may also run on top of the host’s operating system, at which point they are known as Type 2 hypervisors.</p>
+<p>Type 1 hypervisor technology has been part of Linux since 2006, when it introduced the <em>Kernel-based Virtual Machine</em> (KVM).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Containers versus Virtual Machines</h1>
+                </header>
+            
+            <article>
+                
+<p>When comparing containers with VMs, here are the major differences:</p>
+<ul>
+<li>Virtual machines are an emulation of an entire computer system (full virtualization), including emulated hardware. This means users can interact with emulated, virtual hardware such as a network card, graphics adapter, CPUs, memory, and disks.</li>
+<li>Virtual Machines use more resources because they are <em>hardware virtualization</em>, or <em>full virtualization</em>, as opposed to containers, which are virtualized at the operating system (OS) level.</li>
+<li>Processes inside a container are run directly on the host machine’s kernel. Multiple containers on the same machine would all shares the host’s kernel. In contrast, processes inside a VM runs on the VM's own virtual kernel and OS.</li>
+<li>Processes which run inside a container are isolated by namespaces and control group. Processes running inside a VM are separated by the emulated hardware.</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">What is a Docker image?</h1>
+                </header>
+            
+            <article>
+                
+<p>We now know what a Docker container is, and how it is implemented at a high level. Let’s shift our focus onto Docker images, which are what containers are running on top of.</p>
+<p>Remember, a Docker image is a data file which contains our application and all of its dependencies, packaged into one entity. Let’s take a look at the anatomy of a Docker image, which will put us in good stead when we want to build our own image.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Images are layered</h1>
+                </header>
+            
+            <article>
+                
+<p>An image is an ordered list of <em>layers</em>, where each layer is an operation used to set up the image and container. These operations may include setting/updating system configuration, environment variables, installation of libraries or programs, and so on. These operations are specified inside a <em>Dockerfile</em>. Therefore, every layer corresponds to an instruction in the image’s Dockerfile.</p>
+<p>For instance, if we are to generate a Docker image for our backend API, we need it to have the Node ecosystem installed, have our application code copied over, and our application built using yarn. Therefore, our image may have the following layers (lower layers are run first):</p>
+<ul>
+<li>Run <kbd>yarn run build</kbd></li>
+<li>Copy application code inside the image</li>
+<li>Install a specific version of Node and yarn</li>
+<li>[Using a base Ubuntu image]</li>
+</ul>
+<p>Each of these operations produces a layer, which can be viewed as a <em>snapshot</em> of the image at this point of the setup process. The next layer depends on the previous layer.</p>
+<p>In the end, you get an ordered list of sequentially-dependent layers, which makes up the final image. This final image can then be used as a base layer for another image—an image is simply a set of sequential, dependent, read-only layers.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Running a container</h1>
+                </header>
+            
+            <article>
+                
+<p>To tie up everything you've learned so far about containers, images, and layers, let’s take a look at what happens when we run a container.</p>
+<p>When running a container, a new writable <em>container layer</em> is created on top of the read-only image (which is composed of read-only layers):</p>
+<p class="mce-root CDPAlignCenter CDPAlign"><img src="assets/33ba984c-49f4-46cd-8cbc-ee300283bff6.jpg" style="width:20.75em;height:14.92em;"/></p>
+<p>Any file changes are contained within the container layer. This means that when we are done with a container, we can simply exit the container (remove the writable container layer), and all changes will be discarded.</p>
+<p>We won’t go into too much detail here, but you can persist files from a container by writing to a mounted volume, and you can keep the changes in your current container by creating a new image based on those changes using <kbd>docker commit</kbd>.</p>
+<p>Because a container is simply an isolated, writable layer on top of a stateless, read-only image, you can have multiple containers sharing access to the same image.</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/f65e34c1-2290-4ebe-8a01-1ef3b44ed456.jpg" style="width:30.75em;height:20.08em;"/></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Setting up the Docker Toolchain</h1>
+                </header>
+            
+            <article>
+                
+<p>You now know the why's, what's, and how's, so it's now time to solidify our understanding by Dockerizing our existing application.</p>
+<p>Let’s start by installing Docker. This will allow us to generate images and run them as containers on our local machine.</p>
+<p>There are two <em>editions</em> of Docker—<strong>Community Edition</strong> (<strong>CE</strong>) and <strong>Enterprise Edition</strong> (<strong>EE</strong>). We will be using the <span><span>CE</span></span>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Adding the Docker package repository</h1>
+                </header>
+            
+            <article>
+                
+<p>Docker is on the official Ubuntu repository, but that version is likely to be out of date. Instead, we will download Docker from Docker's own official repository.</p>
+<p>First, let's install the packages that'll ensure <kbd>apt</kbd> can use the Docker repository over HTTPS:</p>
+<pre><strong>$ sudo apt install -y apt-transport-https ca-certificates curl software-properties-common</strong></pre>
+<p>Then, add Docker's official GPG key. This allows you to verify that the Docker package you have downloaded has not been corrupted:</p>
+<pre><strong>$ curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -</strong></pre>
+<p>The preceding command uses <kbd>curl</kbd> to download the GPG key and add it to <kbd>apt</kbd>. We can then use <kbd>apt-key</kbd> to verify that the key has the fingerprint <kbd>9DC8 5822 9FC7 DD38 854A  E2D8 8D81 803C 0EBF CD88</kbd>:</p>
+<pre><strong>$ sudo apt-key fingerprint 0EBFCD88</strong><br/> <br/><strong> pub 4096R/0EBFCD88 2017-02-22</strong><br/><strong> Key fingerprint = 9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88</strong><br/><strong> uid Docker Release (CE deb) &lt;docker@docker.com&gt;</strong><br/><strong> sub 4096R/F273FCD8 2017-02-22</strong></pre>
+<div class="packt_infobox"><strong>Please note that your fingerprint may be different.</strong> Always refer to the latest key published publicly on the Docker website.</div>
+<p class="mce-root"/>
+<p>Then, add the Docker repository to the list of repositories for the apt search for when it's trying to find a package:</p>
+<pre><strong>$ sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"</strong></pre>
+<p>Finally, update the apt package index so that apt is aware of the packages in the Docker repository:</p>
+<pre><strong>$ sudo apt update</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Installing Docker</h1>
+                </header>
+            
+            <article>
+                
+<p>Docker is now available on the official Docker package registry as docker-ce. But before we install docker-ce, we should remove older versions of Docker that may be on our machine:</p>
+<pre><strong>$ sudo apt remove -y docker docker-engine docker.io</strong></pre>
+<p>Now, we can install <kbd>docker-ce</kbd>:</p>
+<pre><strong>$ sudo apt install -y docker-ce</strong></pre>
+<p>Verify if the installation is working by running <kbd>sudo docker version</kbd>. You should get an output similar to the following:</p>
+<pre><strong>$ sudo docker version</strong><br/><strong>Client:</strong><br/><strong> Version:      18.03.1-ce</strong><br/><strong> API version:  1.37</strong><br/><strong> Go version:   go1.9.5</strong><br/><strong> Git commit:   9ee9f40</strong><br/><strong> Built:        Thu Apr 26 07:17:38 2018</strong><br/><strong> OS/Arch:      linux/amd64</strong><br/><strong> Experimental: false</strong><br/><strong> Orchestrator: swarm</strong><br/><br/><strong>Server:</strong><br/><strong> Engine:</strong><br/><strong>  Version:      18.03.1-ce</strong><br/><strong>  API version:  1.37 (minimum version 1.12)</strong><br/><strong>  Go version:   go1.9.5</strong><br/><strong>  Git commit:   9ee9f40</strong><br/><strong>  Built:        Thu Apr 26 07:15:45 2018</strong><br/><strong>  OS/Arch:      linux/amd64</strong><br/><strong>  Experimental: false</strong></pre>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Docker Engine, Daemon, and Client</h1>
+                </header>
+            
+            <article>
+                
+<p>We’ve successfully installed Docker, but, as alluded to earlier, Docker is actually a suite of tools. When we "install Docker", we are actually installing the <em>Docker Engine</em>.</p>
+<p>The Docker Engine consists of the following:</p>
+<ul>
+<li>The Docker daemon (mysqld, which runs as a background process):
+<ul>
+<li>a lightweight container runtime that runs your container</li>
+<li>Tools that you need to build your images</li>
+<li>Tools to handle a cluster of containers, such as networking, load balancing, and so on</li>
+</ul>
+</li>
+<li>The Docker client (mysql), a command-line interface that allows you to interact with the Docker daemon</li>
+</ul>
+<p>The Docker daemon and client, together, make up the Docker Engine. This is similar to how npm and node get bundled together.</p>
+<p>Docker daemon exposes a REST API, which the Docker client uses to interact with the Docker daemon. This is similar to how the <kbd>mysql</kbd> client interacts with the <kbd>mysqld</kbd> daemon, or how your terminal shell provides you with an interface to interact with your machine.</p>
+<p class="mce-root CDPAlignCenter CDPAlign"><img src="assets/3e08e1f7-7372-4a90-9f42-6d60978069bf.png" style="width:16.08em;height:12.08em;"/></p>
+<p>We now have Docker installed and are ready to use it to run our application.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Running Elasticsearch on Docker </h1>
+                </header>
+            
+            <article>
+                
+<p>The easiest component of our application to Dockerize is Elasticsearch. It is easy because we don't need to write our own Dockerfile <span>–</span> the Docker image for the most current versions of Elasticsearch are already provided by Elastic. We just need to download the image and run them in place of our local Elasticsearch installation.</p>
+<p>Elastic provides three types of Elasticsearch images:</p>
+<ul>
+<li><kbd>elasticsearch</kbd> (basic): Elasticsearch with X-Pack Basic features pre-installed and automatically activated with a free license</li>
+<li><kbd>elasticsearch-platinum</kbd>: Elasticsearch with all X-Pack features pre-installed and activated using a 30-day trial license</li>
+<li><kbd>elasticsearch-oss</kbd>: Only Elasticsearch</li>
+</ul>
+<p>We won't be needing X-Pack, and so we will use the <kbd>elasticsearch-oss</kbd> flavor.</p>
+<p>Go to Elastic's Docker Registry at <kbd>https://www.docker.elastic.co/</kbd>:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="aligncenter size-full wp-image-721 image-border" src="assets/ab6712a5-c10e-441b-979d-67bf4d96c50e.png" style="width:141.50em;height:48.83em;"/></p>
+<p>Then, run the <kbd>docker pull</kbd> command to get the most recent version of Elasticsearch, making sure to replace <kbd>elasticsearch</kbd> with <kbd>elasticsearch-oss</kbd>:</p>
+<pre><strong>$ docker pull docker.elastic.co/elasticsearch/elasticsearch-oss:6.2.4</strong><br/><strong>6.2.4: Pulling from elasticsearch/elasticsearch-oss</strong><br/><strong>469cfcc7a4b3: Pull complete </strong><br/><strong>8e27facfa9e0: Pull complete </strong><br/><strong>cdd15392adc7: Pull complete </strong><br/><strong>19ff08a29664: Pull complete </strong><br/><strong>ddc4fd93fdcc: Pull complete </strong><br/><strong>b723bede0878: Pull complete </strong><br/><strong>Digest: sha256:2d9c774c536bd1f64abc4993ebc96a2344404d780cbeb81a8b3b4c3807550e57</strong><br/><strong>Status: Downloaded newer image for docker.elastic.co/elasticsearch/elasticsearch-oss:6.2.4</strong></pre>
+<p>All Elasticsearch Docker images use centos:7 as the base image. Here, <kbd>469cfcc7a4b3</kbd> is the layer that comprises the centos:7 image, and you can see that subsequent layers are built on top of that.</p>
+<p>We can verify that the image is downloaded properly by running <kbd>docker images</kbd>:</p>
+<pre><strong>$ docker images</strong><br/><strong>REPOSITORY                                          TAG    IMAGE ID      SIZE</strong><br/><strong>docker.elastic.co/elasticsearch/elasticsearch-oss   6.2.4  3822ba554fe9  424MB</strong></pre>
+<p>Docker stores its files under <kbd>/var/lib/docker</kbd>. The metadata for all Docker images can be found at <kbd>/var/lib/docker/image/overlay2/imagedb/content/sha256/</kbd>, and the contents of the images themselves can be found at <kbd>/var/lib/docker/overlay2</kbd>. For our <kbd>elasticsearch-oss</kbd> image, we can view its metadata inside the file at <kbd>/var/lib/docker/image/overlay2/imagedb/content/sha256/3822ba554fe95f9ef68baa75cae97974135eb6aa8f8f37cadf11f6a59bde0139</kbd>.</p>
+<p><kbd>overlay2</kbd> signifies that Docker is using OverlayFS as its storage driver. In earlier versions of Docker, the default storage driver was AUFS. However, it’s been superseded by OverlayFS as the latter is faster and has a simpler implementation. You can find out which storage driver Docker is using by running <kbd>docker info</kbd> and looking at the value of the SD field.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Running a container</h1>
+                </header>
+            
+            <article>
+                
+<p>To have confidence that our Dockerized Elasticsearch container is working, we should first stop our existing Elasticsearch daemon:</p>
+<pre><strong>$ sudo systemctl stop elasticsearch.service</strong><br/><strong>$ sudo systemctl status elasticsearch.service</strong><br/><strong>● elasticsearch.service - Elasticsearch</strong><br/><strong>   Loaded: loaded (/usr/lib/systemd/system/elasticsearch.service; disabled; vend</strong><br/><strong>   Active: inactive (dead)</strong><br/><strong>     Docs: http://www.elastic.co</strong></pre>
+<p class="mce-root"/>
+<p>As a test, run the E2E tests on our API repository and make sure you get errors similar to <kbd>Error: No Living connections</kbd>. This means Elasticsearch is not running and our API cannot connect to it.</p>
+<p>Now, use the <kbd>docker run</kbd> command to run the <kbd>elasticsearch-oss</kbd> image as a container:</p>
+<pre><strong>$ docker run --name elasticsearch -e "discovery.type=single-node" -d -p 9200:9200 -p 9300:9300 docker.elastic.co/elasticsearch/elasticsearch-oss:6.2.4</strong></pre>
+<p>Just as you can retrieve a list of Docker images available with <kbd>docker images</kbd>, you can retrieve a list of Docker containers using <kbd>$ docker ps</kbd>. Run the following command in a new terminal:</p>
+<pre><strong>$ docker ps</strong><br/><strong>CONTAINER ID        IMAGE                                                     COMMAND                  CREATED             STATUS              PORTS                                            NAMES</strong><br/><strong>a415f4b646e3        docker.elastic.co/elasticsearch/elasticsearch-oss:6.2.4   "/usr/local/bin/dock\u2026"   About an hour ago   Up About an hour    0.0.0.0:9200-&gt;9200/tcp, 0.0.0.0:9300-&gt;9300/tcp   elasticsearch</strong></pre>
+<p>Internally, Docker has added a writable layer on top of the <kbd>elasticsearch-oss</kbd> image, and stores it under a directory at <kbd>/var/lib/docker/containers</kbd>:</p>
+<pre><strong>$ tree a415f4b646e3a715dc9fa446744934fc99ea33dd28761456381b9b7f6dcaf76b/</strong><br/><strong>a415f4b646e3a715dc9fa446744934fc99ea33dd28761456381b9b7f6dcaf76b/</strong><br/><strong>├── checkpoints</strong><br/><strong>├── config.v2.json</strong><br/><strong>├── a415f4b646e3a715dc9fa446744934fc99ea33dd28761456381b9b7f6dcaf76b-json.log</strong><br/><strong>├── hostconfig.json</strong><br/><strong>├── hostname</strong><br/><strong>├── hosts</strong><br/><strong>├── mounts</strong><br/><strong>│   └── shm</strong><br/><strong>├── resolv.conf</strong><br/><strong>└── resolv.conf.hash</strong><br/><strong>3 directories, 7 files</strong></pre>
+<p class="mce-root"/>
+<p><kbd>config.v2.json</kbd> contains the metadata of the container, such as its status, its process ID (PID), when it was started, the image it is running from, its name, and its storage driver. &lt;hash&gt;-json.log stores the standard output when the container is running.</p>
+<p>Now, with our container running, when we run our tests again, they are all passing! If we stop the container and run our tests again, they would, once again, fail:</p>
+<pre><strong>$ docker stop a415f4b646e3</strong><br/><strong>a415f4b646e3</strong><br/><strong>$ yarn run test:e2e    # This should fail</strong></pre>
+<p>You can still view the stopped container using <kbd>docker ps</kbd>. However, by default, the <kbd>docker ps</kbd> command lists only running containers. You must use the <kbd>-a</kbd> flag to ensure that stopped containers are listed:</p>
+<pre class="mce-root"><strong>$ docker ps -a</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Understanding the docker run option</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that we have demonstrated our Dockerized Elasticsearch instance works, let’s go back and examine the <kbd>docker run</kbd> command we used to run it:</p>
+<pre><strong>$ docker run --name elasticsearch -e "discovery.type=single-node" -d -p 9200:9200 -p 9300:9300 docker.elastic.co/elasticsearch/elasticsearch-oss:6.2.4</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Identifying a container by name </h1>
+                </header>
+            
+            <article>
+                
+<p>You can identify a container using one of three identifiers:</p>
+<ul>
+<li>The UUID long identifier, for example, <kbd>a415f4b646e3a715dc9fa446744934fc99ea33dd28761456381b9b7f6dcaf76b</kbd></li>
+<li>The UUID short identifier, for example, <kbd>a415f4b646e3</kbd></li>
+<li>The name, for example, <kbd>nostalgic_euler</kbd></li>
+</ul>
+<p class="mce-root"/>
+<p>If you do not assign a name to a container when you run <kbd>docker run</kbd>, the Docker daemon will auto-generate a name for you, which has the structure <kbd>&lt;adjective&gt;_&lt;noun&gt;</kbd>. However, it might be more helpful to assign a name that describes the container’s function within the context of the whole application. We can do that through the <kbd>--name</kbd> flag.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Setting environment variables</h1>
+                </header>
+            
+            <article>
+                
+<p>The <kbd>-e</kbd> flag allows us to set environment variables. Environment variables set with the <kbd>-e</kbd> flag will override any environment variables set in the Dockerfile.</p>
+<p>One of Elasticsearch’s biggest strengths is that it is a distributed data storage system, where multiple nodes form a <em>cluster</em> that collectively holds all the pieces of the whole dataset. When developing with Elasticsearch, however, we don’t need this clustering.</p>
+<p>Therefore, we are setting the environment variable <kbd>discovery.type</kbd> to the value of single-node to tell Elasticsearch to run as a single node, and not attempt to join a cluster (because there are no clusters).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Running as daemon</h1>
+                </header>
+            
+            <article>
+                
+<p>Since Elasticsearch acts as a database, we don’t need to keep an interactive terminal open, and can run it as a background daemon process instead.</p>
+<p>We can use the <kbd>-d</kbd> flag to run a container in the background.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Network port mapping</h1>
+                </header>
+            
+            <article>
+                
+<p>Every container is accessible through its own IP address. For instance, we can find the IP address of our <kbd>elasticsearch-oss</kbd> container by running <kbd>docker inspect</kbd>, and looking under <kbd>NetworkSettings.IPAddress</kbd>:</p>
+<pre><strong>$ docker inspect a415f4b646e3</strong><br/><strong>[</strong><br/><strong>    {</strong><br/><strong>        "Id": "a415f4b646e3a71...81b9b7f6dcaf76b",</strong><br/><strong>        "Created": "2018-05-10T19:37:55.565685206Z",</strong><br/><strong>        "Image": "sha256:3822ba554fe9...adf11f6a59bde0139",</strong><br/><strong>        "Name": "/elasticsearch",</strong><br/><strong>        "Driver": "overlay2",</strong><br/><strong>        "NetworkSettings": {</strong><br/><strong>            "Ports": {</strong><br/><strong>                "9200/tcp": [{</strong><br/><strong>                    "HostIp": "0.0.0.0",</strong><br/><strong>                    "HostPort": "9200"</strong><br/><strong>                }],</strong><br/><strong>                "9300/tcp": [{</strong><br/><strong>                    "HostIp": "0.0.0.0",</strong><br/><strong>                    "HostPort": "9300"</strong><br/><strong>                }]</strong><br/><strong>            },</strong><br/><strong>            "Gateway": "172.17.0.1",</strong><br/><strong>            "IPAddress": "172.17.0.2",</strong><br/><strong>            ...</strong><br/><strong>        }</strong><br/><strong>        ...</strong><br/><strong>    }</strong><br/><strong>]</strong></pre>
+<p>You can also use the <kbd>--format</kbd> or <kbd>-f</kbd> flag to retrieve only the field you are interested in:</p>
+<pre><strong>$ docker inspect -f '{{.NetworkSettings.IPAddress}}' elasticsearch</strong><br/><strong>172.17.0.2</strong></pre>
+<p>However, our local instance of our API assumes that Elasticsearch is available on localhost:9200, not 172.17.0.2. If we are going to provide an equivalent behavior to our non-containerized Elasticsearch, we must make Elasticsearch available on localhost:9200. That’s the job of the <kbd>-p</kbd> flag.</p>
+<p>The <kbd>-p</kbd> flag <em>publishes</em> a port of the container and binds it to the host port:</p>
+<pre><strong>$ docker run -p &lt;host-port&gt;:&lt;container-port&gt;</strong></pre>
+<p>In our case, we are binding the 9200 port of <kbd>0.0.0.0</kbd> to the 9200 port of the container. <kbd>0.0.0.0</kbd> is a special address that refers to your local development machine.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">0.0.0.0</h1>
+                </header>
+            
+            <article>
+                
+<p>You can refer to your local machine in many ways, in different contexts, locally within the same machine or within a private network.</p>
+<p>Within the context of our local machine, we can use the <kbd>127.0.0.0/8</kbd> <em>loopback addresses</em>. Anything sent to the loopback address is sent back to the sender; therefore, we can use <kbd>127.0.0.1</kbd> <span>to refer to our own machine.</span></p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>If your computer is part of a private network, your computer will be assigned an IP on this network. These private IP addresses have a limited range, as defined in <a href="http://www.ietf.org/rfc/rfc1918.txt">RFC 1918</a>:</p>
+<ul>
+<li><kbd>10.0.0.0</kbd> - <kbd>10.255.255.255</kbd> (<kbd>10/8</kbd> prefix)</li>
+<li><kbd>172.16.0.0</kbd> - <kbd>172.31.255.255</kbd> (<kbd>172.16/12</kbd> prefix)</li>
+<li><kbd>192.168.0.0</kbd> - <kbd>192.168.255.255</kbd> (<kbd>192.168/16</kbd> prefix)</li>
+</ul>
+<p><kbd>0.0.0.0</kbd> is a special address, which includes both your local loopback addresses and the IP address of your private network. For instance, if your private IP address is <kbd>10.194.33.8</kbd>, anything sent to <kbd>127.0.0.1</kbd> and <kbd>10.194.33.8</kbd> will be available for any services which are listening to <kbd>0.0.0.0</kbd>.</p>
+<p>Therefore, when we bind <kbd>0.0.0.0:9200</kbd> to the container’s port, <kbd>9200</kbd>, we are forwarding any request coming into our local machine on port 9200 to the container.</p>
+<p>This means that when we run our E2E tests, whenever our backend API is sending a request to <kbd>localhost:9200</kbd>, that request is forwarded inside the container via its <kbd>9200</kbd> port.</p>
+<p>You can see all port mappings by using the <kbd>docker port</kbd> command:</p>
+<pre><strong>$ docker ps</strong><br/><strong>CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES</strong><br/><strong>a415f4b646e3 docker.elastic.co/elasticsearch/elasticsearch-oss:6.2.4 "/usr/local/bin/dock…" 2 hours ago Up 2 hours 0.0.0.0:9200-&gt;9200/tcp, 0.0.0.0:9300-&gt;9300/tcp elasticsearch</strong><br/><strong>$ docker port a415f4b646e3</strong><br/><strong>9300/tcp -&gt; 0.0.0.0:9300</strong><br/><strong>9200/tcp -&gt; 0.0.0.0:9200</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Updating our test script</h1>
+                </header>
+            
+            <article>
+                
+<p class="FirstParagraph"><span>We’ve successfully used Elasticsearch inside a Docker container rather than our local instance. This is great for testing, because any changes to the database are erased after the container is stopped and removed.</span></p>
+<p>Update <kbd>scripts/e2e.test.sh</kbd> to the following:</p>
+<pre>#!/bin/bash<br/> <br/># Set environment variables from .env and set NODE_ENV to test<br/>source &lt;(dotenv-export | sed 's/\\n/\n/g')<br/>export NODE_ENV=test<br/> <br/># Make sure our local Elasticsearch service is not running<br/>echo -ne '  5% [##                                      ] Stopping local Elasticsearch service      \r'<br/>sudo systemctl stop elasticsearch.service<br/># Download Elasticsearch Docker image<br/>echo -ne ' 10% [####                                    ] Downloading Elasticsearch image           \r'<br/>docker pull docker.elastic.co/elasticsearch/elasticsearch-oss:${ELASTICSEARCH_VERSION} &gt; /dev/null<br/># Get the Image ID for the Elasticsearch<br/>echo -ne ' 20% [########                                ] Retrieving Elasticsearch image ID         \r'<br/>ELASTICSEARCH_DOCKER_IMAGE_ID=$(docker images docker.elastic.co/elasticsearch/elasticsearch-oss --format '{{.ID}}')<br/># Get all running containers using the ELasticsearch Docker image and remove them<br/>echo -ne ' 25% [##########                              ] Removing Existing Elasticsearch Containers\r'<br/>docker ps -a --filter "ancestor=${ELASTICSEARCH_DOCKER_IMAGE_ID}" --format '{{.ID}}' | xargs -I_cid -- bash -c 'docker stop _cid &amp;&amp; docker rm _cid' &gt; /dev/null<br/># Run the Elasticsearch Docker image<br/>echo -ne ' 35% [##############                          ] Initiating Elasticsearch Container        \r'<br/>docker run --name elasticsearch -e "discovery.type=single-node" -d -p ${ELASTICSEARCH_PORT}:9200 -p 9300:9300 docker.elastic.co/elasticsearch/elasticsearch-oss:${ELASTICSEARCH_VERSION} &gt; /dev/null<br/> <br/># Polling to see if the Elasticsearch daemon is ready to receive a response<br/>TRIES=0<br/>RETRY_LIMIT=50<br/>RETRY_INTERVAL=0.4<br/>ELASTICSEARCH_READY=false<br/>while [ $TRIES -lt $RETRY_LIMIT ]; do<br/>  if curl --silent localhost:${ELASTICSEARCH_PORT} -o /dev/null; then<br/>    ELASTICSEARCH_READY=true<br/>    break<br/>  else<br/>    sleep $RETRY_INTERVAL<br/>    let TRIES=TRIES+1<br/>  fi<br/>done<br/> <br/>echo -ne ' 50% [####################                    ] Elasticsearch Container Initiated         \r'<br/>TRIES=0<br/><br/>if $ELASTICSEARCH_READY; then<br/>  # Clean the test index (if it exists)<br/>  echo -ne ' 55% [######################                  ] Cleaning Elasticsearch Index              \r'<br/>  curl --silent -o /dev/null -X DELETE "$ELASTICSEARCH_HOSTNAME:$ELASTICSEARCH_PORT/$ELASTICSEARCH_INDEX_TEST"<br/> <br/>  # Run our API server as a background process<br/>  echo -ne ' 60% [########################                ] Initiating API                            \r'<br/>  yarn run serve &gt; /dev/null &amp;<br/><br/>  # Polling to see if the server is up and running yet<br/>  SERVER_UP=false<br/>  while [ $TRIES -lt $RETRY_LIMIT ]; do<br/>    if netstat -tulpn 2&gt;/dev/null | grep -q ":$SERVER_PORT_TEST.*LISTEN"; then<br/>      SERVER_UP=true<br/>      break<br/>    else<br/>      sleep $RETRY_INTERVAL<br/>      let TRIES=TRIES+1<br/>    fi<br/>  done<br/><br/>  # Only run this if API server is operational<br/>  if $SERVER_UP; then<br/>    echo -ne ' 75% [##############################          ] API Initiated                             \r'<br/>    # Run the test in the background<br/>    echo -ne ' 80% [################################        ] Running E2E Tests                         \r'<br/>    npx dotenv cucumberjs spec/cucumber/features -- --compiler js:babel-register --require spec/cucumber/steps &amp;<br/><br/>    # Waits for the next job to terminate - this should be the tests<br/>    wait -n<br/>  fi<br/>fi<br/> <br/># Stop all Elasticsearch Docker containers but don't remove them<br/>echo -ne ' 98% [####################################### ] Tests Complete                            \r'<br/>echo -ne ' 99% [####################################### ] Stopping Elasticsearch Containers         \r'<br/>docker ps -a --filter "ancestor=${ELASTICSEARCH_DOCKER_IMAGE_ID}" --format '{{.ID}}' | xargs -I{} docker stop {} &gt; /dev/null<br/>echo '100% [########################################] Complete                                    '<br/> <br/># Terminate all processes within the same process group by sending a SIGTERM signal<br/>kill -15 0</pre>
+<p>Instead of relying on the tester to manually start the Elasticsearch service, we are now adding that as part of the script.</p>
+<p>Furthermore, we've added some echo statements to implement a progress bar.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Dockerizing our backend API</h1>
+                </header>
+            
+            <article>
+                
+<p>Running Elasticsearch on Docker was easy, because the image was already generated for us. However, Dockerizing the rest of the application requires slightly more effort.</p>
+<p>We will start with Dockerizing the backend API, as this is a precondition for the frontend client.</p>
+<p>Specifically, we'd need to do the following:</p>
+<ol>
+<li>Write a Dockerfile that sets up our environment so that we can run our API.</li>
+<li>Generate the image from our Dockerfile.</li>
+<li>Run our API inside a container based on the image, while ensuring that it can communicate with the Elasticsearch instance that is running inside another Docker container.</li>
+</ol>
+<p>The next task is to write our Dockerfile, but before we dive straight in, let me give you an overview of the structure and syntax of a Dockerfile.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Overview of a Dockerfile</h1>
+                </header>
+            
+            <article>
+                
+<p>A Dockerfile is a text file, where each line consists of an <em>instruction</em> followed by one or more <em>arguments</em>:</p>
+<pre>INSTRUCTION arguments</pre>
+<p class="mce-root"/>
+<p>There are many types of instructions. Here, we will explain the most important ones.</p>
+<p>For a complete reference of all instructions and arguments in a valid Dockerfile, refer to the Dockerfile reference at <a href="https://docs.docker.com/engine/reference/builder/">docs.docker.com/engine/reference/builder/</a>:</p>
+<ul>
+<li><kbd>FROM</kbd>: This specifies the <em>base image</em>, which is the Docker image we are basing our own image on. Each Dockerfile must have a <kbd>FROM</kbd> instruction as the <em>first</em> instruction. For example, if we want our application to run on an Ubuntu 18.04 machine, then we’d specify <kbd>FROM</kbd> ubuntu:bionic.</li>
+<li><kbd>RUN</kbd>: This specifies the command(s) to run at build time, when we run <kbd>docker build</kbd>. Each <kbd>RUN</kbd> command corresponds to a layer that comprises our image.</li>
+<li><kbd>CMD / ENTRYPOINT</kbd>: This specifies the command to execute at runtime, after the container is initiated with <kbd>docker run</kbd>. At least one of the <kbd>CMD</kbd> and/or the <kbd>ENTRYPOINT</kbd> command should be specified. <kbd>CMD</kbd> should be used to provide <em>default</em> arguments for an <kbd>ENTRYPOINT</kbd> command. There should be one, and only one, <kbd>CMD</kbd> instruction in a Dockerfile. If multiple are provided, the last one will be used.</li>
+<li><kbd>ADD / COPY</kbd>: This copies files, directories, or remote file URLs to a location inside the filesystem of the image. <kbd>COPY</kbd> is similar to <kbd>ADD</kbd> except it does not support remote URLs, it does not unpack archive files, and it does not invalidate cached <kbd>RUN</kbd> instructions (even if the contents has changed). You can look at <kbd>COPY</kbd> as a lightweight version of <kbd>ADD</kbd>. You should use <kbd>COPY</kbd> over <kbd>ADD</kbd> whenever possible.</li>
+<li><kbd>WORKDIR</kbd>: This changes the working directory for any <kbd>RUN</kbd>, <kbd>CMD</kbd>, <kbd>ENTRYPOINT</kbd>, <kbd>COPY</kbd>, and <kbd>ADD</kbd> instructions that come after the <kbd>WORKDIR</kbd> instruction in the Dockerfile</li>
+<li><kbd>ENV</kbd>: This sets environment variables that are available during build <em>and</em> runtime.</li>
+<li><kbd>ARG</kbd>: This defines variables that can be defined at build time (not runtime) by passing the <kbd>--build-arg &lt;varname&gt;=&lt;value&gt;</kbd> flag into <kbd>docker build</kbd>.</li>
+</ul>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p><kbd>ENV</kbd> and <kbd>ARG</kbd> both provide variables during build time, but <kbd>ENV</kbd> values also persist into the built image. In cases where <kbd>ENV</kbd> and <kbd>ARG</kbd> variables share the same name, the <kbd>ENV</kbd> variable takes precedence:</p>
+<ul>
+<li><kbd>EXPOSE</kbd>: This acts as a form of documentation that informs developers of which ports are being listened to by services running inside the container.</li>
+</ul>
+<div class="packt_infobox">Despite its name, EXPOSE does not expose the port from the container to the host. Its purpose is solely for documentation.</div>
+<p>There are other, less commonly used instructions:</p>
+<ul>
+<li><kbd>ONBUILD</kbd>: This allows you to add commands that are to be run by child images (images which use the current image as a base image). The commands would be run immediately after the <kbd>FROM</kbd> instruction in the child image.</li>
+<li><kbd>LABEL</kbd>: This allows you to attach arbitrary metadata, in the form of key-value pairs, to the image. Any containers loaded with the image would also carry that label. Uses for labels are very broad; for example, you can use it to enable load balancers to identify containers based on their labels.</li>
+<li><kbd>VOLUME</kbd>: This specifies a mount point in the host’s filesystem where you can persist data, even after the container is destroyed.</li>
+<li><kbd>HEALTHCHECK</kbd>: This specifies commands that are run at regular intervals to check that the container is not just alive, but functional. For example, if a web server process is running, but unable to receive requests, it would be deemed unhealthy.</li>
+<li><kbd>USER</kbd>: This specifies the username or UID to use when building/running the image.</li>
+<li><kbd>STOPSIGNAL</kbd>: This specifies the system call signal that will be sent to the container to exit.</li>
+</ul>
+<p>Dockerfile instructions are case-insensitive. However, the convention is to use UPPERCASE. You can also add comments in Dockerfiles using hashes (<kbd>#</kbd>):</p>
+<pre><span># This is a docker comment</span></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Writing our Dockerfile</h1>
+                </header>
+            
+            <article>
+                
+<p class="FirstParagraph"><span>Now that we have a broad understanding of what instructions are available in a Dockerfile, let’s write our own Dockerfile for our backend API.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Picking a base image</h1>
+                </header>
+            
+            <article>
+                
+<p>The first decision to make is to pick a base image. Normally, we would choose a Linux distribution as our base image. For instance, we can pick Ubuntu as our base image:</p>
+<pre>FROM ubuntu:bionic</pre>
+<p>We use the <kbd>bionic</kbd> <em>tag</em> to specify the exact version of Ubuntu we want (18.04 Long Term Support (LTS)).</p>
+<p>However, as it turns out, Node has its own official Docker image available on Docker Hub (<a href="https://hub.docker.com/_/node/">hub.docker.com/_/node/</a>). Therefore, we can use the Node Docker image as our base image instead.</p>
+<p>To use the Node Docker image as the base image, replace our <kbd>FROM</kbd> instruction with <kbd>FROM node:8</kbd>:</p>
+<pre>FROM node:8</pre>
+<p>For local development, we have been using NVM to manage our Node versions. This is useful when working on multiple JavaScript projects because it allows us to switch between different versions of Node easily. However, there are no such requirements for our container <span>–</span> our backend API image will only ever run one version of Node. Therefore, our Docker image should have a specific version. We used the tag <kbd>8</kbd> because Node 8 is the latest LTS version available at the time of writing.</p>
+<p>The Node Docker image has yarn pre-installed, so there are no more dependencies we need to install.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Copying project files</h1>
+                </header>
+            
+            <article>
+                
+<p>Next, we need to copy in our project code into our container. We will use the <kbd>COPY</kbd> instruction, which has the following signature:</p>
+<pre>COPY [--chown=&lt;user&gt;:&lt;group&gt;] &lt;src&gt;... &lt;dest&gt;</pre>
+<p class="mce-root"/>
+<p><kbd>src</kbd> is the path on the host machine where files will be copied from. The src path will be resolved against the <em>context</em>, which is a directory we can specify when we run <kbd>docker build</kbd>.</p>
+<p><kbd>dest</kbd> is the path inside the container where the files are to be copied to. The <kbd>dest</kbd> path can be either absolute or relative. If relatively, it will be resolved against the <kbd>WORKDIR</kbd>.</p>
+<p>Below the <kbd>FROM</kbd> instruction, add a <kbd>WORKDIR</kbd> and <kbd>COPY</kbd> instruction:</p>
+<pre>WORKDIR /root/<br/> COPY . .</pre>
+<p>This simply copies all the files from the context to the <kbd>/root/</kbd> inside the container.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Building our application</h1>
+                </header>
+            
+            <article>
+                
+<p>Next, we need to install the npm packages required by our application, and build our application using <kbd>yarn run build</kbd>. Add the following lines after the <kbd>COPY</kbd> instruction:</p>
+<pre><strong>RUN yarn</strong><br/><strong>RUN yarn run build</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Specifying the executable</h1>
+                </header>
+            
+            <article>
+                
+<p>Every container needs to execute a command to run after the container is initialized. For us, this will be using the node command to run our application:</p>
+<pre>CMD node dist/index.js</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Building our image</h1>
+                </header>
+            
+            <article>
+                
+<p>Our Dockerfile is now ready, and we can use it to generate the image using <kbd>docker build</kbd>, which has the following signature:</p>
+<pre><strong>$ docker build [context] -f [path/to/Dockerfile]</strong></pre>
+<p>The <kbd>docker build</kbd> command builds an image based on the Dockerfile and a <em>context</em>. The context is a directory which should contain all the files that are needed to build the image. In our case, it is also where our application code is to be copied from.</p>
+<p class="mce-root"/>
+<p>For example, if we are at the project root directory, we can run the following command to build our image, using the current working directory as the context:</p>
+<pre><strong>$ docker build . -f ./Dockerfile</strong></pre>
+<p>By default, if you don’t specify the location of the Dockerfile, Docker would try to find it at the root of the context. So, if you are in the root directory of the context, you can simply run the following:</p>
+<pre><strong>$ docker build .</strong></pre>
+<p>However, we don't want to copy <em>all</em> of the contents of the project, because:</p>
+<ul>
+<li>It's generally a bad idea to add things you don't need—it makes it harder for someone trying to understand the logic of the application, because there's more noise</li>
+<li>It adds to the size of the image</li>
+</ul>
+<p>For instance, there is over 320 MB inside the .git, node_modules, and docs directories—files which we don't need inside our container to build and run our application.</p>
+<pre><strong>$ du -ahd1 | sort -rh</strong><br/><strong>323M    .</strong><br/><strong>202M    ./.git</strong><br/><strong>99M     ./node_modules</strong><br/><strong>21M     ./docs</strong><br/><strong>880K    ./dist</strong><br/><strong>564K    ./src</strong><br/><strong>340K    ./coverage</strong><br/><strong>176K    ./.nyc_output</strong><br/><strong>168K    ./spec</strong><br/><strong>140K    ./yarn-error.log</strong><br/><strong>128K    ./yarn.lock</strong><br/><strong>20K     ./scripts</strong><br/><strong>8.0K    ./.vscode</strong><br/><strong>8.0K    ./.env.example</strong><br/><strong>8.0K    ./.env</strong><br/><strong>4.0K    ./package.json</strong><br/><strong>4.0K    ./.nvmrc</strong><br/><strong>4.0K    ./.gitmodules</strong><br/><strong>4.0K    ./.gitignore</strong><br/><strong>4.0K    ./.dockerignore</strong><br/><strong>4.0K    ./Dockerfile</strong><br/><strong>4.0K    ./.babelrc</strong></pre>
+<p class="mce-root"/>
+<p>Therefore, we can use a special file called <kbd>.dockerignore</kbd>, which is similar to <kbd>.gitignore</kbd>, and will disregard certain files from the context.</p>
+<p>But instead of specifying which files we will ignore, we’ll be more explicit and add a rule to ignore <em>all</em> files, and add exceptions to this rule in subsequent lines. Add the following lines to <kbd>.dockerignore</kbd>:</p>
+<pre>*<br/>!src/**<br/>!package.json<br/>!yarn.lock<br/>!spec/openapi/hobnob.yaml<br/>!.babelrc<br/>!.env</pre>
+<p>Now, run <kbd>$ docker build -t hobnob:0.1.0 .</kbd> and check that the image is created by running <kbd>docker images</kbd>:</p>
+<pre><strong>$ docker build -t hobnob:0.1.0 .</strong><br/><strong>$ docker images</strong><br/><strong>REPOSITORY   TAG     IMAGE ID        CREATED           SIZE</strong><br/><strong>hobnob       0.1.0   827ba45ed363    34 seconds ago    814MB</strong></pre>
+<p>Although the image size is still quite large (814 MB), much of this comes from the standard node image, which is 673 MB. Without limiting the scope of the context, the hobnob image size easily goes over 1 GB.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Running our image</h1>
+                </header>
+            
+            <article>
+                
+<p>Ensure that the Elasticsearch container is running and that it has bound its port to our local machine. Then, run our hobnob image using <kbd>docker run</kbd>:</p>
+<pre><strong>$ docker run --env-file ./.env --name hobnob -d -p 8080:8080 hobnob:0.1.0</strong></pre>
+<p>Note that we are using the <kbd>--env-file</kbd> option to pass in our environment variables at runtime instead of build time.</p>
+<p>To check that our container is running without errors, check the stdout produced inside the container, which we can conveniently check using <kbd>docker logs</kbd>:</p>
+<pre><strong>$ docker logs hobnob</strong><br/><strong>yarn run v1.5.1</strong><br/><strong>$ node dist/index.js</strong><br/><strong>Hobnob API server listening on port 8080!</strong></pre>
+<p class="mce-root"/>
+<p>If the container's log does not show the preceding success message, go back and repeat the steps closely. You may want to use <kbd>docker stop hobnob</kbd> and <kbd>docker rm hobnob</kbd> to stop and remove the container, and <kbd>docker rmi hobnob</kbd> to remove the image. You may also enter into the container (like with SSH) by executing <kbd>docker exec -it hobnob bash</kbd>.</p>
+<p>Assuming everything is up and running, we’d still need to check that the application is actually functional by querying the API using curl:</p>
+<pre><strong>$ curl localhost:8080/users</strong><br/><strong>[]</strong><br/><br/><strong>$ curl -X POST http://localhost:8080/users/ \</strong><br/><strong>  -H 'Content-Type: application/json' \</strong><br/><strong>  -d '{</strong><br/><strong>    "email": "e@ma.il",</strong><br/><strong>    "digest": "$2y$10$6.5uPfJUCQlcuLO/SNVX3u1yU6LZv.39qOzshHXJVpaq3tJkTwiAy"}'</strong><br/><strong>msb9amMB4lw6tgyQapgH</strong><br/><br/><strong>$ curl localhost:8080/users</strong><br/><strong>[{"email":"e@ma.il"}]</strong></pre>
+<p>This means that the request from our host has successfully reached our application, and that the application can successfully communicate with our database!</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Persisting data</h1>
+                </header>
+            
+            <article>
+                
+<p>The last essential step before we complete our migration to Docker is to persist the data inside our Elasticsearch container(s).</p>
+<p>Docker containers, by their nature, are ephemeral, which means after they are removed, the data contained inside them are lost.</p>
+<p>To persist data, or to allow containers to use existing data, we must use <em>Volumes</em>. Let’s use the docker CLI to create it now:</p>
+<pre><strong>$ docker volume create --name esdata</strong></pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>We can use the <kbd>-v</kbd> flag to instruct Docker to mount this named volume into the <kbd>/usr/share/elasticsearch/data</kbd> directory inside the <kbd>elasticsearch</kbd> container:</p>
+<pre><strong>$ docker run \</strong><br/><strong>  --name elasticsearch \</strong><br/><strong>  -e "discovery.type=single-node" \</strong><br/><strong>  -d \</strong><br/><strong>  -p 9200:9200 -p 9300:9300 \ </strong><br/><strong>  -v esdata:/usr/share/elasticsearch/data \</strong><br/><strong>  docker.elastic.co/elasticsearch/elasticsearch-oss:6.2.4</strong></pre>
+<p>Now, if we remove the <kbd>elasticsearch</kbd> container and deploy a new one using the preceding command, the data is persisted in the esdata named volume.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Following best practices</h1>
+                </header>
+            
+            <article>
+                
+<p>Next, let's improve our Dockerfile by applying best practices.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Shell versus exec forms</h1>
+                </header>
+            
+            <article>
+                
+<p>The <kbd>RUN</kbd>, <kbd>CMD</kbd>, and <kbd>ENTRYPOINT</kbd> Dockerfile instructions are all used to run commands. However, there are two ways to specify the command to run:</p>
+<ul>
+<li><em>shell</em> form; <kbd>RUN yarn run build</kbd>: The command is run inside a new shell process, which, by default, is <kbd>/bin/sh -c</kbd> on Linux and <kbd>cmd /S /C</kbd> on Windows</li>
+<li><em>exec</em> form; <kbd>RUN ["yarn", "run", "build"]</kbd>: The command is not run inside a new shell process</li>
+</ul>
+<p>The shell form exists to allow you to use shell processing features like variable substitution and to chain multiple commands together. However, not every command requires these features. In those cases, you should use the exec form.</p>
+<p>When shell processing is not required, the exec form is preferred because it saves resources by running one less process (the shell process).</p>
+<p>We can demonstrate this by using ps, which is a Linux command-line tool that shows you a snapshot of the current processes. First, let’s enter into our container using <kbd>docker exec</kbd>:</p>
+<pre><strong>$ docker exec -it hobnob bash</strong><br/><strong>root@23694a23e80b#</strong></pre>
+<p>Now, run <kbd>ps</kbd> to get a list of currently-running processes. We are using the <kbd>-o</kbd> option to select only the parameters we are interested in:</p>
+<pre><strong>root@23694a23e80b# ps -eo pid,ppid,user,args --sort pid</strong><br/><strong>PID  PPID USER     COMMAND</strong><br/><strong>  1     0 root     /bin/sh -c node dist/index.js</strong><br/><strong>  7     1 root     node dist/index.js</strong><br/><strong> 17     0 root     bash</strong><br/><strong> 23    17 root     ps -eo pid,ppid,user,args --sort pid</strong></pre>
+<p>As you can see, with the shell form, <kbd>/bin/sh</kbd> is run as the root init process (PID 1), and it is the parent process that invokes the node.</p>
+<p>Ignore the bash and ps processes. Bash is the process we were using to interact with the container when we ran <kbd>docker exec -it hobnob bash</kbd>, and ps is the process we ran to get the output.</p>
+<p>Now, if we update the <kbd>RUN</kbd> and <kbd>CMD</kbd> commands inside our Dockerfile to the exec form, we get the following:</p>
+<pre>FROM node:8<br/> <br/>WORKDIR /root<br/>COPY . .<br/>RUN ["yarn"]<br/>RUN ["yarn", "run", "build"]<br/> <br/>CMD ["node", "dist/index.js"]</pre>
+<p>If we run this new image and enter into the container, we can run our ps command again, and see that the node process is now the root process:</p>
+<pre># ps -eo pid,ppid,user,args --sort pid<br/>PID  PPID USER     COMMAND<br/>  1     0 root     node dist/index.js<br/> 19     0 root     bash<br/> 25    19 root     ps -eo pid,ppid,user,args --sort pid</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Allowing Unix signaling</h1>
+                </header>
+            
+            <article>
+                
+<p>One may argue that an extra process is not important in the grand scheme of things, but there are further implications of running commands inside a shell.</p>
+<p>When using the shell form for the <kbd>CMD</kbd> or <kbd>ENTRYPOINT</kbd> instruction, the executable is run inside an additional shell process, which means it will not be run with PID of 1, which means it will <em>not</em> receive Unix signals.</p>
+<p>Unix signals are passed by the Docker daemon to control containers. For instance, when running docker stop hobnob, the daemon will send a <kbd>SIGTERM</kbd> signal to the hobnob container’s root process (PID 1).</p>
+<p>When using the shell form, it is the shell which receives this signal. If we are using sh as the shell, it will not pass the signal on to the processes it is running.</p>
+<p>However, we have not added any code in our Node.js applications to respond to Unix signals. The easiest way to resolve this is to wrap it in an init system so that when that system receives a <kbd>SIGTERM</kbd> signal, it will terminate all of the container’s processes. As of Docker 1.13, a lightweight init system called Tini was included by default, and can be enabled by using the <kbd>--init</kbd> flag passed to <kbd>docker run</kbd>.</p>
+<p>Therefore, when we run our hobnob image, we should use the following command instead:</p>
+<pre><strong>$ docker run --init --env-file ./.env --name hobnob -d -p 8080:8080 hobnob:0.1.0</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Running as a non-root user</h1>
+                </header>
+            
+            <article>
+                
+<p>By default, Docker will run commands inside the container as the root user. This is a security risk. Therefore, we should run our application as a non-root user.</p>
+<p>Conveniently, the Node Docker image already has a user called node. We can use the USER instruction to instruct Docker to run the image as the node user instead of root.</p>
+<p>Because of this, we should also move our application to a location accessible by the node user.</p>
+<p>Update the Dockerfile with the following lines; place them immediately after the <kbd>FROM</kbd> instruction:</p>
+<pre>USER node<br/>WORKDIR /home/node</pre>
+<p>We also need to change the <kbd>COPY</kbd> instruction:</p>
+<pre>COPY . .</pre>
+<p>Although we have set the <kbd>USER</kbd> instruction to use the node user, the <kbd>USER</kbd> instruction only affects the <kbd>RUN</kbd>, <kbd>CMD</kbd>, and <kbd>ENTRYPOINT</kbd> instructions. By default, when we use <kbd>COPY</kbd> to add files into our container, those are added as the root user. To sign the copied files to another user or group, we can use the <kbd>--chown</kbd> flag.</p>
+<p>Change the <kbd>COPY</kbd> instruction to the following:</p>
+<pre>COPY --chown=node:node . .</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Taking advantage of the cache</h1>
+                </header>
+            
+            <article>
+                
+<p>At the moment, we are copying our entire application code, installing its dependencies, and then building the application.</p>
+<p>But what if I make changes to my application code, but do not introduce any new dependencies? In our current approach, we’d have to run all three steps again, and the <kbd>RUN ["yarn"]</kbd> step is likely going to take a long time as it has to download thousands of files:</p>
+<pre>COPY --chown=node:node . .<br/>RUN ["yarn"]<br/>RUN ["yarn", "run", "build"]</pre>
+<p class="FirstParagraph"><span>Fortunately, Docker implements a clever caching mechanism. Whenever Docker generates an image, it stores the underlying layers in the filesystem. When Docker is asked to build a new image, instead of blindly following the instructions again, Docker will check its existing cache of layers to see if there are layers it can simply reuse.</span></p>
+<p>As Docker steps through each instruction, it will try to use the cache whenever possible, and will only invalidate the cache under the following circumstances:</p>
+<ul>
+<li>Starting from the same parent image, there are no cached layers that were built with <em>exactly</em> the same instruction as the next instruction in our current Dockerfile.</li>
+<li>If the next instruction is <kbd>ADD</kbd> or <kbd>COPY</kbd>, Docker will create a checksum for each file, based on the <em>contents</em> of each file. If <em>any</em> of the checksums do not match the ones in the cached layer, the cache is invalidated.</li>
+</ul>
+<p class="mce-root"/>
+<p>Therefore, we can modify the preceding three instructions (<kbd>COPY</kbd>, <kbd>RUN</kbd>, <kbd>RUN</kbd>) to the following four instructions:</p>
+<pre>COPY --chown=node:node ["package*.json", "yarn.lock", "./"]<br/>RUN ["yarn"]<br/>COPY --chown=node:node . .<br/>RUN ["yarn", "run", "build"]</pre>
+<p>Now, if our dependencies that are specified solely inside our <kbd>package.json</kbd>, <kbd>package-log.json</kbd>, and <kbd>yarn.lock</kbd> files, have not changed, then the first two steps here will not be run again. Instead, the cached layer that we previously generated will be used.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Caveats</h1>
+                </header>
+            
+            <article>
+                
+<p>Let’s say we have the following Dockerfile:</p>
+<pre>FROM ubuntu:bionic<br/>RUN apt update &amp;&amp; apt install git<br/>RUN ["git", "clone", "git@github.com:d4nyll/hobnob.git"]</pre>
+<p>If we ran this one month ago, and have the layers stored in the cache, and went to build it again today, Docker will use the cached layer, even though the apt sources list is likely to be out of date.</p>
+<p>This is done so that you can have a reproducible build. Let’s imagine I made some changes to my code. If I build a new image and it fails, I want to be certain that this is because of the changes I have made, not because of a bug in one of the packages that was silently updated.</p>
+<p>If you’d like to disable the cache and build a brand new image, you can do so by passing the <kbd>--no-cache</kbd> flag to docker build.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using a lighter image</h1>
+                </header>
+            
+            <article>
+                
+<p>We have been using the node:8 image as the base of our Hobnob image. However, like Elasticsearch, Node Docker images come in many flavors:</p>
+<ul>
+<li><strong>standard</strong>: This uses buildpack-deps:jessie as its base image. buildpack-deps is an image that provides a collection of the most common build dependencies, such as the GNU Compiler Collection (<a href="https://gcc.gnu.org/">gcc.gnu.org</a>) and GNU Make (<a href="https://www.gnu.org/software/make/">gnu.org/software/make/</a>). The buildpack-deps:jessie image is, itself, based on the debian:jessie Debian 8 image.</li>
+<li><strong>slim</strong>: This is the same as the standard image, but does not contain all the build dependencies. Instead, it only contains curl, wget, ca-certificates, and the minimal set of packages that are required to work with Node.</li>
+<li><strong>stretch</strong>: This is similar to the standard flavor, but uses Debian 9 (Stretch) instead of Debian 8 (Jessie).</li>
+<li><strong>alpine</strong>: The standard and slim flavors use Debian as its base image. The alpine flavor uses Alpine Linux as its base image. Alpine is a distribution which is extremely lightweight, and thus its images are also smaller than others.</li>
+</ul>
+<p>If we look at the Docker images for all the popular Linux distributions, you’ll find that alpine is, by far, the smallest:</p>
+<pre><strong>$ docker images</strong><br/><strong>REPOSITORY   TAG       IMAGE ID        CREATED        SIZE</strong><br/><strong>alpine       latest    3fd9065eaf02    4 months ago   4.15MB</strong><br/><strong>ubuntu       latest    452a96d81c30    2 weeks ago    79.6MB</strong><br/><strong>debian       latest    8626492fecd3    2 weeks ago    101MB</strong><br/><strong>opensuse     latest    35057ab4ef08    3 weeks ago    110MB</strong><br/><strong>centos       latest    e934aafc2206    5 weeks ago    199MB</strong><br/><strong>fedora       latest    cc510acfcd70    7 days ago     253MB</strong></pre>
+<p>Keeping a container lightweight is important, as it affects how quickly a container can be deployed. Let's pull the more lightweight Node Docker images and compare them:</p>
+<pre><strong>$ docker pull node:8-alpine</strong><br/><strong>$ docker pull node:8-slim</strong><br/><strong>$ docker images node</strong><br/><strong>REPOSITORY TAG IMAGE ID CREATED SIZE</strong><br/><strong>node 8-slim 65ab3bed38aa 2 days ago 231MB</strong><br/><strong>node 8-alpine fc3b0429ffb5 2 days ago 68MB</strong><br/><strong>node 8 78f8aef50581 2 weeks ago 673MB</strong></pre>
+<p class="mce-root"/>
+<p>As you can see, the <kbd>node:8-alpine</kbd> image is the smallest. So, let’s use that as our base image. Just to recap, your Docker image should now look like this:</p>
+<pre>FROM node:8-alpine<br/> <br/>USER node<br/>WORKDIR /home/node<br/><br/>COPY --chown=node:node ["package*.json", "yarn.lock", "./"]<br/>RUN ["yarn"]<br/>COPY --chown=node:node . .<br/>RUN ["yarn", "run", "build"]<br/><br/>CMD ["node", "dist/index.js"]</pre>
+<p>Now, let’s remove the previous hobnob image and build a new one:</p>
+<pre><strong>$ docker rmi hobnob:0.1.0</strong><br/><strong>$ docker build -t hobnob:0.1.0 . --no-cache</strong><br/><strong>$ docker images</strong><br/><strong>REPOSITORY   TAG      IMAGE ID         CREATED          SIZE</strong><br/><strong>hobnob       0.1.0    e0962ccc28cf     9 minutes ago    210MB</strong></pre>
+<p class="FirstParagraph"><span>As you can see, the size of our image has decreased from 814 MB to 210 MB – a 74% decrease!</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Removing obsolete files</h1>
+                </header>
+            
+            <article>
+                
+<p>At the moment, we are copying the src directory into the container, and then using it to build our application. However, after the project is built, the src directory and other files like package.json and yarn.lock are not required to run the application:</p>
+<pre><strong>$ docker exec -it 27459e1123d4 sh</strong><br/><strong>~ $ pwd</strong><br/><strong>/home/node</strong><br/><strong>~ $ du -ahd1</strong><br/><strong>4.0K    ./.ash_history</strong><br/><strong>588.0K  ./dist</strong><br/><strong>4.0K    ./.babelrc</strong><br/><strong>4.0K    ./package.json</strong><br/><strong>20.0K   ./spec</strong><br/><strong>128.0K  ./yarn.lock</strong><br/><strong>564.0K  ./src</strong><br/><strong>138.1M  ./.cache</strong><br/><strong>8.0K    ./.yarn<br/></strong></pre>
+<p class="mce-root"/>
+<pre><br/><strong>98.5M   ./node_modules</strong><br/><strong>237.9M  .</strong></pre>
+<p>You can see that 138.1 MB is actually being used for the Yarn cache, which we don’t need. Therefore, we should remove these obsolete <em>artifacts</em>, and leave only the dist and node_modules directories.</p>
+<p>After the RUN ["yarn", "run", "build"] instruction, add an additional instruction to remove the obsolete files:</p>
+<pre>RUN find . ! -name dist ! -name node_modules -maxdepth 1 -mindepth 1 -exec rm -rf {} \;</pre>
+<p>However, if you run docker build on this new Dockerfile, you may be surprised to see that the size of the image has not decreased. This is because each layer is simply a diff on the previous layer, and once a file is added to an image, it cannot be removed from the history.</p>
+<p>To minimize the image's size, we must remove the artifacts before we finish with the instruction. This means that we must squash all of our installation and build commands into a single <kbd>RUN</kbd> instruction:</p>
+<pre>FROM node:8-alpine<br/>USER node<br/>WORKDIR /home/node<br/>COPY --chown=node:node . .<br/>RUN yarn &amp;&amp; find . ! -name dist ! -name node_modules -maxdepth 1 -mindepth 1 -exec rm -rf {} \;<br/>CMD ["node", "dist/index.js"]</pre>
+<p>Now, the image is just 122 MB, which is a 42% space saving!</p>
+<pre><strong>$ docker images</strong><br/><strong>REPOSITORY    TAG     IMAGE ID       CREATED         SIZE</strong><br/><strong>hobnob        0.1.0   fc57d9875bb5   3 seconds ago   122MB</strong></pre>
+<p>However, doing so will forfeit the benefits we get from caching. Luckily, Docker supports a feature called <em>multi-stage builds</em>, which allows us to cache our layers, as well as have a small file size.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Multi-stage builds</h1>
+                </header>
+            
+            <article>
+                
+<p>Multi-stage builds is a feature that was added in Docker v17.05. It allows you to use multiple <kbd>FROM</kbd> instructions to define multiple images as <em>stages</em> inside a single Dockerfile.</p>
+<p>You can extract artifacts from the previous stage and add them to the next stage in a single instruction (and thus a single layer).</p>
+<p>In our case, we can define two stages <span>–</span> one for building our application, and the second one that just copies the dist and <kbd>node_modules</kbd> directory and specifies the CMD instruction:</p>
+<pre>FROM node:8-alpine as builder<br/>USER node<br/>WORKDIR /home/node<br/><br/>COPY --chown=node:node . .<br/>RUN ["yarn"]<br/>COPY --chown=node:node . .<br/>RUN ["yarn", "run", "build"]<br/>RUN find . ! -name dist ! -name node_modules -maxdepth 1 -mindepth 1 -exec rm -rf {} \;<br/><br/>FROM node:8-alpine<br/>USER node<br/>WORKDIR /home/node<br/>COPY --chown=node:node --from=builder /home/node .<br/>CMD ["node", "dist/index.js"]</pre>
+<p>We use the <kbd>as</kbd> keyword to name our stage, and refer to them in the <kbd>COPY</kbd> instructions using the <kbd>--from</kbd> flag.</p>
+<p>Now, if we build this using Dockerfile, we end up with two images:</p>
+<pre><strong>$ docker images</strong><br/><strong>REPOSITORY    TAG      IMAGE ID        CREATED         SIZE</strong><br/><strong>hobnob        0.1.0    5268f2a4176b    5 seconds ago   122MB</strong><br/><strong>&lt;none&gt;        &lt;none&gt;   f722d00c2dbf    9 seconds ago   210MB</strong></pre>
+<p>The one without a name, <kbd>&lt;none&gt;</kbd>, represents the first stage, and the hobnob:0.1.0 image is the second stage. As you can see, our image is now only 122 MB, but we still benefited from our multi-layer Dockerfile and caching.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Security</h1>
+                </header>
+            
+            <article>
+                
+<p>Lastly, the security of our Docker image is important. Conveniently, the Docker team has provided a tool called <em>Docker Bench for Security</em> (<a href="https://github.com/docker/docker-bench-security">github.com/docker/docker-bench-security</a>) that will analyze your running containers against a large list of common best practices.</p>
+<p>The tool is available as a container itself, and can be run using the following command:</p>
+<pre><strong>$ docker run -it --net host --pid host --userns host --cap-add audit_control \</strong><br/><strong>&gt; -e DOCKER_CONTENT_TRUST=$DOCKER_CONTENT_TRUST \</strong><br/><strong>&gt; -v /var/lib:/var/lib \</strong><br/><strong>&gt; -v /var/run/docker.sock:/var/run/docker.sock \</strong><br/><strong>&gt; -v /usr/lib/systemd:/usr/lib/systemd \</strong><br/><strong>&gt; -v /etc:/etc --label docker_bench_security \</strong><br/><strong>&gt; docker/docker-bench-security</strong><br/><strong>Unable to find image 'docker/docker-bench-security:latest' locally</strong><br/><strong>latest: Pulling from docker/docker-bench-security</strong><br/><strong>ff3a5c916c92: Pull complete</strong><br/><strong>7caaf50dd5e3: Pull complete</strong><br/><strong>0d533fc1d632: Pull complete</strong><br/><strong>06609d132a3c: Pull complete</strong><br/><strong>Digest: sha256:133dcb7b8fd8ae71576e9a298871177a2513520a23b461746bfb0ef1397bfa07</strong><br/><strong>Status: Downloaded newer image for docker/docker-bench-security:latest</strong><br/><strong># ------------------------------------------------------------------------------</strong><br/><strong># Docker Bench for Security v1.3.4</strong><br/><strong>#</strong><br/><strong># Docker, Inc. (c) 2015-</strong><br/><strong>#</strong><br/><strong># Checks for dozens of common best-practices around deploying Docker containers in production.</strong><br/><strong># Inspired by the CIS Docker Community Edition Benchmark v1.1.0.</strong><br/><strong># ------------------------------------------------------------------------------</strong><br/><br/><strong>[INFO] 1 - Host Configuration</strong><br/><strong>[WARN] 1.1 - Ensure a separate partition for containers has been created</strong><br/><strong>[NOTE] 1.2 - Ensure the container host has been Hardened</strong><br/><strong>...</strong><br/><strong>[PASS] 7.9 - Ensure CA certificates are rotated as appropriate (Swarm mode not enabled)</strong><br/><strong>[PASS] 7.10 - Ensure management plane traffic has been separated from data plane traffic (Swarm mode not enabled)</strong><br/><br/><strong>[INFO] Checks: 73</strong><br/><strong>[INFO] Score: 8</strong></pre>
+<p>After you’ve run the test, study each warning and see if you can improve on the setup.  </p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>We have now encapsulated our application’s component services into portable, self-contained Docker images, which can be run as containers. In doing so, we have improved our deployment process by making it:</p>
+<ul>
+<li><strong>Portable:</strong> The Docker images can be distributed just like any other file. They can also be run in any environment.</li>
+<li><strong>Predictable/Consistent:</strong> The image is self-contained and pre-built, which means it will run in the same way wherever it is deployed.</li>
+<li><strong>Automated:</strong> All instructions are specified inside a Dockerfile, meaning our computer can run them like code.</li>
+</ul>
+<p>However, despite containerizing our application, we are still manually running the <kbd>docker run</kbd> commands. Furthermore, we are running single instances of these containers on a single server. If the server fails, our application will go down. Moreover, if we have to make an update to our application, there'll still be downtime (although now it's a shorter downtime because deployment can be automated).</p>
+<p>Therefore, while Docker is part of the solution, it is not the whole solution.</p>
+<p>In the next chapter, we will build on this chapter and use cluster orchestration systems such as Kubernetes to manage the running of these containers. Kubernetes allows us to create distributed clusters of redundant containers, each deployed on a different server, so that when one server fails, the containers deployed on the other servers will still keep the whole application running. This also allows us to update one container at a time without downtime.</p>
+<p>Overall, Kubernetes will allow us to scale our application to handle heavy loads, and allows our application to have a reliable uptime, even when we experience hardware failures.</p>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

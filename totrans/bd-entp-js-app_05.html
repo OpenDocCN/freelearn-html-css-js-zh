@@ -1,0 +1,1494 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Writing End-to-End Tests</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">In the previous chapter, <a href="76e42f28-9731-49ca-9e87-fab7b2b6a7e8.xhtml" target="_blank">Chapter 4</a>, <em>Setting Up Development Tools</em>, we successfully bootstrapped our project. In this chapter, we'll begin the <span>development of our user directory API, which simply consists of <strong>Create, Read, Update, and Delete</strong> (<strong>CRUD</strong>) endpoints.</span></p>
+<p class="mce-root"><span>In</span> <a href="c2152f5d-2812-4841-850e-9a1437d06a5c.xhtml" target="_blank">Chapter 1</a><span>, </span><em>The Importance of Good Code</em><span>, we discussed the importance of testing and briefly outlined the principles and high-level processes of</span> <strong>Test-Driven Development</strong> <span>(</span><strong>TDD</strong><span>). But theory and practice are two very different things. In this chapter, we will put the TDD approach into practice by first writing</span> <strong>End-to-End</strong> <span>(</span><strong>E2E</strong><span>) tests, and then using them to drive the development of our API. Specifically, we will do the following:</span></p>
+<ul>
+<li>Learn about different types of test</li>
+<li>Practice implementing a TDD workflow, specifically following the <strong>Red-Green-Refactor</strong> cycle</li>
+<li>Write E2E tests with <strong>Cucumber</strong> and <strong>Gherkin</strong></li>
+</ul>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Understanding different types of test</h1>
+                </header>
+            
+            <article>
+                
+<p>First, let's learn about the different types of tests and how they all fit into our project's workflow. The first thing to note is that some tests are more technically-focused, while others are more business-focused; some tests are only concerned with a very small part of the whole system, while others test the system as a whole. Here's a brief overview of the most common types of tests you'll encounter:</p>
+<ul>
+<li><strong>Unit tests</strong>: These test the <span>smallest testable parts of an application, called </span><strong>units</strong>. For example, if we have a function called <kbd>createUser</kbd>, we can write a unit test that tests that the function always returns a promise.<br/>
+With unit tests, we are only concerned with the function of the unit, <em>independent of external dependencies</em>. If the unit has external dependencies, such as a database, we must substitute the real database client with a fake one. This fake client must be able to mimic the behavior of the database adequately so that, from the perspective of the unit under test, the fake behaves in the same way as the authentic database.<br/>
+We will talk more about fakes later, but the important takeaway is that unit tests test a small and specific component of the whole code base, using minimal (or no) dependencies, and without calling other parts of the application (that is, there are no<span> </span><strong>side-effects</strong>).</li>
+<li><strong>Integration tests:</strong> These test whether different units can work together as a single, larger ensemble. To continue our example, the <kbd>createUser</kbd> function may rely on the <kbd>Auth</kbd> module to check whether the client has permission to create the user. We can create a test case where <kbd>createUser</kbd> is called with an unauthenticated client, and assert that the function throws an error.<br/>
+Integration tests test the integration between two or more units and ensure they are compatible. In our example, if<span> the <kbd>Auth</kbd></span> module changes the data structure of its response payload, and we forget to update our <kbd>createUser</kbd> method to consume this new data structure, the integration test should fail, alerting us to fix it.</li>
+<li><strong>E2E/functional tests</strong>: These test the flow of an application from start to finish, acting as if we are the end consumers. In our example, we'd attempt to create a new user by actually sending a <kbd>POST</kbd><span> </span>request to the<span> </span><kbd>/users</kbd> endpoint, because that's how our end users would actually interact with our API. After the call, we'd check the database to ensure that a user document is indeed created and conforms to the expected data structure.</li>
+<li><strong>User interface</strong> (<strong>UI</strong>) <strong>tests</strong><span>: For applications that include a frontend component, UI tests are a</span>utomated tests that mimic the behavior of real users interacting with the UI, such as scrolling and clicking. You may use generic browser automation tools such as <strong>Selenium</strong> (<a href="https://www.seleniumhq.org/" target="_blank">https://www.seleniumhq.org/</a>), or framework-specific tools such as <strong>Enzyme</strong> (<a href="http://airbnb.io/enzyme/">airbnb.io/enzyme/</a>, used for React applications).</li>
+<li><strong>Manual tests</strong><span>: These are </span>tests that cannot be automated. Manual tests should be kept to a minimum as they are not deterministic and there's a high cost to running them. Apart from catching bugs, manual tests can also unearth scenarios that are unintuitive and/or bad for <strong>user experience</strong> (<strong>UX</strong>).</li>
+<li><strong>Acceptance tests</strong><span>: These differ from the other tests that have already been outlined because they are more focused on business needs. They are a list of business requirements (as opposed to functional requirements), laid out by the business stakeholders, that the platform must fulfill. For example, one such requirement might read "95% of all visitors must be able to load the page within 3 seconds".<br/></span><span>This is not a purely technical requirement, but it drives the technical decisions that are to be made. For example, the development team may now be required to install analytics libraries to collect data on the load times of the site for all visitors, and to prioritize optimizing the site over developing new features.<br/>
+Parts of the acceptance tests may be written in a </span><strong>Behavior-Driven Development</strong> (<strong>BDD</strong>) format, which focuses on the steps that an actual user may take when interacting with the platform. <span>One such </span>requirement may read "Given a user has successfully authenticated and he is on a product page, when he clicks the <span class="packt_screen">Add to Cart</span> button, then that product should be added to the cart". Then, when this requirement is verified, either through automated and/or manual testing, it would pass the acceptance test.<br/>
+Think of acceptance tests as a final stage of the development process, when the business stakeholder accepts the work as complete.</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Structuring our test suite with the testing pyramid</h1>
+                </header>
+            
+            <article>
+                
+<p>Unit testing is the most<span> </span><strong>granular</strong><span> </span>form of testing, as it addresses the lowest possible level of detail of your project. Unit tests give you confidence in a very small part of your application, but are also the quickest to run, as they do not depend on other modules, databases, filesystems, or the network.</p>
+<p class="mce-root"/>
+<p>Therefore, you can set up your unit tests to run every time a change is made to your code; this will provide <span>timely feedback as you develop.</span></p>
+<p>Granularity decreases as you move to integration tests and E2E tests. These tests give you confidence in a larger part of your project, but are also slower to run.</p>
+<p>Therefore, when we design our test suite, we should find a balance between writing unit, integration, and E2E tests. In <a href="c2152f5d-2812-4841-850e-9a1437d06a5c.xhtml" target="_blank">Chapter 1</a>, <em>The Importance of Good Code</em>, we briefly mentioned the concept of the <strong>Testing Pyramid</strong>; let's apply it here and make sure that our test suite contains a lot of unit tests, fewer integration tests, and the fewest E2E tests.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">When implementing a new feature, write your E2E tests first</h1>
+                </header>
+            
+            <article>
+                
+<p>A common misinterpretation of TDD and the Testing Pyramid is that unit tests are more important than E2E tests, and that you should start writing unit tests <em>first</em>. This is wrong. TDD only requires you to write tests first, but does not specify the type of test you must use. The Testing Pyramid simply encourages you balance your test suite to have more granular tests; it does not specify the importance or order for which you test.</p>
+<p>In fact, when implementing a new feature, E2E tests are the most important tests, and <span>should be the first test you write when composing your test suite</span>. E2E tests mimic how your end users would interact with the project, and are often tied to the business requirements. If your E2E tests pass, it means the feature you are developing is working.</p>
+<p>Moreover, it's often impractical to write your unit tests first. A unit tests concerns itself with implementation details, but there are many ways to implement a set of features and our first solutions are often substandard. It is likely to undergo many iterations of changes before it becomes stable. Since unit tests are coupled to the implementation they are testing, when the implementation changes, the unit tests would be discarded.</p>
+<p>Therefore, when implementing new features, E2E tests should be written first; unit and integration tests should be written only after the implementation has settled.</p>
+<p>Finally, E2E tests and unit tests are not mutually exclusive. For example, if you are writing a library that exports as single utility function, then your E2E tests <em>are</em> your unit tests.</p>
+<p>This is because your end users would interact with your unit directly, making E2E and unit tests one and the same. Therefore, always keep your target audience in mind, and think about how they'll interact with your project. Use the appropriate type of tests to define contracts/interfaces with the end consumers, and use these test to drive your development.</p>
+<p>Since we are developing new features, t<span>his chapter will focus on E2E tests. Unit and integration tests will be covered in the next chapter, <em>TDD Part II: Unit/Integration Tests</em>; and </span>UI testing with Selenium will be covered in <a href="76ad50ef-1134-4672-88e1-c2700f63268f.xhtml" target="_blank"/><a href="76ad50ef-1134-4672-88e1-c2700f63268f.xhtml" target="_blank">Chapter 15</a>, <em>E2E Testing with React</em>. Manual tests are not programmable and thus earn only a brief mention at the end of this section.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Following a TDD workflow</h1>
+                </header>
+            
+            <article>
+                
+<p><span>Next, let's examine a typical TDD workflow, and see how the different types of tests fit into it.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Gathering business requirements</h1>
+                </header>
+            
+            <article>
+                
+<p>The TDD workflow starts with the product manager gathering <strong>business requirements</strong> from the business stakeholders, and then liaising with the technical team to refine these requirements, taking into account feasibility, <span>costs,</span> and time constraints.</p>
+<p>The scope of the requirements should be small. If the application is large, the product manager should <span>prioritize the requirements by importance and urgency, and group them into phases. The first phase should contain the highest priority requirements, which would be implemented first.</span></p>
+<p>These requirements should be well-defined and unambiguous, so that there's no <span>room for (mis)interpretation. This means they should quantified as much as possible. For example, instead of "the app must load quickly", it should say "the app must load within 1 second on an iPhone 5S".</span></p>
+<p><span>Secondly, the requirement-gathering stage should be a joint-process involving many teams. Developers, designers, product managers, and business owners all provide different expertise and points of view. By allowing everyone to give feedback on the scope, timeline, and overall business strategy, it could help the team set realistic expectations and avoid common pitfalls.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Formalizing requirements through documentation</h1>
+                </header>
+            
+            <article>
+                
+<p>Once everyone has agreed on the requirements for the current phase, it is extremely important that they are formally documented. When everyone involved understands the requirements, it's very tempting to not write them down; after all, it's a boring chore that no one wants to do. One may even argue that it slows down development unnecessarily. However, we must fight against that temptation and be disciplined because of the following reasons:</p>
+<ul>
+<li><strong>People have bad memories</strong>: I once read a tongue-in-cheek comment from an online discussion that said "Good programmers have good minutiae memory. Great programmers have good gestalt memory. Legendary programmers have no memory at all." Don't rely on your memory—write down the requirements!</li>
+<li><strong>It prevents misinterpretation.</strong></li>
+<li><strong>A formalized requirement provides a</strong><span> </span><strong>S</strong><span><strong>ingle Source of Truth</strong></span><span> </span><span>(<strong>SSoT</strong>): In development, change is often the only constant. It is inevitable that r</span>equirements will change. 99% of the problems with requirement changes lies in not communicating that change with everyone, resulting in different team members having different, possibly conflicting, snapshots of the requirements. By having a single document that acts as an SSoT, we can ensure everyone has access to the latest,<span> </span><em>and the same</em>, information.</li>
+<li><strong>A formalized requirement can be improved</strong>: If there are areas of ambiguity, the language of the requirement can be revised to be more explicit. If someone forgot an important point, they can add it as an addendum.</li>
+</ul>
+<p>Finally, having a set of formal requirements is only helpful if it is kept up to date. It is very important that a single<span> </span>person is put in sole<span> </span>charge of maintaining the requirements document. <span>Otherwise, everyone may assume someone else will update it, but then no one does. Out-of-date requirements may be worse than no requirements at all, if the old version conflicts with the most up-to-date version.</span></p>
+<p>However, t<span>his does not mean the person in charge has to be the one to actually update the document itself; he/she may appoint someone more suitable to do the task. But the point is that, ultimately, it is his/her responsibility to make sure the requirements are up to date.</span></p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Refining requirements into specification</h1>
+                </header>
+            
+            <article>
+                
+<p><span>The requirements outline the high-level goals that the business wants the application to achieve, but it does not have sufficient details for developers to start implementation straight away. Requirements are </span><span>imprecise and</span><span> do not translate well into code, which is very explicit.</span></p>
+<p><span>Instead, developers need to understand the overall business goal, and the current sets of</span> <span>requirements, and</span> <span>produces a</span> more detailed set of <strong>technical specifications</strong>. <span>A specification should contain sufficient technical details needed by developers to begin implementation.</span></p>
+<p>In our case, the overall goal of the project is to "Create a web application that allows users to log in and update their profiles."; and the first requirement may be to "create an API server with an endpoint to create new users". You should now think about how to structure the application. For example, you may split the application into the following modules:</p>
+<ul>
+<li><strong>Authentication</strong>: To allow users to register and log in</li>
+<li><strong>Profile</strong>: To allow users to edit their own profile and view the profile of others</li>
+<li><strong>Database(s)</strong>: To store user data</li>
+<li><strong>API server</strong>: The interface between our internal services and external consumers</li>
+</ul>
+<p>With the structure of the application on the back of your mind, we can now move on to writing the specification. <span>As we've already mentioned in</span> <a href="c2152f5d-2812-4841-850e-9a1437d06a5c.xhtml" target="_blank">Chapter 1</a><span>, </span><em>The Importance of Good Code</em><span>, the best specifications are tests, so let's write some tests!</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Writing tests as specification</h1>
+                </header>
+            
+            <article>
+                
+<p><span>Tests are the best form of specification because:</span></p>
+<ul>
+<li>Tests can be run, which means you can programmatically verify your implementation against your specification. If the tests pass, your implementation conforms to the specification.</li>
+<li>Tests are an integral part of the code (that is, <strong>S</strong><span><strong>pecification-as-Code</strong> (<strong>SaC</strong>)).</span> There is less chance that your specification becomes outdated, because if it does, the test would fail.</li>
+</ul>
+<p class="mce-root"/>
+<p><span>Therefore, we can write our technical specifications as E2E tests, which then drives the TDD development process.</span></p>
+<div class="packt_tip"><span>Remember that it's very hard for a single developer to be able to conjure up an exhaustive list of scenarios and edge cases to test for; we are bound to miss some. That's why it is important that the tests and code are inspected by multiple people. This may involve w</span><span>riting the test descriptions as a pair or mob, putting in place a c</span><span>ode review workflow involving developers both within and outside the project. Doing so maximizes the value of the tests and ensures that they cover the most relevant edge cases.</span></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Test-driven development</h1>
+                </header>
+            
+            <article>
+                
+<p>As soon as the first E2E test for our selected feature has been written, the TDD process can begin. We should now run the test, see it fail, implement the feature so it passes the test, and then refactor. <span>Unit and integration tests should be written, where appropriate, to increase confidence in the code.</span></p>
+<p><span>Repeat this process for every test case until the current set of features has been fully implemented.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Writing manual tests</h1>
+                </header>
+            
+            <article>
+                
+<p>As we are developing our feature, the product manager should also be defining manual tests. Manual tests are required because not all requirements can be automated, and some may require real user data (for example, usability testing). For example, part of the acceptance criteria may be that "95% of users are able to find the settings page within 5 seconds". In these scenarios, manual testing is required.</p>
+<p>Although we cannot automate this process, we can formalize it in a structured way. Instead of writing down the requirements in a text document, we can use<span> </span><strong>test case management<span> </span>tools</strong>, such as<span> </span>TestLink<span> </span>(<a href="http://testlink.org/">testlink.org</a>), as well as proprietary alternatives, such as TestRail (<a href="http://www.gurock.com/testrail/">gurock.com/testrail/</a>), qTest (<a href="https://www.qasymphony.com/software-testing-tools/qtest-manager/">qasymphony.com/software-testing-tools/qtest-manager/</a>), Helix TCM (<a href="https://www.perforce.com/products/helix-test-case-management">perforce.com/products/helix-test-case-management</a>), Hiptest (<a href="https://hiptest.net/">hiptest.net</a>), PractiTest (<a href="https://www.practitest.com/">practitest.com</a>), and many more. These test case management systems help you define, run, and record test cases.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p><span>Each test should contain a set of clear, unambiguous steps to follow. A group of testers, who, ideally, have no prior knowledge of the platform, would then be given the instructions, the expected results, and be asked whether the results </span><span>obtained</span><span> </span><span>match the expected ones.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Exploratory testing</h1>
+                </header>
+            
+            <article>
+                
+<p>Lastly, you may simply ask manual testers to poke around the application, or explore the API themselves, without being given any steps to follow. This is called<span> </span><strong>exploratory testing</strong> and may be grouped under manual testing. The purpose of exploratory testing is to identify edge cases that were missed, identify unintuitive outcomes, or find bugs that may otherwise break the system.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Maintenance</h1>
+                </header>
+            
+            <article>
+                
+<p>Inevitably, all applications, no matter how well tested, will have bugs and areas of improvement. An essential part of any workflow is to allow users to report bugs, raise issues, and ask questions. As an extension to this, we also need a system to triage these issues, prioritizing them based on the following:</p>
+<ul>
+<li><strong>Impact</strong>: How many users are impacted? How important are these users?</li>
+<li><strong>Ease</strong>: How easy is it to fix?</li>
+<li><strong>Urgency</strong>: How time-sensitive is this issue?</li>
+</ul>
+<p>This can be done through platforms such as GitHub's issue trackers, Atlassian's JIRA, or similar software.</p>
+<p>When a bug is reported, it should be reproduced and confirmed. Once confirmed, test cases that cover that scenario should be written to prevent regression in the future. For example, if the bug is that the <kbd>age</kbd> field is returned as a float, a test case should be written to test that the <kbd>age</kbd> field is always a positive integer.</p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Gathering requirements</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that we understand the workflow, let's put it into practice!</p>
+<p><span>We begin by</span> <span>selecting a small portion of our application and defining its requirements. We picked the <span class="packt_screen">Create User</span> feature because many other features depend on it. Specifically, the feature requires us to create an API endpoint, <kbd>/users</kbd>, that accepts <kbd>POST</kbd> requests, and stores the JSON payload of the request (representing the user) into a database. In addition, the following constraints should be applied:</span></p>
+<ul>
+<li>The user payload must include the email address and password fields</li>
+<li><span>The user payload </span>may optionally provide a profile object; otherwise, an empty profile will be created for them</li>
+</ul>
+<p>Now that we have our requirements, let's write our specification as E2E tests, using a tool called <em>Cucumber</em>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Setting Up E2E tests with Cucumber</h1>
+                </header>
+            
+            <article>
+                
+<p>Cucumber is an automated test runner that executes tests written in a <strong>Domain-Specific Language</strong> (<strong>DSL</strong>) called <em>Gherkin</em>. Gherkin allows you to write tests in plain language, usually in a b<span>ehavior-driven way</span>, which can be read and understood by anyone, even if they are not technically-minded.</p>
+<p>There are many Cucumber implementations for different languages and platforms, such as Ruby, Java, Python, C++, PHP, Groovy, Lua, Clojure, .NET and, of course, JavaScript. The JavaScript implementation is available as an npm package, so let's add it to our project:</p>
+<pre><strong>$ yarn add cucumber --dev</strong></pre>
+<p>We are now ready to write the specification for our first feature.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Features, scenarios, and steps</h1>
+                </header>
+            
+            <article>
+                
+<p>To use Cucumber, you'd first separate your platform into multiple <strong>features</strong>; then, within each feature, you'd define <strong>scenarios</strong> to test for. For us, we can take the "<span>Create user" requirement as one feature, and start breaking it down into scenarios, starting with the</span> following:</p>
+<ul>
+<li><span>If the client sends a</span><span> </span><kbd>POST</kbd><span> </span><span>request to</span><span> </span><kbd>/users</kbd><span> </span><span>with an empty payload, our API should respond </span><span>with a <kbd>400 Bad Request</kbd> HTTP status code and a JSON object payload containing an appropriate error message</span></li>
+<li>If the <span>client</span> sends a <kbd>POST</kbd> request to <kbd>/users</kbd> with a payload that is not JSON, our API<span> should respond with </span><span>a <kbd>415 Unsupported Media Type</kbd> HTTP status code and a JSON response payload containing an appropriate error message</span></li>
+<li>If the <span>client</span><span> </span>sends a<span> </span><kbd>POST</kbd><span> </span>request to<span> </span><kbd>/users</kbd><span> </span>with a malformed JSON payload, our API<span> should respond with </span><span>a<span> </span><kbd>400 Bad Request</kbd><span> </span>HTTP status code and a JSON response payload containing an appropriate error message</span></li>
+</ul>
+<p>We will define more scenarios later, but let's focus on these three to get us started.</p>
+<p>Each feature should be defined, using the Gherkin language, within its own <kbd>.feature</kbd> file. So, let's create one now.</p>
+<pre><strong>$ cd &lt;project-root-dir&gt;</strong><br/><strong>$ mkdir -p spec/cucumber/features/users/create</strong><br/><strong>$ touch spec/cucumber/features/users/create/main.feature</strong></pre>
+<p>Now, let's translate the scenarios for our <span class="packt_screen">Create User</span> feature into Gherkin.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Gherkin keywords</h1>
+                </header>
+            
+            <article>
+                
+<p>In Gherkin, every non-empty line starts with a Gherkin <strong>keyword</strong> (although there are several common exceptions). We will go over the relevant keywords in more detail when we use them, but here's a brief overview of each keyword and its uses:</p>
+<ul>
+<li><kbd>Feature</kbd>: Specifies the name and description of the feature. A feature is just a way to group related scenarios together.</li>
+<li><kbd>Scenario</kbd>: Specifies the name and description of the scenario.</li>
+<li><kbd>Given</kbd>, <kbd>When</kbd>, <kbd>Then</kbd>, <kbd>And</kbd>, <kbd>But</kbd>: Each scenario is made up of one or more <strong>steps</strong>, each corresponding to a JavaScript function that is to be executed by Cucumber. If, after executing all the steps, no errors were thrown, then the test is deemed to have passed. The five step keywords are equivalent; you should use the one that makes your test most readable.</li>
+<li><kbd>Background</kbd>: Allows you to set up a common environment to execute all your scenarios. This saves you from defining duplicate set-up steps for all scenarios.</li>
+<li><kbd>Scenario Outline</kbd>: Allows you to define a template for multiple scenarios that differ only in certain values. This prevents specifying many scenarios/steps that are very similar to each other.</li>
+<li><kbd>Examples</kbd>: When using scenario outline, the <kbd>Examples</kbd> keyword allows you to specify values to plug into the scenario outline.</li>
+<li><kbd>"""</kbd>: Allows you to use <strong>doc strings</strong> to specify multiline strings as parameters.</li>
+<li><kbd>|</kbd>: Allows you to specify more complex data tables as parameters.</li>
+<li><kbd>@</kbd>: Allows you to group related scenarios together using <strong>tags</strong>. After tagging scenarios, you can instruct Cucumber to execute <span>only</span> those with a certain tag, or, conversely, exclude tests with certain tags.</li>
+<li><kbd>#</kbd>: Allows you to specify comments, which will not be executed by Cucumber.</li>
+</ul>
+<div class="packt_tip">If you are using Visual Studio Code (VSCode), we recommend that you install the <em>Cucumber (Gherkin) Full Support</em> VSCode Extension (<a href="https://github.com/alexkrechik/VSCucumberAutoComplete">github.com/alexkrechik/VSCucumberAutoComplete</a>), which provides syntax highlighting and snippet support.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Specifying our feature</h1>
+                </header>
+            
+            <article>
+                
+<p>So, let's start defining our feature by adding a name and description to <kbd>spec/cucumber/features/users/create/main.feature</kbd>:</p>
+<pre>Feature: Create User<br/><br/> Clients should be able to send a request to our API in order to create a<br/> user. Our API should also validate the structure of the payload and respond<br/> with an error if it is invalid.</pre>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Writing our first scenario</h1>
+                </header>
+            
+            <article>
+                
+<p>Next, we'll write our first scenario and steps. As a reminder, the scenario is "If the client sends a<span> </span><kbd>POST</kbd><span> </span>request to<span> </span><kbd>/users</kbd><span> </span>with an empty payload, our API should respond <span>with a <kbd>400 Bad Request</kbd> HTTP status code, and a JSON object payload containing an appropriate error message".</span></p>
+<pre>Feature: Create User<br/><br/>  Clients should be able to send a request to our API in order to create a<br/>  user. Our API should also validate the structure of the payload and respond<br/>  with an error if it is invalid.<br/><br/>  Scenario: Empty Payload<br/><br/>  If the client sends a POST request to /users with a unsupported payload, it<br/>  should receive a response with a 4xx status code.<br/><br/>  When the client creates a POST request to /users<br/>  And attaches a generic empty payload<br/>  And sends the request<br/>  Then our API should respond with a 400 HTTP status code<br/>  And the payload of the response should be a JSON object<br/>  And contains a message property which says "Payload should not be empty"</pre>
+<p>We have broken the scenario down into modular units called <strong>steps</strong> and prefixed them with the Gherkin keywords. Here, we've used the keywords<span> </span><kbd>When</kbd>,<span> </span><kbd>Then</kbd><span>, </span>and<span> </span><kbd>And</kbd>, although we could have used any of the five keywords; we chose these because it makes the specification more readable.</p>
+<p>Generally, you can group steps into three categories:</p>
+<ul>
+<li><strong>Setup</strong>: Used to set up the environment in preparation for an action to be executed. Usually, you'd use the <kbd>Given</kbd> keyword to define setup steps.</li>
+<li><strong>Action</strong>: Used to execute an action, which is usually the event we are testing for. You'd typically use the <kbd>When</kbd> keyword to define action steps.</li>
+<li><strong>Assertions</strong>: Used to assert whether the actual outcome of the action is the same as the expected outcome. Usually, you'd use the <kbd>Then</kbd> keyword to define assertion steps.</li>
+</ul>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>Furthermore, you can use the <kbd>And</kbd> and <kbd>But</kbd> keywords to chain multiple steps together and make the specification more readable. But, remember that all step keywords are functionally equivalent.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Laying out our step definitions</h1>
+                </header>
+            
+            <article>
+                
+<p>With the help of Gherkin, we now have our specification written in plain English. Next, let's try to use Cucumber to run our specification.</p>
+<p>By default, Cucumber will look for a directory called <kbd>features</kbd> in the project's root directory and run the <kbd>.feature</kbd> files it finds inside. Since we have placed our <kbd>main.feature</kbd> file inside the <kbd>spec/cucumber/features</kbd> directory, we should pass this path to Cucumber:</p>
+<pre class="mce-root"><strong>$ npx cucumber-js spec/cucumber/features</strong><br/><strong>UUUUUU</strong><br/><br/><strong>Warnings:</strong><br/><strong>1) Scenario: Empty Payload</strong><br/><strong>   ? When the client creates a POST request to /users</strong><br/><strong>       Undefined.</strong><br/><strong>   ? And attaches a generic empty payload</strong><br/><strong>       Undefined.</strong><br/><strong>   ? And sends the request</strong><br/><strong>       Undefined.</strong><br/><strong>   ? Then our API should respond with a 400 HTTP status code</strong><br/><strong>       Undefined.</strong><br/><strong>   ? And the payload of the response should be a JSON object</strong><br/><strong>       Undefined.</strong><br/><strong>   ? And contains a message property which says "Payload should not be </strong><br/><strong>   empty"</strong><br/><strong>       Undefined.</strong><br/><br/><strong>1 scenario (1 undefined)</strong><br/><strong>6 steps (6 undefined)</strong></pre>
+<p><span>The test result informs us that our tests are undefined. </span>This is because Cucumber is not clever enough to parse the plain text specification and figure out how to run these tests. We must link these steps to actual JavaScript code, which, in the context of Cucumber, are called <strong>step definitions</strong>.</p>
+<p>Create a new directory called <kbd>steps</kbd> next to the <kbd>features</kbd> directory; here's where we'll define all our step definitions:</p>
+<pre><strong>$ mkdir -p spec/cucumber/steps</strong></pre>
+<p>Defining steps inside their own directory helps us to mentally dissociate steps from being tied to any particular feature, and keep steps as modular as possible. Create an <kbd>index.js</kbd> file within the <kbd>steps</kbd> directory and add the following placeholder step definitions:</p>
+<pre>import { When, Then } from 'cucumber';<br/><br/>When('the client creates a POST request to /users', function (callback) {<br/>  callback(null, 'pending');<br/>});<br/><br/>When('attaches a generic empty payload', function (callback) {<br/>  callback(null, 'pending');<br/>});<br/><br/>When('sends the request', function (callback) {<br/>  callback(null, 'pending');<br/>});<br/><br/>Then('our API should respond with a 400 HTTP status code', function (callback) {<br/>  callback(null, 'pending');<br/>});<br/><br/>Then('the payload of the response should be a JSON object', function (callback) {<br/>  callback(null, 'pending');<br/>});<br/><br/>Then('contains a message property which says "Payload should not be empty"', function (callback) {<br/>  callback(null, 'pending');<br/>});</pre>
+<div class="packt_infobox">If you have the ESLint extension installed on your editor, you may see ESLint complain about arrow functions and function names. Normally, these would be valid problems, but this is not the case in our test files. Therefore, we should override the default configuration and turn these rules off.<br/>
+<br/>
+Inside the <kbd>spec/</kbd> directory, create a new <kbd>.eslintrc.json</kbd> file, and paste in the following content:<br/>
+<br/>
+<pre>{<br/>  "rules": {<br/>      "func-names": "off",<br/>      "prefer-arrow-callback": "off"<br/>  }<br/>}</pre>
+This will turn off the <kbd>func-names</kbd> and <kbd>prefer-arrow-callback</kbd> rules for all files inside the <kbd>spec/</kbd> directory.</div>
+<p>Each step definition consists of the step keyword method (<kbd>When</kbd>/<kbd>Then</kbd> and so on), which takes in two parameters. The first one is the <strong>pattern</strong>, which is a string that is used to match the text in the feature specification with the step definition. The second parameter is the <strong>code function</strong>, which is a function that is run for that step.</p>
+<p>In our example, when Cucumber gets to the <kbd>When the client creates a POST request to /users</kbd> <span>step </span><span>in our scenario, it will try to run the function associated with the </span><kbd>When('the client creates a POST request to /users')</kbd> <span>step definition, because the pattern matches the step description.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Running our scenarios</h1>
+                </header>
+            
+            <article>
+                
+<p>Before we implement the logic behind each step definition, let's make sure our setup is working. By default, Cucumber will look for step definitions inside a root-level <kbd>features/</kbd> directory; since we placed our definitions in a different directory, we must use the <kbd>--require</kbd> flag to tell Cucumber where to find them.</p>
+<p class="mce-root"/>
+<p><span>Run </span><kbd>npx cucumber-js spec/cucumber/features --require spec/cucumber/steps</kbd><span> to trigger the tests:</span></p>
+<pre><strong>$ npx cucumber-js spec/cucumber/features --require spec/cucumber/steps</strong><br/><strong>spec/cucumber/steps/index.js:1</strong><br/><strong>(function (exports, require, module, __filename, __dirname) { import { Given, When, Then } from 'cucumber';</strong><br/><strong>                                                              ^^^^^^</strong><br/><strong>SyntaxError: Unexpected token import</strong></pre>
+<p>It returns with a <kbd>SyntaxError: Unexpected token import</kbd><span> </span>error. This is because we are not using Babel to transpile the code before running it, and so the<span> </span><kbd>import</kbd><span> </span>ES6 keyword is not supported. This is where the<span> </span><kbd>@babel/register</kbd><span> </span>package is useful: it allows us to instruct Cucumber to use Babel as the compiler to process our step definitions before running them.</p>
+<p>First, let's install the<span> </span><kbd>@babel/register</kbd><span> </span>package as a development dependency:</p>
+<pre><strong>$ yarn add @babel/register --dev</strong></pre>
+<p>Now, we can run<span> </span><kbd>cucumber-js</kbd><span> </span>again with the <kbd>--require-module</kbd> flag and it should be <strong>able to find and run our step definitions:</strong></p>
+<pre><strong>$ npx cucumber-js spec/cucumber/features --require-module @babel/register --require spec/cucumber/steps</strong><br/><strong>P-----</strong><br/><br/><strong>Warnings:</strong><br/><strong>1) Scenario: Empty Payload</strong><br/><strong>   ? When the client creates a POST request to /users</strong><br/><strong>       Pending</strong><br/><strong>   - And attaches a generic empty payload</strong><br/><strong>   - And sends the request</strong><br/><strong>   - Then our API should respond with a 400 HTTP status code</strong><br/><strong>   - And the payload of the response should be a JSON object</strong><br/><strong>   - And contains a message property which says "Payload should not be empty"</strong><br/><br/><strong>1 scenario (1 pending)</strong><br/><strong>6 steps (1 pending, 5 skipped)</strong></pre>
+<p>Behind the scenes, Cucumber would first execute all the step definition functions (<kbd>When</kbd> and <kbd>Then</kbd>), register the code function, and associate it with the corresponding pattern. Then, it will parse and run the feature files, attempting to match the string with step definitions that it has registered.</p>
+<p>Here, the test result reads <kbd>pending</kbd> because we have not implemented the code function for each step definition, which we will do in the next section. But before that, let's first formalize our E2E test command into an npm script, to save us all that typing:</p>
+<pre>"test:e2e": "cucumber-js spec/cucumber/features --require-module @babel/register --require spec/cucumber/steps",</pre>
+<p>Now we have set up the infrastructure for running E2E tests, it'd be a perfect time to commit our code. First, let's create the <kbd>dev</kbd> branch:</p>
+<pre><strong>$ git branch dev</strong></pre>
+<p>Then, check out the new feature branch, <kbd>create-user/main</kbd>, and commit our changes to the repository:</p>
+<pre><strong>$ git checkout -b create-user/main</strong><br/><strong>$ git add -A</strong><br/><strong>$ git commit -m "Set up infrastructure for Cucumber E2E tests"</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Implementing step definitions</h1>
+                </header>
+            
+            <article>
+                
+<p>To test our API server, we would need to run the server itself and send HTTP requests to it. There are many ways to send requests in Node.js:</p>
+<ul>
+<li>Using the <kbd>request</kbd> method provided by Node's native <kbd>http</kbd> module.</li>
+<li>Using the new Fetch Web API syntax: <kbd>fetch</kbd> is an improvement on the traditional <kbd>XMLHttpRequest</kbd> used to make <strong>AJAX</strong><span> </span><span>(</span><strong>Asynchronous JavaScript And XML</strong><span>)</span> requests from the client. We can use polyfills, such as <kbd>isomorphic-fetch</kbd> (<a href="https://www.npmjs.com/package/isomorphic-fetch" target="_blank">https://www.npmjs.com/package/isomorphic-fetch</a>), which will allow us to use the same syntax on the server.</li>
+<li>Using a library, such as <kbd>request</kbd> (<a href="https://www.npmjs.com/package/request" target="_blank">https://www.npmjs.com/package/request</a>), <kbd>superagent</kbd> (<a href="https://www.npmjs.com/package/superagent">npmjs.com/package/superagent</a>), <kbd>axios</kbd> (<a href="https://www.npmjs.com/package/axios">npmjs.com/package/axios</a>), and many more.</li>
+</ul>
+<p>Using the native <kbd>http</kbd> module allows us to be as expressive as possible because it works at the lowest-level API layer; however, this also means the code is likely to be verbose. Using the Fetch API might provide a simpler syntax, but it will still have a lot of boilerplate code. For example, when we receive a response, we must explicitly tell our code how we want to parse it.</p>
+<p>For our use cases, using a library is probably the most appropriate. Libraries are more opinionated but they also save you from writing the same lines repeatedly; for example, response payloads are parsed automatically in most libraries. Of all the available libraries, I've found that <kbd>superagent</kbd> is the most suitable for our tests because it allows you to compose a request by chaining multiple steps together. To demonstrate, the following is the example given in <kbd>superagent</kbd>'s <kbd>README.md</kbd> file:</p>
+<pre>request<br/>  .post('/api/pet')<br/>  .send({ name: 'Manny', species: 'cat' }) // sends a JSON post body<br/>  .set('X-API-Key', 'foobar')<br/>  .set('accept', 'json')<br/>  .end((err, res) =&gt; {<br/>    // Calling the end function will send the request<br/>  });</pre>
+<p>This allows us to initiate a request object at the beginning, and each step in our scenario can simply modify that object to collectively compose the final request that we send to our test API server. Without further ado, let's install <kbd>superagent</kbd>:</p>
+<pre><strong>$ yarn add superagent --dev</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Calling our endpoint</h1>
+                </header>
+            
+            <article>
+                
+<p>For the first call to our server, we have broken it down into three steps:</p>
+<ol>
+<li><kbd>When the client creates a POST request to /users</kbd></li>
+<li><kbd>And attaches a generic empty payload</kbd></li>
+<li><kbd>And sends the request</kbd></li>
+</ol>
+<p>In the first step, we will create a new request object and save it as a file-scoped variable<span>, making it available to be accessed by subsequent steps</span>. In the second, we will attach an empty payload to the request; however, this is already the default behavior of <kbd>superagent</kbd>, so we can simply <kbd>return</kbd> from the function without doing anything. In the third step, we will send the request and save the response in another variable.</p>
+<p>You should now update the start of your <kbd>spec/cucumber/steps/index.js</kbd> file to the following snippet:</p>
+<pre>import superagent from 'superagent';<br/>import { When, Then } from 'cucumber';<br/>let request;<br/>let result;<br/>let error;<br/><br/>When('the client creates a POST request to /users', function () {<br/>  request = superagent('POST', 'localhost:8080/users');<br/>});<br/><br/>When('attaches a generic empty payload', function () {<br/>  return undefined;<br/>});<br/><br/>When('sends the request', function (callback) {<br/>  request<br/>    .then((response) =&gt; {<br/>      result = response.res;<br/>      callback();<br/>    })<br/>    .catch((errResponse) =&gt; {<br/>      error = errResponse.response;<br/>      callback();<br/>    });<br/>});</pre>
+<p>Our third step definition involves sending a request to the server and waiting for a response; this is an asynchronous operation. To ensure the next step won't run before this asynchronous operation is complete, we can pass a <kbd>callback</kbd> function into the code function as its last parameter. Cucumber will wait for the <kbd>callback</kbd> function to be called before moving on to the next step. Here, we are executing the <kbd>callback</kbd> only after the result has been returned and we have saved it to the <kbd>result</kbd> variable.</p>
+<p>Now, when we run our E2E tests again, the first three steps should pass.</p>
+<pre><strong>$ yarn run test:e2e</strong><br/><strong>...P--</strong><br/><br/><strong>Warnings:</strong><br/><strong>1) Scenario: Empty Payload</strong><br/><strong>   <span><img class="alignnone size-full wp-image-1898 image-border" src="assets/f3eab50b-1146-40ee-bf21-d1d5b199debd.png" style="width:1.83em;height:1.92em;"/></span> When the client creates a POST request to /users</strong><br/><strong>   <span><img src="assets/f3eab50b-1146-40ee-bf21-d1d5b199debd.png" style="width:1.75em;height:1.83em;"/></span> And attaches a generic empty payload</strong><br/><strong>   <img src="assets/f3eab50b-1146-40ee-bf21-d1d5b199debd.png" style="width:1.83em;height:1.92em;"/> And sends the request</strong><br/><strong>   ? Then our API should respond with a 400 HTTP status code</strong><br/><strong>   - And the payload of the response should be a JSON object<br/></strong><strong>   - And contains a message property which says "Payload should not be empty"</strong><br/><br/><strong>1 scenario (1 pending)</strong><br/><strong>6 steps (1 pending, 2 skipped, 3 passed)</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Asserting results</h1>
+                </header>
+            
+            <article>
+                
+<p>Now, let's move on to our next step definition, which is an assertion step. In there, we should assert that the response from our server should have a <kbd>400</kbd> HTTP status code:</p>
+<pre>Then('our API should respond with a 400 HTTP status code', function () {<br/>  if (error.statusCode !== 400) {<br/>    throw new Error();<br/>  }<br/>});</pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>Now, with our API server running in the background, run our E2E tests again. You should see the result of the second step changing from <kbd>pending</kbd> to <kbd>failed</kbd>:</p>
+<pre><strong>$ yarn run test:e2e</strong><br/><strong>...F--</strong><br/><br/><strong>Failures:</strong><br/><strong>1) Scenario: Empty Payload</strong><br/><strong>   <span><img src="assets/23d2583d-4b27-488f-8e7c-2ed13e44661b.png"/></span> When the client creates a POST request to /users</strong><br/><strong>   <img src="assets/23d2583d-4b27-488f-8e7c-2ed13e44661b.png"/> And attaches a generic empty payload</strong><br/><strong>   <img src="assets/23d2583d-4b27-488f-8e7c-2ed13e44661b.png"/>And sends the request</strong><br/><strong>   <img src="assets/327fefc0-1079-4057-87c4-5d2c808453a4.png"/>Then our API should respond with a 400 HTTP status code</strong><br/><strong>       {}</strong><br/><strong>       Error</strong><br/><strong>           at World.&lt;anonymous&gt; (spec/cucumber/steps/index.js:28:11)</strong><br/><strong>   - And the payload of the response should be a JSON object</strong><br/><strong>   - And contains a message property which says "Payload should not be empty"</strong><br/><br/><strong>1 scenario (1 failed)</strong><br/><strong>6 steps (1 failed, 2 skipped, 3 passed)</strong></pre>
+<p>It fails because our API is currently always returning the <kbd>Hello World</kbd> <span>string</span><span> </span><span>with the HTTP status code of</span> <kbd>200</kbd><span>, regardless of what the request is. But this is nothing to be concerned about! Writing a failing test is the first step of the TDD workflow; now, we just need to write the minimum amount to code to make the test pass.</span></p>
+<p>To make our fourth step pass, we must check the method and path of the <kbd>req</kbd> object in the <kbd>requestHandler</kbd> function, and if it matches <kbd>POST</kbd> and <kbd>/users</kbd>, respectively, we will send back a <kbd>400</kbd> response. </p>
+<p><span>But how do we know the structure of the </span><kbd>req</kbd><span> object? We can use</span><span> </span><kbd>console.log</kbd><span> </span><span>to print it onto the console, but the structure of objects such as </span><kbd>req</kbd><span> and </span><kbd>res</kbd><span> are complex and the output is going to be hard to read. Instead, we should use a debugger.</span></p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using a debugger for Node.js debugging</h1>
+                </header>
+            
+            <article>
+                
+<p>A <strong>debugger</strong> is a tool that allows us to pause the execution of the code at certain <strong>breakpoints</strong> and examine any variables that are accessible within that scope at the time. For us, we want to pause the execution inside our server's <kbd>requestHandler</kbd> method to enable us to examine the <kbd>req</kbd> object.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using Chrome DevTools</h1>
+                </header>
+            
+            <article>
+                
+<p>All modern browsers have a debugger built into them. Firefox has Firebug and Chrome has Chrome DevTools:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/472b461f-84d2-47e8-9586-bfe4b2a0c3fa.png" style="width:40.83em;height:22.75em;"/></div>
+<div class="packt_figref CDPAlignCenter CDPAlign">The debugger in Chrome is available under the <span class="packt_screen">Sources</span> tab of Chrome DevTools. We've set a breakpoint on line 3 and our script has paused there. While it is paused, we can access variables within the scope, which include local and global scope, as well as scope available due to closures. It also lists out all our breakpoints so we can activate/deactivate them easily.</div>
+<p class="mce-root CDPAlignLeft CDPAlign">To use Chrome DevTools for Node.js debugging, simply pass in the<span> </span><kbd>--inspect</kbd><span> </span>flag when you run <kbd>node</kbd>, then navigate to <kbd>chrome://inspect/#devices</kbd><span> </span>in Chrome, and click on the <span class="packt_screen">Open dedicated DevTools for Node</span> link, which will open the debugger in a new window.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using ndb</h1>
+                </header>
+            
+            <article>
+                
+<p>On July 22, 2018, Google released <strong>ndb</strong> (<a href="https://github.com/GoogleChromeLabs/ndb" target="_blank">https://github.com/GoogleChromeLabs/ndb</a>), an "improved" debugger that is based on Chrome DevTools, and uses <strong>Puppeteer</strong> (<a href="https://github.com/GoogleChrome/puppeteer">github.com/GoogleChrome/puppeteer</a>) to interact with <strong>Chromium</strong> over the <strong>DevTools Protocol</strong>. It requires at least Node.js v8.0.0.</p>
+<p class="mce-root">You can try it out by installing it locally:</p>
+<pre class="mce-root"><strong>$ yarn add ndb --dev</strong></pre>
+<p class="mce-root">On Windows, you may also <span>have to </span>install the <kbd>windows-build-tools</kbd> package in order to compile native dependencies:</p>
+<pre class="mce-root"><strong>$ yarn global add windows-build-tools</strong></pre>
+<p class="mce-root">Then, you can run the <kbd>ndb</kbd> binary with <kbd>npx</kbd>, and a new window will pop up:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/1480d634-dec7-4990-86a7-2783e9c88abc.png"/></p>
+<p class="mce-root">ndb comes with its own integrated terminal, which will hook onto any node processes that you run from it.</p>
+<p class="mce-root">While using Chrome DevTools and/or ndb provides several unique benefits, such as the availability of the<span> </span><span class="packt_screen">Console</span>,<span> </span><span class="packt_screen">Memo</span><span class="packt_screen">ry</span>, and<span> </span><span class="packt_screen">Profile</span><span> </span>tabs, I'd still recommend using the debugger that comes with your IDE or code editor, simply because there's less context switching that comes with switching between different tools.</p>
+<p class="mce-root CDPAlignLeft CDPAlign"><span>I recommend using Visual Studio Code as a code editor for JavaScript projects, and thus we </span>will use the VSCode editor to illustrate our workflow; you are, however, free to use the IDE or editor of your choice.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using the Visual Studio Code debugger</h1>
+                </header>
+            
+            <article>
+                
+<p>Open up<span> </span><kbd>src/index.js</kbd> on VSCode. If you hover your mouse to the left of the line numbers, you'll see some small, dimmed, red circles appear; you can click on the circle to insert a breakpoint on that line. This means whenever the script is executing and reaches that line, it will pause there. This allows us to examine the variables available within scope at that point. <span>Go ahead and set the breakpoint at line 5.</span></p>
+<div class="packt_tip">You may also use the<span> </span><kbd>debugger</kbd><span> </span>statement, which has exactly the same effect as setting a breakpoint. The only difference is that the<span> </span><kbd>debugger</kbd><span> </span>statement would now be part of the code, which is usually not what you want:<br/>
+<pre><span>const requestHandler = function (req, res) {<br/>  <strong>debugger;</strong><br/>  res.writeHead(200, {'Content-Type': 'text/plain'});<br/>  res.end('Hello, World!');<br/>}</span></pre></div>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>After you've set the breakpoint, go to the <span class="packt_screen">Debugger</span> tab in your editor. Click the <span class="packt_screen">Start Debugging</span> button (usually this looks like the "Play" button: ►); this will execute the current file:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/dc4f4b1e-7457-423f-b222-1200442e21ff.png"/></div>
+<p>The debugger throws an error because it doesn't recognize the ES6 modules' <kbd>import</kbd> syntax. This is because we are running the debugger on the source file directly, instead of the compiled file produced by Babel. To instruct VSCode to process modules, we can do one of two things:</p>
+<ul>
+<li>Install the <kbd>@babel/node</kbd> package and instruct VSCode to execute our file using <kbd>babel-node</kbd>.</li>
+<li>Instruct VSCode to add the <kbd>--<span>experimental-modules</span></kbd> flag when running Node. This has been supported since Node v8.5.0.</li>
+</ul>
+<p>To do either of these, we need to add configurations to the VSCode debugger. Configurations in VSCode are defined as JSON objects inside a <kbd>launch.json</kbd> file. To edit the <kbd>launch.json</kbd> file, click the cogwheel button (<img src="assets/f64144d2-6235-4f3c-a734-7c1a938ab8c3.png" style="width:1.75em;height:1.50em;"/>) near the top. Then, paste in the following JSON object, which will provide us with both configurations mentioned before, as well as an option to run the program as normal:</p>
+<pre>{<br/>  "version": "0.2.0",<br/>  "configurations": [<br/>    {<br/>      "type": "node",<br/>      "request": "launch",<br/>      "name": "Node",<br/>      "program": "${file}",<br/>      "protocol": "inspector"<br/>    },<br/>    {<br/>      "name": "Babel Node",<br/>      "type": "node",<br/>      "request": "launch",<br/>      "runtimeExecutable": "${workspaceRoot}/node_modules/.bin/babel-<br/>      node",<br/>      "runtimeArgs": [<br/>        "--presets",<br/>        "@babel/env"<br/>      ],<br/>      "program": "${file}",<br/>      "protocol": "inspector"<br/>    },<br/>    {<br/>      "name": "Node with Experimental Modules",<br/>      "type": "node",<br/>      "request": "launch",<br/>      "runtimeExecutable": "~/.nvm/versions/node/v8.11.4/bin/node",<br/>      "runtimeArgs": [<br/>        "--experimental-modules"<br/>      ],<br/>      "program": "${file}",<br/>      "protocol": "inspector"<br/>    }<br/>  ],<br/>  "compounds": []<br/>}</pre>
+<p>Now, also remember to install the <kbd>@babel/node</kbd> package as a development dependency:</p>
+<pre><strong>$ yarn add @babel/node --dev</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Retaining line numbers</h1>
+                </header>
+            
+            <article>
+                
+<p>To use <kbd>babel-node</kbd> with the VSCode debugger, we also need to enable the <kbd>retainLines</kbd> option in Babel, which retains the line numbers between the source code and the built files. If we don't do this, VSCode's debugger would set the breakpoints at the incorrect lines.</p>
+<p>However, we only want to retain lines when debugging our code; when we are building our application, we want it to be formatted sensibly. To do this, we can update our <kbd>.babelrc</kbd> to apply the <kbd>retainLines</kbd> option only when the <kbd>BABEL_ENV</kbd> environment variable is set to <kbd>"debug"</kbd>:</p>
+<pre>{<br/>  "presets": [<br/>    ["@babel/env", {<br/>      "targets": {<br/>        "node": "current"<br/>      }<br/>    }]<br/>  ],<br/>  "env": {<br/>    "debug": {<br/>      "retainLines": true<br/>    }<br/>  }<br/>}</pre>
+<p>Then, open up the <kbd>launch.json</kbd> file again and add the following to the Babel Node configuration:</p>
+<pre>{<br/>  "name": "Babel Node",<br/>  "type": "node",<br/>  ...<br/>  ...<br/>  "protocol": "inspector",<br/>  "env": {<br/>    "BABEL_ENV": "debug"<br/>  }<br/>},</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Examining the req object</h1>
+                </header>
+            
+            <article>
+                
+<p>Now, stop your API server (if you're running it), go back to <kbd>src/index.js</kbd>, open up the Debug panel, select one of the two configurations we just defined, and click the Start Debugging <span>button (►)</span>. This time, you should see it succeed:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/7091a724-8d80-4836-8cec-adfb401137c6.png"/></p>
+<div class="packt_infobox packt_tip"><span>If you do not see the configuration in the dropdown, try closing and restarting Visual Studio </span>Code<span>. </span></div>
+<p>In a new tab, navigate to<span> </span><kbd>localhost:8080</kbd>. This time, you won't see our <kbd>Hello, World!</kbd> text; this is because our server hasn't provided a response yet! Instead, it has paused at the breakpoint we set.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>On the left-hand side, we can see a tab called <span class="packt_screen">VARIABLES</span>, and here we can see all the local, closure, and global variables available at our breakpoint. When we expand the <kbd>req</kbd> variable, we'll find the <kbd>method</kbd> and <kbd>url</kbd> properties, which are exactly what we need:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/eb54222b-1e55-4329-9bb8-dd69941134eb.png"/></p>
+<p class="mce-root"/>
+<div class="packt_tip">I'd encourage you to spend a few minutes exploring the structure of the<span> </span><kbd>req</kbd><span> </span>and<span> </span><kbd>res</kbd><span> </span>objects.</div>
+<p>We've added several VSCode debugger configurations and should commit these changes to our Git repository. The VSCode configurations are, however, not part of our Create User feature, and should be committed directly to the <kbd>dev</kbd> branch.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Making work-in-progress (WIP) commits</h1>
+                </header>
+            
+            <article>
+                
+<p>However, we have already made some changes related to our <span class="packt_screen">Create User</span> feature, and we can't check out the <kbd>dev</kbd> branch unless we <kbd>git commit</kbd> or <kbd>git stash</kbd> these changes. <span>Ideally, we should commit the entire Create User feature together; it is not clean to have <strong>work-in-progress</strong> (<strong>WIP</strong>) <strong>commits</strong> in our Git history tree.</span></p>
+<p class="mce-root"/>
+<p>To resolve this dilemma, we can use <kbd>git stash</kbd>, but it can be quite confusing and you risk losing your work. Instead, we are going to commit the WIP changes now and amend the commit later with the full implementation. We can do this because we are working on our local feature branch, not one of the permanent <kbd>dev</kbd> or <kbd>master</kbd> branches. This means that as long we do not push our changes onto the remote repository, no one else will know about the WIP commit.</p>
+<p>The workflow will be as follows:</p>
+<ol>
+<li><kbd>git commit</kbd> our WIP changes related to our Create User feature on the <kbd>create-user/main</kbd> branch.</li>
+<li><kbd>git checkout</kbd> the <kbd>dev</kbd> branch.</li>
+<li>Add the <kbd>@babel/node</kbd> package once again.</li>
+<li><kbd>git commit</kbd> the VSCode debugger configuration changes onto the <kbd>dev</kbd> branch.</li>
+<li><kbd>git checkout</kbd> the <kbd>create-user/main</kbd> branch.</li>
+<li><kbd>git rebase</kbd> the <kbd>create-user/main</kbd> branch onto the <kbd>dev</kbd> branch.</li>
+<li>Continue to work on the feature.</li>
+<li>Run <kbd>git add</kbd> and <kbd>git commit --amend</kbd> to commit our implementation code in the existing commit.</li>
+<li>Run <kbd>yarn install</kbd> to make sure all the packages are linked, especially those that are present in the <kbd>create-user/main</kbd> branch but not the <kbd>dev</kbd> branch.</li>
+</ol>
+<p>Following that workflow, we should execute the following commands:</p>
+<pre><strong>$ git add package.json yarn.lock spec/cucumber/steps/index.js</strong><br/><strong>$ git commit -m "WIP Implement Create User with Empty Payload"</strong><br/><strong>$ git checkout dev</strong><br/><strong>$ yarn add @babel/node --dev</strong><br/><strong>$ git add -A</strong><br/><strong>$ git commit -m "Add configuration for VSCode Debugger"</strong><br/><strong>$ git checkout create-user/main</strong><br/><strong>$ git rebase dev</strong><br/><strong>$ yarn install</strong></pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Asserting the correct response status code</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that we understand how to use the debugger to examine the structure of complex objects, we are ready to implement the logic to check for the status of the response. To make our second test pass, we must send back a response with a <kbd>400</kbd> HTTP status code. With TDD, we should write the minimum amount of code that is required to make the test pass. Once the test passes, we can then spend some time refactoring the code to make it more elegant.</p>
+<p>The most straightforward piece of logic to make the test pass is to simply check that the <kbd>req</kbd> object's <kbd>method</kbd> and <kbd>url</kbd> match exactly with <kbd>'POST'</kbd> and <kbd>'/users'</kbd>, and return with a <kbd>400</kbd> HTTP status code specifically for this scenario. If they do not match, send back the <kbd>Hello World!</kbd> response as before. After making the change, the <kbd>requestHandler</kbd> function should look something like this:</p>
+<pre>function requestHandler(req, res) {<br/>  if (req.method === 'POST' &amp;&amp; req.url === '/users') {<br/>    res.statusCode = 400;<br/>    res.end();<br/>    return;<br/>  }<br/>  res.writeHead(200, { 'Content-Type': 'text/plain' });<br/>  res.end('Hello, World!');<br/>}</pre>
+<p>Now, restart our API server and run the E2E tests; the first four steps should now pass.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">You ain't gonna need it (YAGNI)</h1>
+                </header>
+            
+            <article>
+                
+<p><span>Note that the previous logic will indiscriminately return a <kbd>400</kbd> response, even if the payload is </span>not<span> empty. This is fine because the TDD process encourages you to write the minimum amount of code possible to make the tests pass, and so far we have only written a test for the empty payload scenario.</span></p>
+<p><span>The rationale behind this is to ensure you are not falling into the trap of coding something that you don't need. This principle has been summarized in the phrase <em>"You ain't gonna need it,"</em> or <strong>YAGNI</strong>, which is a principle that originated from <strong>extreme programming</strong> (<strong>XP</strong>). The original states that you should "always implement things when you actually need them, never when you just foresee that you need them". You may have also heard the phrase <em>"do the simplest thing that could possibly work"</em> (<strong>DTSTTCPW</strong>).</span></p>
+<p class="mce-root"/>
+<p>Being disciplined and sticking to this principle yields several benefits:</p>
+<ul>
+<li><strong>It ensures you follow TDD</strong>: The tests are written before the code is.</li>
+<li><strong>It saves you time</strong>: If we preempt a feature and implement it before it is needed, it may turn out that the feature was not needed after all, or the feature has changed from what you had in mind when you implemented it, or other parts of the code have changed and you'd need to revise your original implementation. In any case, you would have spent time on something that is not useful.</li>
+</ul>
+<p>Even when you "know" for sure, make it a habit to follow the YAGNI principle.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Asserting the correct response payload</h1>
+                </header>
+            
+            <article>
+                
+<p><span>The next test requires that the payload is a JSON object. Since our server is replying with a JSON object, the</span> <kbd>Content-Type</kbd> <span>header should also reflect this. Therefore, in our step definition, we should check for both of these criteria. In the <kbd>spec/cucumber/steps/index.js</kbd>, update the step definition to the following:</span></p>
+<pre>let payload;<br/><br/>...<br/><br/>Then('the payload of the response should be a JSON object', function () {<br/>  const response = result || error;<br/><br/>  // Check Content-Type header<br/>  const contentType = response.headers['Content-Type'] || response.headers['content-type'];<br/>  if (!contentType || !contentType.includes('application/json')) {<br/>    throw new Error('Response not of Content-Type application/json');<br/>  }<br/><br/>  // Check it is valid JSON<br/>  try {<br/>    payload = JSON.parse(response.text);<br/>  } catch (e) {<br/>    throw new Error('Response not a valid JSON object'); <br/>  }<br/>});</pre>
+<p class="mce-root"/>
+<p>Now, restart our API server and we run the tests again; we should get a failing test:</p>
+<pre><strong>$ yarn run test:e2e</strong><br/><strong>....F-</strong><br/><br/><strong>...</strong><br/><strong>   <img src="assets/79b91ec0-f662-4302-a1d9-b7fdd9a9b9cb.png" style="width:1.92em;height:1.42em;"/> Then our API should respond with a 400 HTTP status code</strong><br/><strong>   <img src="assets/639c6c16-344c-4386-8492-9dca340551bf.png" style="width:1.67em;height:1.67em;"/> And the payload of the response should be a JSON object</strong><br/><strong>       Error: Response not of Content-Type application/json</strong><br/><strong>           at World.&lt;anonymous&gt; (spec/cucumber/steps/index.js:41:11)</strong><br/><strong>   - And contains a message property which says "Payload should not be empty"</strong></pre>
+<p>Red. Green. Refactor. Now we have a failing test (red), the next step is to make it pass (green). To do this, we must set the <kbd>Content-Type</kbd> header to <kbd>application/json</kbd> and provide a JSON object in the payload. Change our <kbd>requestHandler</kbd> function to the following:</p>
+<pre>function requestHandler(req, res) {<br/>  if (req.method === 'POST' &amp;&amp; req.url === '/users') {<br/>    res.writeHead(400, { 'Content-Type': 'application/json' });<br/>    res.end(JSON.stringify({}));<br/>    return;<br/>  }<br/>  res.writeHead(200, { 'Content-Type': 'text/plain' });<br/>  res.end('Hello, World!');<br/>}</pre>
+<p>Run the tests again, and the first five tests should have passed.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Asserting the correct response payload content</h1>
+                </header>
+            
+            <article>
+                
+<p><span>Now, on to our last test. We need our error object payload to contain a <kbd>message</kbd> property that reads <kbd>"Payload should not be empty"</kbd>. So first, let's implement our test:</span></p>
+<pre>Then('contains a message property which says "Payload should not be empty"', function () {<br/>  if (payload.message !== 'Payload should not be empty') {<br/>    throw new Error();<br/>  }<br/>});</pre>
+<p class="mce-root"/>
+<p><span>Next, run the tests again and they should fail. Then, to make it pass, we need to pass a different object into the</span> <kbd>res.end</kbd> <span>method. Your <kbd>if</kbd> block should now look like this:</span></p>
+<pre>if (req.method === 'POST' &amp;&amp; req.url === '/users') {<br/>  res.writeHead(400, { 'Content-Type': 'application/json' });<br/>  res.end(JSON.stringify({<br/>    message: 'Payload should not be empty',<br/>  }));<br/>  return;<br/>}</pre>
+<p>Now, when we run our E2E tests again, they all pass:</p>
+<pre><strong>$ yarn run test:e2e</strong><br/><strong>......</strong><br/><br/><strong>1 scenario (1 passed)</strong><br/><strong>6 steps (6 passed)</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Refactoring</h1>
+                </header>
+            
+            <article>
+                
+<p><span>Remember that the TDD process can be summed up with the phrase "Red. Green. Refactor". Here, we've written failing tests (red) and we've written some code to make them pass (green); therefore, the next step is to refactor, which</span>, as a reminder, means restructuring and improving the quality of our implementation without changing its external behavior. This can mean the following:</p>
+<ul>
+<li>Reducing duplicated code (keeping things DRY)</li>
+<li>Improving readability</li>
+<li>Making our code more modular</li>
+<li>Reducing cyclomatic complexity, probably by breaking larger functions into smaller ones</li>
+</ul>
+<p>Refactoring should be done for our entire code base, which includes both the test code and our application code. Here, however, our application code is already quite neat and there are no obvious areas we can improve on at this time. Therefore, we can focus on improving our test code.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Isolating contexts for each scenario</h1>
+                </header>
+            
+            <article>
+                
+<p><span>At the moment, we are storing the </span><kbd>request</kbd><span>, <kbd>result</kbd>, <kbd>error</kbd>, and </span><kbd>payload</kbd><span> variables at the top level of the file's scope.</span></p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p><span>But step definitions can be mixed and matched in different scenarios. For example, in another scenario where we are updating a specific user, we may want to test that the API returns with the correct status code when given a malformed request. Here, we can reuse the same step definition, </span><kbd>"our API should respond with a 400 HTTP status code"</kbd><span>, but this time, the </span><kbd>error</kbd><span> variable may not be set if the previous steps were defined in a different file.</span></p>
+<p>Instead of using file-scoped variables, we can instead pass a context object into each step and use it to keep track of the results. This context object would be maintained throughout the entire scenario and be available in every step. In the vocabulary of Cucumber, an isolated context for each scenario is called a<span> </span><strong>world</strong>. The context object is exposed inside each step as the<span> </span><kbd>this</kbd> object.</p>
+<div class="packt_tip"><span><em>Within</em> the step definition's code function, make sure you're using arrow functions, which automatically bind</span><span> </span><kbd>this</kbd><span>.</span></div>
+<p>Therefore, we can assign the response (regardless of it being a success or an error) to the more generically-named<span> </span><kbd>this.response</kbd> and do the same for all other top-level file-scoped variables. After these changes, we should end up with the following <kbd>spec/cucumber/steps/index.js</kbd> file:</p>
+<pre>import superagent from 'superagent';<br/>import { When, Then } from 'cucumber';<br/><br/>When('the client creates a POST request to /users', function () {<br/>  this.request = superagent('POST', 'localhost:8080/users');<br/>});<br/><br/>When('attaches a generic empty payload', function () {<br/>  return undefined;<br/>});<br/><br/>When('sends the request', function (callback) {<br/>  this.request<br/>    .then((response) =&gt; {<br/>      this.response = response.res;<br/>      callback();<br/>    })<br/>    .catch((error) =&gt; {<br/>      this.response = error.response;<br/>      callback();<br/>    });<br/>});<br/><br/>Then('our API should respond with a 400 HTTP status code', function () {<br/>  if (this.response.statusCode !== 400) {<br/>    throw new Error();<br/>  }<br/>});<br/><br/>Then('the payload of the response should be a JSON object', function () {<br/>  // Check Content-Type header<br/>  const contentType = this.response.headers['Content-Type'] || this.response.headers['content-type'];<br/>  if (!contentType || !contentType.includes('application/json')) {<br/>    throw new Error('Response not of Content-Type application/json');<br/>  }<br/><br/>  // Check it is valid JSON<br/>  try {<br/>    this.responsePayload = JSON.parse(this.response.text);<br/>  } catch (e) {<br/>    throw new Error('Response not a valid JSON object');<br/>  }<br/>});<br/><br/>Then('contains a message property which says "Payload should not be empty"', function () {<br/>  if (this.responsePayload.message !== 'Payload should not be empty') {<br/>    throw new Error();<br/>  }<br/>});</pre>
+<p>When we refactor, we must be careful not to change the behavior of the existing code. Therefore, run our tests again to make sure they are still passing:</p>
+<pre><strong>$ yarn run test:e2e</strong><br/><strong>......</strong><br/><br/><strong>1 scenario (1 passed)</strong><br/><strong>6 steps (6 passed)</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Making failure more informative</h1>
+                </header>
+            
+            <article>
+                
+<p>At the moment, if one of the assertions fails, we're throwing a generic <kbd>Error</kbd> object:</p>
+<pre>throw new Error();</pre>
+<p class="mce-root"/>
+<p>When the test actually fails, <span>the error message is not helpful because it doesn't tell us what the actual result is:</span></p>
+<pre><span>✗</span> Then our API should respond with a 400 HTTP status code<br/>   {}<br/>   Error<br/>       at World.&lt;anonymous&gt;</pre>
+<p>We can improve this by throwing an instance of<span> </span><kbd>AssertionError</kbd><span> </span>instead of just an instance of<span> </span><kbd>Error</kbd>.<span> </span><kbd>AssertionError</kbd><span> </span>is a class provided by Node.js that allows you to specify the expected and actual outcomes.</p>
+<p>To use it, first import it from the <kbd>assert</kbd> module:</p>
+<pre>import { AssertionError } from 'assert';</pre>
+<p>Then, change our step definition to the following:</p>
+<pre>Then('our API should respond with a 400 HTTP status code', function () {<br/>  if (this.response.statusCode !== 400) {<br/>    throw new AssertionError({<br/>      expected: 400,<br/>      actual: this.response.statusCode,<br/>    });<br/>  }<br/>});</pre>
+<p>Now, when there's an error, the error output is much more informative:</p>
+<pre><img src="assets/cddbf153-a9f4-4b8f-9c0e-ef34052d6c64.png" style="width:0.92em;height:1.25em;"/> Then our API should respond with a 400 HTTP status code<br/>       AssertionError [ERR_ASSERTION]: 200 undefined 400<br/>           + expected - actual<br/>           -200<br/>           +400<br/><br/>           at new AssertionError (internal/errors.js:86:11)<br/>           at World.&lt;anonymous&gt; (spec/cucumber/steps/index.js:27:11)</pre>
+<p>However, we can go one better and use the<span> </span><kbd>equal</kbd><span> </span>method from the<span> </span><kbd>assert</kbd><span> </span>module directly. Now, our step definition is much more concise:</p>
+<pre>import assert from 'assert';<br/>...<br/>Then('our API should respond with a 400 HTTP status code', function () {<br/>  assert.equal(this.response.statusCode, 400);</pre>
+<p class="mceNonEditable"/>
+<p class="mceNonEditable"/>
+<p><kbd>assert.equal</kbd><span> </span>will automatically throw an<span> </span><kbd>AssertionError</kbd><span> </span>if the parameters passed into it are not equal.</p>
+<p>Now do the same for the step definition that checks for the response's message:</p>
+<pre>Then('contains a message property which says "Payload should not be empty"', function () {<br/>  assert.equal(this.responsePayload.message, 'Payload should not be empty');<br/>});</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Removing hardcoded values</h1>
+                </header>
+            
+            <article>
+                
+<p>Since we are only running these tests locally for now, we can simply hardcode the host name of our local API server, which we've set to <kbd>http://localhost:8080/</kbd>. However, it's never ideal to hardcode values into our code, as when we want to run these same tests on a different server, we'd have to edit the code itself.</p>
+<p>Instead, we can make use of environment variables, which we can set in an<span> </span><kbd>.env</kbd><span> file </span>at the project root directory and load it when we run our tests.</p>
+<p>Create a new <kbd>.env</kbd> file and add in the following entry:</p>
+<pre>SERVER_PROTOCOL=http<br/>SERVER_HOSTNAME=localhost<br/>SERVER_PORT=8080</pre>
+<p>Next, we need to load the environment variable into our code. We can use the<span> </span><kbd>dotenv-cli</kbd><span> </span>package (<a href="https://www.npmjs.com/package/dotenv-cli" target="_blank">https://www.npmjs.com/package/dotenv-cli</a>) to do this:</p>
+<pre><strong>$ yarn add dotenv-cli --dev</strong></pre>
+<p>To use the<span> </span><kbd>dotenv-cli</kbd><span> </span>package, you simply place <kbd>dotenv</kbd> in front of the command you want to run, and it will load the variables from the<span> </span><kbd>.env</kbd><span> </span>file and then run the command:</p>
+<pre>dotenv &lt;command with arguments&gt;</pre>
+<p>So, let's change our <kbd>serve</kbd> and <kbd>test:e2e</kbd> npm scripts to use the<span> </span><kbd>dotenv-cli</kbd><span> </span>package. Note that we are using a double dash (<kbd>--</kbd>) to pass the flags into <kbd>cucumber-js</kbd> after <kbd>dotenv</kbd> has finished loading the environment variables:</p>
+<pre>"serve": "yarn run build &amp;&amp; <strong>dotenv</strong> node dist/index.js",<br/>"test:e2e": "<strong>dotenv</strong> cucumber-js <strong>--</strong> spec/cucumber/features --require-module @babel/register --require spec/cucumber/steps",</pre>
+<p class="mce-root"/>
+<p>Then, in our code, remove the hardcoded hostname and replace it with the environment variable:</p>
+<pre>this.request = superagent('POST', `${process.env.SERVER_HOSTNAME}:${process.env.SERVER_PORT}/users`);</pre>
+<p>Again, we should run the tests to ensure they pass:</p>
+<pre><strong>$ yarn run test:e2e</strong><br/><strong>......</strong><br/><br/><strong>1 scenario (1 passed)</strong><br/><strong>6 steps (6 passed)</strong></pre>
+<p>Lastly, the point of using environment variables is that different environments would have different settings; therefore, we shouldn't track the<span> </span><kbd>.env</kbd><span> </span>file in Git. However, we do want to keep a record of what environment variables are supported, and so we should copy our<span> </span><kbd>.env</kbd><span> file </span>into a new<span> </span><kbd>.env.example</kbd><span> </span>file and add that into our Git repository:</p>
+<pre><strong>$ cp .env .env.example</strong></pre>
+<p>We have now implemented a new feature that is functional for a single scenario; this is a good time to commit our code to the Git repository. Remember that we had previously made a WIP commit. So now, instead of running<span> </span><kbd>git commit</kbd>, we should add an<span> </span><kbd>--amend</kbd><span> </span>flag, which will overwrite and replace our previous commit:</p>
+<pre><strong>$ git add -A</strong><br/><strong>$ git commit --amend -m "Handle create user calls with empty payload"</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Validating data type</h1>
+                </header>
+            
+            <article>
+                
+<p>We have completed our first scenario, so let's move on to our second and third scenarios. As a reminder, they are as follows:</p>
+<ul>
+<li>If the <span>client</span><span> </span>sends a<span> </span><kbd>POST</kbd><span> </span>request to<span> </span><kbd>/users</kbd><span> </span>with a payload that is not JSON, our API<span> should respond with </span><span>a <kbd>415 Unsupported Media Type</kbd> HTTP status code and a JSON object payload containing an appropriate error message.</span></li>
+<li>If the <span>client</span><span> </span>sends a<span> </span><kbd>POST</kbd><span> </span>request to<span> </span><kbd>/users</kbd><span> </span>with a malformed JSON payload, our API<span> should respond with </span><span>a<span> </span><kbd>400 Bad Request</kbd><span> </span>HTTP status code and a JSON response payload containing an appropriate error message.</span></li>
+</ul>
+<p class="mce-root"/>
+<p>Start by adding the following scenario definition to the <kbd>spec/cucumber/features/users/create/main.feature</kbd> file:</p>
+<pre>  Scenario: Payload using Unsupported Media Type<br/><br/>  If the client sends a POST request to /users with an payload that is <br/>  not JSON,<br/>  it should receive a response with a 415 Unsupported Media Type HTTP <br/>  status code.<br/><br/>    When the client creates a POST request to /users<br/>    And attaches a generic non-JSON payload<br/>    And sends the request<br/>    Then our API should respond with a 415 HTTP status code<br/>    And the payload of the response should be a JSON object<br/>    And contains a message property which says 'The "Content-Type" header must always be "application/json"'<br/><br/>  Scenario: Malformed JSON Payload<br/><br/>  If the client sends a POST request to /users with an payload that is <br/>  malformed,<br/>  it should receive a response with a 400 Unsupported Media Type HTTP <br/>  status code.<br/><br/>    When the client creates a POST request to /users<br/>    And attaches a generic malformed payload<br/>    And sends the request<br/>    Then our API should respond with a 400 HTTP status code<br/>    And the payload of the response should be a JSON object<br/>    And contains a message property which says "Payload should be in JSON format"</pre>
+<p>Notice that the first, third, and fifth steps are exactly the same as the ones in the previous scenario; therefore, Cucumber can re-use the step definition that we have already defined.</p>
+<p>For the rest of the steps, however, we need to implement their corresponding step definitions. But since they are similar to the ones we've just defined, we can copy and paste them and make some small adjustments. Copy the following step definitions into <kbd>spec/cucumber/steps/index.js</kbd>:</p>
+<pre>When('attaches a generic non-JSON payload', function () {<br/>  this.request.send('&lt;?xml version="1.0" encoding="UTF-8" ?&gt;&lt;email&gt;dan@danyll.com&lt;/email&gt;');<br/>  this.request.set('Content-Type', 'text/xml');<br/>});<br/><br/>When('attaches a generic malformed payload', function () {<br/>  this.request.send('{"email": "dan@danyll.com", name: }');<br/>  this.request.set('Content-Type', 'application/json');<br/>});<br/><br/>Then('our API should respond with a 415 HTTP status code', function () {<br/>  assert.equal(this.response.statusCode, 415);<br/>});<br/><br/>Then('contains a message property which says \'The "Content-Type" header must always be "application/json"\'', function () {<br/>  assert.equal(this.responsePayload.message, 'The "Content-Type" header must always be "application/json"');<br/>});<br/><br/>Then('contains a message property which says "Payload should be in JSON format"', function () {<br/>  assert.equal(this.responsePayload.message, 'Payload should be in JSON format');<br/>});<br/><br/></pre>
+<p>Now, when we run our tests again, the first three steps of the <kbd>Payload using Unsupported Media Type</kbd> scenario should pass:</p>
+<pre><strong>$ yarn run test:e2e</strong><br/><strong>.........F--</strong><br/><br/><strong>Failures:</strong><br/><strong>1) Scenario: Payload using Unsupported Media Type</strong><br/><strong>   <img src="assets/e0af6967-8ddc-48e7-8c10-adcaaa04085e.png"/> When the client creates a POST request to /users</strong><br/><strong>   <img src="assets/e0af6967-8ddc-48e7-8c10-adcaaa04085e.png"/>And attaches a generic non-JSON payload</strong><br/><strong>   <img src="assets/e0af6967-8ddc-48e7-8c10-adcaaa04085e.png"/>And sends the request</strong><br/><strong>   <img src="assets/bbe81b54-6452-42b0-8d57-42400eedc670.png"/>Then our API should respond with a 415 HTTP status code</strong><br/><strong>       AssertionError [ERR_ASSERTION]: 400 == 415</strong><br/><strong>           + expected - actual</strong><br/><strong>           -400</strong><br/><strong>           +415</strong><br/><strong>           at World.&lt;anonymous&gt; (spec/cucumber/steps/index.js:35:10)</strong><br/><strong>   - And the payload of the response should be a JSON object</strong><br/><strong>   - And contains a message property which says "Payload should be in JSON format"</strong><br/><br/><strong>2 scenarios (1 failed, 1 passed)</strong><br/><strong>12 steps (1 failed, 2 skipped, 9 passed)</strong></pre>
+<p class="mce-root"/>
+<p><span>The fourth step fails because, in our code, we are not specifically handling cases where the payload is a non-JSON or malformed object. Therefore, we must add some additional logic to check the <kbd>Content-Type</kbd> header and the actual contents of the request payload, which is much more involved than indiscriminately returning a <kbd>400</kbd> response:</span></p>
+<pre>import '@babel/polyfill';<br/>import http from 'http';<br/>function requestHandler(req, res) {<br/>  if (req.method === 'POST' &amp;&amp; req.url === '/users') {<br/>    const payloadData = [];<br/>    req.on('data', (data) =&gt; {<br/>      payloadData.push(data);<br/>    });<br/><br/>    req.on('end', () =&gt; {<br/>      if (payloadData.length === 0) {<br/>        res.writeHead(400, { 'Content-Type': 'application/json' });<br/>        res.end(JSON.stringify({<br/>          message: 'Payload should not be empty',<br/>        }));<br/>        return;<br/>      }<br/>      if (req.headers['content-type'] !== 'application/json') {<br/>        res.writeHead(415, { 'Content-Type': 'application/json' });<br/>        res.end(JSON.stringify({<br/>          message: 'The "Content-Type" header must always be "application/json"',<br/>        }));<br/>        return;<br/>      }<br/>      try {<br/>        const bodyString = Buffer.concat(payloadData).toString();<br/>        JSON.parse(bodyString);<br/>      } catch (e) {<br/>        res.writeHead(400, { 'Content-Type': 'application/json' });<br/>        res.end(JSON.stringify({<br/>          message: 'Payload should be in JSON format',<br/>        }));<br/>      }<br/>    });<br/>  } else {<br/>    res.writeHead(200, { 'Content-Type': 'text/plain' });<br/>    res.end('Hello, World!');</pre>
+<pre>  }<br/>}<br/>const server = http.createServer(requestHandler);<br/>server.listen(8080);</pre>
+<p>For <kbd>POST</kbd> and <kbd>PUT</kbd> requests, the body payload can be quite large. So, instead of receiving the entire payload in one large chunk, it's better to consume it as a stream of smaller units. The request object, <kbd>req</kbd>, that is passed into the <kbd>requestHandler</kbd> function implements the <kbd>ReadableStream</kbd> interface. To extract the request body of <kbd>POST</kbd> and <kbd>PUT</kbd> requests, we must listen for the <kbd>data</kbd> and <kbd>end</kbd> events emitted from the stream.</p>
+<p>Whenever a new piece of data is received by our server, the <kbd>data</kbd> event will be emitted. The parameter passed into the event listener for the <kbd>data</kbd> event is a type of <kbd>Buffer</kbd>, which is simply a small chunk of raw data. In our case, the <kbd>data</kbd> parameter represents a small chunk of our JSON request payload.</p>
+<p>Then, when the stream has finished, the <kbd>end</kbd> event is emitted. It is here that we check whether the payload is empty, and if it is, we return a <kbd>400</kbd> error as we did before. But if it is not empty, we then check the <kbd>Content-Type</kbd> header to see if it is <kbd>application/json</kbd>; if not, we return a <kbd>415</kbd> error. Lastly, to check whether the JSON is well formed, we concatenate the buffer array to restore our original payload. Then, we try to parse the payload with <kbd>JSON.parse</kbd>. If the payload is able to be parsed, we don't do anything; if it is not, it means the payload is not valid JSON and we should return a <kbd>400</kbd> error, as specified in our step.</p>
+<p>Lastly, we had to wrap the <kbd>JSON.parse()</kbd> call in a <kbd>try</kbd>/<kbd>catch</kbd> block because it'll throw an error if the payload is not a JSON-serializable string:</p>
+<pre>JSON.parse('&lt;&gt;'); // SyntaxError: Unexpected token &lt; in JSON at position 0</pre>
+<p>We run the tests again; all tests should now pass, with one exception: somehow, the step <kbd>And contains a message property which says 'The "Content-Type" header must always be "application/json"'</kbd> is said to be undefined. But if we check our step definitions, we can certainly see it <em>is</em> defined. So what's happening?</p>
+<p>This is because the forward slash character (<kbd>/</kbd>) has a special meaning in Gherkin. It specifies <strong>alternative text</strong>, which allows you to match <em>either</em> of the strings adjacent to the slash.</p>
+<p>For example, the step definition pattern <kbd>the client sends a GET/POST request</kbd> would match both of the following steps:</p>
+<ul>
+<li><kbd><kbd>the client sends a GET request</kbd></kbd></li>
+<li><kbd>the client sends a POST request</kbd></li>
+</ul>
+<p>Unfortunately, there is no way to escape the alternative text character. Instead, we must employ regular expressions to match this step definition pattern to its steps. This is as simple as replacing the containing single quotes with <kbd>/^</kbd> and <kbd>$/,</kbd> and escaping the forward slash:</p>
+<pre>Then(/^contains a message property which says 'The "Content-Type" header must always be "application\/json"'$/, function () {<br/>  assert.equal(this.responsePayload.message, 'The "Content-Type" header must always be "application/json"');<br/>});</pre>
+<p>Now, all our tests should pass:</p>
+<pre><strong>$ yarn run test:e2e</strong><br/><strong>..................</strong><br/><br/><strong>3 scenarios (3 passed)</strong><br/><strong>18 steps (18 passed)</strong></pre>
+<p>For consistency's sake, replace all other string patterns with regular expressions; run the tests again to ensure they're still passing.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Refactoring our tests</h1>
+                </header>
+            
+            <article>
+                
+<p>Red. Green. Refactor. We again find ourselves at the "green" phase; therefore, the next step is to refactor. <span>We are going to start with our test code first.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using scenario outlines</h1>
+                </header>
+            
+            <article>
+                
+<p>In our second scenario, we have three steps that are very similar to the steps defined for our first scenario. So far, we have simply been copying and pasting those step definitions and making small changes to them. Repetition or duplication is never good when it comes to code; so instead, <span>we can define a <em>scenario outline</em>, which acts as a template scenario with placeholder variables that we can plug in. For example, we can combine these two scenarios into a scenario outline as follows:</span></p>
+<pre>Feature: Create User<br/><br/>  Clients should be able to send a request to our API in order to create a<br/>  user. Our API should also validate the structure of the payload and respond<br/>  with an error if it is invalid.<br/><br/>  Scenario Outline: Bad Client Requests<br/><br/>  If the client sends a POST request to /users with an empty payload, it<br/>  should receive a response with a 4xx Bad Request HTTP status code.<br/><br/>    When the client creates a POST request to /users<br/>    And attaches a generic &lt;payloadType&gt; payload<br/>    And sends the request<br/>    Then our API should respond with a &lt;statusCode&gt; HTTP status code<br/>    And the payload of the response should be a JSON object<br/>    And contains a message property which says &lt;message&gt;<br/> <br/>  Examples:<br/><br/>  | payloadType | statusCode | message                                                       |<br/>  | empty       | 400        | "Payload should not be empty"                                 |<br/>  | non-JSON    | 415        | 'The "Content-Type" header must always be "application/json"' |<br/>  | malformed   | 400        | "Payload should be in JSON format"                            |</pre>
+<p>First, we changed the keyword from <kbd>Scenario</kbd> to <kbd>Scenario Outline</kbd> and added placeholders (enclosed in <kbd>&lt;&gt;</kbd>). Then, we use the <kbd>Examples</kbd> keyword to supply these placeholders with actual values in the form of a <strong>datatable</strong>, which is simply columns of values separated by the pipe character (<kbd>|</kbd>). Now, our Cucumber specification is a lot less repetitive!</p>
+<p>After each refactoring step, we should take care to ensure that we didn't break anything. So run our tests again and check they still pass.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Combining duplicate step definitions</h1>
+                </header>
+            
+            <article>
+                
+<p><span>In a similar vein, we can introduce <strong>parameters</strong> into our step definitions to help us avoid duplicated code. With string patterns, p</span><span>arameters can be specified using curly braces (<kbd>{}</kbd>), inside of which the type of the variable is indicated.</span></p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p><span>For example, our <kbd>Then our API should respond with a &lt;statusCode&gt; HTTP status code</kbd> step definition can be redefined as follows:</span></p>
+<pre>Then('our API should respond with a {int} HTTP status code', function (statusCode) {<br/>  assert.equal(this.response.statusCode, statusCode);<br/>});</pre>
+<p>Here, we've replaced the hardcoded <kbd>400</kbd> HTTP status code with a placeholder, <kbd>{int}</kbd>, which indicates that the pattern should match an integer. Then, we are passing the value of the placeholder into the code function as <kbd>statusCode</kbd>, which is then used to perform the checks.</p>
+<p>We can do the same with regular expression patterns. Instead of curly braces, we can define parameters by adding capturing groups to the RegEx. For instance, t<span>he same step definition would look like this using a regular expression pattern:</span></p>
+<pre>Then(/^our API should respond with a ([1-5]\d{2}) HTTP status code$/, function (statusCode) {<br/>  assert.equal(this.response.statusCode, statusCode);<br/>});</pre>
+<p>Update your <kbd>spec/cucumber/steps/index.js</kbd> file to add groups to the regular expression patterns, and use those captured parameters in your step definition function. The end result should look like this:</p>
+<pre>import assert from 'assert';<br/>import superagent from 'superagent';<br/>import { When, Then } from 'cucumber';<br/><br/>When(/^the client creates a (GET|POST|PATCH|PUT|DELETE|OPTIONS|HEAD) request to ([/\w-:.]+)$/, function (method, path) {<br/>  this.request = superagent(method, `${process.env.SERVER_HOSTNAME}:${process.env.SERVER_PORT}${path}`);<br/>});<br/><br/>When(/^attaches a generic (.+) payload$/, function (payloadType) {<br/>  switch (payloadType) {<br/>    case 'malformed':<br/>      this.request<br/>        .send('{"email": "dan@danyll.com", name: }')<br/>        .set('Content-Type', 'application/json');<br/>      break;<br/>    case 'non-JSON':<br/>      this.request<br/>        .send('&lt;?xml version="1.0" encoding="UTF-8" ?&gt;&lt;email&gt;dan@danyll.com&lt;/email&gt;')<br/>        .set('Content-Type', 'text/xml');<br/>      break;<br/>    case 'empty':<br/>    default:<br/>  }<br/>});<br/><br/>When(/^sends the request$/, function (callback) {<br/>  this.request<br/>    .then((response) =&gt; {<br/>      this.response = response.res;<br/>      callback();<br/>    })<br/>    .catch((error) =&gt; {<br/>      this.response = error.response;<br/>      callback();<br/>    });<br/>});<br/><br/>Then(/^our API should respond with a ([1-5]\d{2}) HTTP status code$/, function (statusCode) {<br/>  assert.equal(this.response.statusCode, statusCode);<br/>});<br/><br/>Then(/^the payload of the response should be a JSON object$/, function () {<br/>  // Check Content-Type header<br/>  const contentType = this.response.headers['Content-Type'] || this.response.headers['content-type'];<br/>  if (!contentType || !contentType.includes('application/json')) {<br/>    throw new Error('Response not of Content-Type application/json');<br/>  }<br/><br/>  // Check it is valid JSON<br/>  try {<br/>    this.responsePayload = JSON.parse(this.response.text);<br/>  } catch (e) {<br/>    throw new Error('Response not a valid JSON object');<br/>  }<br/>});<br/><br/>Then(/^contains a message property which says (?:"|')(.*)(?:"|')$/, function (message) {<br/>  assert.equal(this.responsePayload.message, message);<br/>});</pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Refactoring our application</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that our tests have been refactored, we can now turn our focus to refactoring our application code. The great thing about having existing E2E tests is that if, during the refactoring, we break something, the tests will fail and we'd be able to fix them quickly.</p>
+<p>As we did before, let's list out all the issues with our current code:</p>
+<ul>
+<li>It is not very readable.</li>
+<li>We have to work with quite low-level constructs, such as streams and buffers.</li>
+<li>We have not taken into consideration performance and security implications. For example, we are not handling situations where the payload is extremely large (or even infinite). This is a dangerous situation to avoid if we want to ensure high-availability of our service.</li>
+</ul>
+<p>For the last issue, we can add an additional <kbd>if</kbd> block inside the <kbd>req.on('data')</kbd> block to check whether the payload is getting too large; if it is, we can return a <kbd>413 Payload Too Large</kbd> error. In the following example, we are using a limit of <kbd>1e6</kbd>, which is one million, or <kbd>1,000,000</kbd>, bytes:</p>
+<pre>const PAYLOAD_LIMIT = 1e6;<br/>req.on('data', function (data) {<br/>  payloadData.push(data);<br/>  const bodyString = Buffer.concat(payloadData).toString();<br/>  if (bodyString.length &gt; PAYLOAD_LIMIT) {<br/>    res.writeHead(413, { 'Content-Type': 'text/plain' });<br/>    res.end();<br/>    res.connection.destroy();<br/>  }<br/>});</pre>
+<p>However, this makes the code even harder to understand. At the moment, there's not too much functionality behind our API, yet our code is already quite long and complex; imagine how much more obscure it will get when we have to implement the logic to parse URL paths, query parameters, and so on.</p>
+<p>As you may expect, these problems have already been solved and optimized by frameworks. So, let's take a look at some libraries we can use and then pick the one that best fits our use case.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Choosing a framework</h1>
+                </header>
+            
+            <article>
+                
+<p>At a minimum, we want a basic router; at most, we want a web framework. In this section, we will focus on four of the most popular frameworks: <strong>Express</strong>,<span> </span><strong>Koa</strong>,<span> </span><strong>Hapi</strong>,<span> </span>and<span> </span><strong>Restify</strong>:</p>
+<table border="1" style="border-collapse: collapse;width: 100%">
+<tbody>
+<tr>
+<td><strong>Name</strong></td>
+<td><strong>Website</strong></td>
+<td><strong>First</strong> <strong>released</strong></td>
+<td><strong>GitHub</strong> <strong>stars</strong></td>
+<td><strong>Description</strong></td>
+</tr>
+<tr>
+<td>Express</td>
+<td><a href="http://expressjs.com">expressjs.com</a></td>
+<td>Jan, 3 2010</td>
+<td>39,957</td>
+<td>
+<p class="mce-root">"<span>Fast, unopinionated, minimalist web framework for Node".</span></p>
+<p>Express is a thin routing layer above Node's native<span> </span><kbd>http</kbd><span> </span>module, with support for templating and <strong>middleware</strong> (functions that preprocess the request object before it is passed to the handler).</p>
+<p>Express has been around the longest and is the most popular framework for Node.js. We will use Express as the benchmark from which comparisons with other libraries will be made.</p>
+</td>
+</tr>
+<tr>
+<td>Koa</td>
+<td><a href="http://koajs.com/">koajs.com</a></td>
+<td>Nov, 8 2013</td>
+<td>22,847</td>
+<td>Created by TJ Holowaychuk, the same developer behind Express. It is similar to Express but uses async functions instead of callbacks.</td>
+</tr>
+<tr>
+<td>Hapi</td>
+<td><a href="https://hapijs.com/">hapijs.com</a></td>
+<td>Aug, 21 2012</td>
+<td>9,913</td>
+<td>
+<p class="mce-root">While Express is minimalistic, Hapi ships with many built-in features, such as <span>input validation, caching, and authentication; all you have to do is specify your settings in the configuration object for that route.</span></p>
+<p>Like middleware for Express, Hapi has a request life cycle and extension points where you can process the request or response objects.</p>
+<p>Hapi also supports a plugin system that allows you to split your app into modular parts.</p>
+</td>
+</tr>
+<tr>
+<td>Restify</td>
+<td><a href="http://restify.com/">restify.com</a></td>
+<td>May, 6 2011</td>
+<td>8,582</td>
+<td><span>REST framework for providing microservices APIs. It is essentially Express but without the templating parts. It supports <strong>DTrace</strong>, which allows you to find out the amount of resources (for example, memory, CPU time, filesystem I/O, and bandwidth) used by a process.</span></td>
+</tr>
+</tbody>
+</table>
+<p>For basic features such as routing, all of these frameworks are more than capable. They differ only in their philosophy and community support.</p>
+<p>Express is, without a doubt, the most popular and has the most community support, but it requires a lot of configuration and extra middleware just to get it out of the box. On the other hand, Hapi's configuration-centric philosophy is very interesting, because it means we don't have to change our code or update 10 different middleware, even when the feature code is changed and optimized. It's configuration-as-code, which is a nice philosophy to follow.</p>
+<p>However, when we develop our frontend application with React, we may later decide to use more advanced features, such as <strong>Server-Side Rendering</strong> (<strong>SSR</strong>). For these, we need to ensure that the tools and integrations we employ are widely used, so that if we run into any trouble, there'll be a large group of developers out there who have faced and resolved those issues. Otherwise, we may waste a long time looking at that source code to figure out a simple problem.</p>
+<p>So although Hapi might technically be a better choice <span>in theory</span>, we will use Express because it is more popular and has a lot more community support.</p>
+<div class="packt_tip">Since migration to Express is an involved process, I'd recommend you to commit your code before continuing:<br/>
+<br/>
+<pre><strong>$ git add -A &amp;&amp; git commit -m "Handle malformed/non-JSON payloads for POST /user"</strong></pre></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Migrating our API to Express</h1>
+                </header>
+            
+            <article>
+                
+<p>There are two ways to install Express: directly in the code itself or through the <span><kbd>express-generator</kbd> application generator tool. The <kbd>express-generator</kbd> tool installs the <kbd>express</kbd> CLI, which we can use to generate an application skeleton from. However, we won't be using that because it's mainly meant for client-facing applications, while we are just trying to build a server-side API at the moment. </span>Instead, we'll add the<span> </span><kbd>express</kbd><span> </span>package directly into our code.</p>
+<p>First, add the package into our project:</p>
+<pre><strong>$ yarn add express</strong></pre>
+<p><span>Now open up your <kbd>src/index.js</kbd> file, and replace our </span><kbd>import</kbd><span> of the <kbd>http</kbd> module with </span>the <kbd>express</kbd> package. Also replace the current <kbd>http.createServer</kbd> and <kbd>server.listen</kbd> calls with <kbd>express</kbd> and <kbd>app.listen</kbd>. What was previously this:</p>
+<pre>...<br/>import http from 'http';<br/>...<br/>const server = http.createServer(requestHandler);<br/>server.listen(8080);</pre>
+<p>Would now be this:</p>
+<pre>...<br/>import express from 'express';<br/>...<br/>const app = express();<br/>app.listen(process.env.SERVER_PORT);</pre>
+<p>To help us know when the server has successfully initialized, we should add a callback function to <kbd>app.listen</kbd>, which will log a message onto the console:</p>
+<pre>app.listen(process.env.SERVER_PORT, () =&gt; {<br/>  // eslint-disable-next-line no-console<br/>  console.log(`Hobnob API server listening on port ${process.env.SERVER_PORT}!`);<br/>});</pre>
+<p>We needed to disable ESLint for our <kbd>console.log</kbd> line because Airbnb's style guide enforces the <kbd>no-console</kbd> rule. <kbd>// eslint-disable-next-line</kbd> is a special type of comment recognized by ESLint, and will cause it to disable the specified rules for the next line. There is also the <kbd>// eslint-disable-line</kbd> comment if you want to disable the same line as the comment.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">(Re)defining routes</h1>
+                </header>
+            
+            <article>
+                
+<p><span>Next, let's migrate our <kbd>requestHandler</kbd> function to Express. With Express, instead of defining a single request handler for all our routes, we can define request handlers for each route using the format</span><span> </span><kbd>app.METHOD('path', callback)</kbd><span>, where</span><span> </span><kbd>METHOD</kbd><span> </span><span>is the HTTP method of the request.</span></p>
+<p>Therefore, replace our previous <kbd>requestHandler</kbd> function with an <kbd>app.post</kbd> call. This is our old implementation:</p>
+<pre>function requestHandler(req, res) {<br/>  if (req.method === 'POST' &amp;&amp; req.url === '/users') {<br/>    // Handler logic for POST /user<br/>  } else {<br/>    res.writeHead(200, { 'Content-Type': 'text/plain' });<br/>    res.end('Hello, World!');<br/>  }<br/>}</pre>
+<p><span>And this is our new implementation:</span></p>
+<pre>app.post('/users', (req, res) =&gt; {<br/>  // Handler logic for POST /user<br/>});</pre>
+<p>The<span> </span><kbd>req</kbd><span> and <kbd>res</kbd> </span>objects passed by Express are identical to the ones passed by Node's <kbd>http</kbd><span> </span>module; this is why we can reuse the same logic as before. Run the tests again and they should still all pass:</p>
+<pre><strong>$ yarn run test:e2e</strong><br/><strong>............</strong><br/><br/><strong>2 scenarios (2 passed)</strong><br/><strong>12 steps (12 passed)</strong></pre>
+<p>Our code using Express is much clearer than our original example; here, each route is defined in its own block. Furthermore, if a request comes in for an unspecified route, then a <kbd>404: Not Found</kbd> response is automatically given. These small conveniences highlight one of the benefits of using a framework rather than programming your own implementation.</p>
+<p>Furthermore, instead of using <kbd>res.writeHead</kbd>, we can use <kbd>res.status</kbd> and <kbd>res.set</kbd>:</p>
+<pre># Without Express<br/>res.writeHead(400, { 'Content-Type': 'application/json' });<br/><br/># With Express<br/>res.status(400);<br/>res.set('Content-Type', 'application/json');</pre>
+<p>Similarly, instead of using <kbd>res.end</kbd> with <kbd>JSON.stringify</kbd>, we can use the new <kbd>res.json</kbd> method provided by Express.</p>
+<pre>res.end(JSON.stringify({ message: 'Payload should not be empty' }));    // Without Express<br/>res.json({ message: 'Payload should not be empty' });                   // With Express</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using body-parser middleware</h1>
+                </header>
+            
+            <article>
+                
+<p>That's just the start of our Express journey. The power of Express is in its abundance of middleware, which are functions that<span> every request passes through. These middleware functions can opt to modify the request object before it arrives at the handler.</span></p>
+<p>Therefore, instead of working with streams and buffers to obtain our payload data, we can make use of a very popular middleware package,<span> </span><kbd>body-parser</kbd><span>. <kbd>body-parser</kbd> </span>provides the ability to parse request bodies into JavaScript objects, which can then be consumed by our handlers. It does this in an efficient and optimized way, and also provides safeguards to ensure the payload is not too large. So, let's install it:</p>
+<pre><strong>$ yarn add body-parser</strong></pre>
+<p>Then, add the following lines to the top of<span> </span><kbd>src/index.js</kbd><span> </span>to instruct our application server to use the<span> </span><kbd>body-parser</kbd><span> </span>package to parse any request that has a JSON body:</p>
+<pre>import bodyParser from 'body-parser';<br/>...<br/>app.use(bodyParser.json({ limit: 1e6 }));</pre>
+<p>The<span> </span><kbd>bodyParser.json</kbd><span> </span>method returns with a<span> </span>middleware.  Here, we are using the<span> </span><kbd>app.use()</kbd><span> </span>method to instruct our instance of the Express server to use the middleware generated by the<span> </span><kbd>bodyParser.json</kbd><span> </span>method. The middleware will parse the payload and assign it to the <kbd>body</kbd><span> </span>property of the <kbd>req</kbd><span> </span>object. We no longer need to work with streams and buffers; we can simply get the payload from<span> </span><kbd>req.body</kbd>!</p>
+<p>Inside our <kbd>app.post('/users')</kbd> call, remove any code that works with buffers and streams, and replace the <kbd>payloadData</kbd> variable with <kbd>req.body</kbd>. Lastly, replace the condition <kbd>req.body.length === 0</kbd> inside our first if block with <kbd>req.headers['content-length'] === '0'</kbd>. Our handler should now look like this:</p>
+<pre>app.post('/users', (req, res) =&gt; {<br/>  if (req.headers['content-length'] === 0) {<br/>    res.status(400);<br/>    res.set('Content-Type', 'application/json');<br/>    res.json({<br/>      message: 'Payload should not be empty',<br/>    });<br/>    return;<br/>  }<br/>  if (req.headers['content-type'] !== 'application/json') {<br/>    res.status(415);<br/>    res.set('Content-Type', 'application/json');<br/>    res.json({<br/>      message: 'The "Content-Type" header must always be "application/json"',<br/>    });<br/>    return;<br/>  }<br/>  res.status(400);<br/>  res.set('Content-Type', 'application/json');<br/>  res.json({<br/>    message: 'Payload should be in JSON format',<br/>  });<br/>});</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Run E2E test</h1>
+                </header>
+            
+            <article>
+                
+<p>But if we run our E2E tests now, the scenario that sends a malformed JSON would fail. This is because of how the<span> </span><kbd>body-parser</kbd><span> </span>middleware works. The <kbd>bodyParser.json()</kbd> middleware will attempt to parse the payload of all requests that has their<span> </span><kbd>Content-Type</kbd><span> </span>header set to<span> </span><kbd>application/json</kbd>. However, if the payload itself is not a valid JSON object, the middleware will throw an error similar to the following:</p>
+<pre>SyntaxError {<br/>  expose: true,<br/>  statusCode: 400,<br/>  status: 400,<br/>  body: '{"email": "dan@danyll.com", name: }',<br/>  type: 'entity.parse.failed'<br/>}</pre>
+<p>Therefore, we need to catch this error in order to provide the correct response. Error handling can also be done through middleware, but they must be defined <em>at the end</em>, after other middleware. In the error handler middleware, we need to check whether the error thrown is caused by a malformed JSON payload, and if it is, send the <kbd>'Payload should be in JSON format'</kbd> response we defined earlier.</p>
+<p>Try your hands on implementing this error handler middleware; when you finish, compare your <kbd>src/index.js</kbd> file with the following one:</p>
+<pre>import '@babel/polyfill';<br/>import express from 'express';<br/>import bodyParser from 'body-parser';<br/><br/>const app = express();<br/>app.use(bodyParser.json({ limit: 1e6 }));<br/><br/>app.post('/users', (req, res) =&gt; {<br/>  if (req.headers['content-length'] === '0') {<br/>    res.status(400);<br/>    res.set('Content-Type', 'application/json');<br/>    res.json({<br/>      message: 'Payload should not be empty',<br/>    });<br/>    return;<br/>  }<br/>  if (req.headers['content-type'] !== 'application/json') {<br/>    res.status(415);<br/>    res.set('Content-Type', 'application/json');<br/>    res.json({<br/>      message: 'The "Content-Type" header must always be "application/json"',<br/>    });<br/>  }<br/>});<br/><br/><strong>app.use((err, req, res, next) =&gt; {</strong><br/><strong>  if (err instanceof SyntaxError &amp;&amp; err.status === 400 &amp;&amp; 'body' in err &amp;&amp; err.type === 'entity.parse.failed') {</strong><br/><strong>    res.status(400);</strong><br/><strong>    res.set('Content-Type', 'application/json');</strong><br/><strong>    res.json({ message: 'Payload should be in JSON format' });</strong><br/><strong>    return;</strong><br/><strong>  }</strong><br/><strong>  next();</strong><br/><strong>});</strong></pre>
+<pre>app.listen(process.env.SERVER_PORT, () =&gt; {<br/>  // eslint-disable-next-line no-console<br/>  console.log(`Hobnob API server listening on port ${process.env.SERVER_PORT}!`);<br/>});</pre>
+<p>Now, when we run our E2E tests, they should all be passing:</p>
+<pre><strong>$ yarn run test:e2e</strong><br/><strong>..................</strong><br/><br/><strong>3 scenarios (3 passed)</strong><br/><strong>18 steps (18 passed)</strong></pre>
+<p>We have now successfully migrated our API to Express, and thus completed our (long) refactoring step. Let's commit our hard work into the Git repository:</p>
+<pre><strong>$ git add -A</strong><br/><strong>$ git commit -m "Migrate API to Express"</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Moving common logic into middleware</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's see how we can improve our code further. If you examine our Create User endpoint handler, you may notice that its logic could be applied to all requests. For example, if a request comes in carrying a payload, we expect the value of its <kbd>Content-Type</kbd> header to include the string <kbd>application/json</kbd>, <em>regardless of which endpoint it is hitting</em>. Therefore, we should pull that piece of logic out into middleware functions to maximize reusability. Specifically, these middleware should perform the following checks:</p>
+<ul>
+<li>If a request uses the method<span> </span><kbd>POST</kbd>,<span> </span><kbd>PUT</kbd><span> </span>or<span> </span><kbd>PATCH</kbd>, it must carry a non-empty payload.</li>
+<li>If a request contains a non-empty payload, it should have its<span> </span><kbd>Content-Type</kbd><span> header set. If it doesn't, respond with the</span><span> </span><kbd>400 Bad Request</kbd><span> status code.</span></li>
+<li>If a request has set its<span> </span><kbd>Content-Type</kbd><span> header, it must contain the string </span><kbd>application/json</kbd><span>. If it doesn't, respond with the </span><kbd>415 Unsupported Media Type</kbd><span> status code.</span></li>
+</ul>
+<p class="mce-root"/>
+<p>Let's translate these criteria into Cucumber/Gherkin specifications. Since these are generic requirements, we should create a new file at <kbd>spec/cucumber/features/main.feature</kbd> and define our scenarios there. Have a go at it yourself; once you're done, compare it with the following solution:</p>
+<pre>Feature: General<br/><br/>  Scenario Outline: POST, PUT and PATCH requests should have non-empty payloads<br/><br/>  All POST, PUT and PATCH requests must have non-zero values for its "Content-Length" header<br/><br/>    When the client creates a &lt;method&gt; request to /users<br/>    And attaches a generic empty payload<br/>    And sends the request<br/>    Then our API should respond with a 400 HTTP status code<br/>    And the payload of the response should be a JSON object<br/>    And contains a message property which says 'Payload should not be empty'<br/><br/>    Examples:<br/>    | method |<br/>    | POST   |<br/>    | PATCH  |<br/>    | PUT    |<br/><br/>  Scenario: Content-Type Header should be set for requests with non-empty payloads<br/><br/>  All requests which has non-zero values for its "Content-Length" header must have its "Content-Type" header set<br/><br/>    When the client creates a POST request to /users<br/>    And attaches a generic non-JSON payload<br/>    But without a "Content-Type" header set<br/>    And sends the request<br/>    Then our API should respond with a 400 HTTP status code<br/>    And the payload of the response should be a JSON object<br/>    And contains a message property which says 'The "Content-Type" header must be set for requests with a non-empty payload'<br/><br/>  Scenario: Content-Type Header should be set to application/json<br/><br/>  All requests which has a "Content-Type" header must set its value to contain "application/json"<br/><br/>    When the client creates a POST request to /users<br/>    And attaches a generic non-JSON payload<br/>    And sends the request<br/>    Then our API should respond with a 415 HTTP status code<br/>    And the payload of the response should be a JSON object<br/>    And contains a message property which says 'The "Content-Type" header must always be "application/json"'</pre>
+<p>When we run our tests, the step <kbd>But without a "Content-Type" header set</kbd> shows up as undefined; so let's implement it. It is as simple as running the <kbd>unset</kbd> method on a superagent's <kbd>request</kbd> object:</p>
+<pre>When(/^without a (?:"|')([\w-]+)(?:"|') header set$/, function (headerName) {<br/>  this.request.unset(headerName);<br/>});</pre>
+<p>Run the tests and see that all steps are now defined but some are failing. Red. Green. Refactor. We're at the red stage, so let's modify our application code so that it'll pass (green). Again, have a go at it yourself, and compare it with our solution here once you're done:</p>
+<pre>...<br/>function checkEmptyPayload(req, res, next) {<br/>  if (<br/>    ['POST', 'PATCH', 'PUT'].includes(req.method)<br/>    &amp;&amp; req.headers['content-length'] === '0'<br/>  ) {<br/>    res.status(400);<br/>    res.set('Content-Type', 'application/json');<br/>    res.json({<br/>      message: 'Payload should not be empty',<br/>    });<br/>  }<br/>  next();<br/>}<br/><br/>function checkContentTypeIsSet(req, res, next) {<br/>  if (<br/>    req.headers['content-length']<br/>    &amp;&amp; req.headers['content-length'] !== '0'<br/>    &amp;&amp; !req.headers['content-type']<br/>  ) {<br/>    res.status(400);<br/>    res.set('Content-Type', 'application/json');<br/>    res.json({ message: 'The "Content-Type" header must be set for requests with a non-empty payload' });<br/>  }<br/>  next();<br/>}<br/><br/>function checkContentTypeIsJson(req, res, next) {<br/>  if (!req.headers['content-type'].includes('application/json')) {<br/>    res.status(415);<br/>    res.set('Content-Type', 'application/json');<br/>    res.json({ message: 'The "Content-Type" header must always be "application/json"' });<br/>  }<br/>  next();<br/>}<br/><br/>app.use(checkEmptyPayload);<br/>app.use(checkContentTypeIsSet);<br/>app.use(checkContentTypeIsJson);<br/>app.use(bodyParser.json({ limit: 1e6 }));<br/><br/>app.post('/users', (req, res, next) =&gt; { next(); });<br/>...</pre>
+<p>It is important to run our tests again to make sure we didn't break existing functionality. On this occasion, they should all be passing. Therefore, the only thing left to do is to commit this refactoring into our Git repository:</p>
+<pre><strong>$ git add -A</strong><br/><strong>$ git commit -m "Move common logic into middleware functions"</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Validating our payload</h1>
+                </header>
+            
+            <article>
+                
+<p>So far, we've been writing tests that ensure our request is valid and well-formed; in other words, making sure they are <em>syntactically </em>correct. Next, we are going to shift our focus to writing test cases that look at the payload object itself, ensuring that the payload has the correct structure and that it is <em>semantically</em> correct.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Checking for required fields</h1>
+                </header>
+            
+            <article>
+                
+<p>In our requirements, we specified that in order to create a user account, the client must provide at least the <kbd>email</kbd> and <kbd>password</kbd> fields. So, let's write a test for this.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>In our <kbd>spec/cucumber/features/users/create/main.feature</kbd> file, add the following scenario outline:</p>
+<pre>Scenario Outline: Bad Request Payload<br/><br/>  When the client creates a POST request to /users<br/>  And attaches a Create User payload which is missing the &lt;missingFields&gt; field<br/>  And sends the request<br/>  Then our API should respond with a 400 HTTP status code<br/>  And the payload of the response should be a JSON object<br/>  And contains a message property which says "Payload must contain at least the email and password fields"<br/><br/>  Examples:<br/><br/>  | missingFields |<br/>  | email         |<br/>  | password      |</pre>
+<p>Apart from the second step, <kbd>And attaches a Create User payload which is missing the &lt;missingFields&gt; field</kbd>, every other step has already been implemented. The missing step should attach a dummy user payload, but then remove the specified property. Try implementing the logic of this step definition yourself, and compare it with the following solution:</p>
+<pre>When(/^attaches an? (.+) payload which is missing the ([a-zA-Z0-9, ]+) fields?$/, function (payloadType, missingFields) {<br/>  const payload = {<br/>    email: 'e@ma.il',<br/>    password: 'password',<br/>  };<br/>  const fieldsToDelete = missingFields.split(',').map(s =&gt; s.trim()).filter(s =&gt; s !== '');<br/>  fieldsToDelete.forEach(field =&gt; delete payload[field]);<br/>  this.request<br/>    .send(JSON.stringify(payload))<br/>    .set('Content-Type', 'application/json');<br/>});</pre>
+<p>In the step definition, we first extract the variables and convert the <kbd>missingFields</kbd> string into an array. We then loop through this array and delete each property from the payload object. Lastly, we feed this incomplete payload into the request as the payload.</p>
+<p class="mce-root"/>
+<p>If we run the test now, it will fail. This is because we have not implemented the validation logic inside our Create User handler. Once again, have a go at implementing it, and check back here for our solution:</p>
+<pre>// Inside the app.post('/users') callback<br/>app.post('/users', (req, res, next) =&gt; {<br/>  if (<br/>    !Object.prototype.hasOwnProperty.call(req.body, 'email')<br/>    || !Object.prototype.hasOwnProperty.call(req.body, 'password')<br/>  ) {<br/>    res.status(400);<br/>    res.set('Content-Type', 'application/json');<br/>    res.json({ message: 'Payload must contain at least the email and password fields' });<br/>  }<br/>  next();<br/>});</pre>
+<p>Now, all our tests will pass again:</p>
+<pre><strong>$ yarn run test:e2e</strong><br/><strong>.............................................................</strong><br/><br/><strong>10 scenarios (10 passed)</strong><br/><strong>61 steps (61 passed)</strong></pre>
+<p>Don't forget to commit these changes into Git:</p>
+<pre><strong>$ git add -A &amp;&amp; git commit -m "Check Create User endpoint for missing fields"</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Checking property type</h1>
+                </header>
+            
+            <article>
+                
+<p>Next, we must ensure that both our <kbd>email</kbd> and <kbd>password</kbd> fields are of type string and that the email address is formatted correctly. Have a go at defining a new scenario outline for this, and compare it to the following solution:</p>
+<pre>Scenario Outline: Request Payload with Properties of Unsupported Type<br/>  When the client creates a POST request to /users<br/>  And attaches a Create User payload where the &lt;field&gt; field is not a &lt;type&gt;<br/>  And sends the request<br/>  Then our API should respond with a 400 HTTP status code<br/>  And the payload of the response should be a JSON object<br/>  And contains a message property which says "The email and password fields must be of type string"<br/><br/>  Examples:<br/>  | field    | type   |<br/>  | email    | string |<br/>  | password | string |</pre>
+<p>Again, run the tests and confirm that one of the steps is undefined. Then, try to implement the step definition yourself, and check back with the following solution:</p>
+<pre>When(/^attaches an? (.+) payload where the ([a-zA-Z0-9, ]+) fields? (?:is|are)(\s+not)? a ([a-zA-Z]+)$/, function (payloadType, fields, invert, type) {<br/>  const payload = {<br/>    email: 'e@ma.il',<br/>    password: 'password',<br/>  };<br/>  const typeKey = type.toLowerCase();<br/>  const invertKey = invert ? 'not' : 'is';<br/>  const sampleValues = {<br/>    string: {<br/>      is: 'string',<br/>      not: 10,<br/>    },<br/>  };<br/>  const fieldsToModify = fields.split(',').map(s =&gt; s.trim()).filter(s =&gt; s !== '');<br/>  fieldsToModify.forEach((field) =&gt; {<br/>    payload[field] = sampleValues[typeKey][invertKey];<br/>  });<br/>  this.request<br/>    .send(JSON.stringify(payload))<br/>    .set('Content-Type', 'application/json');<br/>});</pre>
+<p>When we run the test, it fails because we have not implemented our application to handle that scenario. So, let's do that now by adding this <kbd>if</kbd> block to the end of the request handler for <kbd>POST /users</kbd>:</p>
+<pre>if (<br/>  typeof req.body.email !== 'string'<br/>  || typeof req.body.password !== 'string'<br/>) {<br/>  res.status(400);<br/>  res.set('Content-Type', 'application/json');<br/>  res.json({ message: 'The email and password fields must be of type string' });<br/>  return;<br/>}</pre>
+<p>Now, run the tests to see them pass, and <span>commit our changes to Git:</span></p>
+<pre><strong>$ git add -A &amp;&amp; git commit -m "Check data type of Create User endpoint payload"</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Checking the payload property's format</h1>
+                </header>
+            
+            <article>
+                
+<p>Lastly, the email address field may be present and have the correct data type, but it may still not be a valid email. So, the final check is to ensure the email is a valid email address. You should get the drill by now: define a new feature inside <kbd>spec/cucumber/features/users/create/main.feature</kbd>, and check back here for the solution:</p>
+<pre>Scenario Outline: Request Payload with invalid email format<br/><br/>  When the client creates a POST request to /users<br/>  And attaches a Create User payload where the email field is exactly &lt;email&gt;<br/>  And sends the request<br/>  Then our API should respond with a 400 HTTP status code<br/>  And the payload of the response should be a JSON object<br/>  And contains a message property which says "The email field must be a valid email."<br/><br/>  Examples:<br/><br/>  | email     |<br/>  | a238juqy2 |<br/>  | a@1.2.3.4 |<br/>  | a,b,c@!!  |</pre>
+<div class="packt_infobox">Note that we are excluding emails that are technically valid email addresses (such as <kbd>a@1.2.3.4</kbd>), but for our API, we want to accept only the more "generic" email addresses (such as <kbd>jane@gmail.com</kbd>).</div>
+<p>We are checking multiple examples here to give us confidence that our endpoint<span> </span><em>really</em><span> </span>won't accept an invalid email. In theory, the more examples we define, the better, because it gives us more confidence in our feature. However, E2E tests take a (relatively) long time to run; therefore, we must find a balance between confidence and speed. Here, we have specified three sufficiently diverse examples, which should cover most scenarios.</p>
+<p>Next, let's define the step definition:</p>
+<pre>When(/^attaches an? (.+) payload where the ([a-zA-Z0-9, ]+) fields? (?:is|are) exactly (.+)$/, function (payloadType, fields, value) {<br/>  const payload = {<br/>    email: 'e@ma.il',<br/>    password: 'password',<br/>  };<br/>  const fieldsToModify = fields.split(',').map(s =&gt; s.trim()).filter(s =&gt; s !== '');<br/>  fieldsToModify.forEach((field) =&gt; {<br/>    payload[field] = value;<br/>  });<br/>  this.request<br/>    .send(JSON.stringify(payload))<br/>    .set('Content-Type', 'application/json');<br/>});</pre>
+<p>Run the tests and see them fail. Then, implement the following application code to make them pass:</p>
+<pre>if (!/^[\w.+]+@\w+\.\w+$/.test(req.body.email)) {<br/>  res.status(400);<br/>  res.set('Content-Type', 'application/json');<br/>  res.json({ message: 'The email field must be a valid email.' });<br/>  return;<br/>}</pre>
+<p>Run the tests again, make sure they all pass, and then <span>commit your code:</span></p>
+<pre><strong>$ git add -A &amp;&amp; git commit -m "Check validity of email for Create User endpoint"</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Refactoring our step definitions</h1>
+                </header>
+            
+            <article>
+                
+<p>Red. Green. Refactor. Now that all tests pass, it's a good time to refactor our code.</p>
+<p>Our application code, although slightly repetitive, is easy to follow and read; therefore, we don't need to refactor it for now. There are, however, some improvements we can make to our test code. For example, we are hardcoding the Create User payload into our tests; it'll be better if we abstract that into a function that generates the payload when called.</p>
+<p class="mce-root"/>
+<p>We are going to create a new <kbd>spec/cucumber/steps/utils.js</kbd> file to house our utility/support code. Add the following into the <kbd>utils.js</kbd> file:</p>
+<pre>function getValidPayload(type) {<br/>  const lowercaseType = type.toLowerCase();<br/>  switch (lowercaseType) {<br/>    case 'create user':<br/>      return {<br/>        email: 'e@ma.il',<br/>        password: 'password',<br/>      };<br/>    default:<br/>      return undefined;<br/>  }<br/>}<br/><br/>function convertStringToArray(string) {<br/>  return string<br/>    .split(',')<br/>    .map(s =&gt; s.trim())<br/>    .filter(s =&gt; s !== '');<br/>}<br/><br/>export {<br/>  getValidPayload,<br/>  convertStringToArray,<br/>};</pre>
+<p>Import it and use it in our test code. For example, the <kbd>When(/^attaches an? (.+) payload where the ([a-zA-Z0-9, ]+) fields? (?:is|are) exactly (.+)$/)</kbd> step definition would become this:</p>
+<pre>import { getValidPayload, convertStringToArray } from './utils';<br/>...<br/>When(/^attaches an? (.+) payload where the ([a-zA-Z0-9, ]+) fields? (?:is|are) exactly (.+)$/, function (payloadType, fields, value) {<br/>  this.requestPayload = getValidPayload(payloadType);<br/>  const fieldsToModify = convertStringToArray(fields);<br/>  fieldsToModify.forEach((field) =&gt; {<br/>    this.requestPayload[field] = value;<br/>  });<br/>  this.request<br/>    .send(JSON.stringify(this.requestPayload))<br/>    .set('Content-Type', 'application/json');<br/>});</pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>Do this for all other step definitions that use an endpoint-specific payload. After this, run the tests again and make sure they all still pass (<span>because refactoring shouldn't modify the functionality</span>), and then commit the changes to Git:</p>
+<pre><strong>$ git add -A &amp;&amp; git commit -m "Refactor test code"</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Testing the success scenario</h1>
+                </header>
+            
+            <article>
+                
+<p><span>We have covered almost all of the edge cases. Now, we must implement the happy path scenario, where our endpoint is called as intended, and where we are actually creating the user and storing it in our database.</span></p>
+<p>Let's carry on with the same process and start by defining a scenario:</p>
+<pre>Scenario: Minimal Valid User<br/><br/>  When the client creates a POST request to /users<br/>  And attaches a valid Create User payload<br/>  And sends the request<br/>  Then our API should respond with a 201 HTTP status code<br/>  And the payload of the response should be a string<br/>  And the payload object should be added to the database, grouped under the "user" type</pre>
+<p>All steps are defined except the second, fifth, and last step. The second step can be implemented by using our<span> </span><kbd>getValidPayload</kbd><span> </span>method to get a valid payload, like so:</p>
+<pre>When(/^attaches a valid (.+) payload$/, function (payloadType) {<br/>  this.requestPayload = getValidPayload(payloadType);<br/>  this.request<br/>    .send(JSON.stringify(this.requestPayload))<br/>    .set('Content-Type', 'application/json');<br/>});</pre>
+<p>The fifth step is a variation of the <kbd>Then('the payload of the response should be a JSON object')</kbd> step definition we have already defined, and therefore we can simply modify it to make it more generic:</p>
+<pre>Then(/^the payload of the response should be an? ([a-zA-Z0-9, ]+)$/, function (payloadType) {<br/>  const contentType = this.response.headers['Content-Type'] || this.response.headers['content-type'];<br/>  if (payloadType === 'JSON object') {<br/>    // Check Content-Type header<br/>    if (!contentType || !contentType.includes('application/json')) {<br/>      throw new Error('Response not of Content-Type application/json');<br/>    }<br/><br/>    // Check it is valid JSON<br/>    try {<br/>      this.responsePayload = JSON.parse(this.response.text);<br/>    } catch (e) {<br/>      throw new Error('Response not a valid JSON object');<br/>    }<br/>  } else if (payloadType === 'string') {<br/>    // Check Content-Type header<br/>    if (!contentType || !contentType.includes('text/plain')) {<br/>      throw new Error('Response not of Content-Type text/plain');<br/>    }<br/><br/>    // Check it is a string<br/>    this.responsePayload = this.response.text;<br/>    if (typeof this.responsePayload !== 'string') {<br/>      throw new Error('Response not a string');<br/>    }<br/>  }<br/>});</pre>
+<p>For the last step, however, we actually need a database to write to. But we have already achieved a lot in this chapter. So let's review what we have done up to this point, and set up a database in the next chapter!</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we coerced you into following TDD principles when developing your application. W<span>e used Cucumber and Gherkin to write our end-to-end test, and used that to drive the implementation of our first endpoint. As part of our refactoring efforts, we've also migrated our API to use the Express framework.</span></p>
+<p>At this point, you should have the TDD process drilled into your brain: Red. Green. Refactor. Begin by writing out test scenarios, implementing any undefined steps, then run the tests and see them fail, and finally, implementing the application code to make them pass. Once the tests have passed, refactor where appropriate. Rinse and repeat.</p>
+<p>It's important to remember that TDD is not required to have self-testing code. You can, without following TDD, still write tests after to verify behavior and catch bugs. The emphasis of TDD is that it translates the design of your system into a set of concrete requirements, and uses these requirements to<span> </span><em>drive</em><span> </span>your development. <span>Testing is a forethought, not an afterthought.</span></p>
+<p>In the next chapter, we will implement the last remaining step of our E2E tests, setting up Elasticsearch and using it to persist our user data.</p>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>
