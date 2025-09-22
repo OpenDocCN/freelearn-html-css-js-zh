@@ -1,0 +1,188 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;13.&#xA0;Creating JavaScript Packages"><div class="titlepage" id="aid-28FAO2"><div><div><h1 class="title"><a id="ch13"/>Chapter 13. Creating JavaScript Packages</h1></div></div></div><p>So far we have built up a web application, making use of various npm packages along the way. These packages include libraries such as Express and command-line tools such as Gulp. Now we'll look at how to go about creating packages of our own.</p><p>In this chapter we will:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Explore the different module systems available for JavaScript</li><li class="listitem">Create our own JavaScript library</li><li class="listitem">Write JavaScript that can run on both the client and server-side</li><li class="listitem">Create a command-line tool in JavaScript</li><li class="listitem">Release a new npm package</li><li class="listitem">Use Node.js modules in the browser environment</li></ul></div><div class="note" title="Note"><h3 class="title"><a id="note20"/>Note</h3><p>The code examples in this chapter are independent of everything we've done so far.</p></div><div class="section" title="Writing universal modules"><div class="titlepage"><div><div><h1 class="title"><a id="ch13lvl1sec69"/>Writing universal modules</h1></div></div></div><p>We have already written <a id="id559" class="indexterm"/>many of our own modules as part of our application. We can also write library modules for use in other applications.</p><p>When writing code for use by others, it's worth considering in what contexts it will be useful. Some libraries are only useful in specific environments. For example, Express is server-specific and jQuery is browser-specific. But many modules provide functionality that would be useful in any environment, for example, utility modules such as the <code class="literal">uuid</code> module we've used elsewhere in this book.</p><p>Let's look at writing a module to work in multiple environments. We'll need to support more than just Node.js-style modules. We'll also need to support client-side module systems such as RequireJS. Recall from <a class="link" title="Chapter 4. Introducing Node.js Modules" href="part0025.xhtml#aid-NQU21">Chapter 4</a>, <span class="emphasis"><em>Introducing Node.js Modules</em></span>, that Node.js and RequireJS implement two different module standards (CommonJS and <span class="strong"><strong>Asynchronous </strong></span><a id="id560" class="indexterm"/>
+<span class="strong"><strong>Module Definition</strong></span> (<span class="strong"><strong>AMD</strong></span>), respectively). Our package may also be used client-side in a website with no module system in place.</p><p>As an example, let's create a <a id="id561" class="indexterm"/>module providing a simple <code class="literal">flatMap</code>
+<span class="strong"><strong> </strong></span>method. This will work like <code class="literal">SelectMany</code> in .NET's LINQ. It will take an array and a function that returns a new array for each element. It will return a single array of the combined results.</p><p>As a Node.js/CommonJS module, we could implement this as follows:</p><div class="informalexample"><pre class="programlisting">module.exports = function flatMap(source, callback) {
+    return Array.prototype.concat.apply([], source.map(callback));
+}</pre></div><div class="section" title="Comparing Node.js and RequireJS"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec80"/>Comparing Node.js and RequireJS</h2></div></div></div><p>Recall <a id="id562" class="indexterm"/>from <a class="link" title="Chapter 4. Introducing Node.js Modules" href="part0025.xhtml#aid-NQU21">Chapter 4</a>, <span class="emphasis"><em>Introducing Node.js Modules</em></span>, that each module system provides the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">A way of <a id="id563" class="indexterm"/>declaring a module with a name and its own scope</li><li class="listitem">A way of defining functionality provided by the module</li><li class="listitem">A way of importing a module into another script</li></ul></div><p>Node.js implements the <a id="id564" class="indexterm"/>CommonJS module standard. Module names correspond to file paths and each file has its own scope. Modules define the functionality they provide using the <code class="literal">exports</code> alias. Modules are imported using the <code class="literal">require</code> function.</p><p>RequireJS is designed for the browser environment. In the browser there is no new scope per file (all script files execute in the same scope and can see the same variables). Also, modules must be loaded by network requests rather than from the local filesystem.</p><p>RequireJS implements the AMD standard. AMD specifies two functions, which RequireJS adds to the top-level window object in the browser environment:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">The <code class="literal">define</code> function allows new modules to be created by providing a name and a factory function for the module. The scope of the module will be the scope of its factory function. The functionality of the module is defined by the return value of the factory function.</li><li class="listitem">The <code class="literal">require</code> function allows modules to be imported. Although this has the same name as the module import function in Node.js, it works very differently. Multiple module names can be specified for import (as an array). The require function is asynchronous and takes a callback to be executed when all the <a id="id565" class="indexterm"/>dependencies are loaded. This <a id="id566" class="indexterm"/>allows RequireJS to load modules efficiently in the browser environment.</li></ul></div></div><div class="section" title="Supporting the browser environment"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec81"/>Supporting the browser environment</h2></div></div></div><p>For our module to <a id="id567" class="indexterm"/>work in the browser environment, we need to support the AMD standard so RequireJS can work. We also need to accommodate sites not using any module loader. We can achieve this by extending our module definition as follows, in <code class="literal">scripts/flatMap.js</code>:</p><div class="informalexample"><pre class="programlisting">(function (root, factory) {
+    'use strict';
+    if (typeof define === 'function' &amp;&amp; define.amd) {
+        define([], factory);
+    } else if (typeof module === 'object' &amp;&amp; module.exports) {
+        module.exports = factory();
+    } else {
+        root.flatMap = factory();
+    }
+}(this, function () {
+    'use strict';
+    return function flatMap(source, clbk) {
+        return Array.prototype.concat.apply([], source.map(clbk));
+    }
+}));</pre></div><div class="note" title="Note"><h3 class="title"><a id="note21"/>Note</h3><p>Note the use of an anonymous function that is invoked straight away, called an <span class="strong"><strong>Immediately-Invoked </strong></span><a id="id568" class="indexterm"/>
+<span class="strong"><strong>Function Expression</strong></span> (<span class="strong"><strong>IIFE</strong></span>). This is a common way of creating an isolated scope in JavaScript environments without built-in modules.</p></div><p>First, we check for the existence of an AMD-style <code class="literal">define</code> function (the existence of a <code class="literal">define.amd</code> property is also specified by the AMD standard). Note that the asynchronous nature of the <code class="literal">define</code> function means that we need to use a factory function to create our module. We provide a list of dependencies (empty in this case) and our factory function to the <code class="literal">define</code> function to create our module.</p><p>If no AMD module system is present, we check for the CommonJS-style <code class="literal">module.exports</code> used by Node.js. Finally, if neither module system is present, we provide our module as a property on the <code class="literal">root</code> parameter. Our argument for this parameter is the <code class="literal">this</code> keyword evaluated in the global scope. In a browser, this will be the <code class="literal">window</code> object.</p></div><div class="section" title="Using AMD modules with RequireJS"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec82"/>Using AMD modules with RequireJS</h2></div></div></div><p>Let's create a <a id="id569" class="indexterm"/>simple web page to <a id="id570" class="indexterm"/>check that our module works correctly with RequireJS. We'll also show how to use RequireJS with an external library, jQuery.</p><p>First we define an HTML file for the page:</p><div class="informalexample"><pre class="programlisting">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+    &lt;head&gt;
+        &lt;script data-main="scripts/main" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.22/require.min.js"&gt;&lt;/script&gt;
+        &lt;style&gt;input, pre { display: block; margin: 0.5em auto; width: 320px; }&lt;/style&gt;
+    &lt;/head&gt;
+    &lt;body&gt;
+        &lt;input type="text" /&gt;
+        &lt;input type="text" /&gt;
+        &lt;input type="text" /&gt;
+        &lt;input type="text" /&gt;
+        &lt;pre id="wordcounts"&gt;&lt;/pre&gt;
+    &lt;/body&gt;
+&lt;/html&gt;</pre></div><p>Note that the only <a id="id571" class="indexterm"/>script tag on the page is for RequireJS itself. This script tag also has a data attribute indicating the entry point of our application. The path <code class="literal">scripts/main</code> tells RequireJS to load <code class="literal">scripts/main.js</code>, which contains the following:</p><div class="informalexample"><pre class="programlisting">requirejs.config({
+    paths: {
+        jquery: 'https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.1/jquery.min'
+    }
+});
+
+require(['flatMap', 'jquery'], function(flatMap, $) {
+    $('input').change(function() {
+        var allText = $.map($('input'), function(input) {
+            return $(input).val();
+        }).filter(function(text) {
+            return !!text;
+        });
+        var allWords = flatMap(allText, function(text) {
+            return text.split(' ');
+        });
+        var counts = {};
+        allWords.forEach(function(word) {
+            counts[word] = (counts[word] || 0) + 1;
+        });
+        $('#wordcounts').text(JSON.stringify(counts));
+    })
+});</pre></div><p>This script first configures RequireJS. The only <code class="literal">config</code> property specified here is the <code class="literal">path</code> property. The path for jQuery under the key <code class="literal">'jquery'</code> tells RequireJS how to resolve the <code class="literal">'jquery'</code> dependency. We don't need to specify a path for <code class="literal">flatMap.js</code> because we have saved it under the same directory as <code class="literal">main.js</code>.</p><p>Next we use the <code class="literal">require</code> function to load flatMap and jQuery and pass them into our main application function.  In larger applications using RequireJS, this is usually a very short bootstrap function. The <code class="literal">main.js</code> file is also often the only place that you'll see a <code class="literal">require</code> call. Most of the application code is in modules declared with <code class="literal">define</code>.</p><p>As this is just a test <a id="id572" class="indexterm"/>of our library with <a id="id573" class="indexterm"/>RequireJS, we'll put the rest of our application code inside our main application function. We use our flatMap module and jQuery to calculate and display word counts across all the text inputs. You can see this working by opening <code class="literal">index.html</code> in your browser:</p><div class="mediaobject"><img src="../Images/image00226.jpeg" alt="Using AMD modules with RequireJS"/></div><p style="clear:both; height: 1em;"> </p></div><div class="section" title="Isomorphic JavaScript"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec83"/>Isomorphic JavaScript</h2></div></div></div><p>The <code class="literal">flatMap.js</code> <a id="id574" class="indexterm"/>example above is an implementation of the Universal Module Definition pattern. See <a class="ulink" href="https://github.com/umdjs/umd">https://github.com/umdjs/umd</a> for annotated templates for this pattern. These templates also show how to declare dependencies between modules that follow this pattern.</p><p>More generally, writing code that achieves the same result both on the server and in the browser is referred to as <a id="id575" class="indexterm"/>
+<span class="strong"><strong>Isomorphic JavaScript</strong></span>. See <a class="ulink" href="http://isomorphic.net/">http://isomorphic.net/</a> for more explanation and examples of this principle.</p></div></div></div>
+<div class="section" title="Writing npm packages" id="aid-29DRA1"><div class="titlepage"><div><div><h1 class="title"><a id="ch13lvl1sec70"/>Writing npm packages</h1></div></div></div><p>If you create some code that <a id="id576" class="indexterm"/>would be useful to others, you can distribute it as an npm package. To demonstrate this, we'll implement some slightly more complex functionality.</p><div class="note" title="Note"><h3 class="title"><a id="note22"/>Note</h3><p>You can find the example code for this section at <a class="ulink" href="https://github.com/NodeJsForDevelopers/autotoc">https://github.com/NodeJsForDevelopers/autotoc</a>. Note that, unlike previous chapters, there is not one per commit per heading. The listings in the rest of this section match the final version of the code.</p></div><p>We're going to implement a tool for <a id="id577" class="indexterm"/>generating a <span class="strong"><strong>table of contents</strong></span> (<span class="strong"><strong>ToC</strong></span>) by crawling a website. To help with this, we'll make use of a few other npm packages:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><span class="strong"><strong>request</strong></span> provides an API for making HTTP requests, which is higher-level and much simpler to use than the build in the Node.js http module</li><li class="listitem"><span class="strong"><strong>cheerio</strong></span> provides jQuery-like HTML traversal outside of the browser environment</li><li class="listitem"><span class="strong"><strong>denodeify</strong></span>, mentioned in <a class="link" title="Chapter 8. Mastering Asynchronicity" href="part0048.xhtml#aid-1DOR02">Chapter 8</a>, <span class="emphasis"><em>Mastering Asynchronicity</em></span>, allows us to use the request library with promises instead of callbacks</li></ul></div><div class="note" title="Note"><h3 class="title"><a id="tip15"/>Tip</h3><p>It's common for <code class="literal">npm</code> packages to depend on other packages in this way. But it is worth minimizing your package's dependencies if you want it to be appealing to other developers. Packages with many transitive dependencies can add a lot of bloat to applications, and make it harder for developers to be confident that they understand everything they are pulling into their application.</p></div><p>The code for our module follows, as given in <code class="literal">autotoc.js</code>:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const cheerio = require('cheerio');
+const request = require('denodeify')(require('request'));
+const url = require('url');
+
+class Page {
+  constructor(name, url) {
+    this.name = name;
+    this.url = url;
+    this.children = [];
+  }
+  
+  spider() {
+    return request(this.url)
+      .then(response =&gt; {
+        let $ = cheerio.load(response.body);
+        let promiseChildren = [];
+        $('a').each((i, elem) =&gt; {
+          let name = $(elem).contents().get(0).nodeValue;
+          let childUrl = $(elem).attr('href');
+          if (name &amp;&amp; childUrl &amp;&amp; childUrl !== '/') {
+            let absoluteUrl = url.resolve(this.url, childUrl);
+            if (absoluteUrl.indexOf(this.url) === 0 &amp;&amp;
+                  absoluteUrl !== this.url) {
+              let childPage = new Page(name.trim(), absoluteUrl);
+              if (childUrl.indexOf('#') === 0) {
+                promiseChildren.push(Promise.resolve(childPage));
+              } else {
+                promiseChildren.push(childPage.spider());
+              }
+            }
+          }
+        });
+        return Promise.all(promiseChildren).then(children =&gt; {
+          this.children = children;
+          return this;
+        });
+      });
+  }
+}
+
+module.exports = baseUrl =&gt; new Page('Home', baseUrl).spider();</pre></div><p>It's not important to <a id="id578" class="indexterm"/>understand every single line as we're more interested in how it will be packaged. The important points are:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">We load the starting page then follow links through to other pages and process these recursively to build up the entire ToC</li><li class="listitem">We only follow links to more specific URLs than the current page (that is, subpaths), so we don't get into infinite loops</li><li class="listitem">At each level, we load all child pages in parallel and use <code class="literal">Promise.all</code> to combine the results</li></ul></div><p>We'll also add a simple module to print a ToC to the console, as given in <code class="literal">consolePrinter.js</code>:</p><div class="informalexample"><pre class="programlisting">'use strict';
+const printEntry = function(entry, indent) {
+        console.log(`${indent} - ${entry.name} (${entry.url})`);
+        entry.children.forEach(childEntry =&gt; {
+            printEntry(childEntry, indent + '  ');
+        })
+    }
+    
+module.exports = toc =&gt; printEntry(toc, '');</pre></div><div class="section" title="Defining an npm package"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec84"/>Defining an npm package</h2></div></div></div><p>To define an npm <a id="id579" class="indexterm"/>package, we must add a file to act as the entry point to our package. This will just expose the inner modules appropriately, as given in <code class="literal">index.js</code>:</p><div class="informalexample"><pre class="programlisting">'use strict';
+module.exports = require('./autotoc.js');
+module.exports.consolePrinter = require('./consolePrinter.js');</pre></div><p>We also need to add an npm <code class="literal">package.json</code> file to define our package's metadata. To create this file, you can run <code class="literal">npm init</code> in the command line and follow the prompts. In our case, the resulting file looks like the following:</p><div class="informalexample"><pre class="programlisting">{
+  "name": "autotoc",
+  "version": "0.0.1",
+  "description": "Automatic table of contents generator for websites",
+  "main": "index.js",
+  "author": "hgcummings &lt;npmjs@hgc.io&gt; (http://hgc.io/)",
+  "repository": "https://github.com/NodeJsForDevelopers/autotoc",
+  "license": "MIT",
+  "dependencies": {
+    "cheerio": "^0.20.0",
+    "denodeify": "^1.2.1",
+    "request": "^2.69.0"
+  }
+}</pre></div><p>We've used <code class="literal">package.json</code> files before to specify dependencies for <code class="literal">npm install</code>. The other fields become much more important when publishing a package to <code class="literal">npm</code>. Note that we use the <code class="literal">main</code> property to specify our package's entry point. Actually, <code class="literal">index.js</code> is the default value, but specifying it explicitly makes this clearer.</p></div></div>
+<div class="section" title="Publishing a package to npm" id="aid-2ACBS1"><div class="titlepage"><div><div><h1 class="title"><a id="ch13lvl1sec71"/>Publishing a package to npm</h1></div></div></div><p>Once we have <a id="id580" class="indexterm"/>defined our package's metadata, publishing it to npm is very straightforward:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">If you do not already have an npm account, create one by running <code class="literal">npm adduser</code> and specifying a username and password</li><li class="listitem">Log in using <code class="literal">npm login</code></li><li class="listitem">In the <code class="literal">root</code> folder of the package, run <code class="literal">npm publish</code></li></ul></div><p>That's all we need to <a id="id581" class="indexterm"/>do! Our package will now appear in the global npm <a id="id582" class="indexterm"/>repository. We can make use of it by (in a new folder) running <code class="literal">npm install autotoc</code> and writing the following simple demo script as given in <code class="literal">demo.js</code>:</p><div class="informalexample"><pre class="programlisting">'use strict';
+const autotoc = require('autotoc');
+autotoc('http://hgc.io')
+    .then(autotoc.consolePrinter, err =&gt; console.log(err));</pre></div><p>Running <code class="literal">node demo.js</code> at the command line produces the following output:</p><div class="mediaobject"><img src="../Images/image00227.jpeg" alt="Publishing a package to npm"/></div><p style="clear:both; height: 1em;"> </p><div class="section" title="Running automated clients on the web"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec85"/>Running automated clients on the web</h2></div></div></div><p>It's fine to run <a id="id583" class="indexterm"/>tools like this against your own website. There are many use cases for this kind of technique. For example, a script that spiders through an entire site and checks every page can be a useful integration/smoke test.</p><p>Use cases that involve crawling sites that you don't own require more care. Any public-facing site that you could visit in a browser, you could also access with an automated client like this. But issuing a large number of automated requests against the same host is undesirable. It could be <a id="id584" class="indexterm"/>considered poor etiquette at best or a <span class="strong"><strong>Denial of Service</strong></span> (<span class="strong"><strong>DoS</strong></span>) attack at worst.</p><p>Clients should set an appropriate <code class="literal">User-Agent</code> HTTP header. Some servers might reject requests from clients that don't specify a <code class="literal">User-Agent</code> or don't appear to be a browser. By convention, crawlers should send a <code class="literal">User-Agent</code> including the word <span class="emphasis"><em>bot</em></span> in the name and ideally a URL to find out more about the bot. The request library makes it easy to specify headers by passing in an options object. For example:</p><div class="informalexample"><pre class="programlisting">let options = {
+  url: 'http://hgc.io',
+  headers: {
+    'User-Agent': 'Examplebot/1.0 (+http://example.com/why-im-crawling-your-website)'
+  }
+};
+request(options).then(...);</pre></div><p>Crawlers should also check for a <code class="literal">robots.txt</code> file for each website and respect any rules it contains. See <a class="ulink" href="http://www.robotstxt.org/robotstxt.html">http://www.robotstxt.org/robotstxt.html</a> for more information.</p><p>Finally, legitimate crawlers of <a id="id585" class="indexterm"/>third-party websites should also rate-limit their requests to avoid overwhelming the server.</p></div><div class="section" title="Releasing a standalone tool to npm"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec86"/>Releasing a standalone tool to npm</h2></div></div></div><p>Some of the <a id="id586" class="indexterm"/>
+<code class="literal">npm</code> packages we've used so far in this book <a id="id587" class="indexterm"/>have been command-line tools rather than libraries, for example Gulp. Creating a command-line tool package is very straightforward. First, we need to define the script that we want people to be able to invoke from the command line, as given in <code class="literal">cli.js</code>:</p><div class="informalexample"><pre class="programlisting">#!/usr/bin/env node
+'use strict';
+const autotoc = require('./autotoc.js');
+const consolePrinter = require('./consolePrinter.js');
+autotoc(process.argv[2])
+    .then(consolePrinter, err =&gt; console.log(err));</pre></div><p>This looks much like our demo script from before, with a couple of differences:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">The line at the beginning of the script (called a <span class="strong"><strong>shebang line</strong></span>, starting with <code class="literal">#!</code>) indicates to the OS that this script should be executed using Node.js</li><li class="listitem">The URL to crawl is taken from a command-line argument</li></ul></div><p>Now we just <a id="id588" class="indexterm"/>need to specify this script in our <a id="id589" class="indexterm"/>
+<code class="literal">package.json</code>:</p><div class="informalexample"><pre class="programlisting">{
+  "name": "autotoc",
+  "version": "0.1.1",
+  "description": "Automatic table of contents generator for websites",
+  "main": "index.js",
+<span class="strong"><strong>  "bin": {</strong></span>
+<span class="strong"><strong>    "autotoc": "./cli.js"</strong></span>
+<span class="strong"><strong>  },</strong></span>
+  "author": "hgcummings &lt;npmjs@hgc.io&gt; (http://hgc.io/)","repository": "https://github.com/NodeJsForDevelopers/autotoc",
+  "license": "MIT",
+  "dependencies": {
+    "cheerio": "^0.20.0",
+    "denodeify": "^1.2.1",
+    "request": "^2.69.0"
+  }
+}</pre></div><p>To publish our updated package, we first need to update our version number. You can update this in the package directly or use the <code class="literal">npm</code> version command, for example</p><div class="informalexample"><pre class="programlisting"><span class="strong"><strong>&gt; npm version minor</strong></span>
+</pre></div><p>This automatically updates the version number to the next major/minor/patch version (as specified) and makes a new git commit with this change.</p><p>Since we are already logged into npm, we can now publish the new version of our package by running <code class="literal">npm publish</code> again.</p><p>We can now make use of our CLI tool as follows (in a new command prompt window):</p><div class="informalexample"><pre class="programlisting"><span class="strong"><strong>&gt; npm install -g autotoc</strong></span>
+<span class="strong"><strong>&gt; autotoc http://hgc.io</strong></span>
+</pre></div></div></div>
+<div class="section" title="Using Node.js modules in the browser" id="aid-2BASE1"><div class="titlepage"><div><div><h1 class="title"><a id="ch13lvl1sec72"/>Using Node.js modules in the browser</h1></div></div></div><p>At the beginning of <a id="id590" class="indexterm"/>this chapter, we discussed creating <a id="id591" class="indexterm"/>universal modules that can run under Node.js or in the browser. There is another way that we can allow our code to run in both environments.</p><p>Browserify (<a class="ulink" href="http://browserify.org/">http://browserify.org/</a>) allows you to make use of Node.js modules in the browser. It bundles up <a id="id592" class="indexterm"/>your code together with its dependencies. It also provides browser-compatible shims to emulate Node.js built-in modules.</p><p>You can install Browserify via npm:</p><div class="informalexample"><pre class="programlisting"><span class="strong"><strong>&gt; npm install -g browserify</strong></span>
+</pre></div><p>Browserify is typically used to package applications. For example, if we wanted to package our demo usage of autotoc from the previous section, we could run:</p><div class="informalexample"><pre class="programlisting"><span class="strong"><strong>&gt; browserify demo.js -o bundle.js</strong></span>
+</pre></div><p>Browserify will create a single JavaScript file containing the code from <code class="literal">demo.js</code>, along with its dependencies and transitive dependencies. If we include this in an HTML page, we can now see it working in the browser console:</p><div class="mediaobject"><img src="../Images/image00228.jpeg" alt="Using Node.js modules in the browser"/></div><p style="clear:both; height: 1em;"> </p><p>You can also use <a id="id593" class="indexterm"/>Browserify to generate browser-compatible files <a id="id594" class="indexterm"/>for individual modules, following the Universal Module Definition pattern discussed earlier in this chapter. For example, to create a UMD version of our <code class="literal">autotoc.js</code> module from the previous section, we could run:</p><div class="informalexample"><pre class="programlisting"><span class="strong"><strong>&gt; browserify autotoc.js -s autotoc -o browser/scripts/autotoc.js</strong></span>
+</pre></div><p>We could now make use of this via RequireJS. Let's create a simple application that uses autotoc together with jQuery to generate an HTML ToC. First we'll need an HTML file to contain our application and include RequireJS, as given in <code class="literal">browser/index.html</code>:</p><div class="informalexample"><pre class="programlisting">&lt;!DOCTYPE html&gt;
+&lt;head&gt;
+    &lt;script data-main="scripts/main" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.22/require.min.js"&gt;&lt;/script&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;/body&gt;</pre></div><p>Now we can implement <a id="id595" class="indexterm"/>our application itself, as given in <a id="id596" class="indexterm"/>
+<code class="literal">browser/scripts/main.js</code>:</p><div class="informalexample"><pre class="programlisting">requirejs.config({
+  paths: {
+    jquery: 'https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.1/jquery.min'
+  }
+});
+require(['autotoc', 'jquery'], function(autotoc, $) {
+  'use strict';
+  autotoc('http://hgc.io').then(toc =&gt; {
+    let printEntry = function(entry, parent) {
+      let list = $(document.createElement('ul'));
+      list.append(
+        `&lt;li&gt;&lt;a href="${entry.url}"&gt;${entry.name}&lt;/a&gt;&lt;/li&gt;`);
+      entry.children.forEach(childEntry =&gt; {
+        printEntry(childEntry, list);
+      })
+      parent.append(list);
+    }
+        
+    printEntry(toc, $('body'));
+  }, err =&gt; console.log(err));
+});</pre></div><p>This results in the following output:</p><div class="mediaobject"><img src="../Images/image00229.jpeg" alt="Using Node.js modules in the browser"/></div><p style="clear:both; height: 1em;"> </p><div class="section" title="Controlling Browserify's output"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec87"/>Controlling Browserify's output</h2></div></div></div><p>Note that, by <a id="id597" class="indexterm"/>default, Browserify generates <a id="id598" class="indexterm"/>a bundle of your code and all of its dependencies. Including transitive dependencies, this can result in a very large file. The autotoc module is only 42 lines long, but the generated bundle is over 80,000 lines! Our application above includes both jQuery (via RequireJS) and a version of Cheerio (via Browserify). This is particularly wasteful, since much of Cheerio is a re-implementation of jQuery.</p><p>You can instruct Browserify to exclude specific modules and to exclude all external modules. This is particularly useful for third-party modules that follow the UMD pattern. These do not need to be <span class="emphasis"><em>browserified</em></span> and can be excluded from the generated bundle. You can then load them separately in the browser, via an additional script tag or using RequireJS.</p><p>For more information on <a id="id599" class="indexterm"/>Browserify's usage options, see the official documentation at <a class="ulink" href="https://github.com/substack/node-browserify#usage">https://github.com/substack/node-browserify#usage</a>.</p><p>Browserify provides a lot of flexibility for bundling modules in different ways. It is particularly useful <a id="id600" class="indexterm"/>when working on a single <a id="id601" class="indexterm"/>codebase with both server-side and client-side functionality. It allows you to write all of your code using Node.js-style modules and to easily share modules between the server and the client.</p></div></div>
+<div class="section" title="Summary" id="aid-2C9D01"><div class="titlepage"><div><div><h1 class="title"><a id="ch13lvl1sec73"/>Summary</h1></div></div></div><p>In this chapter, we have written a multi-environment module following the universal module definition pattern, created an npm package for a library and a command-line tool, and packaged Node.js code for the browser using Browserify.</p><p>This demonstrates the flexibility of Node.js and the range of use cases for JavaScript and npm beyond just server-side code. In the final chapter, we'll look at the broader context around Node.js. We'll see some of the newer languages and upcoming language features for the platform and how Node.js interacts with other platforms like .NET.</p></div></body></html>

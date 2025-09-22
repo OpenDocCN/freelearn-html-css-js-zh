@@ -1,0 +1,293 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Making Types That Represent Operations</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">In previous chapters, we've seen how to build types to model many kinds of data. Through all of these chapters, we've relied on functions. Functions wrap calculations and actions for easy reuse, so it makes sense that they're among the most heavily used features in any programming language. So, by taking advantage of Reason's type system and functional programming techniques, we can design functions for maximum effectiveness.</p>
+<p class="mce-root">In this chapter, we will cover the following topics:</p>
+<ul>
+<li>Meaningful function types and useful properties</li>
+<li>Currying and partial application</li>
+<li>Higher-order functions</li>
+<li>Using functions to control dependency ordering and program flow</li>
+<li>Commonly used functions and operators</li>
+</ul>
+<p>But first, what is a function? A <strong>function</strong> in type theory and mathematics has a formal definition, but we can think of it as a formula for calculating an output given an input. In Reason and other statically-typed functional programming languages, functions <em>always</em> have an output, even if they don't actually calculate anything. We'll examine how to express these inputs and outputs, but we first need a basic understanding of function types and properties.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Function types and other useful properties</h1>
+                </header>
+            
+            <article>
+                
+<p>In Reason, functions have very specific types and, just like other values, functions of different types can't be substituted for one another.</p>
+<p class="mce-root"/>
+<p>The basic type of every Reason function is as follows:</p>
+<pre><em>a</em> =&gt; b</pre>
+<p>Read this as <em>a arrow b</em>.</p>
+<p>As you can see, the input, <kbd>a</kbd>, and the output, <kbd>b</kbd>, can be any type (even the same one). This basic function type, with a single input and a single output, gives rise to every other function type in Reason. We'll cover how this happens shortly, but first let's talk about a couple of useful functional programming concepts that are important in the type-driven world.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Referential transparency</h1>
+                </header>
+            
+            <article>
+                
+<p>The first property, called <strong>referential transparency</strong> (or <strong>RT</strong>), means that a function will always produce the same output, <kbd>b</kbd>, for a given input, <kbd>a</kbd>, no matter how, when, or how many times we call it. This means that a function can't behave unpredictably; we must be able to predict its output for every input, purely like a mathematical formula.</p>
+<p>For example, the following is a non-referentially transparent function:</p>
+<pre>/* [xDaysAgo(x)] returns the time [x] days before now, in ms since Unix<br/>    epoch. */<br/><span class="underline">let</span> <em>xDaysAgo</em>(<em>x</em>) =<br/> <em> Js.Date.now</em>() -. <em>float_of_int</em>(<em>x</em>) *. 24. *. 60. *. 60. *. 1_000.;</pre>
+<div class="packt_infobox">In Reason, float arithmetic operators are distinct from integer operators (they are suffixed with a dot). Reason tries to be as explicit as possible about arithmetic and conversions so that we can avoid surprising results.</div>
+<p>We can't tell what the output will be for any given input, <kbd>x</kbd>, because that depends on the date and time  the function is called. The problem instead is the hidden dependency on the current date or time. One solution is to remove the dependency by passing it in as a function argument, as follows:</p>
+<pre>/* [xDaysAgo(now, x)] returns the time [x] days before [now], in ms<br/>    since Unix epoch. */<span class="underline"><br/>let</span> <em>xDaysAgo</em>(<em>now</em>, <em>x</em>) =<br/>  <em>now</em> -. <em>float_of_int</em>(<em>x</em>) *. 24. *. 60. *. 60. *. 1_000.;</pre>
+<p>The immediate benefit is that the function is easier to test, but the bigger benefit is that functions such as this in the codebase make it easier to reason about<em>.</em></p>
+<p class="mce-root"/>
+<p>Reasoning about code (also known as <strong>equational reasoning</strong>) means being able to substitute actual values in place of function arguments, and just like a math equation, evaluate to the result by simplifying it. This sounds like a trivial benefit, but when used over a codebase, it can be a powerful technique for ensuring transparency.</p>
+<p>Realistically speaking, we can't make the entire codebase referentially transparent (unless we use advanced techniques such as effect types). We can, however, push out the non-RT operations to the edges of the program. For example, we can call the (second) <kbd>xDaysAgo</kbd> function with either the result of a call to <kbd>Js.Date.now()</kbd> or a date value passed in from somewhere else. This is a simple but effective form of <strong>dependency injection</strong> (passing in values to a program instead of letting the program try to get the values itself). We'll cover dependency injection in more detail later on in this chapter.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Function purity</h1>
+                </header>
+            
+            <article>
+                
+<p>The second important property that we try to achieve is <strong>purity</strong>. This concept means that, to the caller (that is, the code that calls it) and the outside world, a function has no impact other than evaluating to its result. We say that the function does not have any <strong>observable effects</strong>. Observability is the crucial thing here; there may well be effects happening and contained inside the function (such as mutation), but the caller doesn't, and cannot, know about them. The following is an example of a pure function that mutates internally but not observably:</p>
+<pre><span class="underline">let</span> <em>sum</em>(<em>numbers</em>) = {<br/>  <span class="underline">let</span> <em>result</em> = <em>ref</em>(0);<br/>  <span class="underline">for</span> (<em>i</em> <span class="underline">in</span> 0 <span class="underline">to</span> <em>Array.length</em>(<em>numbers</em>) - 1) {<br/>    <em>result</em> := <em>result</em>^ + <em>numbers</em>[<em>i</em>];<br/>  };<br/>  <em>result</em>^<br/>};</pre>
+<p>If we were to add a <kbd>Js.log(result^)</kbd> inside the body of the <kbd>for</kbd> loop, the function would become impure because its effects would become observable. People sometimes disagree with what exactly observable means, especially in the context of logging the operations of otherwise-pure functions, but it's safe to err on the side of caution and accept that any observable effect is an impurity in the function (and that's OK, because sometimes we actually need those observable effects).</p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Totality</h1>
+                </header>
+            
+            <article>
+                
+<p>The last important property that we want functions to have is <strong>totality</strong>. This means that functions should handle every possible value of the type that they accept, which is actually trickier than it seems! For example, look at the <kbd>xDaysAgo</kbd> function again. What happens if <kbd>x</kbd> is negative? Or very large or small? Did we account for integer overflow? Especially when working with numbers, we need to understand their properties on the platform we're running on top of.</p>
+<p>In our case, we're running on a JavaScript platform such as Node.js, so all numbers are internally represented as IEEE floats (that's how JavaScript works) and we can get pretty far before we need to worry about overflow. But consider the following trivial function:</p>
+<pre><span class="underline">let</span> <em>sendMoney</em>(<em>from</em>: <strong>string</strong>, <em>to_</em>: <strong>string</strong>, <em>amount</em>: <strong>float</strong>) = Js.log(<br/>  {j|Send \$$<em>amount</em> from $<em>from</em> to $<em>to_</em>|j});</pre>
+<div class="packt_infobox">The first dollar symbol needs to be escaped, otherwise the compiler tries to treat it as starting an interpolation.</div>
+<p>Here, we're just printing out what we want to happen. In a real application, we might want to do a money transfer. Suppose we exposed this function with an HTTP service call. What would happen if someone called the service with a negative float? The best-case scenario is that the error would be caught somewhere else; the worst is that people could make calls to siphon money out of other people's accounts.</p>
+<p>One approach to solving this is to validate our arguments at the very beginning of the function, as follows:</p>
+<pre><span class="underline">let</span> <em>sendMoney</em>(<em>from</em>, <em>to_</em>, <em>amount</em>) = {<br/>  <span class="underline">assert</span>(<em>from</em> != "");<br/>  <span class="underline">assert</span>(<em>to_</em> != "");<br/>  <span class="underline">assert</span>(<em>amount</em> &gt; 0.);<br/>  <em>Js.log</em>({j|Send \$$<em>amount</em> from $<em>from</em> to $<em>to_</em>|j});<br/>};</pre>
+<p class="mce-root">For good measure, in this snippet, we're doing some basic validation on the sender and receiver strings. We're also able to get rid of the type annotations because the assertions will cause them to be inferred correctly.</p>
+<div class="mce-root packt_tip"><kbd>assert</kbd> is a built-in keyword, although it looks and works like a function.</div>
+<p>From the function's point of view, internally it's now a total function because it explicitly errors on the cases it doesn't want to handle, but does handle the remaining happy path. To the outside world, however, the function is still taking in raw strings and floats, and failing to handle most of them. A better solution is to use more constrained types to describe exactly what the function can accept, as follows:</p>
+<pre>/* src/Ch07/Ch07_DomainTypes.re */<br/><span class="underline">module</span> <em>NonEmptyString</em>: { /* (1) */<br/> <span class="underline">type</span> <strong>t</strong> = <span class="underline">pri</span> <strong>string</strong>; /* (2) */<br/> <span class="underline">let</span> <em>makeExn</em>: <strong>string</strong> =&gt; <strong>t</strong>;<br/>} = {<br/> <span class="underline">type</span> <strong>t</strong> = <strong>string</strong>;<br/> <span class="underline">let</span> <em>makeExn</em>(<em>string</em>) = { <span class="underline">assert</span>(<em>string</em> != ""); <em>string</em> };<br/>};<br/><br/><span class="underline">module</span> <em>PositiveFloat</em>: { /* (3) */<br/> <span class="underline">type</span> <strong>t</strong> = <span class="underline">pri</span> <strong>float</strong>;<br/> <span class="underline">let</span> <em>makeExn</em>: <strong>float</strong> =&gt; <strong>t</strong>;<br/>} = {<br/> <span class="underline">type</span> <strong>t</strong> = <strong>float</strong>;<br/> <span class="underline">let</span> <em>makeExn</em>(<em>float</em>) = { <span class="underline">assert</span>(<em>float</em> &gt; 0.); <em>float</em> };<br/> <span class="underline">let</span> <em>toFloat</em>(<em>t</em>) = <em>t</em>;<br/>};<br/><br/><span class="underline">let</span> <em>sendMoney</em>( /* (4) */<br/> <em>from</em>: <em>NonEmptyString</em>.<strong>t</strong>,<br/> <em>to_</em>: <em>NonEmptyString</em>.<strong>t</strong>,<br/> <em>amount</em>: <em>PositiveFloat</em>.<strong>t</strong>) = {<br/><br/> <span class="underline">let</span> <em>from</em> = (<em>from</em> :&gt; <strong>string</strong>); /* (5) */<br/> <span class="underline">let</span> <em>to_</em> = (<em>to_</em> :&gt; <strong>string</strong>);<br/> <span class="underline">let</span> <em>amount</em> = (<em>amount</em> :&gt; <strong>float</strong>);<br/> <em>Js.log</em>({j|Send \$$<em>amount</em> from $<em>from</em> to $<em>to_</em>|j});<br/>};<br/><br/><em>sendMoney</em>( /* (6) */<br/> <em>NonEmptyString.makeExn</em>("Alice"),<br/> <em>NonEmptyString.makeExn</em>("Bob"),<br/> <em>PositiveFloat.makeExn</em>(32.));</pre>
+<div class="packt_infobox">We had to use <kbd>to_</kbd> as the parameter name instead of <kbd>to</kbd> because the latter is a reserved keyword in Reason. It's a common practice to add an underscore to a keyword if we want to use it as a name.</div>
+<p>This snippet looks more verbose, but in the long run is the better solution because we can write tests for the wrapper types and their modules in isolation, get peace of mind that the types really do enforce our rules, and reuse the types instead of adding checks throughout the codebase. Here's how it works:</p>
+<ol>
+<li>We set up a type whose values can only be non-empty strings. If a caller tries to construct an empty string of the type, that will fail with an exception.</li>
+<li>The type declaration says that this is a <kbd>private</kbd> type, meaning that we expose its internal representation, but we don't allow users to construct values of the type. This is a useful technique when we want to semi-transparently take an existing type and restrict it in some way. We will see how to do that shortly.</li>
+<li>Similarly, we set up a type whose values can be only positive floats.</li>
+<li>In the <kbd>sendMoney</kbd> function, we reap the benefit of these types by only accepting these constrained types instead of their raw variants. The function is now total because it only accepts exactly the values it works with by (type) definition.</li>
+<li>We still need to unwrap the constrained values to get at the raw ones, because ultimately we want to print the raw values. Because the types are declared as <kbd>private</kbd> though, we can <strong>coerce</strong> them back to their more general versions. Coercion means forcing a value of a constrained type (such as <kbd>NonEmptyString.t</kbd>) back to being a more general type (such as <kbd>string</kbd>). Coercion is completely static; if we can't coerce something, we'll get a compile error. Note that the syntax for coercion needs to be pretty exact, and it needs to include the parentheses.</li>
+<li>We also need to wrap the values before we pass them into the function. This is the point that can potentially fail, so we've moved it outside of our function implementation.</li>
+</ol>
+<p>Here, we've used the convention of adding <kbd>Exn</kbd> to the names of the functions that may throw exceptions. Some people prefer to return optional values instead of throwing exceptions. This convention is idiomatic and type-safe, but is ultimately just another method of reporting errors. The key point to take away is that any possible failures have been moved out of our total <kbd>sendMoney</kbd> function, and other functions that use constrained types.</p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">What a function type means</h1>
+                </header>
+            
+            <article>
+                
+<p>In the context of type-driven development, why are functional programming concepts such as referential transparency, purity, and totality important? The reason is that a function's type has a well-understood mathematical meaning, and breaking such rules muddy this meaning.</p>
+<p>A function type such as <kbd>a =&gt; b</kbd> means that a function of this type will accept an input of type <kbd>a</kbd> and evaluate to a result of type <kbd>b</kbd>, and will do nothing else (for example, print out a log, start the coffee maker, or launch missiles). We like having this guarantee in much the same way that we like knowing that an <kbd>int</kbd> is just an <kbd>int</kbd>, and not a missile launch followed by an <kbd>int</kbd>.</p>
+<p>The fact that Reason allows side effects is a great pragmatic decision, but we can still strive to push the side effects to the very edges of our programs and keep their cores purely functional. Purity in the functional sense is necessary for the type of a function to be accurate. If types in our program are accurate, we can perform type-driven development with more confidence.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Multiple arguments and currying</h1>
+                </header>
+            
+            <article>
+                
+<p>We've already mentioned that Reason functions always accept a single argument and return a single value, but we've been happily using functions that look like they take multiple arguments, for example, <kbd>xDaysAgo(now, x)</kbd>. How is this possible?</p>
+<p>In Reason, functions with multiple arguments are automatically <strong>curried</strong>. This means that they are actually functions that accept a single argument and return a new function, which accepts the next argument, and so on, forming a chain of single-argument functions that finally return a result. This might seem like it's inefficient, but in practice the compiler can almost always optimize the chain of calls into a single, efficient call. Let's look at the following concrete example, defining <kbd>xDaysAgo</kbd>:</p>
+<pre><span class="underline">let</span> <em>xDaysAgo</em>(<em>now</em>, <em>x</em>) = ...;</pre>
+<p>This syntax is equivalent to the following (which is supported by the Reason code formatter tool, and thus usually seen in the wild):</p>
+<pre><span class="underline">let</span> <em>xDaysAgo</em> = (<em>now</em>, <em>x</em>) =&gt; ...;</pre>
+<p>Next, we have the following:</p>
+<pre><span class="underline">let</span> <em>xDaysAgo</em> = <em>now</em> =&gt; <em>x</em> =&gt; ...;</pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mceNonEditable"/>
+<p>Similarly, we can call the following function:</p>
+<pre><span class="underline">let</span> <em>result</em> = <em>xDaysAgo</em>(<em>now</em>, <em>x</em>);</pre>
+<p>That is equivalent to the following syntax:</p>
+<pre><span class="underline">let</span> <em>result</em> = <em>xDaysAgo</em>(<em>now</em>)(<em>x</em>);</pre>
+<p>The compiler understands that this syntax is a <strong>fully applied</strong> function call, and optimizes accordingly.</p>
+<p>Sometimes, a call isn't fully applied. In other words, it's <strong>partially applied</strong>. This means that it has been called with only some of the arguments that it accepts. A partially-applied function is just a function that accepts one or more arguments but, by definition, fewer arguments than the original function. Let's look at the following simple example:</p>
+<pre><span class="underline">let</span> <em>xDaysBeforeNow</em> = <em>xDaysAgo</em>(<em>Js.Date.now</em>());<br/><span class="underline">let</span> <em>result</em> = <em>xDaysBeforeNow</em>(10);</pre>
+<p>This example captures the current moment in time by making a call to the appropriate JavaScript date function and then feeds or injects it into the <kbd>xDaysAgo</kbd> function to get back a new function that's been primed with the current time. This new function is then bound to the name <kbd>xDaysBeforeNow</kbd> and called to get a result. The result will be deterministic; in other words, we'll always get back the same output for a given input. The reason is that the non-deterministic data has already been <em>fed</em> into the function and is captured as a static value inside it. In other words, <kbd>xDaysBeforeNow</kbd> is also referentially transparent.</p>
+<p>As a rule, functions that we get from applications of a referentially-transparent function (such as <kbd>xDaysAgo</kbd>) are also referentially transparent. The same rule holds true for the other functional properties: purity and totality. This helps us out a lot when we're building specialized functions out of more general ones, as we can start with confidence and keep that confidence at every step.</p>
+<p>Now, let's take a look at another example of partial application that is both fun and shows its usefulness.</p>
+<p>In the following example, we define a function that returns or prints the label for an envelope used to mail a letter, using the name of the recipient, the postal address, and so on. This function could be defined as follows:</p>
+<pre>let printEnveloppeLabel = (~firstname: string, ~lastname: string, ~address: string, ~country: string)<br/>  : unit =&gt; {<br/>    print_newline();<br/>    print_endline(firstname ++ " " ++ lastname);<br/>    print_endline(address);<br/>    print_endline(country);<br/>};</pre>
+<p>We can call the function the normal way, with all of its parameters, as follows:</p>
+<pre>printEnveloppeLabel("John", "Doe", "Some address in the US", "USA");</pre>
+<p>We can also define another function for partial application, passing a value for the country parameter, as follows:</p>
+<pre>let printEnveloppeLabelUS = printEnveloppeLabel(~country="USA");<br/>printEnveloppeLabelUS("John", "Doe", "Some address in the US");</pre>
+<p>We can also pass a value for the <kbd>lastname</kbd> parameter, for a function that prints the label for the members of the same household, as follows:</p>
+<pre>let printEnveloppeLabelDoeFamily = printEnveloppeLabelUS(~lastname="Doe", ~address="Some address in the US");<br/>printEnveloppeLabelDoeFamily(~firstname="Jane");</pre>
+<p>The execution of the JS resulting from the compilation of this example (<kbd>src/Ch07/Ch07_Currying.re</kbd>) gives the following output:</p>
+<pre>John Doe<br/>Some address in the US<br/>USA<br/><br/>John Doe<br/>Some address in the US<br/>USA<br/><br/>Jane Doe<br/>Some address in the US<br/>USA</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Functions as values</h1>
+                </header>
+            
+            <article>
+                
+<p>In the previous section, we covered how function definitions syntactically <strong>desugar</strong> (that is, slightly more cumbersome syntax is used) into a series of chained function values. Let's examine the idea that functions are actually first-class values in Reason, just as much as things like numbers, strings, records, and so on.</p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Function literal syntax</h1>
+                </header>
+            
+            <article>
+                
+<p>Reason provides strong support for so-called <strong>function literals,</strong> also known as <strong>lambdas</strong> or <strong>closures</strong>. This means that, as in JavaScript and various other languages, we can directly write down function values wherever it's legal to write down any value. The following is the basic syntax for a function literal:</p>
+<pre>PATTERN =&gt; body</pre>
+<p>The following is the syntax for writing a curried function:</p>
+<pre>PATTERN1 =&gt; PATTERN2 =&gt; ... =&gt; PATTERNn =&gt; body</pre>
+<p>Reason provides a familiar-looking syntactic sugar for writing a curried function, as follows:</p>
+<pre>(PATTERN1, PATTERN2, ..., PATTERNn) =&gt; body</pre>
+<p>Notice the deliberate use of <kbd>PATTERN</kbd>, as with bindings, as follows:</p>
+<pre><span class="underline">let</span> <em>PATTERN</em> = VALUE;</pre>
+<p>Indeed, Reason functions (whether literal or normal function bindings) can always directly pattern match on their parameters. As with any pattern match, however, we must be cautious about matching against refutable patterns in function parameters, because those risk failing at runtime. The following snippet includes examples of function literals:</p>
+<pre>/* src/Ch07/Ch07_FunctionLiterals.re */<br/>let addV1(int1, int2) = int1 + int2; /* (1) */<br/>let addV2 = (int1, int2) =&gt; int1 + int2; /* (2) */<br/>let addV3 = int1 =&gt; int2 =&gt; int1 + int2; /* (3) */<br/><br/>/** A way to convert values of type ['a] to and from floats. */<br/>module FloatConverter = {<br/> /* (4) */<br/> type t('a) = {encodeExn: 'a =&gt; float, decodeExn: float =&gt; 'a};<br/><br/> /* (5) */<br/> let float = {encodeExn: float =&gt; float, decodeExn: float =&gt; float};<br/> let int = {encodeExn: float_of_int, decodeExn: int_of_float}; /* (6) */<br/>};<br/><br/>let greet = ({Ch03_Domain.Person.id, name}) =&gt; /* (7) */<br/> {j|Hello, $name with ID $id!|j};</pre>
+<p class="mce-root"/>
+<p>This file shows quite a lot of things, explained as follows:</p>
+<ol>
+<li>We define a function using the syntax we've been using throughout the book, for comparison.</li>
+<li>How to define and immediately bind a function literal using the slightly desugared Reason syntax.</li>
+<li>How to define and immediately bind a function literal using the fully desugared curried syntax. The important thing to realise here is that these three functions are of exactly the same type and behavior, and can be called in exactly the same way: <kbd>addV<em>n</em>(1, 2)</kbd>.</li>
+<li>How to define a type that can contain two functions: one to convert a given type, <kbd>'a</kbd>, to a <kbd>float</kbd>, and another to convert the <kbd>float</kbd> back to that same <kbd>'a</kbd>. Note that we use the naming convention to show that both functions can potentially throw exceptions, because we can't guarantee beforehand that every type <kbd>'a</kbd> can actually be converted to and from <kbd>float</kbd>.</li>
+<li>How to define a <kbd>FloatConverter.t(float)</kbd>, which (trivially) knows how to convert a <kbd>float</kbd> to a <kbd>float</kbd>. The functions are implemented as simply <kbd>float =&gt; float</kbd>, which in this context means to return the same float that was received as input.</li>
+<li>How to define a <kbd>FloatConverter.t(int)</kbd> that knows how to convert between <kbd>int</kbd> and <kbd>float</kbd>, using functions available in the Reason standard library for comparison.</li>
+<li>Finally, we saw how to define another greeter function by creating a function literal, using destructuring pattern matching of the parameter and binding the function to the name <kbd>greet</kbd>.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Eta abstraction</h1>
+                </header>
+            
+            <article>
+                
+<p>Notice that, in the preceding sixth point, we used two standard library-provided functions directly as values. We could have wrapped them inside first-class functions instead, as follows:</p>
+<pre><span class="underline">let</span> <em>int</em> = {<br/>  <em>encodeExn</em>: <em>int</em> =&gt; <em>float_of_int</em>(<em>int</em>),<br/>  <em>decodeExn</em>: <em>float</em> =&gt; <em>int_of_float</em>(<em>float</em>)<br/>};</pre>
+<p>Wrapping something inside a function in general is called <strong>eta abstraction</strong>. It's an abstraction because it adds a layer of indirection instead of returning a value straight away. In other words, we first need to pass in an argument, which is substituted inside the body of the function, before the calculated result is returned.</p>
+<p>In some cases, an eta abstraction is necessary. For example, our preceding float converter needed a way to convert a <kbd>float</kbd> to a <kbd>float</kbd> in order to fit inside the type we set up. For that purpose, the eta abstraction <kbd>float =&gt; float</kbd> is perfect. However, eta abstraction is redundant when it wraps a single function call directly, for example, <kbd>int =&gt; float_of_int(int)</kbd> or <kbd>output =&gt; Js.log(output)</kbd>. This is because that single function call is already an equivalent eta abstraction; it already takes the same parameter and calculates the same result. Thanks to Reason functions being values, we can always pass them around directly.</p>
+<p>Often, when we're concentrating on writing the functions we need, it's easy to miss these redundancies. Luckily, we can remove redundant eta abstractions when simplifying the codebase at a later date, and without changing the meaning of the code.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>Functions are an important part of Reason and are used a lot. This chapter focused on presenting their essential properties: referential transparency, purity, and totality. We also discussed the specific techniques involved with Reason functions, such as currying and partial application.</p>
+<p>In the next chapter, we are going to look at more approaches and techniques supported in Reason that help in code reuse and programming generically.</p>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

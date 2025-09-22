@@ -1,0 +1,346 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;12.&#xA0;Authentication in Node.js" id="aid-22O7C1"><div class="titlepage"><div><div><h1 class="title"><a id="ch12"/>Chapter 12. Authentication in Node.js</h1></div></div></div><p>The application we have built so far allows users to choose a username to identify themselves. However, they only retain this identity for the duration of their browser session. It's important to allow users to retain a consistent identity from one session to the next. This allows us to build richer user experiences. Some websites (such as Facebook) couldn't offer their main functionality at all without being able to identify users.</p><p>Identifying users requires us to implement authentication. In this chapter, we will cover the following topics:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Implementing third-party authentication via social networking sites</li><li class="listitem">Associating third-party identities with our own user data</li><li class="listitem">Simulating user authentication to support integration testing</li></ul></div><div class="section" title="Introducing Passport"><div class="titlepage"><div><div><h1 class="title"><a id="ch12lvl1sec63"/>Introducing Passport</h1></div></div></div><p>Passport is <a id="id507" class="indexterm"/>an authentication framework for Node.js. It can act as Express middleware, making it easy to integrate with our application.</p><p>Like some of the other libraries we've discussed so far, Passport is very modular. Its core package provides a common paradigm for authentication. Passport's middleware performs authentication and augments the request object with a <code class="literal">user</code> property.</p><p>Additional Passport npm packages support hundreds of different <span class="strong"><strong>strategies</strong></span> for authentication. Each Passport strategy provides a different mechanism for identifying users. We'll look at a few of these strategies in this chapter. Passport makes it easy to add new strategies to suit the needs of each application.</p><div class="section" title="Choosing an authentication strategy"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec70"/>Choosing an authentication strategy</h2></div></div></div><p>A common<a id="id508" class="indexterm"/> introductory example is username/password-based authentication. This uses a login form to verify users' credentials against the application's database. Although this is one of the simplest authentication mechanisms to understand, it's not the most useful. Forcing users to create an account for our site is an extra hurdle to them using it. Users also get tired of creating an account and picking a password for every new website.</p><p>Passport does<a id="id509" class="indexterm"/> support this kind of authentication, via the <code class="literal">passport-local</code> strategy. We'll make use of this strategy for test purposes later on in this chapter, but not in our production code. It's better to allow users to authenticate using an identity already established elsewhere. This saves users from having to pick new credentials and also saves our website from having to manage these. This is just good separation of concerns.</p><p>If you log in to StackOverflow, you'll notice that it suggests logging in using Google+ or Facebook. It also supports OpenID and other providers. Implementing support for each of these login mechanisms from scratch would be a lot of work. Fortunately there are Passport strategies for all of them.</p></div><div class="section" title="Understanding third-party authentication"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec71"/>Understanding third-party authentication</h2></div></div></div><p>Passport will do <a id="id510" class="indexterm"/>most of the heavy lifting for us, but it's still worth having a basic understanding of how third-party authentication works. When a client wants to log into a website, it sends them to a third-party provider. The third-party provider gives the client back a token they can use to authenticate with the website. When the client is a web browser, this process can be made almost invisible to the user, via automatic redirects.</p><p>The website must then verify that the token presented to it by the client really came from the third-party provider. The website and the third-party provider might have established a pre-shared key for this purpose, which could be used to create a cryptographically verifiable token. Alternatively, the website might call the third-party provider directly to verify the token. In practice, a website will often want to call a third-party provider anyway to gain more information associated with the user's identity, for example, their username or other profile information.</p></div></div></div>
+<div class="section" title="Using Express sessions" id="aid-23MNU1"><div class="titlepage"><div><div><h1 class="title"><a id="ch12lvl1sec64"/>Using Express sessions</h1></div></div></div><p>Many of Passport's strategies are based on HTTP sessions. At the moment, our application is<a id="id511" class="indexterm"/> just using simple cookies to store user IDs. To use Passport for third-party authentication, we'll need to add session support into our application. Express provides session support in the <code class="literal">express-session</code> module. First, we add this to our application:</p><div class="informalexample"><pre class="programlisting"><span class="strong"><strong>&gt; npm install express-session --save</strong></span>
+</pre></div><p>We also need somewhere to store session data. Express supports a variety of session stores via additional modules. Redis is well suited to this task and we already have a Redis instance available. We can use the <code class="literal">connect-redis</code> module to store sessions in Redis:</p><div class="informalexample"><pre class="programlisting"><span class="strong"><strong>&gt; npm install connect-redis --save</strong></span>
+</pre></div><p>We can now<a id="id512" class="indexterm"/> create a new configuration module to keep all our session logic in one place. Since this will return middleware, we'll put it in the <code class="literal">middleware</code> folder here <code class="literal">src/middleware/sessions.js</code>:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const session = require('express-session');
+
+let config = {
+    secret: process.env.SESSION_SECRET,
+    saveUninitialized: false,
+    resave: false
+};
+
+if (process.env.REDIS_URL &amp;&amp; process.env.NODE_ENV !== 'test') {
+    const RedisStore = require('connect-redis')(session);
+    config.store = new RedisStore({ url: process.env.REDIS_URL });
+}
+
+module.exports = session(config);</pre></div><p>We configure the Express <code class="literal">session</code> module as follows:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Use the value of an environment variable as the session secret</li><li class="listitem">Only save sessions that contain some data</li><li class="listitem">Do not resave sessions unless they have changed</li><li class="listitem">If Redis is available, use it as the session store</li></ul></div><p>Let's consider each of the configuration properties in turn.</p><div class="section" title="Specifying a session secret"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl3sec19"/>Specifying a session secret</h2></div></div></div><p>Express uses a<a id="id513" class="indexterm"/> session secret to protect session data from being tampering with. You should specify this by setting the <code class="literal">SESSION_SECRET</code> environment variable locally. The value is arbitrary and can be anything, as long as it's not empty. We also need to specify this in our integration test so it can run on the CI server. The following code is from <code class="literal">gulpfile.js</code>:</p><div class="informalexample"><pre class="programlisting">gulp.task('integration-test', ..., (done) =&gt; {
+    const TEST_PORT = 5000;
+<span class="strong"><strong>    process.env.SESSION_SECRET =</strong></span>
+<span class="strong"><strong>        process.env.SESSION_SECRET || 'testOnly';</strong></span>
+    require('./src/server.js').then((server) =&gt; {
+        ...
+    });
+}); </pre></div></div><div class="section" title="Deciding when the session gets saved"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl3sec20"/>Deciding when the session gets saved</h2></div></div></div><p>Avoiding<a id="id514" class="indexterm"/> unnecessary saves is a minor optimization and can avoid certain race conditions. Only saving initialized sessions allows you to request user consent before storing any cookies. This might be necessary for compliance with <a id="id515" class="indexterm"/>regional laws, most notably in the EU. See <a class="ulink" href="https://www.cookiechoices.org/">https://www.cookiechoices.org/</a> for more information.</p></div><div class="section" title="Using alternative session stores"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl3sec21"/>Using alternative session stores</h2></div></div></div><p>By default, Express will use an in-memory session store. This is fine for development purposes and in<a id="id516" class="indexterm"/> test environments <a id="id517" class="indexterm"/>where we only have one application process, but is not suitable for production use. Storing sessions out of process in Redis is important if we want to scale across multiple instances. We configure the Redis store with our existing Redis URL.</p><div class="note" title="Note"><h3 class="title"><a id="note17"/>Note</h3><p>In practice, you might want to use different Redis instances for session data and other application data. These are quite different use cases, so they might benefit from a different configuration of Redis. For example, session data is likely to be higher load, but can afford to be more volatile. For small-scale applications such as our example application in this book, a single Redis instance will suffice.</p></div></div><div class="section" title="Using session middleware"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec73"/>Using session middleware</h2></div></div></div><p>We can now<a id="id518" class="indexterm"/> use sessions elsewhere in our application<a id="id519" class="indexterm"/> instead of directly setting cookies. The following code is from <code class="literal">src/app.js</code>:</p><div class="informalexample"><pre class="programlisting"><span class="strong"><strong>    let sessions = require('./middleware/sessions');</strong></span>
+    ...
+    app.use(bodyParser.urlencoded({ extended: false }));
+<span class="strong"><strong>    app.use(sessions);</strong></span>
+    app.use(express.static(path.join(__dirname, 'public')));
+    ...</pre></div><p>The following code is from <code class="literal">src/middleware/users.js</code>:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+module.exports = (service) =&gt; {
+    const uuid = require('uuid');
+
+    return function(req, res, next) {
+<span class="strong"><strong>        let userId = req.session.userId;</strong></span>
+        if (!userId) {
+            userId = uuid.v4();
+<span class="strong"><strong>            req.session.userId = userId;</strong></span>
+            req.user = {
+                id: userId
+            };
+            next();
+        } else {
+            ...
+        }
+    };
+};</pre></div><p>The<a id="id520" class="indexterm"/> following <a id="id521" class="indexterm"/>code is from <code class="literal">src/server.js</code>:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+module.exports = require('./config/mongoose').then(mongoose =&gt; {
+    ...
+<span class="strong"><strong>    io.use(adapt(require('./middleware/sessions')));</strong></span>
+    const usersService = require('./services/users.js');
+    ...
+});</pre></div></div></div>
+<div class="section" title="Implementing social login"><div class="titlepage" id="aid-24L8G2"><div><div><h1 class="title"><a id="ch12lvl1sec65"/>Implementing social login</h1></div></div></div><p>For our first <a id="id522" class="indexterm"/>example, we'll use Twitter as our third-party authentication provider. If you want to follow along with the example you will need a Twitter account, which is very quick to set up.</p><div class="section" title="Setting up a Twitter application"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec74"/>Setting up a Twitter application</h2></div></div></div><p>In order <a id="id523" class="indexterm"/>for Twitter to recognize our application, we need to <a id="id524" class="indexterm"/>create a new app in Twitter's developer portal:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Visit <a class="ulink" href="https://apps.twitter.com/">https://apps.twitter.com/</a> and click on <span class="strong"><strong>Create New App</strong></span>.</li><li class="listitem">Fill in the <a id="id525" class="indexterm"/>Name, Description, Website, and Callback URL fields:<div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">If you've deployed your application to Heroku, you can use its Heroku URL here</li><li class="listitem">Otherwise, just fill in placeholder values for both fields (for example, <code class="literal">http://test.example.com/callback</code>)</li></ul></div></li><li class="listitem">Click on <span class="strong"><strong>Create your Twitter application</strong></span>.</li><li class="listitem">Click on the <span class="strong"><strong>Settings</strong></span> tab and ensure that <span class="strong"><strong>Enable Callback Locking</strong></span> is unchecked (leaving this unchecked allows you to use placeholder values for the URLs and is also useful for local testing).</li><li class="listitem">Click on the <span class="strong"><strong>Keys and Access Tokens</strong></span> tab to view your application's <span class="strong"><strong>Consumer Key (API Key)</strong></span> and <span class="strong"><strong>Consumer Secret (API Secret)</strong></span>.</li></ol><div style="height:10px; width: 1px"/></div><p>Set new local <a id="id526" class="indexterm"/>environment variables named <code class="literal">TWITTER_API_KEY</code> and <code class="literal">TWITTER_API_SECRET</code>, containing the corresponding values from<a id="id527" class="indexterm"/> Twitter. You might want to create a shell script or batch file to set these in the console or configure them as Heroku environment variables (see <a class="link" title="Chapter 11. Deploying Node.js Applications" href="part0066.xhtml#aid-1UU542">Chapter 11</a>, <span class="emphasis"><em>Deploying Node.js Applications</em></span>)</p></div><div class="section" title="Configuring Passport"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec75"/>Configuring Passport</h2></div></div></div><p>We'll now <a id="id528" class="indexterm"/>make use of Passport to allow users to log into our <a id="id529" class="indexterm"/>site via Twitter. First, we need to install the relevant npm packages:</p><div class="informalexample"><pre class="programlisting"><span class="strong"><strong>&gt; npm install passport --save</strong></span>
+<span class="strong"><strong>&gt; npm install passport-twitter --save</strong></span>
+</pre></div><p>Now we can configure Passport to authenticate with Twitter. We add the following code under <code class="literal">src/config/passport.js</code>:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const passport = require('passport');
+const TwitterStrategy = require('passport-twitter').Strategy;
+
+module.exports = (usersService) =&gt; {
+    if(process.env.TWITTER_API_KEY &amp;&amp;
+            process.env.TWITTER_API_SECRET) {
+        passport.use(new TwitterStrategy({
+            consumerKey: process.env.TWITTER_API_KEY,
+            consumerSecret: process.env.TWITTER_API_SECRET,
+            callbackURL: '/auth/twitter/callback',
+            passReqToCallback: true
+        }, (req, token, tokenSecret, profile, done) =&gt; {
+            usersService.setUsername(req.user.id,
+                    profile.username || profile.displayName)
+                .then(() =&gt; { done(); }, done);
+        }));
+    }
+    return passport;
+};</pre></div><p>This uses the <code class="literal">TwitterStrategy</code> for authentication with Twitter, passing in our API key and secret<a id="id530" class="indexterm"/> on a configuration object. The second constructor <a id="id531" class="indexterm"/>parameter is a function that Passport will invoke after authenticating with Twitter (referred to as the <span class="strong"><strong>verify callback</strong></span> in Passport's documentation). Here<a id="id532" class="indexterm"/> we set the current user's name based on the <code class="literal">profile.username</code> or <code class="literal">profile.displayName</code> provided from Twitter by Passport.</p><div class="note" title="Note"><h3 class="title"><a id="note18"/>Note</h3><p>The <code class="literal">profile</code> object contains the user profile returned by the authentication provider. Passport standardizes profile data to make it easier to work with multiple strategies. There's a standard set of fields, such as <code class="literal">displayName</code>, which all Passport strategies will populate if possible. We'd prefer to use the Twitter username (for example, hgcummings) than the display name (for example, Harry Cummings). The <code class="literal">profile.username</code> field contains the Twitter username. This is not one of the standard fields, but many strategies will return a field with this name. So we use <code class="literal">profile.username</code> first, but fall back to the more standard <code class="literal">profile.displayName</code>.</p></div><p>Now we just need to make use of our new passport module in Express. The following code is from <code class="literal">src/app.js</code>:</p><div class="informalexample"><pre class="programlisting"><span class="strong"><strong>    let passport = require('./config/passport')(usersService);</strong></span>
+    ... 
+    
+    app.use(users);
+<span class="strong"><strong>    app.use(passport.initialize());
+app.post('/auth/twitter', passport.authenticate('twitter'));
+app.get('/auth/twitter/callback',</strong></span>
+<span class="strong"><strong>        passport.authenticate('twitter',</strong></span>
+<span class="strong"><strong>            { successRedirect: '/', failureRedirect: '/' }));</strong></span>
+
+    app.use('/', routes);
+    ...</pre></div><p>This tells our application to do three things:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Use Passport's Express middleware</li><li class="listitem">Authenticate users via Twitter when they POST to <code class="literal">/auth/twitter</code></li><li class="listitem">Handle Twitter authentication results at <code class="literal">/auth/twitter/callback</code> before redirecting users to the homepage</li></ul></div><p>Finally, we need to provide a login button to reach our new endpoint as shown here in <code class="literal">src/views/index.js</code>:</p><div class="informalexample"><pre class="programlisting">    &lt;h1&gt;{{ title }}&lt;/h1&gt;
+<span class="strong"><strong>    &lt;h2&gt;Account&lt;/h2&gt;</strong></span>
+<span class="strong"><strong>    {{#ranking}}</strong></span>
+<span class="strong"><strong>      ...</strong></span>
+<span class="strong"><strong>    {{/ranking}}</strong></span>
+<span class="strong"><strong>    &lt;form action="/auth/twitter" method="POST"&gt;</strong></span>
+<span class="strong"><strong>        &lt;input type="submit" value="Log in using Twitter" /&gt;</strong></span>
+<span class="strong"><strong>    &lt;/form&gt;</strong></span>
+<span class="strong"><strong>    &lt;h3&gt;Profile&lt;/h3&gt;</strong></span>
+    &lt;form action="/profile" method="POST"&gt;
+      ...
+    &lt;/form&gt;
+    ...</pre></div><p>If you <a id="id533" class="indexterm"/>run the application and click <span class="strong"><strong>Log in using Twitter</strong></span>, the <a id="id534" class="indexterm"/>following will happen:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">The application will redirect your browser to Twitter</li><li class="listitem">Twitter will prompt you to log in if you have not already</li><li class="listitem">Twitter will ask whether you're happy with the application seeing your profile details and other public data</li><li class="listitem">Twitter will then redirect your browser to the <code class="literal">/auth/twitter/callback</code> endpoint</li><li class="listitem">Your browser will make a request to this endpoint with your authentication token from Twitter</li><li class="listitem">Passport will validate this token then invoke our login handler function</li><li class="listitem">When our function completes, Passport will return a redirect response to the homepage</li></ul></div><p>We have now integrated Twitter authentication with our application! However, we're not really using it to allow users to log in. We're just associating a Twitter username with our existing user IDs created for each session. You can see this by opening up two separate browser sessions. Try logging in with each of them. If you create a new game in one browser, it appears in the other browser in the list of games created by other users. This is because you now have two user IDs associated with the same Twitter username.</p><p>We need to recognize the same user whenever they log in with the same Twitter account. This should not <a id="id535" class="indexterm"/>depend on being in the same browser session. To address this, we'll need to do the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Persist user <a id="id536" class="indexterm"/>accounts to our database</li><li class="listitem">Tell Passport how to store and retrieve users</li><li class="listitem">Let Passport associate a user with the current session</li></ul></div></div><div class="section" title="Persisting user data with Redis"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec76"/>Persisting user data with Redis</h2></div></div></div><p>We already <a id="id537" class="indexterm"/>use Redis to associate usernames <a id="id538" class="indexterm"/>with user IDs. Now we want to be able to associate user IDs with Twitter accounts as well. The first time a user logs in with an external provider, we want to create a new user with the name taken from the external profile. Subsequent requests authenticated with the same provider will see the same user.</p><p>We can implement this functionality using Redis's <code class="literal">SETNX</code> operation. This will only set a key if it does not already exist and return whether this was the case. Our implementation is as follows from <code class="literal">src/services/users.js</code>:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const redisClient = require('../config/redis.js');
+<span class="strong"><strong>const uuid = require('uuid');</strong></span>
+
+<span class="strong"><strong>const getUser = userId =&gt;</strong></span>
+<span class="strong"><strong>  redisClient.getAsync(`user:${userId}:name`)</strong></span>
+<span class="strong"><strong>    .then(userName =&gt; ({</strong></span>
+<span class="strong"><strong>      id: userId,</strong></span>
+<span class="strong"><strong>      name: userName</strong></span>
+<span class="strong"><strong>    }));</strong></span>
+
+<span class="strong"><strong>const setUsername = (userId, name) =&gt;</strong></span>
+<span class="strong"><strong>  redisClient.setAsync(`user:${userId}:name`, name);</strong></span>
+
+<span class="strong"><strong>module.exports = {</strong></span>
+<span class="strong"><strong>  getOrCreate: (provider, providerId, providerUsername) =&gt; {</strong></span>
+<span class="strong"><strong>    let providerKey = `provider:${provider}:${providerId}:user`;</strong></span>
+<span class="strong"><strong>    let newUserId = uuid.v4();</strong></span>
+<span class="strong"><strong>    return redisClient.setnxAsync(providerKey, newUserId)</strong></span>
+<span class="strong"><strong>      .then(created =&gt; {</strong></span>
+<span class="strong"><strong>        if (created) {</strong></span>
+<span class="strong"><strong>          return setUsername(newUserId, providerUsername)</strong></span>
+<span class="strong"><strong>            .then(() =&gt; getUser(newUserId));</strong></span>
+<span class="strong"><strong>        } else {</strong></span>
+<span class="strong"><strong>          return redisClient</strong></span>
+<span class="strong"><strong>            .getAsync(providerKey).then(getUser);</strong></span>
+<span class="strong"><strong>        }</strong></span>
+<span class="strong"><strong>      });</strong></span>
+<span class="strong"><strong>  },</strong></span>
+  getUser: getUser,    getUsername: userId =&gt; redisClient.getAsync(`user:${userId}:name`),
+<span class="strong"><strong>  setUsername: setUsername,</strong></span>
+  ...
+};</pre></div><p>Here, we create a new user ID and tell Redis to associate it with the external provider (for example, Twitter) account. If we have seen the external account before, we return the user that <a id="id539" class="indexterm"/>was already associated with it. Otherwise, we <a id="id540" class="indexterm"/>persist a new user ID and associate it with the username from the external profile. Tests for this functionality can be found in the companion code.</p></div><div class="section" title="Configuring Passport with persistence"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec77"/>Configuring Passport with persistence</h2></div></div></div><p>Now that <a id="id541" class="indexterm"/>we have a way of persisting<a id="id542" class="indexterm"/> users, we need to tell Passport how to make use of this. First, we update our verify callback to make use of our new <code class="literal">getOrCreate</code> function rather than just setting a username. Then we need to tell Passport how to identify and retrieve users associated with a session by serializing users to and from a string.<span class="strong"><strong> </strong></span>The following code is from <code class="literal">src/config/passport.js</code>:</p><div class="informalexample"><pre class="programlisting">'use strict'; 
+
+const passport = require('passport');
+const TwitterStrategy = require('passport-twitter').Strategy;
+
+module.exports = (usersService) =&gt; {
+    if(process.env.TWITTER_API_KEY &amp;&amp;
+            process.env.TWITTER_API_SECRET) {
+        passport.use(new TwitterStrategy({
+            consumerKey: process.env.TWITTER_API_KEY,
+            consumerSecret: process.env.TWITTER_API_SECRET,
+            callbackURL: '/auth/twitter/callback',
+            passReqToCallback: true
+        }, (req, token, tokenSecret, profile, done) =&gt; {
+<span class="strong"><strong>            usersService.getOrCreate('twitter', profile.id,</strong></span>
+<span class="strong"><strong>                    profile.username || profile.displayName)</strong></span>
+<span class="strong"><strong>                .then(user =&gt; done(null, user), done);</strong></span>
+        }));
+    }
+
+<span class="strong"><strong>    passport.serializeUser((user, done) =&gt; {</strong></span>
+<span class="strong"><strong>        done(null, user.id);</strong></span>
+<span class="strong"><strong>    });</strong></span>
+
+<span class="strong"><strong>    passport.deserializeUser((id, done) =&gt; {</strong></span>
+<span class="strong"><strong>        usersService.getUser(id)</strong></span>
+<span class="strong"><strong>            .then(user =&gt; done(null, user))</strong></span>
+<span class="strong"><strong>            .catch(done);</strong></span>
+<span class="strong"><strong>    });</strong></span>
+
+    return passport;
+};</pre></div><p>Passport<a id="id543" class="indexterm"/> stores the string version of the<a id="id544" class="indexterm"/> user (returned by our <code class="literal">serializeUser</code> callback) on the session. It uses our <code class="literal">deserializeUser</code> callback to turn this string into a user object which it adds to the request. In our case, the string representation of the user is just their ID and deserialization is just a lookup in the users service.</p><p>In order for this to work, we also need to tell our application to use Passport's own session middleware, which works together with Express sessions. To avoid repetition, we'll specify all of our session-related middleware in our session middleware module. The following is the code from <code class="literal">src/middleware/sessions.js</code>:</p><div class="informalexample"><pre class="programlisting">...
+
+<span class="strong"><strong>const expressSession = session(config);</strong></span>
+<span class="strong"><strong>module.exports = passport =&gt; [</strong></span>
+<span class="strong"><strong>    expressSession, passport.initialize(), passport.session()</strong></span>
+];</pre></div><p>This module now returns three middleware instances. We want to use this with both Express and Socket.IO. The first of these is simple, since we can pass multiple middleware objects to the Express <code class="literal">app.use</code> function as here <code class="literal">src/app.js</code>:</p><div class="informalexample"><pre class="programlisting">    ...
+    let passport = require('./config/passport')(usersService);
+<span class="strong"><strong>    let sessions = require('./middleware/sessions')(passport);</strong></span>
+    ...
+    app.use(bodyParser.json());
+    app.use(bodyParser.urlencoded({ extended: false }));
+<span class="strong"><strong>    app.use(sessions);</strong></span>
+    app.use(express.static(path.join(__dirname, 'public')));
+
+    app.post('/auth/twitter', passport.authenticate('twitter'));
+    ...</pre></div><p>For Socket.IO, we need to adapt each middleware in turn as here <code class="literal">src/server.js</code>:</p><div class="informalexample"><pre class="programlisting">    ...
+    const usersService = require('./services/users.js');
+<span class="strong"><strong>    let passport = require('./config/passport');</strong></span>
+<span class="strong"><strong>    require('./middleware/sessions')(passport).forEach(</strong></span>
+<span class="strong"><strong>        middleware =&gt; io.use(adapt(middleware)));</strong></span>
+    
+    require('./realtime/chat')(io);
+    ...</pre></div><p>Note that, in both cases, our users middleware is no longer needed and can now be deleted. However, this middleware previously ensured that there was always a user object on the request. This will now only be the case when there is a logged in user, so we need to update<a id="id545" class="indexterm"/> the rest of our application <a id="id546" class="indexterm"/>accordingly.</p><p>There are a few places in our application that assume there will always be a user on the request. Since this is no longer guaranteed, there are two ways to resolve this: we can update our code to cope with no user being present on the request or we can hide functionality from unauthenticated users.</p><p>We still want unauthenticated users to be able to view public chat and to see and play games, so we update this functionality accordingly. The code from <code class="literal">src/realtime/chat.js</code> is updated as follows:</p><div class="informalexample"><pre class="programlisting">    namespace.on('connection', (socket) =&gt; {
+<span class="strong"><strong>        let username = null;</strong></span>
+<span class="strong"><strong>        if (socket.request.user) {</strong></span>
+<span class="strong"><strong>            username = socket.request.user.name;</strong></span>
+<span class="strong"><strong>        }</strong></span>
+        ...</pre></div><p>The following code is from <code class="literal">src/realtime/games.js</code>:</p><div class="informalexample"><pre class="programlisting">    function forwardEvent(name, socket) {
+        service.events.on(name, game =&gt; {
+<span class="strong"><strong>            if (!socket.request.user ||</strong></span>
+<span class="strong"><strong>                    game.setBy !== socket.request.user.id) {</strong></span>
+                socket.emit(name, game.id);
+            }
+        });
+    }</pre></div><p>The following code is from <code class="literal">src/routes/games.js</code>:</p><div class="informalexample"><pre class="programlisting">    router.post('/:id/guesses', function(req, res, next) {
+        checkGameExists(
+            req.params.id,
+            res,
+            game =&gt; {
+<span class="strong"><strong>                if (req.user &amp;&amp; game.matches(req.body.word)) {</strong></span>
+                    userService.recordWin(req.user.id);
+                }
+                ...
+            },
+            next
+        );
+    });</pre></div></div><div class="section" title="Hiding functionality from unauthenticated users"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec78"/>Hiding functionality from unauthenticated users</h2></div></div></div><p>We<a id="id547" class="indexterm"/> certainly want unauthenticated users to be able to visit the home page of our application, but might not want to display all of the application's functionality to them. To achieve this, we'll update our index route as follows from <code class="literal">src/routes/index.js</code>:</p><div class="informalexample"><pre class="programlisting">    router.get('/', function(req, res, next) {
+<span class="strong"><strong>        let userId = null;</strong></span>
+<span class="strong"><strong>        if (req.user) {</strong></span>
+<span class="strong"><strong>            userId = req.user.id;</strong></span>
+<span class="strong"><strong>        }</strong></span>
+        
+        Promise.all([gamesService.createdBy(userId),
+                    gamesService.availableTo(userId),
+                    usersService.getUsername(userId),
+                    usersService.getRanking(userId),
+                    usersService.getTopPlayers()])
+            .then(results =&gt; {
+                res.render('index', {
+                            title: 'Hangman online',
+<span class="strong"><strong>                            loggedIn: req.isAuthenticated(),</strong></span>
+                            createdGames: results[0],
+                            ...
+                        });
+                    })
+            .catch(next);
+    });</pre></div><p>Note that this adds a <code class="literal">loggedIn</code> property to the view data instead of the user ID. The value of this property comes from the <code class="literal">isAuthenticated</code> function, which is added to the request by Passport. We use this to hide features that will no longer work for unauthenticated users and hide the login button from authenticated users. The following code is<a id="id548" class="indexterm"/> from <code class="literal">src/views/index.hjs</code>:</p><div class="informalexample"><pre class="programlisting">...
+  &lt;body&gt;
+    ...
+<span class="strong"><strong>    {{^loggedIn}}</strong></span>
+      &lt;form action="/auth/twitter" method="POST"&gt;
+        &lt;input type="submit" value="Log in using Twitter" /&gt;
+      &lt;/form&gt;
+<span class="strong"><strong>    {{/loggedIn}}</strong></span>
+<span class="strong"><strong>    {{#loggedIn}}</strong></span>
+      &lt;h3&gt;Profile&lt;/h3&gt;
+      &lt;form action="/profile" method="POST"&gt;    
+        ...
+      &lt;/form&gt;
+<span class="strong"><strong>    {{/loggedIn}}</strong></span>
+    &lt;h2&gt;Games&lt;/h2&gt; 
+<span class="strong"><strong>    {{#loggedIn}}</strong></span>
+      &lt;form action="/games" method="POST" id="createGame"&gt;
+        ...
+      &lt;/form&gt;
+      &lt;h3&gt;Games created by you&lt;/h3&gt;
+      ...
+<span class="strong"><strong>    {{/loggedIn}}</strong></span>
+    &lt;h3&gt;Games available to play&lt;/h3&gt;
+    ...
+    &lt;h2&gt;Top players&lt;/h2&gt;
+    ...
+    &lt;h3&gt;Lobby&lt;/h3&gt;
+    &lt;form class="chat" data-room="lobby"&gt;
+      &lt;div id="messages"&gt;&lt;/dl&gt;
+<span class="strong"><strong>      {{#loggedIn}}</strong></span>
+        &lt;input id="message"/&gt;&lt;input type="submit" value="Send"/&gt;
+<span class="strong"><strong>      {{/loggedIn}}</strong></span>
+    &lt;/form&gt;
+  &lt;/body&gt;
+&lt;/html&gt;</pre></div></div><div class="section" title="Integration testing with Passport"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec79"/>Integration testing with Passport</h2></div></div></div><p>We still have <a id="id549" class="indexterm"/>one problem, which is that our<a id="id550" class="indexterm"/> integration tests won't work anymore. Only logged-in users can create games now. It would be a good idea to write a new integration test to check that Twitter authentication works. We don't want to introduce a Twitter account dependency to our current test though.</p><p>Instead, we'll make use of the passport-local strategy to allow our test to log in. We'll install this as a dev dependency so it can't accidentally run in production:</p><div class="informalexample"><pre class="programlisting"><span class="strong"><strong>&gt; npm install passport-local --save-dev</strong></span>
+</pre></div><p>We configure Passport to accept any username and password. If using passport-local for real, this is where you would check against credentials in your data store. The following code is from <code class="literal">src/config/passport.js</code>:</p><div class="informalexample"><pre class="programlisting">if (process.env.NODE_ENV === 'test') {
+    const LocalStrategy = require('passport-local');
+    const uuid = require('uuid');
+    passport.use(new LocalStrategy((username, password, done) =&gt; {
+            const userId = uuid.v4();
+            usersService.setUsername(userId, username)
+                .then(() =&gt; {
+                    done(null, { id: userId, name: username });
+                });
+        }
+    ));
+}</pre></div><p>Then we<a id="id551" class="indexterm"/> add a new local authentication<a id="id552" class="indexterm"/> endpoint to our application as here <code class="literal">src/app.js</code>:</p><div class="informalexample"><pre class="programlisting">  if (process.env.NODE_ENV === 'test') {
+    app.post('/auth/test',
+      passport.authenticate('local', { successRedirect: '/' }));
+  }</pre></div><p>And finally update our test to login as a first step as code from <code class="literal">integration-test/game.js</code> shown follows:</p><div class="informalexample"><pre class="programlisting">    function withGame(word, callback) {        
+<span class="strong"><strong>        page.open(rootUrl + '/auth/test',</strong></span>
+<span class="strong"><strong>            'POST',</strong></span>
+<span class="strong"><strong>            'username=TestUser&amp;password=dummy',</strong></span>
+            function() {
+                 ...
+            }
+        );
+    }</pre></div></div></div>
+<div class="section" title="Allowing users to log out" id="aid-25JP21"><div class="titlepage"><div><div><h1 class="title"><a id="ch12lvl1sec66"/>Allowing users to log out</h1></div></div></div><p>Users will also<a id="id553" class="indexterm"/> expect us to provide a way to log out of our application. Passport makes this easy by adding a <code class="literal">logout</code> function to the request. We just need to make use of this in one of our routes here <code class="literal">src/routes/index.js</code>:</p><div class="informalexample"><pre class="programlisting">    router.post('/logout', function(req, res){
+        req.logout();
+        res.redirect('/');
+    });</pre></div><p>We can add a log out button to our view to make use of this new route as in <code class="literal">src/views/index.hjs</code>:</p><div class="informalexample"><pre class="programlisting">    {{#loggedIn}}
+<span class="strong"><strong>      &lt;form action="/logout" method="POST"&gt;</strong></span>
+<span class="strong"><strong>        &lt;input type="submit" value="Log out" /&gt;</strong></span>
+<span class="strong"><strong>      &lt;/form&gt;</strong></span>
+      &lt;h3&gt;Profile&lt;/h3&gt;</pre></div></div>
+<div class="section" title="Adding other login providers" id="aid-26I9K1"><div class="titlepage"><div><div><h1 class="title"><a id="ch12lvl1sec67"/>Adding other login providers</h1></div></div></div><p>Now that we<a id="id554" class="indexterm"/> have all the general infrastructure for authentication, adding additional providers is easy. Let's add Facebook authentication as an example. First, we need to install the relevant Passport strategy:</p><div class="informalexample"><pre class="programlisting"><span class="strong"><strong>&gt; npm install passport-facebook --save</strong></span>
+</pre></div><p>Then we can update our Passport config file from <code class="literal">src/config/passport.js</code> as follows:</p><div class="informalexample"><pre class="programlisting">...
+<span class="strong"><strong>const FacebookStrategy = require('passport-facebook').Strategy;</strong></span>
+
+<span class="strong"><strong>module.exports = (usersService) =&gt; {</strong></span>
+<span class="strong"><strong>    const providerCallback = providerName =&gt;</strong></span>
+<span class="strong"><strong>        function(req, token, tokenSecret, profile, done) {</strong></span>
+<span class="strong"><strong>            usersService.getOrCreate(providerName, profile.id,</strong></span>
+<span class="strong"><strong>                    profile.username || profile.displayName)</strong></span>
+<span class="strong"><strong>                .then(user =&gt; done(null, user), done);</strong></span>
+<span class="strong"><strong>        };</strong></span>
+
+    if(process.env.TWITTER_API_KEY &amp;&amp;
+            process.env.TWITTER_API_SECRET) {
+        passport.use(new TwitterStrategy({
+            consumerKey: process.env.TWITTER_API_KEY,
+            consumerSecret: process.env.TWITTER_API_SECRET,
+            callbackURL: '/auth/twitter/callback',
+            passReqToCallback: true
+<span class="strong"><strong>        }, providerCallback('twitter')));</strong></span>
+    }
+
+<span class="strong"><strong>    if(process.env.FACEBOOK_APP_ID &amp;&amp;</strong></span>
+<span class="strong"><strong>            process.env.FACEBOOK_APP_SECRET) {</strong></span>
+<span class="strong"><strong>        passport.use(new FacebookStrategy({</strong></span>
+<span class="strong"><strong>            clientID: process.env.FACEBOOK_APP_ID,</strong></span>
+<span class="strong"><strong>            clientSecret: process.env.FACEBOOK_APP_SECRET,</strong></span>
+<span class="strong"><strong>            callbackURL: '/auth/facebook/callback',</strong></span>
+<span class="strong"><strong>            passReqToCallback: true</strong></span>
+<span class="strong"><strong>        }, providerCallback('facebook')));</strong></span>
+<span class="strong"><strong>    }</strong></span>
+    ...
+};</pre></div><p>Here we've <a id="id555" class="indexterm"/>generalized our verify callback function to take different provider names, then used this with both Twitter and Facebook authentication strategies. We can re-use this to add further strategies in the same way. We just need to set the relevant environment variables for them to work.</p><div class="note" title="Note"><h3 class="title"><a id="note19"/>Note</h3><p>To obtain a Facebook App ID and Secret, create a new Facebook application at <a class="ulink" href="https://developers.facebook.com/apps/">https://developers.facebook.com/apps/</a> (which requires you to have a<a id="id556" class="indexterm"/> Facebook account). This is very similar to the process for Twitter. Just create a new application of type Website, with a URL that matches your development environment (for example, <code class="literal">http://localhost:3000</code>). Once created, the App ID and App Secret will be visible on the Dashboard page for the application.</p></div><p>We also need to add Facebook authentication routes to our application config file. These are just the same as the corresponding Twitter routes. As with the Passport <code class="literal">config</code> file, we can commonize by parameterizing the provider name. The code from <code class="literal">src/app.js</code> is as follows:</p><div class="informalexample"><pre class="programlisting">  app.use(sessions);
+<span class="strong"><strong>  const addAuthEndpoints = provider =&gt; {</strong></span>
+<span class="strong"><strong>      app.post(`/auth/${provider}`, passport.authenticate(provider));</strong></span>
+<span class="strong"><strong>      app.get(`/auth/${provider}/callback`,</strong></span>
+<span class="strong"><strong>          passport.authenticate(provider, { successRedirect: '/',</strong></span>
+<span class="strong"><strong>              failureRedirect: '/', session: true }));</strong></span>
+<span class="strong"><strong>  };</strong></span>
+<span class="strong"><strong>  addAuthEndpoints('twitter');</strong></span>
+  addAuthEndpoints('facebook');</pre></div><p>Finally, we need to add a button to allow users to log in with Facebook. The following code is from <code class="literal">src/views/index.hjs</code>:</p><div class="informalexample"><pre class="programlisting">    {{^loggedIn}}
+      &lt;form action="/auth/twitter" method="POST"&gt;
+        &lt;input type="submit" value="Log in using Twitter" /&gt;
+      &lt;/form&gt;
+<span class="strong"><strong>      &lt;form action="/auth/facebook" method="POST"&gt;</strong></span>
+<span class="strong"><strong>        &lt;input type="submit" value="Log in using Facebook" /&gt;</strong></span>
+<span class="strong"><strong>      &lt;/form&gt;</strong></span>
+    {{/loggedIn}}</pre></div><p>Adding additional <a id="id557" class="indexterm"/>providers is easy. To add Google+ authentication, we would just need to follow these steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Install the <code class="literal">passport-google npm</code> module</li><li class="listitem">Create a<a id="id558" class="indexterm"/> new application as described at <a class="ulink" href="https://developers.google.com/identity/protocols/OpenIDConnect">https://developers.google.com/identity/protocols/OpenIDConnect</a></li><li class="listitem">Update the three files listed above, passing the Google provider to our new common functions</li></ol><div style="height:10px; width: 1px"/></div></div>
+<div class="section" title="Summary" id="aid-27GQ61"><div class="titlepage"><div><div><h1 class="title"><a id="ch12lvl1sec68"/>Summary</h1></div></div></div><p>In this chapter, we have added authentication to our Express application using Passport, introduced Express sessions using Redis for session storage, leveraged multiple Passport strategies to support different external providers, and persisted user data in Redis.</p><p>This completes our example web application. In the next chapter we will look at how to create different kinds of Node.js project: a library and a command-line tool.</p></div></body></html>

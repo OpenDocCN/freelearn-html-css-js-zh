@@ -1,0 +1,645 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Building a Continuous Deployment Pipeline</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root"> In this chapter, the following recipes will be covered:</p>
+<ul>
+<li>Creating the CI/CD pipeline</li>
+<li>Writing unit tests</li>
+<li>Writing integration tests</li>
+<li>Writing contract tests for a synchronous API</li>
+<li>Writing contract tests for an asynchronous API</li>
+<li>Assembling transitive end-to-end tests</li>
+<li>Leveraging feature flags</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Introduction</h1>
+                </header>
+            
+            <article>
+                
+<p>Throughout the preceding chapters, we have seen how cloud-native is lean and autonomous. Leveraging fully-managed cloud services and establishing proper bulkheads empowers self-sufficient, full-stack teams to rapidly and continuously deliver autonomous services with the confidence that a failure in any one service will not cripple the upstream and downstream services that depend on it. This architecture is a major advancement because these safeguards protect us from inevitable human errors. However, we must still endeavor to minimize human error and increase our confidence in our systems.</p>
+<p>To minimize and control potential mistakes, we need to minimize and control our batch sizes. We accomplish this by following the practice of <em>decoupling deployment from release</em>. A <strong>deployment</strong> is just the act of deploying a piece of software into an environment, whereas a <strong>release</strong> is just the act of making that software available to a set of users. Following <strong>lean</strong> methods, we release functionality to users in a series of small, focused experiments that determine whether or not the solution is on the right track, so that timely course corrections can be made. Each experiment consists of a set of stories, and each story consists of a set of small focused tasks. These tasks are our unit of deployment. For each story, we plan a roadmap that will continuously deploy these tasks in an order that accounts for all inter-dependencies, so that there is zero downtime. The practices that govern each individual task are collectively referred to as a <strong>task branch workflow</strong>. The recipes in this chapter demonstrate the inner-working of a task branch workflow and how, ultimately, we enable these features for users with feature flags.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Creating the CI/CD pipeline</h1>
+                </header>
+            
+            <article>
+                
+<p>Small batch sizes reduce deployment risk because it is much easier to reason about their correctness and much easier to correct them when they are in error. Task branch workflow is a Git workflow that is focused on extremely short-lived branches, in the range of just hours rather than days. It is similar to an <em>issue branch workflow</em>, in that each task is tracked as an issue in the project management tool. The length of an issue is ambiguous, however, because an issue can be used to track an entire feature. This recipe demonstrates how issue tracking, Git branches, pull requests, testing, code review, and the CI/CD pipeline work together in a task branch workflow to govern small focused units of deployment.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>Before starting this recipe, you will need to have an account on GitLab (<a href="https://about.gitlab.com/">https://about.gitlab.com/</a>).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<ol>
+<li>Create the project from the following template:</li>
+</ol>
+<pre style="padding-left: 30px">$ sls create --template-url https://github.com/danteinc/js-cloud-native-cookbook/tree/master/ch6/pipeline --path cncb-pipeline</pre>
+<ol start="2">
+<li>Navigate to the <kbd>cncb-pipeline</kbd> directory, <kbd>cd cncb-pipeline</kbd>.</li>
+<li>Initialize the Git repository locally and remotely in <kbd>gitlab.com</kbd>, as follows:</li>
+</ol>
+<pre style="padding-left: 30px">$ git init<br/>$ git remote add origin git@gitlab.com:&lt;username&gt;/cncb-pipeline.git<br/>$ git add .gitignore<br/>$ git commit -m "initial commit"<br/>$ git push -u origin master</pre>
+<ol start="4">
+<li>Confirm that the project was created in your Gitlab account.</li>
+<li>Create a new issue in the project named <kbd>intialize-project</kbd>.</li>
+<li>Press the <span class="packt_screen">Create merge request</span> button and note the name of the branch, such as <kbd>1-initialize-project</kbd>.</li>
+<li>Check out the branch locally at with <kbd>git pull &amp;&amp; git checkout 1-initialize-project</kbd>.</li>
+<li>Review the file named <kbd>.gitlab-ci.yml</kbd> with the following content:</li>
+</ol>
+<pre style="padding-left: 30px">image: node:8<br/><br/>before_script:<br/>  - cp .npmrc-conf .npmrc<br/>  - npm install --unsafe-perm<br/><br/>test:<br/>  stage: test<br/>  script:<br/>    - npm test<br/>    - npm run test:int<br/><br/>stg-east:<br/>  stage: deploy<br/>  variables:<br/>    AWS_ACCESS_KEY_ID: $DEV_AWS_ACCESS_KEY_ID<br/>    AWS_SECRET_ACCESS_KEY: $DEV_AWS_SECRET_ACCESS_KEY<br/>  script:<br/>    - npm run dp:stg:e<br/>  except:<br/>    - master<br/><br/>production-east:<br/>  stage: deploy<br/>  variables:<br/>    AWS_ACCESS_KEY_ID: $PROD_AWS_ACCESS_KEY_ID<br/>    AWS_SECRET_ACCESS_KEY: $PROD_AWS_SECRET_ACCESS_KEY<br/>  script:<br/>    - npm run dp:prd:e<br/>  only:<br/>    - master</pre>
+<ol start="9">
+<li>Review the file named <kbd>package.json</kbd> with the following content:</li>
+</ol>
+<pre style="padding-left: 30px">...<br/>  "scripts": {<br/>    "<strong>test</strong>": "echo running unit tests...",<br/>    "<strong>test:int</strong>": "echo running integration tests...",<br/>    ...<br/>    "<strong>dp:stg:e</strong>": "sls deploy -v -r us-east-1 -s <strong>stg</strong> --acct <strong>dev</strong>",<br/>    "<strong>dp:prd:e</strong>": "sls deploy -v -r us-east-1 -s <strong>prd</strong> --acct <strong>prod</strong>"<br/>  },<br/>...</pre>
+<ol start="10">
+<li>Review the file named <kbd>serverless.yml</kbd> with the following content:</li>
+</ol>
+<pre style="padding-left: 30px">service: cncb-pipeline<br/><br/>provider:<br/>  name: aws<br/>  # cfnRole: arn:aws:iam::${self:custom.accounts.<strong>${opt:acct}</strong>.accountNumber}:role/${opt:stage}-cfnRole<br/><br/>custom:<br/>  accounts:<br/>    dev:<br/>      accountNumber: 123456789012<br/>    prod:<br/>      accountNumber: 123456789012</pre>
+<ol start="11">
+<li>Configure the <kbd>DEV_AWS_ACCESS_KEY_ID</kbd>, <kbd>DEV_AWS_SECRET_ACCESS_KEY</kbd>, <kbd>PROD_AWS_ACCESS_KEY_ID</kbd>, <kbd>PROD_AWS_SECRET_ACCESS_KEY</kbd>, and <kbd>NPM_TOKEN</kbd> environment variables in the GitLab project (<a href="https://gitlab.com/">https://gitlab.com/</a>) under <span class="packt_screen">Settings</span><em> | </em><span class="packt_screen">CI/CD</span> |<em> </em><span class="packt_screen">Variables.</span></li>
+<li>Push the project files to the remote repository, as follows:</li>
+</ol>
+<pre style="padding-left: 30px">$ git pull<br/>$ git add .<br/>$ git commit -m "initialize project"<br/>$ git push origin 1-initialize-project</pre>
+<div class="packt_tip">Before pushing your changes, you should always execute <kbd>git pull</kbd> to keep your task branch in sync with the master branch.</div>
+<ol start="13">
+<li>Review the code in the merge request.</li>
+<li>Review the progress of the branch pipeline.</li>
+<li>Review the <kbd>cncb-pipeline-stg</kbd> stack in the AWS Console.</li>
+<li>Remove the <kbd>WIP:</kbd> prefix from the name of the merge request and accept the merge request.</li>
+</ol>
+<div class="packt_tip">It is best to start a pull request as early as possible to receive feedback as early as possible. The <kbd>WIP:</kbd> prefix indicates to reviewers that work is still progressing. The prefix is purely procedural, but GitLab will not allow a merge request with a WIP prefix to be accidentally accepted.</div>
+<ol start="17">
+<li>Review the progress of the master pipeline.</li>
+<li>Review the <kbd>cncb-pipeline-prd</kbd> stack in the AWS Console.</li>
+<li>Remove both stacks once you are finished.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p>We are using <kbd>GitLab.com</kbd> simply because it is a freely-available and hosted toolset that is well-integrated. There are other alternatives, such as Bitbucket Pipelines, that require a little more elbow grease to stand up but they still offer comparable features. A <kbd>bitbucket-pipelines.yml</kbd> file is included in the recipes for comparison.</p>
+<p>As we have seen throughout this cookbook, our unit of deployment is a stack, as defined by a <kbd>serverless.yml</kbd> file in the root of a project directory. As we see in this recipe, each project is managed in its own Git repository and has its own CI/CD pipeline. The pipeline is defined by a configuration file that lives in the root of the project as well, such as a <kbd>.gitlab-ci.yml</kbd> or <kbd>bitbucket-pipelines.yml</kbd> file. These pipelines are integrated with the Git branching strategy and are governed by pull requests.</p>
+<div class="packt_infobox">Note that GitLab uses the term <em>merge request</em>, whereas other tools use the term <em>pull request</em>. The two terms can be used interchangeably.</div>
+<p>A task branch workflow begins when an issue or task is pulled in from the backlog and used to create a branch in the repository. A pull request is created to govern the branch. The pipeline executes all tests on the branch and its progress is displayed in the pull request. <span><span>Once the tests are considered successful, </span></span>the pipeline deploys the stack to the staging environment in the development account. A code review is performed in the pull request and discussion is recorded with comments. Once everything is in order, the pull request can be accepted to merge the changes to the master branch and trigger deployment of the stack to the production environment in the production account.</p>
+<p>The first line of the pipeline definition denotes that the <kbd>node:8</kbd> Docker image will be used to execute the pipeline. The rest of the pipeline definition orchestrates the steps we have been executing manually throughout this cookbook. First, <kbd>npm install</kbd> installs all the dependencies as defined in the <kbd>package.json</kbd> file. Then, we execute all the tests on the given branch. Finally, we deploy the stack to the specific environment and region with <kbd>npm</kbd>; in this case, <kbd>npm run dp:stg:e</kbd> or <kbd>npm run dp:prd:e</kbd>. The details of each step are encapsulated in the <kbd>npm</kbd> scripts.</p>
+<div class="packt_infobox">Note that, throughout this cookbook, we have been using the <kbd>npm run dp:lcl</kbd> script to perform our deployments. These allow each developer to perform development and testing in a personal stack (that is, local or <kbd>lcl</kbd>) to help ensure that the staging (<kbd>stg</kbd>) environment stays stable and therefore the production (<kbd>prd</kbd>) environment as well.</div>
+<p>Environment variables, such as <kbd>AWS_ACCESS_KEY_ID</kbd> and <kbd>AWS_SECRET_ACCESS_KEY</kbd>, are securely stored by the pipeline and never logged. We define a set of variables per account, as identified by the <kbd>DEV_</kbd> and <kbd>PROD_</kbd> prefix, and then map them in the pipeline definition. In the <em>Securing your cloud account</em> recipe, we created <kbd>CiCdUser</kbd> to grant permissions to the pipelines. Here, we need to manually create an access key for those users and securely store them as pipeline variables. The keys and pipeline variables are then periodically rotated and updated.</p>
+<p>The pipeline deploys the stack to the staging environment in the development account for each task branch, and to the production environment in the production account for the master branch. The access key determines which account is used and the Serverless Framework <kbd>-s</kbd> option fully qualifies the name of the stack. We then add an additional option called <kbd>--acct</kbd> to allow us to index into account-scoped custom variables, such as <kbd>${self:custom.accounts.${opt:acct}.accountNumber}</kbd>. To help avoid confusion between the production stage and the production account, we need to use use slightly different abbreviations, such as <kbd>prd</kbd> and <kbd>prod</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Writing unit tests</h1>
+                </header>
+            
+            <article>
+                
+<p>Unit testing is arguably the most important type of testing and should certainly account for the majority of test cases in the test pyramid. Testing should follow a scientific method where we hold some variables constant, adjust the input, and measure the output. Unit testing accomplishes this by testing individual units in isolation. This allows unit tests to focus on functionality and maximize coverage.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<ol>
+<li>Create the project from the following template:</li>
+</ol>
+<pre style="padding-left: 30px">$ sls create --template-url https://github.com/danteinc/js-cloud-native-cookbook/tree/master/ch6/unit-testing --path cncb-unit-testing</pre>
+<ol start="2">
+<li>Navigate to the <kbd>cncb-unit-testing</kbd> directory with <kbd>cd cncb-unit-testing</kbd>.</li>
+<li>Install the dependencies with <kbd>npm install</kbd>.</li>
+<li>Review the file named <kbd>package.json</kbd> with the following content:</li>
+</ol>
+<pre style="padding-left: 30px">  "scripts": {<br/>    ...<br/>    "<strong>pretest</strong>": "npm run clean &amp;&amp; npm run <strong>lint</strong>",<br/>    "<strong>test</strong>": "<strong>nyc</strong> mocha ... ./test/unit/**/*.test.js",<br/>    ...<br/>  },</pre>
+<ol start="5">
+<li>Run the unit tests, as follows:</li>
+</ol>
+<pre style="padding-left: 30px"><strong>$ npm test</strong><br/>...<br/>  14 passing (76ms)<br/>...<br/>===== Coverage summary =====<br/>Statements   : 100% ( 57/57 )<br/>Branches     : 100% ( 4/4 )<br/>Functions    : 100% ( 28/28 )<br/>Lines        : 100% ( 51/51 )</pre>
+<ol start="6">
+<li>Review the file named <kbd>test/unit/connector/db.test.js</kbd> with the following content:</li>
+</ol>
+<pre style="padding-left: 30px">  it('should get by id', async () =&gt; {<br/>    const spy = sinon.<strong>spy</strong>((params, cb) =&gt; cb(null, {<br/>      Item: ...<br/>    }));<br/><br/>    AWS.<strong>mock</strong>('DynamoDB.DocumentClient', 'get', spy);<br/><br/>    const data = await new Connector('t1').getById(ID);<br/>    <strong>expect</strong>(spy).to.have.been.<strong>calledOnce</strong>;<br/>    ...<br/>  });</pre>
+<ol start="7">
+<li>Review the file named <kbd>test/unit/get/index.test.js</kbd> with the following content:</li>
+</ol>
+<pre style="padding-left: 30px">  it('should get by id', <strong>async</strong> () =&gt; {<br/>    ...<br/>    const stub = sinon.<strong>stub</strong>(Connector.prototype, 'getById')<br/>      .returns(Promise.resolve(THING));<br/><br/>    const data = <strong>await</strong> new Handler(TABLE_NAME).handle(REQUEST);<br/>    <strong>expect</strong>(stub).to.have.been.<strong>calledWith</strong>(ID);<br/>    ...<br/>  });</pre>
+<ol start="8">
+<li>(Optional) Repeat the steps from the <em>Creating the CI/CD pipeline</em> recipe with this project.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p>In previous recipes, we purposefully simplified the examples to a reasonable degree to highlight the specific topics. The code was correct but the recipes did not have any unit tests, because the topic had not yet been addressed. The first thing you are likely to notice in the recipes in this chapter is that we are adding additional structure to the code; for example, each function has its own directory and files and we have also added some lightweight layering to the code. This structure is intended to facilitate the testing process by making it easier to isolate the unit that is under test. So, let's now dig deeper into the tools and structure that have been added.</p>
+<p>The first tool that is called in the <kbd>npm test</kbd> script is <kbd>nyc</kbd>, which is the command line interface for the <kbd>istanbul</kbd> code coverage tool. The <kbd>.nycrc</kbd> file configures the code coverage process. Here, we require 100% coverage. This is perfectly reasonable for the scope of our bounded, isolated, and autonomous services. It is also reasonable because we are writing the unit tests incrementally as we also incrementally build the services in a series of task branch workflows. Furthermore, without keeping the coverage at 100%, it would be too easy to skip the testing until later on in the development process, which is dangerous in a continuous deployment pipeline and defeats the purpose. Fortunately, the structure of the code makes it much easier to identify which features are lacking tests.</p>
+<p>The <kbd>npm pretest</kbd> script runs the linting process. <kbd>eslint</kbd> is a very valuable tool. It enforces best practices, automatically fixes many violations, and identifies common problems. In essence, linting helps to teach developers how to write better code. The linting process can be tuned with the <kbd>.eslintignore</kbd> and <kbd>.eslintrc.js</kbd> files.</p>
+<p>Isolating external dependencies is an essential part of unit testing. Our testing tools of choice are <kbd>mocha</kbd>, <kbd>chai</kbd>, <kbd>sinon</kbd>, and <kbd>aws-sdk-mock</kbd>. There are many tools available, but this combination is extremely popular. mocha is the overarching testing framework; <kbd>chai</kbd> is the assertion library; <kbd>sinon</kbd> provides test spies, stubs, and mocks; and <kbd>aws-sdk-mock</kbd> builds on sinon to simplify testing against the <kbd>aws-sdk</kbd>. To further facilitate this process, we isolate our <kbd>aws-sdk</kbd> calls inside Connector classes. This does have the added benefit of reusing code throughout the service, but its primary benefit is to simplify testing. We write unit tests specifically for the classes that use <kbd>aws-sdk-mock</kbd>. Throughout the rest of the unit test code, we stub out the connector layer, which greatly simplifies the setup of each test, because we have isolated the complexities of the <kbd>aws-sdk</kbd>.</p>
+<p>The <kbd>Handler</kbd> classes account for the bulk of the testing. These classes encapsulate and orchestrate the business logic, and therefore will require the most testing permutations. To facilitate this effort, we decouple the <kbd>Handler</kbd> classes from the <kbd>callback</kbd> function. The <kbd>handle</kbd> method either returns a <em>promise</em> or a <em>stream</em> and the top-level function then adapts these to the callback. This allows tests to easily tap into the processing flow to assert the outputs.</p>
+<p>Our tests are inherently asynchronous; therefore, it is important to guard against evergreen tests that do not fail when the code is broken. For handlers that return promises, the best approach is to use <kbd>async</kbd>/<kbd>await</kbd> to guard against swallowed exceptions. For handlers that return a stream, the best approach is to use the collect/tap/done pattern to protect against scenarios where the data does not flow all the way through the stream.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Writing integration tests</h1>
+                </header>
+            
+            <article>
+                
+<p>Integration tests focus on testing the API calls between dependent services. In our cloud-native systems, these are concentrated on intra-service interactions with fully-managed cloud services. They ensure that the interactions are properly coded to send and receive proper payloads. These calls require the network, but networks are notoriously unreliable. This is the major cause of flaky tests that randomly and haphazardly fail. Flaky tests, in turn, are a major cause of poor team morale. This recipe demonstrates how to use a VCR library to create test doubles that allow integration testing to be executed in isolation without a dependency on the network or the deployment of external services.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>Before starting this recipe, you will need an AWS Kinesis Stream, such as the one created in the <em>Creating an event stream</em> recipe.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<ol>
+<li>Create the project from the following template:</li>
+</ol>
+<pre style="padding-left: 30px">$ sls create --template-url https://github.com/danteinc/js-cloud-native-cookbook/tree/master/ch6/integration-testing --path cncb-integration-testing</pre>
+<ol start="2">
+<li>Navigate to the <kbd>cncb-integration-testing</kbd> directory with <kbd>cd cncb-integration-testing</kbd>.</li>
+<li>Install the dependencies with <kbd>npm install</kbd>.</li>
+<li>Review the file named <kbd>package.json</kbd> with the following content:</li>
+</ol>
+<pre style="padding-left: 30px">  "scripts": {<br/>    ...<br/>    "<strong>test:int</strong>": "npm <strong>start</strong> -- --<strong>exec</strong> \"mocha ... ./test/int/**/*.test.js\"",<br/>    "<strong>start</strong>": "sls <strong>offline</strong> start --port 3001 -r us-east-1 -s stg --acct dev",<br/>    ...<br/>  },</pre>
+<ol start="5">
+<li>Run the unit test with <kbd>npm test</kbd>.</li>
+<li>Run the integration tests in <kbd>replay</kbd> mode, as follows:</li>
+</ol>
+<pre style="padding-left: 30px"><strong>$ npm run test:int</strong><br/>...<br/>Serverless: Replay mode = replay<br/>Serverless: Starting Offline: stg/us-east-1.<br/>...<br/>  get/index.js<br/>    ✓ should get by id<br/>...<br/>  3 passing (358ms)<br/>...<br/>Serverless: Halting offline server</pre>
+<ol start="7">
+<li>Review the files in the <kbd>./fixtures</kbd> directory.</li>
+<li>Review the files related to the synchronous integration tests, as follows:</li>
+</ol>
+<pre style="padding-left: 30px"><strong>serverless.yml</strong><br/><br/>...<br/>plugins:<br/>  - serverless-webpack<br/>  - <strong>baton-vcr-serverless-plugin</strong><br/>  - <strong>serverless-offline</strong><br/>...<br/><br/><strong>test/int/get/index.test.js</strong><br/><br/>...<br/>const supertest = require('<strong>supertest</strong>');<br/>const client = supertest('http://<strong>localhost</strong>:3001');<br/>...<br/>describe('get/index.js', () =&gt; {<br/>  it('should get by id', () =&gt; <strong>client</strong><br/>    .<strong>get</strong>('/things/00000000-0000-0000-0000-000000000000')<br/>    .expect(200)<br/>    .expect((res) =&gt; {<br/>      expect(JSON.parse(res.text)).to.deep.equal(THING);<br/>    }));<br/>});<br/><br/><strong>webpack.config.js</strong><br/><br/>...<br/>const <strong>injectMocks</strong> = (entries) =&gt;<br/>  Object.keys(entries).reduce((e, key) =&gt; {<br/>    e[key] = ['<strong>./test/int/mocks.js</strong>', entries[key]];<br/>    return e;<br/>  }, {});<br/><br/>const includeMocks = () =&gt; slsw.lib.webpack.isLocal &amp;&amp; process.env.REPLAY != 'bloody';<br/><br/>module.exports = {<br/>  entry: includeMocks() ? injectMocks(slsw.lib.entries) : slsw.lib.entries,<br/>...</pre>
+<ol start="9">
+<li>Review the files related to the asynchronous integration tests, as follows:</li>
+</ol>
+<pre style="padding-left: 30px"><strong>test/int/trigger/index.test.js</strong><br/><br/>describe('trigger/index.js', () =&gt; {<br/>  before(() =&gt; {<br/>    require('<strong>baton-vcr-replay-for-aws-sdk</strong>');<br/>    process.env.STREAM_NAME = 'stg-cncb-event-stream-s1';<br/>    aws.config.update({ region: 'us-east-1' });<br/>  });<br/><br/>  it('should trigger', (done) =&gt; {<br/>    new Handler(process.env.STREAM_NAME).<strong>handle</strong>(TRIGGER)<br/>      .<strong>collect</strong>()<br/>      .<strong>tap</strong>((data) =&gt; {<br/>        expect(data).to.deep.equal([{<br/>          response: RESPONSE,<br/>          event: EVENT,<br/>        }]);<br/>      })<br/>      .<strong>done</strong>(done);<br/>  });<br/>})</pre>
+<ol start="10">
+<li>Deploy the stack with <kbd>npm run dp:stg:e</kbd>.</li>
+<li>Delete the <kbd>./fixtures</kbd> directory and run the integration tests again in <kbd>record</kbd> mode, as follows:</li>
+</ol>
+<pre style="padding-left: 30px"><strong>$ DEBUG=replay REPLAY=record npm run test:int</strong><br/><br/>...<br/>Serverless: GET /things/00000000-0000-0000-0000-000000000000 (λ: get)<br/>  replay Requesting POST https://dynamodb.us-east-1.amazonaws.com:443/ +0ms<br/>  replay <strong>Creating</strong> ./fixtures/dynamodb.us-east-1.amazonaws.com-443 +203ms<br/>  replay Received 200 https://dynamodb.us-east-1.amazonaws.com:443/ +5ms<br/>...</pre>
+<ol start="12">
+<li>(Optional) Repeat the steps from the <em>Creating the CI/CD pipeline</em> recipe with this project.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p>Integration testing uses all of the same tools that are used for unit testing, plus some additional tools. This is an advantage in that the learning curve is incremental. The first new tool of interest is the <kbd>serverless-offline</kbd> plugin. This plugin reads the <kbd>serverless.yml</kbd> file and simulates the API Gateway locally to facilitate the testing of synchronous APIs. Next, we use <kbd>supertest</kbd> to make HTTP calls to the locally-running service and assert the responses. Inevitably, these services make calls to AWS services using the default or specified access key. These are the calls that we want to record and playback in the CI/CD pipeline. <kbd>baton-vcr-serverless-plugin</kbd> initializes the <kbd>Replay</kbd> VCR library in the <kbd>serverless-offline</kbd> process. By default, the VCR runs in <kbd>replay</kbd> mode and will fail if a recording is not found under the fixtures directory. When writing a new test, the developer runs the tests in <kbd>record</kbd> mode by setting the <kbd>REPLAY</kbd> environment variable, <kbd>REPLAY=record npm run test:int</kbd>. To ensure that a recording is found, we must hold constant all dynamically-generated values that are used in the requests; to accomplish this, we inject mocks into the webpack configuration. In this example, the <kbd>./test/int/mocks.js</kbd> file uses <kbd>sinon</kbd> to mock UUID.</p>
+<p>Writing integration tests for asynchronous functions, such as <kbd>triggers</kbd> and <kbd>listeners</kbd>, is mostly similar. First, we need to manually capture the events in the log files, such as a DynamoDB Stream event, and include them in test cases. Then, we initialize the <kbd>baton-vcr-replay-for-aws-sdk</kbd> library when the tests begin. From here, the process of recording requests is the same. In the case of a <kbd>trigger</kbd> function, it will record a call to publish an event to Kinesis, where a <kbd>listener</kbd> function will typically record calls to the service's tables.</p>
+<p>When writing integration tests, it is important to keep the test pyramid in mind. Integration tests are focused on interactions within the specific API calls; they do not need to cover all of the different functional scenarios, as that is the job of unit tests. The integration tests just need to focus on the structure of the messages to ensure they are compatible with what is expected by and returned from the external service. To support the creation of the recordings for these tests, the external system may need to be initialized with a specific dataset. This initialization should be coded as part of the tests and recorded as well.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Writing contract tests for a synchronous API</h1>
+                </header>
+            
+            <article>
+                
+<p>Contract testing and integration testing are two sides of the same coin. Integration tests ensure that a consumer is calling a provider service correctly, whereas contract tests ensure that the provider service continues to meet its obligations to its consumers and that any changes are backward-compatible. These tests are also consumer driven. This means that the consumer submits a pull request to the provider's project to add these additional tests. The provider is not supposed to change these tests. If a contract test breaks, it implies that a backwards-incompatible change has been made. The provider has to make the change compatible and then work with the consumer team to create an upgrade roadmap.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<ol>
+<li>Create the project from the following template:</li>
+</ol>
+<pre style="padding-left: 30px">$ sls create --template-url https://github.com/danteinc/js-cloud-native-cookbook/tree/master/ch6/contract-testing-sync --path cncb-contract-testing-sync</pre>
+<ol start="2">
+<li>Navigate to the <kbd>bff</kbd> directory with <kbd>cd cncb-contract-testing-sync/bff</kbd></li>
+<li>Install the dependencies<span> with</span> <kbd>npm install</kbd>.</li>
+<li>Run the unit tests<span> with</span> <kbd>npm test</kbd>.</li>
+<li>Run the integration tests in <kbd>replay</kbd> mode with <kbd>npm run test:int</kbd>.</li>
+<li>Review the files in the <kbd>./fixtures</kbd> directory.</li>
+<li>Review the file named <kbd>./test/int/frontend/contract.test.js</kbd> with the following content:</li>
+</ol>
+<pre style="padding-left: 30px">import 'mocha';<br/><br/>const supertest = require('<strong>supertest</strong>');<br/>const relay = require('<strong>baton-request-relay</strong>');<br/>const client = supertest('http://<strong>localhost</strong>:3001');<br/><br/>describe('contract/frontend', () =&gt; {<br/>  it('should relay the frontend save request', <br/>    () =&gt; <strong>run</strong>('./<strong>fixtures</strong>/frontend/save'));<br/><br/>  it('should relay the frontend get request', <br/>    () =&gt; <strong>run</strong>('./<strong>fixtures</strong>/frontend/get'));<br/>});<br/><br/>const run = fixture =&gt; {<br/>  const rec = <strong>relay</strong>(fixture);<br/><br/>  return <strong>client</strong>[rec.request.method](rec.request.path)<br/>    .set(rec.request.headers)<br/>    .send(rec.request.body)<br/><br/>    .expect(rec.response.statusCode)<br/>    .expect(rec.response.body);<br/>};</pre>
+<ol start="8">
+<li>Review the consumer's <kbd>test</kbd> and <kbd>fixture</kbd> files under <kbd>./frontend</kbd>.</li>
+<li>(Optional) Repeat the steps from the <em>Creating the CI/CD pipeline</em> recipe with this project.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p>When it comes to integration and contract testing, the devil is in the detail. Specifically, the detail of the individual fields, their data types, and their valid values. It is all too easy for a provider to change a seemingly mundane detail that violates a consumer's understanding of the contract. These changes then go unnoticed until the worst possible moment. In this regard, handcrafted contract tests are unreliable, because the same misunderstanding about the contract usually translates into the test as well. Instead, we need to use the same recordings on both sides of the interaction.</p>
+<p>The consumer creates an integration test in its project that records the interaction with the provider's service. These same recordings are then copied to the provider's project and used to drive the contract tests. A consumer-specific <kbd>fixtures</kbd> subdirectory is created for the recordings. The contract tests use the <kbd>baton-request-relay</kbd> library to read the recordings so that they can be used to drive <kbd>supertest</kbd> to execute the same requests in the provider's project.</p>
+<p>In our cloud-native systems, these synchronous requests are usually between a frontend and its <strong>Backend for Frontend</strong> (<strong>BFF</strong>) service, which is owned by the same team. The fact that the same team owns the consumer and provider does not negate the value of these tests, because even a subtle change, such as changing a short integer to a long integer, can have a drastic impact if all the wrong assumptions were made on either side.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Writing contract tests for an asynchronous API</h1>
+                </header>
+            
+            <article>
+                
+<p>The objective of contract testing for asynchronous APIs is to ensure backwards-compatibility between the provider and the consumer—just as it is with synchronous APIs. Testing asynchronous communication is naturally flaky, as there is the unreliability of networks plus the unreliable latency of asynchronous messaging. All too often these tests fail because messages are slow to arrive and the tests timeout. To solve this problem, we isolate the tests from the messaging system; we record the send message request on one end, then relay the message and assert the contract on the receiving side.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<ol>
+<li>Create the upstream and downstream projects from the following templates:</li>
+</ol>
+<pre style="padding-left: 30px">$ sls create --template-url https://github.com/danteinc/js-cloud-native-cookbook/tree/master/ch6/contract-testing-async/upstream --path cncb-contract-testing-async-upstream<br/><br/>$ sls create --template-url https://github.com/danteinc/js-cloud-native-cookbook/tree/master/ch6/contract-testing-async/downstream --path cncb-contract-testing-async-downstream</pre>
+<ol start="2">
+<li>Navigate to the <kbd>upstream</kbd> directory with <kbd>cd cncb-contract-testing-async-upstream</kbd>.</li>
+<li>Install the dependencies with <kbd>npm install</kbd>.</li>
+<li>Run the unit test with <kbd>npm test</kbd>.</li>
+<li>Run the integration tests in <kbd>replay</kbd> mode with <kbd>npm run test:int</kbd>.</li>
+<li>Review the files in the <kbd>./fixtures/downstream-consumer-x</kbd> directory.</li>
+<li>Review the file named <kbd>./test/int/downstream-consumer-x/contract.test.js</kbd> with the following content:</li>
+</ol>
+<pre style="padding-left: 30px">...<br/>const <strong>EVENT</strong> = require('../../../fixtures/downstream-consumer-x/thing-created.json');<br/><br/>describe('contract/downstream-consumer-x', () =&gt; {<br/>  before(() =&gt; {<br/>    const replay = require('<strong>baton-vcr-replay-for-aws-sdk</strong>');<br/>    replay.<strong>fixtures</strong> = './fixtures/downstream-consumer-x';<br/>    process.env.STREAM_NAME = 'stg-cncb-event-stream-s1';<br/>    aws.config.update({ region: 'us-east-1' });<br/>  });<br/><br/>  afterEach(() =&gt; {<br/>    sinon.restore();<br/>  });<br/><br/>  it('should publish thing-created', (done) =&gt; {<br/>    sinon.stub(utils, '<strong>uuidv4</strong>').returns('00000000-0000-0000-0000-000000000001');<br/>    <strong>handle</strong>(EVENT, {}, done);<br/>  });<br/>});</pre>
+<ol start="8">
+<li>Navigate to the <kbd>downstream</kbd> directory with <kbd>cd ../cncb-contract-testing-async-downstream</kbd>.</li>
+<li>Repeat the same steps to run the tests.</li>
+<li>Review the downstream consumer's <kbd>./test/int/upstream-provider-y</kbd> and <kbd>./fixture/upstream-provider-y</kbd> files, as follows:</li>
+</ol>
+<pre style="padding-left: 30px">...<br/>const relay = require('<strong>baton-event-relay</strong>');<br/><br/>describe('contract/upstream-provider-y', () =&gt; {<br/>  before(() =&gt; {<br/>    ...<br/>    const replay = require('<strong>baton-vcr-replay-for-aws-sdk</strong>');<br/>    replay.<strong>fixtures</strong> = './fixtures/upstream-provider-y';<br/>  });<br/><br/>  it('should process the thing-created event', (done) =&gt; {<br/>    const rec = <strong>relay</strong>('./fixtures/upstream-provider-y/thing-created');<br/>    <strong>handle</strong>(rec.event, {}, done);<br/>  });<br/>});</pre>
+<ol start="11">
+<li>(Optional) Repeat the steps from the <em>Creating the CI/CD pipeline</em> recipe with this project.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p>The process of recording and creating a contract test for an asynchronous API is the inverse of a synchronous API. With a synchronous API, the consumer initiates the interaction, whereas with an asynchronous API, the provider initiates the publishing of the event. However, asynchronous providers are unaware of their consumers, so these tests still need to be consumer-driven.</p>
+<p>First, the consumer project creates a test in the upstream project and records the call to publish an event to the event stream. Then, the consumer relays the recording in its own project, using the <kbd>baton-event-relay</kbd> library, to assert that the content of the event is as it expects. Once again, the provider project does not own these tests and should not fix the test if it breaks due to a backwards-incompatible change.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Assembling transitive end-to-end tests</h1>
+                </header>
+            
+            <article>
+                
+<p>Traditional end-to-end testing is labor-intensive and expensive. As a result, traditional batch sizes are large and end-to-end testing is performed infrequently or skipped altogether. This is the exact opposite of our objective with continuous deployment. We want small batch sizes and we want full testing on every deployment, multiple times per day, which is when we typically hear cries of heresy. This recipe demonstrates how this can be achieved with the tools and techniques already covered in this chapter.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<ol>
+<li>Create the <kbd>author-frontend</kbd>, <kbd>author-bff</kbd>, <kbd>customer-bff</kbd>, and <kbd>customer-frontend</kbd> projects from the following templates:</li>
+</ol>
+<pre style="padding-left: 30px">$ sls create --template-url https://github.com/danteinc/js-cloud-native-cookbook/tree/master/ch6/transitive-testing/author-frontend --path cncb-transitive-testing-author-frontend<br/><br/>$ sls create --template-url https://github.com/danteinc/js-cloud-native-cookbook/tree/master/ch6/transitive-testing/author-bff --path cncb-transitive-testing-author-bff<br/><br/>$ sls create --template-url https://github.com/danteinc/js-cloud-native-cookbook/tree/master/ch6/transitive-testing/customer-bff --path cncb-transitive-testing-customer-bff<br/><br/>$ sls create --template-url https://github.com/danteinc/js-cloud-native-cookbook/tree/master/ch6/transitive-testing/customer-frontend --path cncb-transitive-testing-customer-frontend</pre>
+<ol start="2">
+<li>Install the dependencies in each project with <kbd>npm install</kbd>.</li>
+<li>Run the end-to-end tests in <kbd>replay</kbd> mode for each project, as follows:</li>
+</ol>
+<pre style="padding-left: 30px">$ cd ./author-frontend<br/>$ DEBUG=replay npm run test:int<br/><br/>$ cd ../author-bff<br/>$ npm test<br/>$ DEBUG=replay npm run test:int<br/><br/>$ cd ../customer-bff<br/>$ npm test<br/>$ DEBUG=replay npm run test:int<br/><br/>$ cd ../customer-frontend<br/>$ DEBUG=replay npm run test:int</pre>
+<ol start="4">
+<li>Review all of the following fixture files:</li>
+</ol>
+<pre style="padding-left: 30px">./author-frontend/fixtures/0.0.0.0-3001/save-thing0<br/>./author-frontend/fixtures/0.0.0.0-3001/get-thing0<br/><br/>./author-bff/fixtures/author-frontend/save-thing0<br/>./author-bff/fixtures/dynamodb.us-east-1.amazonaws.com-443/save-thing0<br/><br/>./author-bff/fixtures/author-frontend/get-thing0<br/>./author-bff/fixtures/dynamodb.us-east-1.amazonaws.com-443/get-thing0<br/><br/>./author-bff/fixtures/downstream-customer-bff/thing0-INSERT.json<br/>./author-bff/fixtures/kinesis.us-east-1.amazonaws.com-443/thing0-created<br/><br/>./customer-bff/fixtures/upstream-author-bff/thing0-created<br/>./customer-bff/fixtures/dynamodb.us-east-1.amazonaws.com-443/save-thing0<br/><br/>./customer-bff/fixtures/customer-frontend/get-thing0<br/>./customer-bff/fixtures/dynamodb.us-east-1.amazonaws.com-443/get-thing0<br/><br/>./customer-frontend/fixtures/0.0.0.0-3001/get-thing0</pre>
+<ol start="5">
+<li>Review all of the following end-to-end test case files:</li>
+</ol>
+<pre style="padding-left: 30px">./author-frontend/test/int/e2e.test.js<br/><br/>./author-bff/test/int/author-frontend/e2e.test.js<br/>./author-bff/test/int/downstream-customer-bff/e2e.test.js<br/><br/>./customer-bff/test/int/upstream-author-bff/e2e.test.js<br/>./customer-bff/test/int/customer-frontend/e2e.test.js<br/><br/>./customer-frontend/test/int/e2e.test.js</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p>Integration testing and contract testing are two sides of the same coin. We have already seen how these tests can be implemented with test doubles that replay previously recorded request and response pairs. This allows each service to be tested in isolation without the need to deploy any other service. A service provider team creates integration tests to ensure their service works as they expect, and service consumer teams create contract tests to ensure that the provider's service works as they expect. We then build on this so that the test engineers from all teams work together to define sufficient end-to-end test scenarios to ensure that all of the services are working together. For each scenario, we string together a series of integration and contract tests across all projects, where the recordings from one project are used to drive the tests in the next project, and so forth. Borrowing from the transitive property of equality, if Service <em>A</em> produces Payload 1, which works with Service <em>B</em> to produce Payload 2, which works with Service <em>C</em> to produce the expected Payload 3, then we can assert that when Service <em>A</em> produces Payload 1 then ultimately Service <em>C</em> will produce Payload 3.</p>
+<p>In this recipe, we have an authoring application and a customer application. Each consists of a frontend project and a BFF project. The <kbd>author-frontend</kbd> project made the <kbd>save-thing0</kbd> recording. This recording was copied to the <kbd>author-bff</kbd> project and ultimately resulted in the <kbd>thing0-created</kbd> recording. The <kbd>thing0-created</kbd> recording was then copied to the <kbd>customer-bff</kbd> project and ultimately resulted in the <kbd>get-thing0</kbd> recording. The <kbd>get-thing0</kbd> recording was then copied to the <kbd>customer-frontend</kbd> project to support its testing.</p>
+<p>The end result is a set of completely autonomous test suites. The test suite of a specific service is asserted each time the service is modified, without the need to rerun a test suite in each project. Only a backwards-incompatible change requires dependent projects to update their test cases and recordings; so, we no longer need to maintain an end-to-end testing environment. Database scripts are no longer needed to reset databases to a known state, as the data is embodied in test cases and recordings. These transitive end-to-end tests form the tip of a comprehensive testing pyramid that increases our confidence that we have minimized the chance of human error in our continuous deployment pipeline.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Leveraging feature flags</h1>
+                </header>
+            
+            <article>
+                
+<p>The practice of decoupling deployment from release is predicated on the use of feature flags. We are continuously deploying small batches of change to mitigate the risks of each deployment. These changes are deployed all the way to production, so we need a feature flag mechanism to disable these capabilities until we are ready to release them and make them generally available. We also need the ability to enable these capabilities for a subset of users, such as beta users and internal testers. It is also preferable to leverage the natural feature flags of a system, such as permissions and preferences, to minimize the technical debt that results from littering code with custom feature flags. This recipe will show you how to leverage the claims in a JWT token to enable and disable features.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>Before starting this recipe, you will need an AWS Cognito user pool, such as the one created in the <em>Creating a federated identity pool</em> recipe. The user pool should have the following two groups defined: <kbd>Author</kbd> and <kbd>BetaUser</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<ol>
+<li>Create the project from the following template:</li>
+</ol>
+<pre style="padding-left: 30px">$ sls create --template-url https://github.com/danteinc/js-cloud-native-cookbook/tree/master/ch6/feature-flag --path cncb-feature-flag</pre>
+<ol start="2">
+<li>Navigate to the <kbd>cncb-feature-flag</kbd> directory with <kbd>cd cncb-feature-flag</kbd>.</li>
+</ol>
+<ol start="3">
+<li>Review the file named <kbd>src/Authorize.js</kbd>, as follows:</li>
+</ol>
+<pre style="padding-left: 30px">...<br/><br/>const getGroups = props =&gt; get(props,  <br/>  'auth.cognito.signInUserSession.idToken.payload.<strong>cognito:groups</strong>', '');<br/><br/>const check = (<strong>allowedRoles</strong>, props) =&gt; {<br/>  const groups = getGroups(props);<br/>  return intersection(groups, allowedRoles).length &gt; 0;<br/>};<br/><br/>const HasRole = <strong>allowedRoles</strong> =&gt;<br/>  props =&gt; check(allowedRoles, props) ?<br/>    props.children :<br/>    null;<br/><br/>export const HasAuthorRole = <strong>HasRole</strong>(['Author']);<br/>export const HasBetaUserRole = <strong>HasRole</strong>(['BetaUser']);</pre>
+<ol start="4">
+<li>Review the file named <kbd>src/Home.js</kbd>, as follows:</li>
+</ol>
+<pre style="padding-left: 30px">const Home = ({ auth }) =&gt; (<br/>  &lt;div&gt;<br/>    ...<br/>    &lt;<strong>HasAuthorRole</strong>&gt;<br/>      This is the Author Feature!<br/>    &lt;/HasAuthorRole&gt;<br/>    &lt;<strong>HasBetaUserRole</strong>&gt;<br/>      This is a New Beta Feature...<br/>    &lt;/HasBetaUserRole&gt;<br/>    ...<br/>  &lt;/div&gt;<br/>);</pre>
+<ol start="5">
+<li>Review the file named <kbd>src/App.js</kbd> and update the <kbd>clientId</kbd> and <kbd>domain</kbd> fields with the values for the user pool stack.</li>
+<li>Install the dependencies with <kbd>npm install</kbd>.</li>
+<li>Run the app locally with <kbd>npm start</kbd>.</li>
+<li>Click the <kbd>Sign Up</kbd> link and follow the instructions.</li>
+<li>Click the <kbd>Sign Out</kbd> link and then <kbd>Sign Up</kbd> another user.</li>
+<li>Assign each user to a different group in the AWS user pool console—one to the <kbd>Author</kbd> group and the other to the <kbd>BetaUser</kbd> group.</li>
+<li><kbd>Sign In</kbd> as each user and notice how the screen renders differently for each one.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p>First and foremost, zero-downtime deployment has to be treated as a first-class requirement and must be accounted for in the task roadmap and system design. If an enhancement is just adding a new optional field on an existing domain entity then a feature flag isn't required at all. If a field is just being removed, the order of deployment is important, from most dependent to least dependent. If an entirely new feature is being added, then access to the whole feature can be restricted. The most interesting scenarios are when a significant change is being made to an existing and popular feature. If the change is significant then it may be best to support two versions of the feature simultaneously, such as two versions of a page—in which case the scenario is essentially the same as the entirely new feature scenario. If a new version is not warranted, then care should be taken not to tie the code in knots.</p>
+<p>In this simplified ReactJS example, the JWT token is accessible after sign-in through the <kbd>auth</kbd> property. Instances of the <kbd>HasRole</kbd> component are configured with  <kbd>allowedRoles</kbd>. The component checks if the JWT token has a matching group in the <kbd>cognito:groups</kbd> field. If a match is found then the <kbd>children</kbd> components are rendered; otherwise, <kbd>null</kbd> is returned and nothing is rendered.</p>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>
