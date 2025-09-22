@@ -1,0 +1,597 @@
+- en: Client Patterns
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following recipes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Modeling concurrency with dependent futures
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Backend For Frontend
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Consistent RPC with HTTP and JSON
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using gRPC
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using Thrift
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When building a service-oriented architecture, it's easy to get stuck thinking
+    about the most general way to represent the domain entities and behaviors that
+    are controlled by a particular service. The truth is, we rarely use services in
+    general ways—we usually combine calls to multiple services and use the responses
+    to create a new, aggregate response body. We often make service calls in ways
+    that resemble how we used to aggregate data from a database, so we have to think
+    about relationships between disparate types in our system and how best to model
+    data dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also want to make client development easy. When designing general-purpose
+    APIs, it's easy to get stuck thinking about the right way to do things (if you've
+    ever heard someone critique an API design as not being RESTful, this might sound
+    familiar) instead of thinking about the easy way to do things. A service isn't
+    much good if a client needs to make dozens of calls to it in order to get the
+    data they need. When designing systems that involve microservices, it's essential
+    to think about data aggregation from the client's perspective.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Clients have to think about more than just the services they are invoking, but
+    often they have to consider what instance of those services they want to configure
+    themselves to invoke. It's common to have staging or testing environments, and
+    these get much more complicated in the microservices architectures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we'll discuss techniques for modeling dependent service calls
+    and aggregating responses from various services to create client-specific APIs.
+    We'll also discuss managing different microservices environments and making RPC
+    consistent with JSON and HTTP, as well as the gRPC and Thrift binary protocols.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Modeling concurrency with dependent futures
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We saw in a previous recipe that we can use asynchronous methods to make service
+    calls that are handled in separate threads. This is essential because blocking
+    on network I/O would severely limit the number of incoming requests our service
+    would be able to handle. A service that blocks on the network I/O would only be
+    able to handle a relatively small number of requests per process, requiring us
+    to spend more resources on horizontal scaling. In the example we used, the message
+    service needed to call the social graph service for two users, the sender, and
+    the recipient of a message, and make sure that the two users followed each other
+    before allowing a message to be sent. We modified our request methods to return
+    the `CompletableFuture` instances that wrapped the response, and then waited on
+    all of the results to finish before verifying that the sender and recipient of
+    the message had a symmetric following relationship. This model works fine when
+    you're making multiple requests that are not dependent (you do not need the response
+    from one request to make the subsequent request). In this situation, where we
+    have dependent service calls, we need a better way to model that dependency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our `pichat` application, we need to render a screen that lists information
+    about users we follow. In order to do that, we need to call the social-graph service
+    to get a list of users and then call the users service to get details such as
+    the display name and avatar for each user. This use case involves making dependent
+    service calls. We need an effective way of modeling this kind of service invocation
+    while still scheduling asynchronous operations in ways that allow them to be run
+    in separate threads of execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this recipe, we'll demonstrate this by using composition of `CompletableFuture` as
+    well as Java 8 streams to model dependent service invocations. We'll create a
+    sample client application that calls a social service to get a list of users that
+    the logged in user follows, and then calls the user service to get details for
+    each user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In order to model dependent asynchronous service calls, we'll take advantage
+    of two features in Java 8\. Streams are useful for processing data, so we'll use
+    them in our example to extract usernames from a list of followings and map a function
+    to each element. Java 8's `CompletableFuture` can be composed, which allows us
+    to naturally express dependencies between futures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this recipe, we'll create a simple client application that calls the social
+    service for a list of users that the current user follows. For each user returned,
+    the application will get user details from the users service. We'll build this
+    example as a command-line application for easy demonstration purposes, but it
+    could just as well be another microservice, or a web or mobile client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In order to build a command-line application that has all of the capabilities
+    of a Spring Boot application, we're going to cheat a little and just implement
+    `CommandLineRunner` and call `System.exit(0);` in the `run()` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before we start building our application, we''ll outline the responses from
+    our hypothetical social service and users service services. We can mimic these
+    services by just hosting the appropriate JSON response on a local web server.
+    We''ll use ports `8000` and `8001` for the social service and users service, respectively.
+    The social service has an endpoint, `/followings/:username`, that returns a JSON
+    object with a list of followings for the specified username. The JSON response
+    will look like the following snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The users service has an endpoint called `/users/:username`, which will return
+    a JSON representation of the user''s details, including the username, full name,
+    and avatar URL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we have our services and we''ve outlined the responses we expect from
+    each, let''s go ahead and build our client application by performing the following
+    steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create a new Java/Gradle application called `UserDetailsClient` with the following
+    `build.gradle` file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a package called `com.packtpub.microservices.ch04.user.models` and a
+    new class called `UserDetails`. We''ll use this class to model our response from
+    the users service:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create another class in the `com.packtpub.microservices.ch04.user.models` package
+    called `Followings`. This will be used to model the response from the social service:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a service representation for calling our social service. Predictably
+    enough, we''ll call it `SocialService` and put it in the `com.packtpub.microservices.ch04.user.services`
+    package:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a service representation for our users service. Appropriately, we''ll
+    call the class `UserService` in the same package:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We now have classes to model the responses from our services, and service objects
+    to represent the services we''re going to invoke. It''s time to tie it all together
+    by creating our main class, which will call these two services in a dependent
+    manner, using the composability of futures to model the dependency. Create a new
+    class called `UserDetailsClient`, as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The magic really happens in the following method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Recall that the `getFollowings` method in `SocialService` returns `CompletableFuture<Followings>`.
+    `CompletableFuture` has a method, called `thenApply`, that takes the eventual
+    result of the future (`Followings`) and applies it to be passed in the Lambda.
+    In this case, we're taking `Followings` and using the Java 8 Stream API to call
+    map on the list of usernames returned by the social service. The map applies each
+    username to a function that calls `getUserDetails` on `UserService`. The `CompletableFuture::join` method
+    is used to turn `List<Future<T>>` into `Future<List<T>>`, which is a common operation
+    when performing these kinds of dependent service invocations. Finally, we collect
+    the results and return them as a list.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Backend for frontend
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When software shifted from desktop and web-based applications to mobile applications,
+    distributed architectures became much more prevalent. It became a focus for many
+    organizations to build a platform instead of just a product. This approach places
+    a much larger emphasis on APIs that a product can expose to clients as well as
+    third-party partners. As APIs became a given for any web-based application, it
+    became popular to try to build client applications (mobile or JavaScript) on the
+    same API used to provide functionality to the third-party partners. The idea is
+    that if you exposed one well-designed, general-purpose API, you would have everything
+    you need to build any kind of application. The general architecture looked like
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/35eb08b6-09ec-4a77-ada8-ceaef3f92fea.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: The flaw in this approach is that it assumes that the needs of your first-party
+    (mobile and web) and third-party (partner) applications are always going to be
+    aligned, and this is rarely the case. More often than not, you want to encourage
+    certain kinds of functionality in the third-party integrations and a different
+    set of functionality in first-party clients. Additionally, you want to be much
+    more tolerant (encouraging, even) of changes in first-party clients—your client
+    applications will evolve and constantly be changing their API requirements. Finally,
+    you cannot anticipate all of the possible use cases third-party partners will
+    have for your API, so a general-purpose design is beneficial, but you will be
+    able to anticipate the needs of your mobile and web applications, and being too
+    general in your API design can often hamper your product's needs. A good example
+    of this is a server-side website that is rewritten as a single-page JavaScript
+    application. With a general-purpose API, this kind of project can result in page
+    views that require dozens of `XMLHttpRequests` to render a single page view.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Backend For Frontend** (**BFF**) is an architectural pattern that involves
+    creating separate, **bespoke APIs** for different classes of client applications.
+    Instead of a single API layer in your architecture, separate BFF layers can be
+    developed depending on how many categories of client applications you want to
+    support. How you categorize clients is completely up to the needs of your business.
+    You may decide to have a single BFF layer for all mobile clients, or you may divide
+    them into an iOS BFF and an Android BFF. Similarly, you may choose to have a separate
+    BFF layer for your web application and your third-party partners (what used to
+    be the primary driver for your single API):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/76cb2cdd-9224-4315-bb96-ef2fd73f4b8c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: In this system, each category of client makes requests to its own BFF layer,
+    which can then aggregate calls to downstream services and build a cohesive, bespoke
+    API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In order to design and build a BFF layer, we should first design the API. In
+    fact, we''ve already done this. In the previous recipe, we demonstrated using
+    `CompletableFuture` to asynchronously make a request to our systems, social service
+    and then for each user returned, make asynchronous requests to the user-details-service
+    to fetch certain user profile information. This is a great use case for a BFF
+    layer for our mobile apps. Imagine that our mobile app has a screen that shows
+    a list of users that the user follows, with basic information such as their avatar,
+    username, and display name. Since the social graph information (the list of users
+    the user is following) and the user profile information (avatar, username, and
+    display name) are the responsibility of two separate services, it''s cumbersome
+    to require our mobile clients to aggregate calls to these services to render a
+    following page. Instead, we can create a mobile BFF layer that handles this aggregation
+    and returns a convenient response to the client. Our request endpoint would be
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And the response body we expect to get back should be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As we can see, the BFF will return a response with all of the information we
+    need to render a following screen in our mobile app:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create a new Gradle/Java project called `bff-mobile` with the following `build.gradle`
+    file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a new package called `com.packtpub.microservices.mobilebff` and a new
+    class called `Main`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a new package called `com.packtpub.microservices.ch04.mobilebff.models`
+    and a new class called `User`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create another model, called `Followings`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The last model we''ll create is called `HydratedFollowings`. This is similar
+    to the `Followings` model, but instead of storing the list of users as a string,
+    it contains a list of the `User` objects:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create the service clients. Create a new package called `com.packtpub.microservices.ch04.mobilebff.services`
+    and a new class called `SocialGraphService`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a new class, called `UsersService`, that will serve as a client for
+    our users service:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s tie it all together by creating our controller that exposes the endpoint.
+    This code will look familiar if you completed the previous recipe, since we''re
+    using exactly the same pattern to model dependent asynchronous service invocations.
+    Create a package called `com.packtpub.microservices.ch04.mobilebff.controllers`
+    and a new class called `UsersController`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: That's it! Run the application and make a `GET` request to `/users/username/followings`.
+    You should get back a fully-hydrated JSON response with the user's username and
+    details for each of the users the user follows.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Consistent RPC with HTTP and JSON
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When building multiple microservices, consistency and conventions between services
+    start to make a real impact. When problems arise in a microservice architecture,
+    you can end up spending time debugging many services—being able to make certain
+    assumptions about the nature of a particular service interface can save a lot
+    of time and mental energy. Having a consistent way of doing RPC also allows you
+    to codify certain concerns into libraries that can be easily shared between services.
+    Things such as authentication, how headers should be interpreted, what information
+    is included in a response body, and how to request paginated responses can be
+    made simpler by having a consistent approach. Additionally, the way that errors
+    are reported should be made as consistent as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because the microservice architectures commonly consist of services written
+    in different programming languages by different teams, any efforts toward consistent
+    RPC semantics will have to be implemented, probably as libraries, in as many languages
+    as you have used to build services. This can be cumbersome, but is well worth
+    the effort for the consistency clients can assume when speaking to a variety of
+    services.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this recipe, we'll focus on services written in Java using Spring Boot. We'll
+    write a custom serializer to present resources and collections of resources in
+    a consistent manner, including pagination information. We'll then modify our message
+    service to use our new serializer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this recipe, we''ll create a wrapper class to represent collections of resources
+    with pagination information. We''ll also use the `JsonRootName` annotation from
+    the `jackson` library to make single-resource representations consistent. The
+    following code should be added to the message service, which was introduced in
+    a previous recipe:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create a new class called `ResourceCollection`. This class will be a regular
+    POJO with fields to represent the page number, a list of items, and a URL that
+    can be used to access the next page in a collection:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create or modify the `Message` model. We''re using the `JsonRootName` annotation
+    here to wrap the `Message` representation in a single JSON object with the `item` key.
+    In order to have consistent representations, we should add these to all models
+    that our services expose as a resource:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The following controller returns a list of messages and a specific message.
+    We wrap the list of messages in the `ResourceCollection` class that we created
+    previously:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you test requesting a collection of items by making a request to `/messages`,
+    the following JSON should now be returned:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The following JSON should be returned for a single resource:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Having some standardization for how resources or lists of resources are represented
+    can greatly simplify working with services in a microservices architecture. Doing
+    this with JSON and HTTP involves a fair amount of manual work however, which can
+    be abstracted away. In the next recipes, we'll explore using Thrift and gRPC,
+    two alternatives to HTTP/JSON for RPC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using Thrift
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: JSON and HTTP are simple, straightforward solutions for data transportation
+    and definition that should serve the purposes of many microservice architectures.
+    If you want type safety and often better performance, however, it can be worthwhile
+    to look at binary solutions such as Thrift or gRPC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Apache Thrift** is an **interface definition language** (**IDL**) and binary
+    transport protocol invented at Facebook. It allows you to specify APIs by defining
+    the structs (which are similar to objects in most languages) and exceptions that
+    your service exposes. Thrift interfaces defined in the IDL are used to generate
+    code in a supported language that is then used to manage the RPC calls. Supported
+    languages include C, C++, Python, Ruby, and Java.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The benefits of a binary protocol such as Thrift are primarily improved performance
+    and type safety. Depending on the JSON library used, serializing and deserializing
+    large JSON payloads can be quite expensive and JSON does not have any type system
+    that clients can use when handling responses. Additionally, because Thrift includes
+    an IDL that can be used to generate code in any supported language, it's easy
+    to let Thrift handle the generation of both client and server code, cutting down
+    the amount of manual work needing to be done.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because Apache Thrift doesn't use HTTP as the transport layer, services that
+    export Thrift interfaces start their own Thrift server. In this recipe, we'll
+    define the IDL for our message service and use Thrift to generate the handler
+    code. We'll then create the server boilerplate that handles starting the service,
+    listening on a specified port, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Create a new Gradle/Java project with the following `build.gradle` file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a directory called `src/main/thrift` and a file called `service.thrift`.
+    This is the IDL file for our service. We''ll define a `MessageException` exception,
+    the actual `Message` object, and a `MessageService` interface. For more information
+    on the specific syntax of Thrift IDL files, the Thrift project website has good
+    documentation ([https://thrift.apache.org/docs/idl](https://thrift.apache.org/docs/idl)).
+    To keep things simple, we''ll just define a single method in our service that
+    returns a list of messages for a specific user:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running the assembled Gradle task will generate the code for the preceding
+    IDL. We''ll now create the implementation of our `MessageService` class. This
+    will extend the autogenerated interface from the preceding IDL. For simplicity''s
+    sake, our `MessageService` implementation will not connect to any database but
+    instead will use a static, hardcoded representation of inboxes that will be built
+    in the constructor:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create the server. Create a new class called `MessageServiceServer`, as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: Your service is now built and uses Apache Thrift for RPC. As a further exercise,
+    you can experiment with using the same IDL to generate client code that can be
+    used to call this service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using gRPC
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**gRPC** is an RPC framework originally invented at Google. Unlike Thrift,
+    gRPC makes use of existing technologies, specifically **protocol buffers**, for
+    its IDL and HTTP/2 for its transport layer. After having completed the previous
+    recipe, aspects of gRPC will feel similar to aspects of Thrift. Instead of the
+    Thrift IDL, types and services are defined in a `.proto` file. The `.proto` file
+    can then be used to generate code using the protocol buffer''s compiler.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Create a new Gradle/Java project with the following `build.gradle` file. Of
+    note here is that we''re installing and configuring the `protobuf` Gradle plugin,
+    which will allow us to generate code from `protobuf` files using Gradle, and we''re
+    listing the required `protobuf` libraries as dependencies. Finally, we have to
+    tell our IDE where to look for generated classes:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a new directory called `src/main/proto` and a new file called `message_service.proto`.
+    This will be our definition of `protobuf` for our service. Like in the last recipe,
+    we''ll keep it simple by only exposing one method that returns a list of messages
+    for a specified user:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Implement the actual service. In order to do this, we need to create a new
+    class called `MessageServer` with all the necessary boilerplate for starting and
+    stopping our server. We''ll also create an inner class called `MessageService`
+    that extends the generated `MessageServiceGrpc.MessageServiceImplBase` class:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE

@@ -1,0 +1,846 @@
+- en: Storing Data in Elasticsearch
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter, we developed the bulk of our Create User feature by
+    following a TDD process and writing all our E2E test cases first. The last piece
+    of the puzzle is to actually persist the user data into a database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will install and run **ElasticSearch** on our local development
+    machine, and use it as our database. Then, we will implement our last remaining
+    step definition, using it to drive the development of our application code. Specifically,
+    we will cover the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Installing Java and Elasticsearch
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understanding Elasticsearch concepts, such as **indices**, **types**, and **documents**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using the Elasticsearch JavaScript client to complete our create user endpoint
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Writing a Bash script to run our E2E tests with a single command
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introduction to Elasticsearch
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So, what is Elasticsearch? First and foremost, Elasticsearch should not be viewed
+    as a single, one-dimensional tool. Rather, it's a suite of tools that consists
+    of a **distributed database**, a **full-text search engine**, and also an **analytics
+    engine**. We will focus on the "database" part in this chapter, dealing with the
+    "distributed" and "full-text search" parts later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At its core, Elasticsearch is a high-level abstraction layer for **Apache Lucene**,
+    a full-text search engine. Lucene is arguably the most powerful full-text search
+    engine around; it is used by **Apache Solr**, another search platform similar
+    to Elasticsearch. However, Lucene is very complex and the barrier to entry is
+    high; thus Elasticsearch abstracts that complexity away into a RESTful API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead of using Java to interact with Lucene directly, we can instead send
+    HTTP requests to the API. Furthermore, Elasticsearch also provides many language-specific
+    clients that abstract the API further into nicely-packaged objects and methods.
+    We will be making use of Elasticsearch's JavaScript client to interact with our
+    database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can find the documentation for the most current JavaScript client at [https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/api-reference.html](https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/api-reference.html).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Elasticsearch versus other distributed document store
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: For simple document storage, you'd typically pick a general-purpose database
+    like MongoDB, and store **normalized** data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Normalization is the process of reducing data redundancy and improving data
+    integrity by ensuring components of the data structure are atomic elements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Denormalization is the process of introducing data redundancy for other benefits,
+    such as performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, searching on normalized data is extremely inefficient. Therefore, to
+    perform a full-text search, you would usually **denormalize** the data and replicate
+    it onto more specialized database such as Elasticsearch.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Therefore, in most setups, you would have to run two different databases. However,
+    in this book, we will use Elasticsearch for both data storage and search, for
+    the following reasons:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The page count of the book is limited
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tooling around syncing MongoDB with Elasticsearch is not mature
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Our data requirements are very basic, so it won't make much difference
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Installing Java and Elasticsearch
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: First, let's install Elasticsearch and its dependencies. Apache Lucene and Elasticsearch
+    are both written in Java, and so we must first install Java.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Installing Java
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When you install Java, it usually means one of two things: you are installing
+    the **Java Runtime Environment** (**JRE**) or the **Java Development Kit** (**JDK**).
+    The JRE provides the runtime that allows you to *run* Java programs, whereas the
+    JDK contains the JRE, as well as other tools, that allow you to *develop* in Java.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We are going to install the JDK here, but to complicate things further, there
+    are different implementations of the JDK—OpenJDK, Oracle Java, IBM Java—and the
+    one we will be using is the `default-jdk` APT package, which comes with our Ubuntu
+    installation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we need to set a system-wide environment variable so that other programs
+    using Java (for example, Elasticsearch) know where to find it. Run the following
+    command to get a list of Java installations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For my machine, there''s only a single Java installation, located at `/usr/lib/jvm/java-8-openjdk-amd64/`.
+    However, if you have multiple versions of Java on your machine, you''ll be prompted
+    to select the one you prefer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, open `/etc/environment` and add the path to the `JAVA_HOME` environment
+    variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`JAVA_HOME` will be set for any user on login; to apply the changes now, we
+    need to source the file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Installing and starting Elasticsearch
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Go to [elastic.co/downloads/elasticsearch](https://www.elastic.co/downloads/elasticsearch) and
+    download the latest Elasticsearch version for your machine. For Ubuntu, we can
+    download the official `.deb` package and install using `dpkg`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Your version of Elasticsearch might be different from the one here. That's fine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we need to configure Elasticsearch to use the Java version we just installed.
+    We have already done this for the entire system, but Elasticsearch also has its
+    own configuration file for specifying the path to the Java binaries. Open up the `/etc/default/elasticsearch` file and
+    add an entry for the `JAVA_HOME` variable, just as you did before:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we can start Elasticsearch! Elasticsearch is installed as a service, so
+    we can use `systemctl` to start and stop it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To simplify development, we can make Elasticsearch start whenever the system
+    is rebooted by enabling it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we can check that Elasticsearch is running using `systemctl`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Alternatively, a more direct approach would simply be to send a query to the
+    Elasticsearch API on its default port of `9200`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: We get a reply, which means Elasticsearch is running on your machine!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding key concepts in Elasticsearch
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We will be sending queries to Elasticsearch very shortly, but it helps if we
+    understand a few basic concepts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Elasticsearch is a JSON document store
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As you might have noticed from the response body of our API call, Elasticsearch
+    stores data in **JavaScript Object Notation** (**JSON**) format. This allows developers
+    to store objects with more complex (often nested) structures when compared to
+    **relational databases** that impose a flat structure with **rows** and **tables**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That's not to say document databases are better than relational databases, or
+    vice versa; they are different and their suitability depends on their use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Document vs. relationship data storage
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: For example, your application may be a school directory, storing information
+    about schools, users (including teachers, staff, parents, and students), exams,
+    classrooms, classes, and their relations with each other. Given that the data
+    structure can be kept relatively flat (that is, mostly simple key-value entries),
+    a relational database would be most suitable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On the other hand, if you''re building a social network, and want to store
+    a user''s settings, a document database may be more suitable. This is because
+    the settings may be quite complex, such as the one shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: With a relational database, you'll have to establish naming conventions for
+    the columns (such as `settings.notification.app.follow`) in order to retain hierarchical
+    information. However, to use the settings, you'll have to manually reconstruct
+    the object before you can work with it. You'll need to do this each time the entry
+    is retrieved.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Storing this user information as a document allows you to store objects as they
+    are, retaining their structure, and retrieve them as they are, without having
+    to do extra work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Several relational databases have started allowing users to store documents
+    as values. For example, starting with MySQL 5.7, you can store schema-less documents.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, if your intention is to structure your data in a non-relational way,
+    you'd be better off using a NoSQL database from the start. I'd recommend storing
+    documents in a traditional relational database only when you have existing data
+    and you are adding a new data structure on top of it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding indices, types, documents, and versions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In Elasticsearch, every document is uniquely identified by four attributes:
+    its **index**, **type**, **ID**, and **version**.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Related documents should be stored under the same index. Although not equivalent,
+    an index is analogous to a database in a relational database. For example, all
+    documents used in our user directory API may be stored in the `directory` index, or
+    since our platform is called Hobnob, we may also name our index `hobnob`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Documents stored within an index must belong to a certain type. For our user
+    directory API, you may have documents that belong to the `person` and `company` types. Although
+    not equivalent, type is analogous to a table in a relational database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each document must also have an ID and version. Whenever a document is modified
+    in any way, its version increments by a certain amount (usually `1`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Elasticsearch does not store older versions of the document. The version counter
+    is there to allow us to perform **concurrent updates** and **optimistic locking**
+    (more on these techniques later).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Querying Elasticsearch from E2E tests
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We now have all the required knowledge in Elasticsearch to implement our last
+    undefined step definition, which reads from the database to see if our user document
+    has been indexed correctly. We will be using the JavaScript client, which is merely
+    a wrapper around the REST API, with a one-to-one mapping to its endpoints. So
+    first, let''s install it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, import the package into our `spec/cucumber/steps/index.js` file and create
+    an instance of `elasticsearch.Client`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'By default, Elasticsearch runs on port `9200`. However, to avoid hard-coded
+    values, we have explicitly passed in an options object, specifying the `host`
+    option, which takes its value from the environment variables. To make this work,
+    add these environment variables to our `.env` and `.env.example` files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: For a full list of options that the `elasticsearch.Client` constructor function
+    accepts, check out [elastic.co/guide/en/elasticsearch/client/javascript-api/current/configuration.html](https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/configuration.html).
+  prefs: []
+  type: TYPE_NORMAL
+- en: As specified in our Cucumber test scenario, we require the Create User endpoint
+    to return a string, which we store in `this.responsePayload`. This should be the
+    ID of the user. Therefore, if we can find the user document again using this ID,
+    it means the document is in the database and we have completed our feature.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To find the document by ID, we can use the `get` method from the Elasticsearch
+    client, which will get a typed JSON document from the index based on its ID. All
+    of the methods in the Elasticsearch client are asynchronous—if we provide a callback,
+    it will invoke the callback; otherwise, it will return a promise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The result from Elasticsearch would have the following structure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `_source` property contains the actual document. To make sure it is the
+    same as the one we sent in the request, we can use the `deepEqual` method from
+    Node's `assert` module to compare the `_source` document with `this.requestPayload`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Given this information, try to implement the final step definition yourself,
+    and check back here for the answer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: ESLint may complain that `_source` violates the `no-underscore-dangle` rule.
+    Traditionally, underscores in an identifier are used to indicate that the variable
+    or method should be "private", but since there're no truly private variables in
+    JavaScript, this convention is highly controversial.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here, however, we are using the Elasticsearch client and this is their convention.
+    Therefore, we should add a rule to the project-level `.eslintrc` file to disable
+    this rule.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Run the tests again, and there should be no undefined step definitions anymore.
+    But, it still fails because we haven't implemented the actual success scenario
+    in our `src/index.js` yet. So, let's get down to it!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Indexing documents to Elasticsearch
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In `src/index.js`, import the Elasticsearch library and initiate a client as
+    we did before; then, in the request handler for `POST /users`, use the Elasticsearch
+    JavaScript client''s `index` method to add the payload object into the Elasticsearch
+    index:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `index` method returns a promise, which should resolve to something similar
+    to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The only useful and relevant piece of information we can return to the client
+    is the newly auto-generated `_id` field. Therefore, we should extract that information
+    and make the function return a promise, which resolves to only the `_id` field
+    value. As a last resort, return a `500 Internal Server` error to indicate to the
+    client that their request is valid, but our server is experiencing some issues:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, our E2E tests should all pass again!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cleaning up after our tests
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When we run our tests, it''ll index user documents into our local development
+    database. Over many runs, our database will be filled with a large number of test
+    user documents. Ideally, we want all our tests to be self-contained. This means
+    with each test run, we should reset the state of the database back to the state
+    before the test was run. To achieve this, we must make two further changes to
+    our test code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Delete the test user after we have made the necessary assertions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Run the tests on a test database; in the case of Elasticsearch, we can simply
+    use a different index for our tests
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Deleting our test user
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'First, add a new entry to the list of features in the Cucumber specification:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, define the corresponding step definition for this step. But first, we
+    are going to modify the step definition that indexed the document, and change
+    it to persist the document type in the context:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, add a new step definition that uses `client.delete` to delete a document
+    by ID:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The result of the `delete` method looks something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'A successful operation will have its `result` property set to `''deleted''`;
+    therefore, we can use it to assert whether the step was successful or not. Update
+    the step definition to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Run the tests and make sure they pass. We''ve now implemented our happy path/success
+    scenario, so it''s a good time to commit our changes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Improving our testing experience
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Although we are now cleaning up after ourselves, using the same index for both
+    testing and development is not ideal. Instead, we should use one index for development,
+    and another for testing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running tests in a test database
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'For our project, let''s use the index name `hobnob` for development, and `test`
+    for testing. Instead of hard-coding the index name into our code, we can use an
+    environment variable to set it dynamically. Therefore, in both our application
+    and test code, replace *all* instances of `index: ''hobnob''` with `index: process.env.ELASTICSEARCH_INDEX`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Currently, we are using the `dotenv-cli` package to load our environment variables.
+    As it turns out, the package also provides an `-e` flag that allows us to load
+    multiple files. This means we can store default environment variables in our `.env`
+    file, and create a new `test.env` to store testing-specific environment variables,
+    which will override the defaults.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Therefore, add the following line to our `.env` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, create two new files—`test.env` and `test.env.example`—and add the following
+    line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Lastly, update our `test` script to load the test environment before the default:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Stop the API server and restart it with the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: Run our E2E tests again, and they should all pass. The only difference now is
+    that the tests are not affecting our development index at all!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Lastly, just to tidy things up, let''s move all our environment files into
+    a new directory called `envs` and update our `.gitignore` to ignore all files
+    with the `.env` extension:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Of course, you also need to update your `serve` and `test` scripts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Run the tests again and make sure they pass. Once you''re happy, commit these
+    changes to Git:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: Separating development and testing servers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Good job. Using a test database is certainly a step forward, but our testing
+    workflow is still disjointed. At the moment, to run our tests, we need to stop
+    our development API server, set the environment variables, and then restart it.
+    Similarly, once the tests are finished, we need to stop and restart it again with
+    the development environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ideally, we should run two separate instances of the API server—one for development,
+    one for testing—each binding to its own port. This way, there's no need to stop
+    and restart our server just to run tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To achieve this, simply override the `SERVER_PORT` environment variable for
+    our test environment by adding the following line to `envs/test.env` and `envs/test.env.example`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, we can run `yarn run watch` to run our development API server, and *at
+    the same time*, run `npx dotenv -e envs/test.env yarn run watch` to run our testing
+    API server. We no longer need to stop and restart!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Although this is a minor change, let''s still commit it to our repository:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: Making a standalone E2E test script
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'But, we''re not done yet! We can definitely improve our testing workflow even
+    further. At the moment, to run our E2E test we have to ensure the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: An Elasticsearch instance is running
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We use `dotenv-cli` to load our test environment and then run our API server
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: While we could simply note down these instructions in a `README.md` file, it'll
+    provide a better developer experience if we provide a single command to run, which
+    will automatically load up Elasticsearch, set the right environment, run our API
+    server, run our tests, and tear everything down once it's done.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This seems too much logic to fit into one line of npm script; instead, we can
+    write a shell script, which allows us to specify this logic inside a file. We
+    will use a **Bash** as the shell language, as it is the most popular and widely-supported
+    shell.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For Windows users, make sure you've installed the *Windows Subsystem for Linux*
+    (WSL), which allows you to run GNU/Linux tools and Bash scripts natively on your
+    Windows machine. You can find detailed instructions at [docs.microsoft.com/en-us/windows/wsl/](https://docs.microsoft.com/en-us/windows/wsl/).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s begin by creating a new directory called `scripts`, adding a new file
+    inside it called `e2e.test.sh`, and setting its file permission so it''s executable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, update our `test:e2e` npm script to execute the shell script instead
+    of running the `cucumber-js` command directly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: The shebang interpreter directive
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The first line of a shell script is always the **shebang interpreter directive**;
+    it basically tells our shell which interpreter it should use to parse and run
+    the instructions contained in this script file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It''s called a *shebang* interpreter directive because it starts with a **shebang**,
+    which is simply a sequence of two characters: a hash sign (`#`) followed by an
+    exclamation mark (!).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Some scripts might be written in Perl, or Python, or a different flavor of
+    the shell; however, our script will be written for the Bash shell, so we should
+    set the directive to the location of the `bash` executable, which we can derive
+    from running `/usr/bin/env bash`. Therefore, add the following shebang as the
+    first line in our `e2e.test.sh` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: Ensuring Elasticsearch is running
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Our API server depends on an active instance of Elasticsearch. Therefore, before
+    we start our API server, let''s make sure our Elasticsearch service is active.
+    Add the following check under the shebang line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: First, we use the `is-active` command of `systemctl` to check whether the Elasticsearch
+    service is active; the command will exit with a `0` if it is active, and a non-zero
+    value if not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generally, when a process successfully executes, it will exit with a status
+    of zero (`0`); otherwise, it will exit with a non-zero status code. Inside an
+    `if` block, the exit codes have special meaning—a `0` exit code means `true`,
+    and a non-zero exit code means `false`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This means that if the service is not active, we'd use the `start` command of
+    `systemctl` to start it. However, Elasticsearch takes time to initiate before
+    it can respond to requests. Therefore, we are polling its endpoint with `curl`,
+    and blocking downstream execution until Elasticsearch is ready.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you're curious what the flags mean on the commands, you can get detailed
+    documentation on them by using the `man` command. Try running `man systemctl`,
+    `man curl`, and even `man man`! Some commands also support a `-h` or `--help`
+    flag, which contains less information but is usually easier to digest.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will retry the endpoint every 0.2 seconds. This is set in the `RETRY_INTERVAL`
+    environment variable. The `${RETRY_INTERVAL:-0.2}` syntax means we should only
+    use the `0.2` value if the environment variable is not already set; in other words,
+    the `0.2` value should be used as a default.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running the test API server in the background
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Next, before we can run our tests, we must run our API server. However, the
+    API server and the tests need to run at the same time, but there can only be one
+    foreground process group attached to the terminal. We want this to be our test,
+    so we can interact with it if required (for example, to stop the test). Therefore,
+    we need to run our API server as a background process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In Bash (and other shells that support **job control**), we can run a command
+    as a background process by appending a single ampersand (`&`) after the command.
+    Therefore, add the following lines after our Elasticsearch initiation block:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: Checking our API server is ready
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Next, we need to run our tests. But, if we do it immediately after we execute `yarn
+    run serve &`, it will not work:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is because the tests are run before our API server is ready to handle the
+    requests. Therefore, just like we did with the Elasticsearch service, we must
+    wait for our API server to be ready before running our tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checking API status using netstat/ss
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'But, how do we know when the API is ready? We could send a request to one of
+    the API''s endpoints and see if it returns a result. However, this couples our
+    script with the implementation of the API. A better way would be to check whether
+    the API is actively listening to the server port. We can do this using the `netstat`
+    utility, or its replacement, `ss` (which stands for **s**ocket **s**tatistics).
+    Both commands are used to display network-related information such as open connections
+    and socket ports:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For both commands, the `-l` flag will limit the results to only listening sockets,
+    the `-n` flag will display all hosts and ports as numeric values (for instance,
+    it''ll output `127.0.0.1:631` instead of `127.0.0.1:ipp`), and the `-t` flag will
+    filter out non-TCP sockets. The end result is an output that looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: To check whether a specific port is listening, we can simply run `grep` on the
+    output (for instance, `ss -lnt | grep -q 8888`) If `grep` finds a result, it will
+    exit with a status code of `0`; if no matches are found, it will exit with a non-zero
+    code. We can use this feature of grep to poll `ss` at regular intervals until
+    the port is bound.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Add the following block below our `yarn run serve &` command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: Cleaning up the background process
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We need to make a few last changes to our test script before we can run our
+    tests. At the moment, we are running our API server in the background. However,
+    when our script exits, the API will still keep running; this means we will get
+    the `listen EADDRINUSE :::8888` error the next time we run the E2E tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Therefore, we need to kill that background process before the test script exits.
+    This can be done with the `kill` command. Add the following line at the end of
+    the test script:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Process ID** (**PID**) `0` (zero) is a special PID that represents all member
+    processes within the same process group as the process that raised the signal.
+    Therefore, our previous command sends a `SIGTERM` signal (which has a numeric
+    code of `15`) to all processes within the same process group.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'And, just to make sure no other process has bound to the same port as our API
+    server, let''s add a check at the beginning of our Bash script that''ll exit immediately
+    if the port is unavailable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: Running our tests
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Finally, we are able to run our tests! Add the `cucumber-js` command just prior
+    to the `kill` command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Your final `scripts/e2e.test.sh` script should look like this (comments removed):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Just to double-check, run the E2E tests to make sure they still pass. Of course, commit
+    these changes to Git:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we continued our work on the Create User endpoint. Specifically,
+    we implemented the success scenario by persisting data into Elasticsearch. Then,
+    we refactored our testing workflow by creating a Bash script that automatically
+    loads up all dependencies before running our tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will refactor our code further, by breaking it down
+    into smaller units, and covering them with unit and integration tests, written
+    using Mocha, Chai, and Sinon. We will also continue to implement the rest of the
+    endpoints, making sure we follow good API design principles.
+  prefs: []
+  type: TYPE_NORMAL

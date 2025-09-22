@@ -1,0 +1,678 @@
+- en: Handling Serverless Notifications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Push notifications are a common use case for modern applications. They are important
+    not just for mobile devices, but also for websites. When you are browsing your
+    Facebook timeline and receive a notification that a friend has commented on one
+    of your photos, this is a push notification. In this chapter, you will learn how
+    to implement this feature in a serverless solution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will cover the following topics in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing serverless notifications using AWS IoT
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Public and private notifications
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: By the end of this chapter, you'll have learned how to handle real-time notifications
+    in a serverless application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: AWS IoT
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: It may sound strange to use the Internet of Things as a service for websites,
+    but AWS IoT is the only service offered by Amazon that supports WebSockets in
+    a serverless model. Without WebSockets, we need to rely on *polling*. Polling
+    is the process where the client needs to make repeated and frequent requests to
+    the server, checking whether a new message is available, while WebSockets are
+    used to create a link between the client and the server where the server can send
+    the message directly to the client without the need of being constantly requested.
+    WebSockets are used to implement the *publish-subscribe* pattern, which is more
+    efficient than *polling*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Besides AWS IoT, another candidate to implement real-time serverless notifications
+    is Amazon **Simple Queue Service** (**SQS**). You can create a queue of messages
+    that are destined for a single user and wait for this user to request SQS looking
+    for new messages. While polling is necessary for this solution, Amazon offers
+    a feature named *long-polling*. With this feature, when you request a message
+    to SQS, AWS will hold your request up to 20 seconds, waiting for a new message
+    to arrive. If one arrives while waiting, you will receive the response immediately.
+    If no message appears, after 20 seconds, you will receive an empty response and
+    will need to make a new SQS request. This approach reduces the total number of
+    requests and the costs associated with a frequent polling approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One advantage that SQS has over IoT is the guarantee that a message will be
+    read. If you place a message in SQS, it will be removed only when someone receive
+    it, while with IoT, the user must be connected to receive the message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another service that is used for notifications is Amazon **Simple Notification
+    Service** (**SNS**). Although the name sounds like an obvious choice for serverless
+    notifications, it does not support WebSockets and you can't hook a browser client
+    to receive notifications on demand. However, for mobile applications, you can
+    use it with push notifications services, such as **Google Cloud Messaging** (**GCM**),
+    for real-time messages without polling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You may not like the name "IoT", but it is a great service and solves our use
+    case of getting notifications respecting the serverless model. AWS IoT is a simple
+    messaging service. You can have *devices* subscribed to *topics* to receive messages
+    that will be published by other devices. In our examples, you will consider a
+    *device* as a user connected through a web browser that will receive messages
+    from other users or from a Lambda function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Protocols
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: AWS IoT supports *HTTP*, *MQTT*, and *MQTT over WebSockets* protocols. HTTP
+    uses a RESTful endpoint and **Message Queue Telemetry Transport** (**MQTT**) is
+    a lightweight messaging protocol that was created for small sensors and constrained
+    devices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You may think that using HTTP would be the easiest option for us who already
+    know how to use RESTful endpoints, but HTTP support is restricted to publishing
+    messages. In a REST architecture, you can't subscribe to messages, since the server
+    can't initiate transmissions. The server is only able to answer requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: MQTT over WebSockets is an enhancement to the MQTT protocol with the objective
+    of supporting browser-based applications. It supports the *subscribe* feature,
+    so your user can be hooked waiting for messages instead of being constantly polling
+    for updates every few seconds. Avoiding a polling mechanism is strictly necessary
+    for efficiency and to allow scalability when you want to serve thousands of users
+    simultaneously.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finding the IoT endpoint
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'To use the AWS IoT service, you must provide the IoT endpoint of your account
+    from the region that you want to use this service. Let''s execute the following
+    steps to find the IoT endpoint:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can find this information using the IoT Management Console, which is available
+    at [https://console.aws.amazon.com/iot](https://console.aws.amazon.com/iot).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In the top-right corner, you can change the service region. Click on Get started
+    to move to the next screen:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/9cab2df0-a742-46ff-b6ef-0df798469484.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'On the console screen, choose the Settings option located in the bottom-left
+    corner:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/433dac79-1301-4f61-95b3-432516f393d8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Write down your IoT endpoint address to use in your application:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/7acf80d4-3e09-4105-9846-0be0f4bd32dd.png)**Security observation:** the
+    endpoint address doesn''t need to be private. You can hardcode it in your application
+    and distribute it to your clients, since the frontend code needs to know this
+    address to access IoT messages.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For our demo application, the frontend code we will have this information in
+    the `config.js` file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: AWS IoT SDK
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Handling the MQTT protocol and signing each request can be a troublesome task.
+    Fortunately, we don't need to *reinvent the wheel*. AWS offers an SDK that implements
+    the MQTT protocol for us and offers all the features that we need to use. You
+    can find the source code on GitHub at [https://github.com/aws/aws-iot-device-sdk-js](https://github.com/aws/aws-iot-device-sdk-js).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can install the module using npm by executing this command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To use this SDK, we need to pass the following information:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Credentials**: The SDK will need to know the AWS access key, AWS secret access
+    key, and session token to be able to sign the requests and get the authorization
+    to access the AWS resources. We are going to use Cognito later to dynamically
+    retrieve temporary credentials.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Region**: The region of the AWS IoT service that we are going to use.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**IoT endpoint**: The IoT endpoint that we have just retrieved.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**IoT topic**: You don''t need to explicitly create an IoT topic beforehand.
+    Just choose a word and use it as a channel to exchange messages. However, your
+    credentials must have authorization to this topic or to `*` (all topics).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'For our example, we are going to create a class in a `iot.js` file inside the
+    frontend''s `lib` folder:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: This class has a constructor which receives the necessary credentials and a
+    `messageCallback` function that will be used as a dependency injection. Whenever
+    we receive a new message, we are going to call this `messageCallback` function
+    to execute the desired logic by the one that has created the new object instance
+    of the IoT class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s now see how to implement the `connect`, `publish`, and `subscribe` methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the previous code, the `connect` method subscribes the `client` object to
+    three events:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `connect` event
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `message` event
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `close` event
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'There are also three more events that you can subscribe to make your application
+    more robust:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `error` event
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `reconnect` event
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `offline` event
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The last step is to define the methods that will handle these events. They
+    are defined as the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Implementing serverless notifications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In the previous section, you learned about the AWS IoT SDK, we just haven''t
+    tested it yet. In this section, we will use it in the following two features of
+    our serverless store:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Live comments in a product review page
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Notifications after a payment has been accepted
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The first feature is a type of a **public notification**, as it uses an IoT
+    topic that all users can read. The second one is a **private notification**, so
+    only one person and the Lambda backend are allowed to access the IoT topic to
+    subscribe or publish messages. We will cover both of them to learn how to give
+    proper access for each case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Those two examples will illustrate how you can work with IoT to serve notifications,
+    but it does not limit what you can do with it. You can think in other use cases.
+    For example, IoT can also be used for serverless multiplayer games. You could
+    build an HTML5 game that could make requests to a Lambda backend to execute some
+    logic (for example, find a room to play) and an IoT topic to exchange messages
+    between players. It may not be well suited to very dynamic games like FPS games,
+    but could be pretty useful and cheap for card games, puzzles, and games where
+    you don't need extremely low and predictable response times.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Public notifications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 5](6cb9ccdc-61f3-437d-81ac-d05ec652f1a4.xhtml), *Building the Frontend*,
+    we defined the product details view and it has a list of all customer reviews.
+    What we are going to implement here is *live comments*. When a user adds a new
+    review, another user that is browsing the same page will see the message at the
+    same moment that it is posted. It may not seem to be so important for a customer
+    review page, but this is the kind of feature that is extremely important for chat
+    systems, forums, and social networks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding a comment box
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The following screenshot shows the current state of our product details page:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/ce575d72-1ff9-4c0d-9078-8f039321efc0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'We are going to modify the React application to add a comment box like this
+    one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/123a5d99-f8a7-4528-a481-2d077b26777d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'For this task, we need to create a `CommentBox` component that will be rendered
+    as input text and a button:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When defining the elements, we have placed an `onChange` event to the input
+    text to save the input value and an `onClick` event to send the information to
+    the `App` component. They are implemented as the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: This completes the `CommentBox` implementation. What we are going to see next
+    is how the `App` component will handle these events to update the page and send
+    a message to other users that are on the same page.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Updating the list of comments
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In the `App` component, we need to handle comment creation. In the following
+    code excerpt, we are creating a new comment object and adding it to the beginning
+    of the comment list array:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To set the ID of the comment, I''ve used the `UUID` module (`npm install uuid
+    --save`) to create a random value. Example of an UUID: `110ec58a-a0f2-4ac4-8393-c866d813b8d1`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What we need to do now is to send the new comment to the IoT service, so it
+    can be shared with other users on the same page and saved in the database. For
+    now, our comment feature should be working and updating the list of customer reviews:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/83eedf92-55dd-4c77-aecc-cb0d2726c5db.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Creating a new instance of the IoT SDK
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we are going to create a new instance of the IoT class that
+    uses the IoT SDK. This class needs AWS access keys to connect with the IoT services.
+    As we are handling public notifications that don't need an authenticated user,
+    we need to create credentials for anonymous users.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s create a new instance of the IoT SDK by performing the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will start adding the AWS SDK to our frontend project using npm:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With the AWS SDK, we can request anonymous access to Cognito using the following
+    code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As we configured in the previous chapter, this identity pool gives access to
+    anonymous users to the IoT topic `serverless-store-comments`. With those keys
+    in hand, we are ready to create an instance of the IoT class, connect, and subscribe
+    with this topic:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Sending and receiving new comments
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The `App` component is our entity responsible for managing the application
+    state. Therefore, it will be responsible for sending and receiving comments. To
+    implement this, we need to make the following three changes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Modify the `componentDidMount` to create an instance of the IoT class:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Modify the `handleComments` function to send new comments using IoT:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create the `handleIotMessages` function to receive the messages and update
+    the list of comments:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Test the application, running it using two browser tabs. When you add a comment
+    in one tab, the same comment must appear immediately in the other tab.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Triggering a Lambda function with IoT
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The IoT service is being used to exchange live messages between connected users.
+    However, the information is not being persisted. What we are going to do here
+    is to trigger a Lambda function when a new message arrives to an IoT topic, so
+    this message can be persisted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can trigger a Lambda function by configuring an event in the `serverless.yml`
+    file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: For our example, replace `topic-name` with `serverless-store-comments`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: IoT uses an SQL-like syntax to trigger the Lambda function and to select which
+    content will be sent. In the preceding example, we are passing all contents of
+    the message to the Lambda function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This SQL statement can be very useful for filtering messages to only trigger
+    a Lambda function when necessary. For example, suppose that we send a message
+    with the following JSON object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We could use the SQL statement to trigger another Lambda function, for example
+    `handle-bad-reviews`, only when the rating is low:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Going back to our serverless store example, we have defined the trigger to
+    the Lambda function. Now we can implement the function to save the data into the
+    database. As using a serverless database was already covered in [Chapter 7](cb2f92df-5bc3-4c8e-8872-fbee58e5b0be.xhtml),
+    *Managing a Serverless Database*, the next example will just log the contents
+    of the `event` object for testing purposes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can test if it is working using the `logs` command of the Serverless Framework:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Private notifications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In [Chapter 8](5778526b-7b49-48bd-8fc8-f5285baa64c1.xhtml), *Securing the Serverless
+    Application*, we defined a policy document for authenticated users to include
+    an authorization to the following IoT topic:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: This means that an authenticated user will have access to an exclusive topic,
+    the name of which is defined by its own federated identity. What we are going
+    to implement next is a *private notification*, where a Lambda function will publish
+    a message to an IoT topic and just one user will be able to receive it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using credentials of an authenticated user
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'For an unauthenticated user, we saw that we set credentials using the following
+    code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'However, for an authenticated user, the `credentials` object needs to be set
+    with an extra property: `Logins`. The following code shows how this is done:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Updating the logout feature
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When we use the AWS credentials feature, the AWS SDK saves user data to local
+    storage. To avoid another user logging on the same browser to use the credentials
+    of the previous user, we need to clear that data on logout. This is done by adding
+    the following piece of code to the `Logout` handler:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Creating an IoT policy
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Using an authenticated user to connect to IoT requires an extra step: we need
+    to attach an IoT security policy. Without this attachment, the IoT service will
+    reject all requests.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s see how to create this policy by performing the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Open the IoT Console at [https://console.aws.amazon.com/iot](https://console.aws.amazon.com/iot).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In the left-hand menu, navigate to Security | Policies and then click on Create
+    a policy:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/9dd7e082-61e2-487f-bfd2-f921f95a4c96.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Choose a policy name, use the Action `iot:Connect`, `iot:Subscribe`, `iot:Publish`,
+    and `iot:Receive`, type `*` for the Resource, and check Allow for the Effect:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/49daa357-88ac-44bc-a60e-945d2dd72296.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Click on Create to finish.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '**Security observation:** although we have selected the `*` resource, we won''t
+    be able to subscribe or publish to all topics because AWS will use the Cognito
+    roles to check permissions and this policy document was set with restricted access.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Attaching an IoT policy and connecting
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In the previous chapter, we set the Cognito policy document to allow access
+    to the action `iot:attachPrincipalPolicy`. Now we are going to use it. After getting
+    the AWS credentials, we are going to use the `AWS.Iot` module and the `attachPrincipalPolicy`
+    function to attach the IoT policy that we have just created to the authenticated
+    user. After setting the policy, we are going to connect to IoT and subscribe to
+    the public and private topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Passing the Cognito Identity to the Lambda function
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter, when we have defined the restricted access to IoT resources,
+    we have used the `${cognito-identity.amazonaws.com:sub}` IAM policy variable to
+    define the IoT topic name. This parameter uses the Cognito Identity, but the backend
+    code doesn't know this value. The Lambda function will retrieve a User ID through
+    the authorizer (`event.requestContext.authorizer.claims.sub`), but the Authorizer
+    ID is different from the Cognito Identity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To pass this value from the frontend code to the backend, AWS recommends we
+    send a signed request using its **Signature Version 4** (**Sigv4**) signing process.
+    Furthermore, instead of setting the Cognito authorizer in the API Gateway, you
+    need to use the **AWS_IAM** authorizer. It's the safest way to pass this information
+    to the backend because this method guarantees that only the real user will be
+    able to send its Cognito ID.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, we won't cover this topic here. Signing the request with **Sigv4**
+    and using **AWS_IAM** authorizer is much more complicated than using the the Cognito
+    authorizer and our demo application doesn't need this because we use the Authorizer
+    ID to identify a user and not the Cognito ID. Besides, as we have configured the
+    IoT role policy, it's impossible for one user to receive a message created to
+    another user, even if a malicious user knows the other user's Identity. The worst
+    case scenario would be for a malicious user to trigger unwanted messages to other
+    users, which will happen only if the other user credentials were compromised.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, in our case, we are going to send Cognito ID from the frontend to the backend
+    using the `AWS.config.credentials.identityId` parameter in the `Checkout` request.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sending IoT messages with Lambda
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We have modified the application to subscribe the authenticated user to a public
+    and a private topic. What we are going to look at now is how to send a message
+    to this private topic using a Lambda function by performing the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first step is to modify the `serverless.yml` file to give explicit permissions
+    to allow access to `iot:Publish`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For our example, we are going to use the `processCheckout` function. The user
+    will click on Checkout and this action will trigger a Lambda function that will
+    publish a message to the user topic. The result will be the notification icon
+    changing color to notify the user that a new message is available:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/2f41c9a6-9107-4819-b8c1-3a9c899e425b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Changing the frontend application is a simple task, so it will be an exercise
+    for the reader. Regarding the backend code, we are going to use the following
+    code for the `processCheckout` function:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Remember that the `userId` variable was retrieved in the previous chapter by
+    analyzing the `event` object: `event.requestContext.authorizer.claims.sub`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, you learned how to create serverless notifications using the
+    AWS IoT service. We covered how to implement a live comment system and push notifications
+    for individual users. You already know how to use the AWS IoT Device SDK and how
+    to use the IoT to trigger Lambda functions or to use a Lambda to send messages
+    to an IoT endpoint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will finish the online store, showing how to test our
+    serverless application, followed by the definition of a deployment workflow for
+    development and production environments, and we will finish off by showing what
+    you can (and should) monitor in a serverless solution.
+  prefs: []
+  type: TYPE_NORMAL

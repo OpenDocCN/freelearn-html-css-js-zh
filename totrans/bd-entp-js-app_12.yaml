@@ -1,0 +1,2305 @@
+- en: Security – Authentication and Authorization
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So far in this book, we have developed a simple API that allows anonymous users to
+    create, retrieve, modify, and delete users. This is insecure and impractical for
+    any real-world applications. Therefore, in this chapter, we will begin to secure
+    our API by implementing a rudimentary **authentication** and **authorization**
+    layer on top of it. This will also give us a chance to practice the TDD process
+    and work with the CI servers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The purpose of this chapter is to show you how to implement a *stateless* authentication
+    and authorization scheme using **JSON Web Tokens** (**JWTs**). Being stateless
+    is extremely important to ensure the scalability of our application, something
+    which we will discuss in [Chapter 18](5d093a43-720f-4ea8-aac0-b64b13f96d12.xhtml),
+    *Robust Infrastructure with Kubernetes*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By the end of this chapter, our API will be *more* secure than its current state,
+    but there'll still be a lot more steps we need to take to truly secure it. It'll
+    be impossible to cover all security-related topics, and thus we will focus on
+    the basics, and we'll provide you with pointers at the end of the chapter if you
+    are interested in implementing further security measures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'By completing this chapter, you will:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understand **encoding**, **hashing**, **salting**, **encryption**, **block ciphers**,
+    and other cryptographic techniques
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understand and implement **password-based authentication**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understand and implement **token-based authentication** using JSON Web Tokens
+    (JWTs)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implement authorization checks to make sure users can only perform actions that
+    we allow
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What is Authentication?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '*Authentication* is a way for a user to identify themselves, for example, using
+    a combination of a username and password. Once the server is able to determine
+    the identity of the user (the user has authenticated), the server can then grant
+    this user limited permissions to perform certain actions. This process of granting
+    permissions is known as *authorization*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/3f6e2895-e10a-4317-b0bc-07627daa60f9.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: For example, we might want to allow anonymous users to create new user accounts,
+    but we don't allow them to update existing users. For an authenticated user, we
+    might allow them to update their own user profile, but not the profile of a different
+    user; if the user tries to edit someone else's profile, they'll get an error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introduction to password-based authentication
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When the client sends a request to create a new user, our server already requires
+    them to provide an email and password. Therefore, the simplest way for us to implement
+    an authentication layer is to use the users' passwords.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the most simplistic scheme, the user must send their email and password with
+    every request. Upon receipt of the request, our API server can then compare these
+    credentials with the ones stored in our database; if there's a match, then the
+    user is authenticated, otherwise, they are not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'While the preceding process allows us to authenticate a user, it is not necessarily
+    secure for the following reasons:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The password is kept in plaintext. According to a report by Ofcom ([ofcom.org.uk/about-ofcom/latest/media/media-releases/2013/uk-adults-taking-online-password-security-risks](https://www.ofcom.org.uk/about-ofcom/latest/media/media-releases/2013/uk-adults-taking-online-password-security-risks))
+    the communications regulator in the UK, more than half of internet users reuse
+    their passwords across multiple sites. Therefore, whoever has the user''s plaintext
+    password for one platform can potentially access the user''s account on other
+    platforms, such as social media and banking accounts. Therefore, having the password
+    kept as plaintext means the following:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The client must trust our API server not to do anything erroneous with the password
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If the server and/or database was ever compromised, the hacker would be able
+    to read the plaintext passwords
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Malicious third parties may eavesdrop on the communication between the client
+    and the server using **Man-in-the-Middle** (**MITM**) attacks and be able to extract
+    the user's plaintext password
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Passwords can be **brute-forced**: a malicious party can try out common passwords
+    or even just attempt every combination of characters until one succeeds.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Therefore, we should enforce strong passwords to prevent brute-force attacks,
+    and also **cryptographically hash** the password before sending it over the wire.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hashing passwords
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Generally speaking, a **hashing function** maps data of an arbitrary size (called
+    a **message**, or **initialization vectors**) to data of a fixed size (called
+    a **digest**):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: When used in a security context, a hashing algorithm is used to obfuscate a
+    piece of information, such as a password.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, if we use the hashing function **MD5** to hash the passphrases `healer
+    cam kebab poppy` and `peppermint green matcha ceylon`, it will produce the hash
+    digests `b9f624315c5fb5dca09aa194091fccff` and `e6d4da56a185ff78721ab5cf07790a2c`.
+    Both digests have a fixed size of 128 bits (represented as hexadecimal) and both
+    strings look pretty random. The MD5 algorithm also has the property of being **deterministic**,
+    which means if we run the algorithm using the same message again, it will always
+    produce the same digest.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Therefore, in theory, when the user first registers, we can require the client
+    to hash their password before sending it over to the server; this way, no one
+    except for the client will know what the original password is. The server would
+    then store the digest in the database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next time the same user wishes to authenticate with the server, they should
+    again hash the password and send the digest to the server. Because MD5 is deterministic,
+    the same password should result in the same digest. This allows the server to
+    compare the digest provided in the request with the digest stored in the database;
+    if they match, the server can authenticate the user, *without knowing what the
+    password actually is*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cryptographic hash functions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'However, MD5 is not a suitable algorithm for hashing passwords because although
+    the digests look like gibberish, there are now tools that can use the digest to
+    reverse-engineer the password. To hash passwords, we need to use a special class
+    of hash functions called **cryptographic hash functions**, which have the following
+    special properties:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Deterministic***:* Given the same message, they will always produce the same
+    digest.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**One-way**: The message, or a part of the message, cannot be reverse-engineered
+    from the digest. The only way to obtain the original message from the hash is
+    to try every possible value for the message to see if the generated hash matches.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Exhibits the avalanche effect**: A small change in the message would produce
+    a drastically different digest. This prevents a cryptoanalyst from finding patterns
+    between hashes and narrowing down the possible combinations for the message.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Collision-resistant**: Two different messages should produce two different
+    digests. The chance of two different messages producing the same digest is minuscule.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Slow**: This may seem counterintuitive, but when hashing is used for security,
+    a slower algorithm discourages brute-force attacks. Here''s a case in point: a
+    hashing function that takes 1 ms to execute can produce 1 billion hashes in 11.5
+    days. A hashing function that takes 40 ms to execute can produce 1 billion hashes
+    in 463 days, which is a significantly longer time. However, to a normal user,
+    the difference between 1 ms and 40 ms is negligible. In other words, we want our
+    algorithm to be slow for an attacker, but not for legitimate users.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Robust**: It must stand the test of time.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Picking a cryptographic hashing algorithm
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Since MD5 violates the one-way constraint, we must pick a more suitable cryptographic
+    hash function. There are a myriad of hashing algorithms available. Here's a list
+    of some of the most popular ones: **MD4**, **MD5**, **MD6**, **SHA1**, **SHA2**
+    series (including **SHA256**, **SHA512**), **SHA3** series (including **SHA3-512**,
+    **SHAKE256**), **RIPEMD**, **HAVAL**, **BLAKE2**, **RipeMD**, **WHIRLPOOL**, **Argon2**, **PBKDF2**,
+    and **bcrypt**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: MD5 and SHA-1 were extremely popular when they were introduced, and were seen
+    as robust cryptographic hashing algorithms at the time, but have since been replaced
+    by more modern cryptographic hash functions such as PBKDF2 and bcrypt.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Algorithms can become unsuitable due to the following factors:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Collisions can be engineered**: Collisions are inevitable, and given enough
+    time and resources, the original message can be brute-forced from the hash.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: However, if someone can *purposefully* engineer two different messages to produce
+    the same hash, this means they could potentially authenticate another user without
+    knowing the password. This usually requires a lot of computing power and time.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Thus, an algorithm can be assumed to be collision-resistant if it would take
+    an unworldly amount of time/resources to generate a collision, so that the information
+    they may potentially obtain is not worth the time and resources they must invest
+    into obtaining it.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: However, since cryptography plays such a fundamental role in security, cryptographic
+    hashing algorithms are heavily analyzed in academia. Often, researchers would
+    intentionally try to generate collisions in algorithms (both MD5 and SHA-1 were
+    dethroned in this fashion).
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '**Advances in processing speeds**: Cryptographic algorithms are meant to be
+    slow. If the speed of processors increases, it means a malicious party can spend
+    less time/resources to crack a password. Eventually, advances in processing speed
+    can make an algorithm unsuitable.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To mitigate collisions, an algorithm should be complex enough and hard to reverse-engineer.
+    It should also produce a digest of sufficient length to reduce the probability
+    of collision (it would be harder to generate collisions for 1024-bit digests than
+    for, say, 128-bit digests).
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: To mitigate the advances in processing speeds, modern algorithms employ a method
+    called **hash stretching** (such as **key stretching**), which allows the algorithm
+    to dynamically change the speed of the algorithm.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Hash stretching
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Hash stretching slows down an algorithm by repeating the cryptographic hash
+    function many times over. For example, instead of hashing the password once with
+    SHA-256, we run the SHA-256 on the resulting hash again and again:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The benefit of this method is that you can change the number of iterations to
+    change the time required to run the function. For instance, if the computing power
+    has doubled in the past few years, you can simply double the number of iterations
+    to keep the same level of security.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hash stretching algorithms
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: There are three modern algorithms that utilize hash stretching: **Password-Based
+    Key Derivation Function 2** (**PBKDF2**), **bcrypt**, and **scrypt**. The difference
+    between PBKDF2 and bcrypt is that bcrypt costs more to run on GPU than PBKDF2,
+    and is therefore harder for an attacker to parallelize the operations using many
+    GPUs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both PBKDF2 and bcrypt use a small and constant amount of memory, which makes
+    them vulnerable to brute-force attacks using **application-specific integrated
+    circuit chips** (**ASICs**) and/or **field-programmable gate arrays** (**FPGA**).
+    scrypt was invented to tackle this issue, and allows you to adjust the amount
+    of RAM required to compute the hash. However, scrypt was only published in 2009,
+    and has not been battle-tested as much as the other two algorithms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Therefore, in this book, we will use the bcrypt algorithm, since it's been around
+    since 1999 and no vulnerabilities have yet been found.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Preventing brute-force attacks against a single user
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'While hashing our password obfuscates it, a malicious party may still be able
+    to obtain the password of a targeted victim through the following means:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Dictionary attacks**: Exploit the fact that many users use common passwords
+    (such as `qwertyuiop`). In dictionary attacks, a malicious party would use a program
+    to try tens of thousands of the most likely passwords in the hope that one would
+    succeed.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Brute-force attacks**: This is similar to a dictionary attack, but the program
+    is run through **all** possible messages within a defined range (for example,
+    all strings with lowercase letters under 13 characters, starting at `a`, `b`... `aa`, `ab`, `ac`, and
+    going all the way to `zzzzzzzzzzzzz`).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Even if our passwords are hashed, a malicious party can pre-generate a table
+    of pre-hashed entries (also called **lookup tables** or **rainbow tables**) and
+    attempt to authenticate with the hashes instead of the plaintext passwords; the
+    underlying principle is the same.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Furthermore, if the malicious party is able to obtain the password hash of the
+    user (for example, by eavesdropping on the communication), it can search for the
+    same hash in the lookup table, and be able to determine the original password
+    from the lookup.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Protecting against brute-force attacks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Fortunately, there's a very simple mechanism we can employ to mitigate lookup
+    table/rainbow table attacks, by making the password very long.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The number of possible hashes scales exponentially with the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The length of the password
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The range of possible characters for each character in the password
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Let's suppose our passwords can contain lowercase letters, uppercase letters,
+    and numbers; this gives us 62 unique possibilities for each character. If we have
+    a one-character password, that means we only have to generate a rainbow table
+    with 62 (62¹) entries to be guaranteed a match. If we have a password that has
+    a maximum of two characters, there are now 3,906 (62¹ + 62²) possible combinations.
+    If we allow passwords up to 10 characters, that's 853,058,371,866,181,866, or
+    853 quadrillion combinations (62¹ + 62² + 62³ + 62⁴ + 62⁵ + 62⁶ + 62⁷ + 62⁸ + 62⁹ +
+    62^(10)). Although that sounds like an unimaginably large number, there are machines
+    that can calculate hundreds of billions of hashes per second. Therefore, it'll
+    take about a month to go through all those combinations—still not very secure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, if the maximum length of the password becomes 20 characters, then it'll
+    take 715, 971, 350, 555, 965, 203, 672, 729, 121, 413, 359, 850, or 715 decillion,
+    iterations to generate all passwords of 20 characters. Those extra 10 characters
+    mean it's now 839 quadrillion times harder to generate all password combinations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Therefore, by implementing a reasonable password policy, it will deter hackers
+    from even attempting to brute-force attack you. A reasonable policy may read as
+    follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Password must be at least 12 characters long
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Password must include at least one special character (`!£$^&()+-=[]}{:@;<>.,`)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: With our list of 21 special characters, our character range is now increased
+    to 83\. Therefore, a hacker would have to calculate 108193544418400894220040,
+    or 108 sextillion, hashes in order to guarantee a match on the password.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alternatively, you may encourage the user to use a **passphrase**, which is
+    a few unrelated words chained together; for example, `correct horse battery staple` (a
+    reference to this XKCD comic: [xkcd.com/936](https://xkcd.com/936/)). This ensures
+    that the password is long enough that the lack of character range doesn't matter.
+    The attacker would have to try a huge number of combinations before it arrives
+    at your passphrase.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reverse lookup table attacks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: By hashing the password on the client before it is transmitted and enforcing
+    a strong password policy will protect against brute-force attacks against a single
+    user. However, if a malicious party is able to obtain a substantial portion of
+    the user database, they can instead perform another type of attack called a **reverse
+    lookup table attack**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this attack method, the malicious party would search the compromised database
+    for digests whose original message is already known, in order to obtain a list
+    of user accounts that use that digest, and thus the same password.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Protecting against reverse lookup table attacks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Fortunately, we can easily prevent reverse lookup table attacks by appending
+    a long, high-entropy, random string to the beginning or end of the user's password
+    before it gets hashed. This random string is called a **salt** and can be publicly
+    known.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s how it works: on the client, instead of hashing only the password,
+    the client would first generate a random salt (for example, using the `crypto` package),
+    and hash the concatenated string made up of the password and the salt:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The client would then send the salted password's digest, alongside the salt,
+    to the server. The server would then store both the digest and the salt in the
+    user document.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next time the user wants to log in, they would first submit their user ID/username
+    to the server. The server would find the salt associated with the user and send
+    it back to the client. Next, the client would hash the password with the salt
+    and send the digest back to the server. The server then compares the digest in
+    the request against the digest in the database; if it matches, it would authenticate
+    the user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The purpose of the salt is to make a potentially common password uncommon. So,
+    even if two users have the same password, the final password digest would be different.
+    Therefore, even when an attacker has deciphered the password to a hash, they would
+    not be able to use a lookup table to identify any other users that use that same
+    password, because their password digests would be different.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The longer the salt, the more uncommon the password and salt combination is
+    likely to be. A 16-character string would probably be enough, but since data storage
+    and bandwidth at this scale is cheap, it's not a bad idea to go overkill. Therefore,
+    we recommend a 256-bit salt, which means a 32-character salt.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The salt is not something that needs to remain a secret. If an attacker wishes
+    to target a specific account, they can easily obtain the salt for that user. But
+    because each salt is different, an attacker would need to generate a new rainbow
+    table for each unique salt. And if the user already has a relatively long password
+    to begin with, this would not be feasible. (Imagine if the user's password is
+    10 characters, that's hundreds of quadrillions of calculations just to crack one
+    user account.) Therefore, salting renders lookup and reverse lookup tables ineffective,
+    as an attacker cannot practically pre-compute a list of hashes for all salts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing password-base authentication
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Armed with the knowledge of hashing and salting, we'll now implement a password-based authentication
+    layer on top of our existing API using the bcrypt algorithm. First, we'll need
+    to update our `Create User` endpoint to accept a bcrypt digest instead of a password. Since
+    we are following TDD, we will update the E2E tests first, before updating the
+    implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Updating existing E2E tests
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'First, in the Gherkin specifications and Cucumber code, update anything related
+    to passwords to use digests instead; this includes both the step description,
+    step definitions, and sample data. For example, you may make the following changes
+    in the E2E tests for the Bad Client Requests scenario of the `Create User` feature:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Try doing a global search and in the `spec/cucumber` directory, replacing the
+    word `password` with `digest`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To generate a dummy bcrypt digest, try Googling online bcrypt generator; there
+    are many free online tools available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generating a random digest
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Inside our code bundle, there is a `createUser` function that we use to generate
+    dummy users for our tests. At the moment, it is using the `crypto.randomBytes()`
+    method to generate a random 32-character hexadecimal string to use as the password.
+    To produce a digest from this password, we can use a package from the [npmjs.com](https://npmjs.com)
+    registry.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Picking a bcrypt library
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'There are several bcrypt libraries that are available for JavaScript:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`bcrypt` ( `node.bcrypt.js`): This is the most performant and efficient implementation
+    of the bcrypt algorithm because it uses the C++ implementation and simply binds
+    it to Node. However, it has a lot of dependencies and restrictions that make it
+    messy to work with, notably:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Python 2.x.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`node-gyp`: Because `bcrypt` is written as a Node.js add-on, it is written
+    in C++ and must be compiled for your machine''s architecture before it can be
+    used. This means that it must depend on `node-gyp` for its building and installation
+    process. `node-gyp` only works with Long Term Support (LTS) versions of Node.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`bcryptjs` ([npmjs.com/package/bcryptjs](https://www.npmjs.com/package/bcryptjs)): A
+    standalone JavaScript implementation of bcrypt that does not have external dependencies.
+    Because it is not running on a low-level language like C++, it is slightly (30%)
+    slower. This means that it cannot process as many iterations per unit time as
+    a more efficient implementation. It has the same interface as the `bcrypt` package
+    and can also be run in the browser, where it relies on the standardized Web Crypto
+    API to generate random numbers.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`bcrypt-nodejs`: An unmaintained predecessor to `bcryptjs`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Therefore, the choice is between performance (`bcrypt`) and the ease of setup
+    (`bcryptjs`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Don't get confused. A cryptographic hashing algorithm should be slow; the slower
+    it is, the more secure it is. However, you should always assume that an attacker
+    uses the quickest *implementation* of the algorithm possible, and thus we should
+    also use the quickest implementation whenever possible. Therefore, purely from
+    a security point of view, the `bcrypt` package is preferred to `bcryptjs` because
+    it is the quickest implementation for JavaScript.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will use the `bcryptjs` package for now, as it is the simplest to set up.
+    But after you've completed all the exercises in this book, feel free to switch
+    to using the `bcrypt` package for an extra performance boost. Since the `bcryptjs` package
+    is 100% compatible with the `bcrypt` package, all you need to do is update the `import` statement;
+    everything else can be kept the same.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the bcryptjs library
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'First, let''s install it as a development dependency:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, import the `genSaltSync` and `hashSync` methods from the `bcryptjs` module
+    and use them to generate a salt and digest. We will also store the salt and digest
+    in the context to help us make assertions in subsequent steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Normally, we would use the asynchronous version of the hash method. However,
+    since we are writing a test, which cannot continue anyway unless this step has
+    completed execution, we can use the synchronous method to save us an extra line
+    returning a promise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `genSaltSync` function has the following function signature:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, `rounds` determines how many rounds of hash stretching bcrypt should perform;
+    the higher the number, the slower the digest is to generate and verify. The default
+    is `10`, which is what we are using here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we run our tests now, the unit and integration tests should still pass, but
+    the E2E tests will fail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Validating a digest
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Next, we need to specify a new scenario outline to assert that `POST /users`
+    requests with an invalid `digest` payload property should receive a `400 Bad Request`
+    response. Your scenario outline may look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Updating an existing implementation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Now that we have updated our existing tests, it''s time to update our implementation
+    to make the tests pass again. Let''s start with updating the Create User JSON
+    schema, replacing the `password` property with the `digest` property:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'However, it is not enough to simply validate the data type of the `digest`
+    property; we need to check that the `digest` string is a legitimate bcrypt digest.
+    Fortunately, all bcrypt digests have the same general structure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/c0ee0f6d-25b5-4736-93b2-458a37c59deb.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Therefore, we can use the following regular expression to match valid digests:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To explain this regular expression, let''s break it down:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`\$2[aby]?\$`: This matches the algorithm that''s used. Valid values are `2`, `2a`, `2y`, and `2b`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`\d{1,2}\$`: This matches the cost, or the number of rounds, which is an integer
+    between 4 and 31 (inclusive).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`[.\/A-Za-z0-9]{53}`: This matches the salt and the hash, with the salt making
+    up the first 22 characters and the hashed password making up the last 31.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'So, let''s update our digest sub-schema to include this pattern:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: The pattern we used in the schema contains extra backslashes to escape the backslashes
+    in our regular expression.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, if a client-provided password digest does not match against this pattern,
+    the Create User validator would return a `ValidationError` object where the `keyword`
+    property is set to `"pattern"`. We can use this fact to return a custom message
+    to inform the client that the provided digest is invalid.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Add the following lines to `src/validators/errors/messages/index.js`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Lastly, don''t forget to write unit tests that cover this new logical branch:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, in our Retrieve User and Search User engines (defined in `src/engines/users/`),
+    make sure we are excluding the `digest` field when querying for the User object,
+    for example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, run the E2E tests again and confirm that they are passing. Once that's
+    done, update the unit and integration tests so they'll pass as well. Lastly, commit
+    the changes to a new branch called `authentication/main`, push that branch to
+    GitHub, and check the results on the Travis and Jenkins CI servers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retrieving the salt
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The updated Create User endpoint now requires users to specify their credentials
+    in the form of a bcrypt digest, which we store in our Elasticsearch database.
+    The next thing we need to do is implement a system where we can authenticate any
+    subsequent requests by comparing the digest provided by the client and the digest
+    we store in our database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But in order for the client to regenerate the same digest, they must be provided
+    with the same salt and parameters. Therefore, our API needs to create a new endpoint
+    for our client to retrieve the salt.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As with other features, we start our development by writing E2E tests. Create
+    a new feature specification at `spec/cucumber/features/auth/salt/main.feature` and
+    add the following scenarios:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Use what you have learned to implement the undefined steps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing the Retrieve Salt endpoint
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We should keep the implementation of the Retrieve Salt endpoint consistent with
+    our existing endpoints, and thus we should create a handler and an engine for
+    it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing a Retrieve Salt engine
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Create a new Retrieve Salt engine at `src/engines/auth/salt/retrieve/index.js`.
+    In it, we need to use the Elasticsearch client''s `search` method to find the
+    user''s document by email, extract the digest from the document, and then extract
+    the salt from the digest:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This function requires the `getSalt` method from the `bcrypt` library, which
+    would be injected by the handler function. Next, create a file at `src/handlers/auth/get-salt/index.js` to
+    house the handler function, which simply passes the request on to the engine and
+    generates standard responses based on the result of the engine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Lastly, in `src/index.js`, import the engine and handler and use it to create
+    a new endpoint:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Since we are now using the `bcryptjs` package in our implementation code, and
+    not just our test code, we should move it from `devDependencies` to `dependencies`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Lastly, we should also modify the `injectHandlerDependencies` function to pass
+    through the `getSalt` dependency:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, when we run the E2E tests, they should all pass.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generating a salt for non-existent users
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: However, what happens when the client tries to get the salt of a non-existent
+    user? At the moment, since we are not handling the case where Elasticsearch comes
+    back with zero search results, our API will respond with a `500 Internal Server`
+    error. But how *should* our API respond?
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we respond with a `404 Not Found` error, then anyone with an API testing
+    tool such as Postman will be able to determine whether a user with that email
+    has an account on our platform. Imagine if our platform is not a public user directory,
+    but a customer portal for personal/medical services such as plastic surgery centers,
+    fertility clinics, or law firms; it'd be embarrassing for the clients if someone
+    found out that he/she is registered with the service simply by typing in his/her
+    email and not getting a "User not found" message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Whether the consequences are potentially embarrassing or not, it is generally
+    a good practice to expose as little information as possible. This is an extension
+    of the principle of least privilege, where a system should only expose the minimal
+    amount of information for an entity to carry out its functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Therefore, returning a `404 Not Found` error is not appropriate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So, what''s the alternative? Since all our bcrypt salts have the same length
+    (the sequence `$2a$10$` followed by 22 characters) and a valid character range,
+    we can simply generate a new salt using `bcrypt.genSaltSync()` and return this
+    as the salt. For example, we can define the following catch block at the end of
+    our `getSalt` engine module:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: However, someone looking to exploit our API can send multiple requests, observe
+    that each salt that is returned is different, and deduce that this is not a real
+    user (because a user is likely to have the same salt within a short space of time).
+    So, even though generating a new random string for non-existent users will slow
+    down such an attacker, our API would still be leaking too much information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead, we can use a **pseudorandom number generator** (a **PRNG**, which is
+    a type of **deterministic random bit generator** (**DRBG**)). PRNGs generate a
+    number sequence that appears to be random, but is actually determined based on
+    an initial value (called the **seed**). Therefore, we can use the user's email
+    address as the seed, and use it to generate a seemingly random number sequence,
+    somehow transform it into a 22-character string, prepend the sequence with `$2a$10$`,
+    and send it back to the client as the salt value for that user. This way, a persistent,
+    non-changing salt is returned, regardless of whether the user exists or not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing E2E tests
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'So first, let''s write a new scenario that''ll test two things:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When querying for the salt of a non-existent user (identified by email), it
+    will return a string with the right character count and character range
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When querying for the salt of the same non-existent user over multiple requests,
+    the salt returned should be the same
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Your feature file might look something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You''d also need to define the following step definition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Run the tests and see them fail. Once you've done that, we are ready to implement
+    the feature.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: JavaScript's `Math.random()` does not provide an option to provide a seed, but
+    there are libraries out there that implement a PRNG in JavaScript. Two of the
+    most popular ones are `seedrandom` and `random-seed`. Out of the two, the `random-seed`
+    package provides a `string(count)` method that'll generate a random string instead
+    of a random number; because of this convenience, we will use the `random-seed`
+    package to generate our fake salt.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, let''s install it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, create a new file at `utils/generate-fake-salt.js` and define a new `generateFakeSalt`
+    function that will output a fake salt based on the email of the user:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, inside the `retrieveSalt` engine, add a `catch` block at the end that
+    will use the `generateFakeSalt` function if the user cannot be found:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Again, import the `generateFakeSalt` utility function in `src/index.js`, and
+    pass it down to the engine through the handler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, run the E2E test suite again and the tests should pass. Add some unit and
+    integration tests to cover these new blocks of code. When you finish, commit the
+    changes and move on to the next step.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Login
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The client is now able to do the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Specify a password digest when creating a new user
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Query for the digest salt
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This means that the client can now use the same salt and password combination
+    to regenerate the exact same hash that it provided when creating the user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This means that when the client wants to perform an action that requires authorization
+    (such as updating its own profile), it can send its email and the digest to the
+    API server, and our server will try to match them with the database records; if
+    there's a match, the user is authenticated and the action is allowed to go ahead,
+    otherwise, an error response is returned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'While globally carrying out this authentication process on each request would
+    work, it is not ideal for the following reasons:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The client would have to store the credentials locally. If this is done improperly
+    (for example, as a cookie that has not been marked as secure), then other programs
+    may be able to read it.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The server would need to query the database on each request, which is a slow
+    operation. Furthermore, it could overload the database if the API is receiving
+    heavy traffic, making it a performance bottleneck.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Therefore, instead of providing the full set of credentials with every request
+    that requires authorization, we should implement a Login endpoint, where our users
+    are able to provide their password just once. After successfully authenticating
+    themselves with the Login endpoint, the API would respond with some kind of identifier,
+    which the client can attach to subsequent requests to identify themselves. Let's
+    implement our Login endpoint now, and we will deal with what this identifier actually
+    is shortly after.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing tests
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'First, we begin our development by writing tests. Since the validation logic
+    of the Login endpoint works in the same way as our endpoints, we can simply copy
+    those scenarios from our other tests:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we can specify scenarios specific to the Login endpoint:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the second scenario (`Login attaching a well-formed payload`), the response
+    body should be an identification object. However, before we decide on how to implement
+    this object, we can simply test that a string is returned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing Login
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'As before, let''s implement the Login engine first. Like our other engines,
+    we are first using a validator to validate the request object. Once the request
+    is validated, we then use the Elasticsearch client''s `search` method to see how
+    many user documents match the email and digest provided. If there are non-zero
+    documents, then a user with these credentials exists, and the engine should resolve
+    with a token (we are using a placeholder string for now). If there are no users
+    that match these credentials, it means that those credentials are invalid, and
+    the engine should return with a rejected promise:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When searching in Elasticsearch, there are certain characters that must be
+    escaped. We are using the `special-escape` npm package to escape our email and
+    bcrypt digest before passing it to Elasticsearch. Therefore, we must add this
+    package to our repository:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we move on to the request handler. Create a new file at `src/handlers/auth/loginindex.js` with
+    the following function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we need to define a validator for the Login endpoint payload. Fortunately
+    for us, the Login payload has the same structure as the Create User payload, and
+    so we can simply reuse the Create User validator. However, to make it explicit,
+    let''s create a file at `src/validators/auth/login.js` with the following two
+    lines:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Lastly, import the handler, engine, and validator in `src/index.js` and define
+    a new route:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, run the E2E tests again and they should be green.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keeping users authenticated
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Now that our API server can authenticate users, what identifier should we return
+    to the client so they can attach it in subsequent requests? Generally, there are
+    two types of identifiers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Sessions IDs**: After the client has successfully authenticated, the server
+    assigns this client a session ID, stores the session ID in the database, and returns
+    it to the client. This session ID is simply a long, randomly generated text that
+    is used to identify the user''s session. When the client sends a request and supplies
+    the session ID, the server searches its database for a user with that **session**,
+    and assumes that the client is the user associated with that session ID. The idea
+    is that because the string is long and random enough that no one would be able
+    to guess a valid session ID, it''s also long enough that someone is unlikely to
+    be able to duplicate that session ID.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Claims (tokens)**: After the client has successfully authenticated, the server
+    retrieves information that can identify the user (for example, their ID, username,
+    or email). If the system also supports different levels of permissions (for example,
+    edit profile and delete profile) or roles (such as admin, moderator, and user),
+    these should also be retrieved.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All this information, called **claims** (or a **claim set***,* if there are
+    more than one), is formatted into a standardized format and signed using a key,
+    producing a **token**. This token is then sent back to the client, which attaches
+    it to every request that requires authentication. When the server receives a request
+    with a token, it will use the key to verify that the token originated from the
+    API server and has not been altered. Once a token is verified, the server can
+    trust the claims presented by the token.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'We will use tokens over session IDs because of the following factors:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Stateless**: With session IDs, the server still needs to perform database
+    reads in order to ascertain the identity and permission levels of a user, as well
+    as if the session has expired. With tokens, all the information is contained in
+    the claims of the token; the server does not need to store the token anywhere
+    and it can be verified without interaction with the database.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Reduced server load:** As an extension of being stateless, the server would
+    save a lot of memory and CPU cycles that would have gone into database reads.
+    Furthermore, if the user wishes to log out of the session, all they need to do
+    is delete the token. No actions are required on the server.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Scalability:** With session-based authentication, if the user logs in on
+    one server, the session ID saved in the database on that server may not replicate
+    quickly enough so that if a subsequent request was routed to a different server,
+    that server would not be able to authenticate that user. But because tokens are
+    self-contained, they include all of the information required to identify *and*
+    authenticate a user. The user would be authenticated on any server that has the
+    decryption key.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Information-rich**: A token can carry much more information than a session
+    ID can. With a session ID, the server would need to read the database and possibly
+    process the user data in order to determine whether the request should be carried
+    out.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Portable/transferable**: Any party that has the token has permission to perform
+    actions that the token allows, and tokens can be passed freely from one party
+    to another. This is useful when a user wishes to grant a third-party platform
+    limited access to their account. Without a token, they must give the third party
+    their ID and password, and hope that they don''t do anything malicious. With a
+    token, the user, once authenticated, can request a token with a certain set of
+    permissions, after which he/she can send it to the third party. Now, the third-party
+    can perform the actions it says it will perform, without knowing the user''s actual
+    credentials.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**More secure**: A session ID''s security depends on its implementation. If
+    the session ID can be easily guessed (for example, it''s a simple incremental
+    counter) then a malicious party can guess the session ID and hijack a legitimate
+    user''s session. With a token, the malicious party must know the key used to sign
+    the token in order to create a valid token.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Therefore, using a token as a means of conveying user authentication information
+    is preferred. But since a token is simply a set of claims in a specific format
+    signed using a key, there are many standards available. Luckily, **JSON Web Tokens** (**JWTs**,
+    pronounced "jots") have become the *de facto* standard for tokens, so the choice
+    is a no-brainer. They are also formally defined in RFC7519 ([tools.ietf.org/html/rfc751](https://tools.ietf.org/html/rfc751)).
+    We will use JWTs as the format for representing our claims in this project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: JSON web tokens (JWTs)
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Generally, a token is a string issued by a server, which allows the owner of
+    the token to perform specific actions on the server, for a specific period of
+    time. A JWT is a standard of token that "*safely* passes *claims* in space-constrained
+    environments."
+  prefs: []
+  type: TYPE_NORMAL
+- en: Anatomy of a JWT
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'A JWT is composed of three parts, separated by a period (`.`):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Header**: a JSON object that contains information about the token, such as
+    its type and the algorithm used to produce the signature, for example, `{ "alg":
+    "HS512", "typ": "JWT" }`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Payload**: A JSON object contains a set of claims, such as its identity and
+    permissions, for example, `{ "sub": "e@ma.il" }`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Signature**: A string that is either a **Message Authentication Code** (**MAC**)
+    or **digital signature**. The purpose of the signature is to ensure the *authenticity*
+    and *integrity* of the payload.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The header and payload are then base-64 encoded to ensure they are compact.
+    A simple JWT may look like this (new lines have been inserted for readability):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When the header and payload are base-64 decrypted, their information is once
+    again revealed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: Because JWTs are base-64 encoded, they are URL-safe. This means a JWT can be
+    supplied through the URL, in the body of an HTTP request, or as a value inside
+    an HTTP `Authorization` header.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let's examine each part of the JWT in more details, starting with the header.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Header
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The **Javascript Object Signing and Encryption** (**JOSE**) header is a JSON
+    object that provides information on a token''s type, method of construction, and
+    any metadata. The keys to the JOSE header have a special meaning:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`typ`: The media type of the JWT. It is recommended to use a value of `"JWT"`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`cty`: The content type of the JWT. This header should only be used in the
+    case of nested JWT, and its value must be `"JWT"` to indicate that the content
+    of the outermost JWT is also a JWT.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`alg`: The algorithm used to generate the signature.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: There are additional headers that are available depending on whether the JWT
+    is a **JSON Web Signature** (**JWS**) or **JSON Web Encryption** (**JWE**). You
+    can find the full list of headers at [iana.org/assignments/jose/jose.xhtml](http://www.iana.org/assignments/jose/jose.xhtml).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Payload and claims
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The payload of a JWT consists of one or more claims. There are three classes
+    of claims in JWT: registered, public, and private.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Registered claim names
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**Registered claim names** are reserved claim names that have special meanings.
+    They are defined in the JWT specification and can be found on the **Internet Assigned
+    Numbers Authority** (**IANA**) *JSON Web Token Claims* registry. Although these
+    names are reserved and have a special meaning, the way the server processes these
+    claims is completely up to the servers itself. All registered claims are optional:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`iss`: Issuer: The principal that issued the JWT. In our case, this would be
+    something like `hobnob`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`sub`: Subject: The entity that the claims apply to. In our case, this would
+    be the user''s email or ID.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`aud`: Audience: A list of all principals that are intended to process the
+    JWT. If the principal processing the claim does not identify itself with a value
+    in the `aud` claim when this claim is present, then the JWT *must* be rejected.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`exp`: Expiration Time: The time, in UNIX timestamp (seconds), on or after
+    which the JWT must be considered as invalid. However, the server may provide some
+    leniency (up to a few minutes) to account for cases where server clocks are not
+    synchronized.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`nbf`: Not Before: The time, in UNIX timestamp (seconds), before which the
+    JWT must be considered invalid.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`iat`: Issued At: The time, in UNIX timestamp (seconds), at which the JWT was
+    issued.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`jti`: JWT ID: A unique identifier for the JWT. It can be used to prevent replay
+    attacks if the JWT is meant to be used as a **nonce** (that is, a **one-time token**).
+    It can also be used to revoke tokens.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Claim names are short to minimize the overall size of the JWT, as a JWT needs
+    to be included in every request that requires authentication/authorization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Public claim names
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Anyone may define their own claim names as long as they don't clash with the
+    registered claim names. These claim names may be called **public claim names**
+    if reasonable precautions have been made to ensure that the name will not clash
+    with other claim names. Such precautions may include using namespaces that the
+    issuer controls, such as domain names.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Private claim names
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A **private claim name** is a user-defined claim name that's agreed upon between
+    the producer and consumer of the JWT. No effort is made to prevent a naming collision,
+    and so private claim names should be used with caution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example claim
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'For example, if our server wishes to grant a user with the email `e@ma.il`
+    permission to delete its own profile for one day (25 October 2017), then we may
+    issue a JWT with a payload that looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `iss`, `sub`, and `aud` claims must be of type `StringOrURI`. This means
+    that they can be any arbitrary string, but if they include a colon (`:`), they
+    must be a valid URI.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Signature
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Once we have a list of claims, or assertions, written inside the token, we must
+    sign it. This is because anyone can create a token with those claims, or even
+    tokens with different claims! We don't want to honor these tokens; we only want
+    to honor tokens that are generated by our own servers (are *authentic*) and have
+    not been tampered with (have *integrity*). We can do this by first attaching a
+    JWS signature to the token, and then validating it when the token is processed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A **digital signature** is different from a **JWS signature**, as a JWS signature
+    may also include Message Authentication Codes (MACs). When talking about JWTs,
+    the term "signature" or "signing a token" usually refers to a JWS signature, not
+    specifically a digital signature.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The supported algorithms for signing tokens are defined in the **JSON Web Algorithms**
+    (**JWA**) specification. Generally, there are two types of algorithms used for
+    signing a token:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Asymmetrically**, using a pair of **public/private keys** (for example, **RS256**,
+    **RS384**, and **RS512**)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Symmetrically**, using a **secret** (for example, **HS256**, **HS384**, and **HS512**)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Regardless of which algorithm is chosen, the base-64 encoded header and payload
+    are first concatenated together, separated by a period (`.`). This combined string
+    (`[base64Header].[base64Payload]`) is then passed into the algorithm to generate
+    the JWS signature:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, `k` is the secret or private key required for the algorithm. This is *always*
+    kept private.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This JWS signature is then concatenated to the end of the header/payload to
+    generate the complete JWT, which has the format `[base64Header].[base64Payload].[base64JwsSignature]`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When our server receives this JWT, it will regenerate a new JWS signature from
+    the header and payload values, as well as the secret key, and compare it with
+    the signature attached to the token. If there is a match, then our server can
+    be confident that whoever produced the token had access to our secret key. Since
+    our key is secret, then our server can be confident that we are the ones that
+    issued the token, and can trust the claims made by the token. However, if there
+    is a mismatch, it means that the token has either been signed with a different
+    key, or has been tampered with, and should not be trusted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, we understand *why* we need to sign the token (to ensure authenticity and
+    integrity), so let's take a look at the difference between the two types of signing
+    algorithms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Asymmetric signature generation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Asymmetric signature generation utilizes a pair of mathematically-related public
+    and private keys. They are related so that information encrypted by one key can
+    only be decrypted using the other key.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the context of JWTs, you can encrypt the header/claim set using the private
+    key to produce a *digital signature*, which gets attached to the base-64 encoded
+    header/claim set to produce a complete JWT. We would also make the public key
+    public so consumers of the JWT can decrypt it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since the public key can be publicly shared, the issuer (who generates the JWT)
+    and the consumer of the token (who validates it) can be different entities, as
+    they don't need to share the same key.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Examples of asymmetric signature generation algorithms include the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The **Rivest–Shamir–Adleman** (**RSA**) family, which uses the SHA hash algorithm,
+    and includes RS256, RS384, and RS512
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The **Elliptic Curve Digital Signature Algorithm** (**ECDSA**) uses the **P-256/P-384/P-521**
+    curve and SHA hash algorithm, and include **ES256,** **ES384**, and **ES512**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Symmetric signature generation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: With symmetric signature generation algorithms, both generation and validation
+    of the JWT require the same *secret*. Similar to before, we pass the base-64 encoded
+    header/claim set into the algorithm with the secret, and a **Message Authentication
+    Code** (**MAC**) is produced. The MAC is attached with the claim set and header
+    to produce the full JWT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Examples of symmetric signature generation algorithms include the *Keyed-hash
+    message authentication code (HMAC) with the SHA* hash algorithm, and includes HS256,
+    HS384, and HS512.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Picking an algorithm
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If our token is intended to be read by third parties, then an asymmetric signature
+    generation algorithm makes sense. This is because, on top of providing authenticity
+    and integrity, it asymmetric signature generation also provides the property of **non-repudiation** where
+    the issuer of the JWT cannot deny (or repudiate) that they issued the token.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With an asymmetric signature, only our server would have access to the private
+    key; this provides consumers of the JWT with confidence that the token was issued
+    by our server and nobody else. If we instead use symmetric signature generation,
+    we must securely share the secret with third party consumers so that they can
+    decrypt the token. But it also means the third-parties can use that secret to
+    generate more tokens. Thus, consumers of those JWTs would not have confidence
+    as to the real issuer of the token:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Cryptographic primitive | Integrity | Authentication | Non-repudiation |
+    Keys required |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Hash | Yes | No | No | None |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Digital signature | Yes | Yes | Yes | Asymmetric keys |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MAC | Yes | Yes | No | Shared symmetric secret key |'
+  prefs: []
+  type: TYPE_TB
+- en: However, in our use case, both the producer and consumer of the JWT are the
+    same entity (our API server); therefore, both types of algorithms can be used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: MACs are computationally easier to generate than digital signatures, and the
+    key size is also smaller for MACs; however, since asymmetric signature generation
+    provides more flexibility if we potentially want to allow third parties to decrypt
+    our tokens, we will go with the asymmetric algorithms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Technically, ES512 would be the ideal choice, as we can use a shorter key while
+    maintaining the same level of security. Because of this, ECDSA also uses fewer
+    resources to compute than RSA:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Symmetric Key Length (AES) | Standard asymmetric Key Length (RSA) | Elliptic
+    Curve Key Length (ECDSA) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 80 | 1024 | 160 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 112 | 2048 | 224 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 128 | 3072 | 256 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 192 | 7680 | 384 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 256 | 15360 | 512 |'
+  prefs: []
+  type: TYPE_TB
+- en: However, as ECDSA is still a relatively new set of algorithms, it does not receive
+    as much support from tools as the more established algorithms, such as RSA. Therefore,
+    we will use RSA with a key size of 4,096.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A note on encryption
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: At the moment, the header and payload are only base-64 encoded, which means
+    anyone can decode them and read their content. This also means that if we include
+    any sensitive information in the payload, anyone can read it. Ideally, we should
+    ensure that the JWT carries as little sensitive information as possible, just
+    enough for the consumer of the JWT to identify and grant permissions to the user. For
+    our use case, we will include only the user ID in the payload, which we'll be
+    treating as public information anyway, and so encrypting our token does not bring
+    much value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, it's important to understand that a JWT can be encrypted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Terminology and summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The preceding sections introduced a lot of new terms, which can be overwhelming.
+    Therefore, before we move forward, let's quickly review and expand on some of
+    the terminology used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A *claim* is made up of a key-value pair of a *claim name* and *claim value*.
+    A group of claims represented as a JSON object is a *claim set*; individual claims
+    within a claim set may also be referred to as *members* of a claim set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A *JSON Web Token* (JWT) is a string that includes the *JOSE Header* and the
+    claim set, and is signed and (optionally) encrypted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To generate the signature, the server must sign the header and claim set using
+    algorithms specified in the** JSON Web Algorithms** (**JWA**) specification, which
+    uses cryptographic keys as defined in the **JSON Web Key** (**JWK**) specification.
+    The combination of the header, claim set, and signature becomes the **JSON Web
+    Signature **(**JWS**).
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, the claim set can be base-64 decoded into plaintext and so the content
+    of the token is not private. Therefore, we can encrypt our claim set and JOSE
+    header using another algorithm defined in the JWA specification to ensure that
+    the sensitive data is kept private. This encrypted JWT is then a **JSON Web Encryption**
+    (**JWE**).
+  prefs: []
+  type: TYPE_NORMAL
+- en: JWS and JWE are two different representations of a JWT. In other words, a JWT
+    may have two flavors. In yet more words, the JWT must conform to either the JWS
+    or JWE specification. For authentication purposes, the usual procedure is to sign
+    a claim set to produce a JWS, and then encrypt the resulting JWS to produce a
+    JWE. The JWS is said to be *nested* inside the JWE structure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A JWT neither signed nor encrypted is said to be unsecured.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Responding with a token
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we know how JWTs work, let's start implementing JWTs by first returning
+    a JWT when the user successfully authenticates for the first time. For our simple
+    use case, which does not require different permission levels, we'll simply include
+    a single `sub` claim in the payload and set its value to the user's email.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding E2E Tests
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'To get started, we will simply test that our `POST /login` endpoint returns
+    with a JWT that contains the user''s email as the payload. At the end of the `Login
+    attaching a well-formed payload` scenario, add the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The second step (`And the JWT payload should have a claim with name sub equal
+    to context.email`) is undefined. To implement it, we must split the token up into
+    three parts, header, payload, and signature; perform base64-decoding on the JWT
+    payload; and then check that its `sub` property is equal to the expected user
+    ID. Instead of implementing this logic ourselves, however, we can simply use the
+    `jsonwebtoken` package. So let''s add it as a normal dependency, as we will need
+    it for the implementation code as well:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, in `spec/cucumber/steps/response.js`, add the following step definition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: Run the tests, and these two steps should fail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'As discussed previously, we will be using the RSA algorithm to generate the
+    signature of our JWT, which requires the generation of private and public keys.
+    Therefore, the first thing we must do is to generate the key pair. We can do this
+    locally using the `ssh-keygen` command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, we are using the `-t` flag to specify that we want to generate an RSA
+    key pair, and the `-b` flag to specify a key with a bit size of 4,096\. Lastly,
+    we use the `-f` flag to specify where we want the key to be stored. This will
+    generate a private key that looks like this (truncated for brevity):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It will also generate a public key that looks like this (truncated for brevity):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'However, the `jsonwebtoken` package expects our RSA key to be PEM-encoded,
+    and thus we must perform one more step to export the public key as an encoded
+    PEM file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This will produce a key similar to the following (truncated for brevity):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we don''t want to commit these key files into the history of our repository,
+    for several reasons:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Anyone with access to the repository will be able to get a copy of the keys
+    (most importantly the private key), and be able to impersonate the real server.
+    The private key should be known by as few parties as possible; not even the developers
+    should need to know the production keys. The only people who need to know are
+    the system administrators who manage the server.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If our keys are hardcoded into the code, then if we want to change these keys,
+    we'd have to update the code, make a commit to the repository, and redeploy the
+    entire application.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: So, what's a better alternative?
+  prefs: []
+  type: TYPE_NORMAL
+- en: The most secure alternative is to use a **Trusted Platform Module** (**TPM**),
+    which is a microcontroller (a computer chip) that is embedded into the motherboard
+    of the server and allows you to securely store cryptographic keys. If you encrypt
+    your development machine, the key it uses to encrypt and decrypt your machine
+    is stored in the TPM. Similarly, you can use a **Hardware Security Module** (**HSM**),
+    which is similar to a TPM, but instead of being embedded into the motherboard,
+    is a removable external device.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, using a TPM and HSM are not a viable option for most cloud servers.
+    Therefore, the next best thing is to store the keys as environment variables.
+    However, our keys span across multiple lines; how do we define multi-line environment
+    variables?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Multiline environment variables
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'At the moment, we are using the `dotenv-cli` package to load our environment
+    variables when running our application, which supports multi-line variables as
+    long as you enclose the variable in double quotes (`"`) and replacing the newline
+    characters with `\n`. Therefore, we can define our keys by adding the following
+    entries (truncated for brevity) into our `.env`, `.env.example`, `test.env`, and
+    `test.env.example` files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: Generating the token
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Then, in `src/index.js`, import the `sign` method from the `jsonwebtoken` package
+    and pass it down to the engine through the handlers. Then, update the engine function
+    to return a signed JWT when a user is found with those credentials. Note that
+    we are using the private key, stored at `process.env.PRIVATE_KEY`, to sign the
+    token:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, run our tests again and they should all pass.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Attaching the token
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We are now providing the client with a token they can use in place of their
+    email/password, but how should they attach it to subsequent requests? Generally,
+    there are five ways of attaching information to an HTTP request:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a URL parameter
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As a query string
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Inside the request body
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As an HTTP cookie
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As a header field
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The URL parameter is used for routing and it makes no sense to attach a digest
+    there. Query strings are for things related to the query, such as setting the `limit` to
+    limit the number of results returned in our search endpoint; it also makes no
+    sense to attach information unrelated to the query here. As for the request body; we
+    can't always have the digest in the request body, as some endpoints, such as Update
+    Profile, use the request body to carry the payload. This leaves us with using
+    a cookie or a header field.
+  prefs: []
+  type: TYPE_NORMAL
+- en: HTTP cookies
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'An HTTP cookie (such as a web cookie or browser cookie) is a very simple dictionary/key-value
+    store that a server can send to the client. It is sent by the server using the
+    `Set-Cookie` header. For example, a `Set-Cookie` header may look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: Multiple `Set-Cookie` headers can be sent in the same response message to compose
+    the key-value store.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What''s special about cookies is the fact that most browser clients will automatically
+    send this key-value store back with each subsequent request, this time inside
+    a `Cookie` header:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: Therefore, if we use a cookie to store the user's session ID in the browser,
+    it'll allow the server to determine whether the request comes from the same client,
+    because it will have the same session ID in the cookie.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Domain` directive of the cookie determines which domain (or subdomain)
+    the client will set the `Cookie` header for. For instance, a cookie set by `abc.xyz`
+    would only be sent back by the client for requests to `abc.xyz`, but not if the
+    request is going to `foo.bar`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although cookies sound like a great idea, there are many disadvantages of using
+    cookies, especially if we are dealing with cross-domain and CORS. Because cookies
+    only work for that domain (or its subdomains), they are unable to authenticate
+    with a related service if it is under a different domain. For example, when our
+    platform expands from a simple user directory (deployed at `hobnob.social`) to,
+    say, a event organization application (`hobnob.events`), and we want to let users
+    who have logged in to `hobnob.social` also be automatically logged in to `hobnob.events`; this
+    cannot be done using cookies as the cookies are set by a different domain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cookies are also more convenient only for browsers; having to manage cookies
+    for non-browser clients is more of a hassle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Furthermore, cookies are also vulnerable to **Cross-Site Scripting** (**XSS**)
+    and **Cross-Site Request Forgery** (**XSRF**) attacks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cross-Site Scripting (XSS)
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'XSS is where a malicious party injects some JavaScript into the page served
+    by the server. For instance, if the server does not sanitize comments, then a
+    malicious party can write the following comment:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`document.cookie` is a global property that contains all the cookies set for
+    the current domain. Therefore, when the next visitor visits your site, they will
+    output the value of `document.cookie` and send it as a query string to `some.malicious.endpoint`.
+    Once the malicious party has obtained the visitor''s session IDs or tokens from
+    their cookies, they will be able to impersonate that user.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cross-Site Request Forgery (XSRF)
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'With XSRF, the malicious party will attempt to send a request to the target
+    application without the victim''s knowledge. For example, the malicious party
+    might have a website at `malicious.com`, and contains an `img` tag with the following
+    definition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, when the victim visits `malicious.com`, their browser will send a `GET`
+    request to `http://target.app/change-password/?newPassword=foobar`, along with
+    any cookies for that domain. Therefore, if the user is already authenticated in
+    another browser tab, then this `GET` request would be received as if it was initiated
+    by the user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cross-Site Scripting (XSS) is one of the OWASP Foundation's Top 10 Application
+    Security Risks. You can read more about XSS on OWASP's website ([owasp.org/index.php/Top_10-2017_A7-Cross-Site_Scripting_(XSS)](https://www.owasp.org/index.php/Top_10-2017_A7-Cross-Site_Scripting_(XSS))).
+    Similarly, XSRF also has a page on OWASP ([owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)](https://www.owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)))
+  prefs: []
+  type: TYPE_NORMAL
+- en: HTTP headers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Because using cookies is less secure, especially for browser clients, and because
+    it requires much more work for us to secure our API, we should not store and send
+    back our token using cookies. Instead, we should store the token using one of
+    the modern web storage APIs (`sessionStorage` or `localStorage`), and send it
+    back using HTTP header fields.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Authorization header
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'So, which HTTP header should we use? The common convention is to use the `Authorization` header,
+    which has the following syntax:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `type` is the **authentication type**, and the `credentials` are a representation
+    of the user's credentials. There are many types of authentication schemes supported,
+    such as `Basic`, `Bearer`, `Digest`, `Negotiate`, and `OAuth`, plus many more.
+    The most common schemes are `Basic` and `Bearer`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The **Internet Assigned Numbers Authority** (**IANA**) keeps a list of valid authentication
+    schemes in its registry at [iana.org/assignments/http-authschemes/http-authschemes.xhtml](http://www.iana.org/assignments/http-authschemes/http-authschemes.xhtml).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Basic` scheme sends the credentials as a username/password pair separated
+    by a colon (for example, `username:password`), which are Base64-encoded. It is
+    also the most primitive and insecure form of authentication scheme, as the usernames
+    and passwords are transmitted as plaintext.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Instead, we will use the `Bearer` scheme, where the credential is the token
+    itself:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: Writing tests
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we have decided to attach our token using the `Authorization` header
+    with the `Bearer` scheme, our next action is to write the tests for this authentication
+    system. For our use cases, let's say that all endpoints that alter a user's document
+    (that is, all `POST`, `PATCH`, and `PUT` requests except `/login`) will require
+    a token where the `sub` property matches the ID of the user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As always, we begin development by writing tests. Let''s start with the Delete
+    User endpoint, which should respond with the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`200 OK` if the `Authorization` header is set to a well-formed credential (for
+    example, it has the structure `username:bcrypt-digest`. We will verify whether
+    these credentials correspond with a real user in the next step; right now, we
+    just care whether it has the correct structure.)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`400 Bad Request` if the `Authorization` header is set but its value is not
+    well-formed.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`401 Unauthorized` if the `Authorization` header is not set at all, or if the
+    credentials do not match the specified user''s.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`403 Forbidden` if the user is trying to delete another user.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`404 Not Found` if the user to be deleted cannot be found.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Features and scenarios
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We must modify our existing E2E tests for Delete User to include these new
+    scenarios; the end result may look something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: First, we changed the background of the tests to create two users instead of
+    one; we do this so that, later on, we can test for the scenario where one user
+    tries to delete another user. Furthermore, we are also logging in the user in
+    the background and saving the authentication token returned into the context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then, we added some tests for the authorization header, ensuring its format
+    is correct, its value looks well-formed, and the signature is valid. Lastly, we
+    added tests that ensure that only the user can delete him/herself. If he/she tries
+    to delete another user, it'll come back with a `403 Forbidden` error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementation step definitions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Then, in `spec/cucumber/steps/request.js`, implement the following step definition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: Verifying the digest in the request
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we have added our tests, it's time to implement the feature. Since
+    we know that we want to check the token for most requests, we should not define
+    the token validation logic solely within the Delete User engine. Instead, we should
+    abstract all the generic validation steps (for example, the token is a valid JWT,
+    the signature is well-formed, and so on) into middleware.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To start, create a file at `src/middlewares/authenticate/index.js` with the
+    following boilerplate:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'First, we want to allow anyone to get a single user and search for users; therefore,
+    when the request is a `GET` request, we don''t need to validate the token. At
+    the top of the authenticate function, add the following check:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Usually, before a browser sends a CORS request, it will send a **preflight
+    request** that checks to see whether the CORS protocol is understood. This request
+    uses the `OPTIONS` method, and thus we also don''t need to validate the token
+    for `OPTIONS` requests either:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we also want unauthenticated users to be able to call the Create User
+    and Login endpoints. Just below the previous line, add the following early return
+    checks:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For any other endpoints, an `Authorization` header is required. Therefore,
+    we''ll next check for the presence of the `Authorization` header. If the header
+    is not set, then we will return with a `401 Unauthorizated` error:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we check that the value of the Authorization is valid. First, we can
+    use the following code to check that a scheme is specified and is set to the value
+    `"Bearer"`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we will check that the token is a valid JWT. We do this by specifying
+    a regular expression and checking that the token specified in the header conforms
+    to this regular expression. This uses the `jsonwebtoken` library, so be sure to
+    import it at the top:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE62]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We have done all the relatively resource-light tasks, and exits early if these
+    base conditions are not met. In the last step for this middleware, we will actually
+    use the verify method to check that the payload is a valid JSON object and that
+    the signature is valid. If it is, then we will add a `user` property to the `req`
+    object with the ID of the user:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE63]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To apply the middleware, add it inside `src/index.js` after all the other middlewares,
+    but before the route definitions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE64]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'However, we''re not quite done yet. The middleware only validates the token,
+    but it still doesn''t prevent a user from deleting another user. To implement
+    this, add the following lines to the top of the Delete User engine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE65]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And in the Delete User handler, define an if block to catch the `Forbidden`
+    error and return a `403 Forbidden` status code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE66]'
+  prefs: []
+  type: TYPE_PRE
+- en: If we run the E2E tests for the Delete User endpoint, they should all pass!
+    Now, follow the same steps to add authentication and authorization logic to the
+    Replace Profile and Update Profile endpoints. Start by updating the E2E tests,
+    and then update the engine and handlers to handle scenarios where a user is trying
+    to perform an operation they are not allowed to.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Also, update the unit and integration tests, add more tests if you feel it's
+    necessary, and then commit your code to the remote repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you get stuck, check out our implementation from the code bundle we've provided.
+    Do this before moving on to the next chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next steps
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As we mentioned at the beginning of this chapter, the authentication/authorization
+    scheme we have presented here is very basic, and you'll need to take further steps
+    to truly secure it. Here, we will briefly cover some more measures you can implement
+    to further improve the security of your API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Preventing man-in-the-middle (MITM) attacks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: At the moment, we rely on the client to hash their password before sending it
+    over the wire. We do this so that our clients don't have to trust our API server
+    with their credentials. The digest is now effectively being used as a password.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, any proxy servers which sits between our client and our server would
+    be able to read the digest, and can authenticate using those "stolen" credentials
+    and masquerade as our client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another issue is that although our API server is able to authenticate the client,
+    the client has no way of verifying our server's identity. Again, proxy servers
+    can masquerade as our API server and trick the client into sending sensitive information
+    to them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To only way to reliably prevent both of these issues is to implement **end-to-end
+    encryption** (**E2EE**) of the connection using **Hyper Text Transfer Protocol
+    Secure** (**HTTPS**), the secure version of HTTP. To use HTTPS, you'd need to
+    set up an SSL/TLS certificate for your domain, and register that certificate with
+    an established and reputable **Certificate Authority** (**CA**).
+  prefs: []
+  type: TYPE_NORMAL
+- en: When a client wants to securely send an HTTP message (which may contain credentials)
+    over HTTPS, they would ask the CA for our site's certificate, and encrypt the
+    HTTP message using the certificate. Encryption obfuscates the message and prevents
+    third parties from deciphering the message. Only the server has the key to decrypt
+    this message, so even if there are malicious proxy servers intercepting the messages,
+    they would not be able to understand it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Read more about MITM attacks on OWASP's website at [owasp.org/index.php/Man-in-the-middle_attack](https://www.owasp.org/index.php/Man-in-the-middle_attack).
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you want to enable HTTPS on the API, the Linux Foundation provides a free
+    CA called Let's Encrypt ([letsencrypt.org](https://letsencrypt.org/)). It also
+    provides a tool called Certbot ([certbot.eff.org](https://certbot.eff.org/)),
+    which enables you to automatically deploy Let's Encrypt certificates. Feel free
+    to try it out!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Encrypting digests
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Using our current scheme, the digests created by the client are stored directly
+    in the database. Now, if hackers were to gain access to the database server, they
+    would be able to authenticate as any user. Furthermore, since the attacker would
+    have both the digest and salt, they could potentially brute-force a user's password.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One way to mitigate this issue is to use a **pepper**—a variation of a salt,
+    with the following differences:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The pepper is not public
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The pepper is not stored in the database, but on another application server,
+    so that the pepper is separate from the salt
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The pepper may be a constant that's set in the application server as an environment
+    variable
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Here''s how the authentication method would work with the pepper: the client
+    sends the salted password digest to the server, who hashes the digest again with
+    the pepper and stores the double-hashed digest in the database.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, if a hacker were to gain access to the database server (but not the application
+    code), he/she will have the password digest and salt, but since he/she does not
+    know the pepper (or, better still, even of the existence of a pepper), he/she
+    would not be able to use the digest to authenticate (because our server would
+    hash it again, and the resulting hash would not match the digest we have in the
+    database). Furthermore, the attacker won't be able to derive the original password,
+    even if they spent the time and resources to brute-force it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, peppers are only useful if your application server is secure. If the
+    secret pepper is ever known, it cannot be retracted, as all our passwords were
+    hashed with the pepper; since hashing is a one-way process, we cannot regenerate
+    all password hashes with a new pepper. The inability to rotate this secret pepper
+    makes this type of pepper unmaintainable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An alternative to this is to not re-hash the salted password digest, but use
+    a reversible **block cipher** to reversibly encrypt the digests instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Block cipher
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'A block cipher, an algorithm for **symmetric-key encryption**, takes two parameters—a **plaintext** and
+    a **key**—and runs them through the algorithm to generate a **ciphertext**. The
+    idea is to generate a seemingly random ciphertext so that the plaintext input
+    cannot be deduced from the ciphertext (much like hashing):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE67]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'However, unlike hashing, block ciphers are reversible; given the ciphertext
+    and the key, the plaintext can be regenerated:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE68]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using a block cipher on our digest instead of applying a pepper means that if
+    our application server (and thus the pepper) was compromised, we can run a simple
+    function on our database that decrypts the ciphertext back to the digest and re-encrypt
+    it using a new key.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exploring the Secure Remote Password (SRP) protocol
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**Secure Remote Password protocol** (**SRP**) is an industry-standard protocol
+    for password-based authentication and key exchange. Like our rudimentary scheme,
+    the password never has to leave the client. It is able to securely authenticate
+    a user even in the following situations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Attackers have complete knowledge of the protocol
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Attackers have access to a large dictionary of commonly used passwords
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Attackers can eavesdrop on all communications between client and server
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Attackers can intercept, modify, and forge arbitrary messages between client
+    and server
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A mutually trusted third party is not available
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This list was extracted from SRP's official website ([srp.stanford.edu/whatisit.html](http://srp.stanford.edu/whatisit.html))
+  prefs: []
+  type: TYPE_NORMAL
+- en: SRP is used by **Amazon Web Services** (**AWS**) and Apple's iCloud, among others.
+    So if security is something that interests you, I'd recommend doing some reading
+    on SRP!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we implemented the logic to allow users to authenticate themselves
+    to our API server. We also used JSON web tokens to keep our application stateless;
+    this is important when we want to scale your application, something which we will
+    discuss in [Chapter 18](5d093a43-720f-4ea8-aac0-b64b13f96d12.xhtml), *Robust Infrastructure
+    with Kubernetes*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, it is important to remember that security is not an easy undertaking.
+    What we've covered in this chapter is only a small part of the puzzle. You should
+    view this chapter as a first step in securing your application, and always stay
+    informed about the latest security holes and best practices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will finish up our backend API by documenting our API
+    using **OpenAPI** and **Swagger**.
+  prefs: []
+  type: TYPE_NORMAL

@@ -1,0 +1,1306 @@
+- en: Managing a Serverless Database
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'A serverless database is defined like any other serverless service: it needs
+    to have *high availability*,Â *high scalability*, and the pricing model must consider
+    its *real usage*. Satisfying those conditions is particularly hard for databases
+    since *performance* is a key feature. For a predictable and high performance,
+    databases are usually configured in their own dedicated servers, but serverless
+    requires a shared model to avoid charging the customer for 100% of the time the
+    database is available. In serverless, we want to pay only when a request is done
+    and not when the database is in an idle state.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Currently, only a few services have managed to bring the serverless model to
+    databases. AWS offers just one service: SimpleDB, but it lacks many important
+    features and is extremely limited. For other and better options, you can try FaunaDB,
+    Google Firebase, or Google Cloud Datastore. To continue to use AWS services in
+    this book, we are going to cover DynamoDB, which is an almost serverless database.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Furthermore, we'll see how to use Amazon S3 to store media files since, in most
+    cases, it's better to save files in a cheap storage system than a database server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using and managing SimpleDB and DynamoDB databases
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using Amazon S3 to store media files
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When you finish this chapter, you'll have implemented the data access layer
+    of the online store and acquired the necessary knowledge to use serverless databases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Amazon SimpleDB
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: SimpleDB is an old service (late 2007), and it is the only one offered by AWS
+    that can really be called a serverless database. AWS offers many other managed
+    databases, such as DynamoDB or RDS, but all of them require that you set provisions
+    and pay for 24 hours a day, even when no one is using your system. You *do* need
+    to worry about the servers when you need to constantly check whether the capacity
+    is well designed for your traffic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'SimpleDB is serverless for the following reasons:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Totally managed by AWS**: You don''t need to spin-up a machine and install/configure
+    a DBMS.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Highly available**: AWS manages multiple geographically distributed replicas
+    of your database to enable high availability and data durability.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Scalable**: You can grow in size very fast without worrying about provisioning.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Cost-efficient**: You pay for the amount of data stored, data transferred,
+    and the CPU time used to run queries. If no one is using the database, you pay
+    only for what is currently stored.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: SimpleDB is a NoSQL database, but unfortunately, it is very limited due to the
+    absence of important functionalities. For example, the only data type that you
+    can use is a string. This makes it harder for you to implement a lot of use cases,
+    but we will cover some hacks here to make it feasible. If your application is
+    somewhat complex, I would avoid using SimpleDB. Use it only for small applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Modeling the database
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'First, a little bit of nomenclature: a *domain*, in SimpleDB, is the equivalent
+    of a *table* in the relational world and an *item* is the equivalent of a *row*.
+    They are pretty equivalent, but you need to know what they mean to understand
+    SDK functions. Also, in SimpleDB, each *item* has a list of attribute-value pairs,
+    where the *attribute* is like a *column* and the values are always of the string
+    data type.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a practical example, we will model the database for the serverless store.
+    We are going to use just two domains such as `Products` and `ShoppingCart`. We
+    will not create a domain to save user account data (e-mail, password, and others)
+    because we are going to use Amazon Cognito in the next chapter and Cognito is
+    responsible for saving and managing user data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following table lists the attributes for the `Products` domain. All of
+    them will be created to hold strings due to a SimpleDB restriction, but I''ve
+    added what would be the ideal data type. And, in the next sections, we will see
+    how to handle this limitation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Attribute** | **Desired data type** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ID` | String |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Name` | String |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Price` | Decimal |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Image` | String |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Comments` | Array of documents |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Some observations about this model are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`ID`: The `ID` attribute could be defined as an integer, but I''ve defined
+    it as a string since we are using the ID in the URL. Instead of showing the URL
+    as `store.com/product/123`, we are using `store.com/product/lonely-bird`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Price`: The `Price` attribute will be saved as a string, although we wanted
+    to save it as a number.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Image`: The `Image` attribute will be saved as a string because we will save
+    the URL of a S3 object instead of saving the entire object in the database.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Comments`: The `Comments` attribute needs a relation of **one-to-many**, where
+    *one* product has *many* comments. Some NoSQL databases, such as MongoDB, have
+    an "array of documents" data type, which would be helpful here.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The `Comments` field will be a list of:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Attribute** | **Desired data type** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ID` | Integer |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Username` | String |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Date` | DateTime |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Text` | String |'
+  prefs: []
+  type: TYPE_TB
+- en: 'This model requires other observations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `ID` attribute could be defined as an integer where the `ID` of every new
+    comment would be the value of the last saved comment `ID` plus one unit. However,
+    SimpleDB doesn't offer any feature for auto-incrementing a field. To avoid needing
+    to query the last comment `ID` before saving a new comment, and the conflicts
+    it would cause due to the lack of transactions, we can use this attribute to save
+    an **Universally Unique Identifier** (**UUID**) as a string value.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `Date` attribute will be discussed later.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The following table lists the attributes for the `ShoppingCart` domain:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Attribute** | **Desired data type** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `UserID` | String |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `LastUpdate` | DateTime |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `SelectedProducts` | Array of documents |'
+  prefs: []
+  type: TYPE_TB
+- en: As we are going to use Amazon Cognito, the `UserID` was defined as a string.
+    The only problem with this model is that we want a field to store a datetime and
+    another to store an array of data, where `SelectedProducts` are defined by a list
+    of `ProductID` and `Quantity` pairs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling one-to-many relations
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous models, we saw that *one* product has *many* comments and *one*
+    cart has *many* selected products. In a relational database, we would model another
+    table to list all comments or selected products and we would use the `join` operator
+    to retrieve all related data when querying for a specific product or cart. However,
+    in NoSQL, we usually don't have a `join` operator so we need to make two separated
+    queries to retrieve what we need *or* we can save all related data in just one
+    field as an array of documents.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In SimpleDB, we don''t have an "array of documents" data type, but we have
+    two other options:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Save a stringified array of JSON objects
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Multi-valued attributes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The first option is a hacky solution where you can stringify an array of JavaScript
+    objects and save it in a single attribute. The problem is that you won't be able
+    to query attributes in this field, so forget queries such as "How many distinct
+    users have ordered ProductID lonely-bird?".
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second option is the best solution since SimpleDB allows you to have multiple
+    attributes with the same name. Take a look at the following dataset for the `ShoppingCart`
+    that uses multi-valued attributes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **UserID** | **LastUpdate** | **ProductID** | **QuantityX** | **ProductID**
+    | **QuantityY** | **ProductID** | **QuantityZ** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `A` | `<Date>` | `X` | `2` | `Y` | `2` | `Z` | `4` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `B` | `<Date>` | `X` | `3` | ​ | ​ | ​ | ​ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `C` | `<Date>` | `X` | `1` | `Y` | `5` | ​ | ​ |'
+  prefs: []
+  type: TYPE_TB
+- en: The `ProductID` attribute repeats with the same name multiple times and this
+    is not an issue because SimpleDB allows two attributes with the same name. What
+    SimpleDB does not allow is two attributes with the same name *and* value. In the
+    first item (`UserID` with value `A`), we have a `ProductID` with value `X` and
+    a `ProductID` with value `Y`, which is valid. The problem would be with the `Quantity`
+    attributes, since two of them have value `2` in the same item. To fix this problem,
+    the `ProductID` value was appended to the attribute name, creating the attributes
+    `QuantityX` and `QuantityY`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The SimpleDB domain is schemaless, which means that, when you insert a new item,
+    you say what attributes it has and it won't return an error if you add an attribute
+    name that doesn't exist yet.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling numbers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The biggest issue with SimpleDB is not about how to store data as a string but
+    how to retrieve it using queries. You can save the number `27` as `"27"`, but
+    filtering a query with `Quantity > "5"` would not return the desired value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A solution to handle numerical data as a string is to modify it before saving.
+    Instead of saving `"27"`, use a zero-padding function and store it as `"000027"`.
+    Now query it with `Quantity > "000005"` and you will get the value that you want.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How many zeros do you need to add? It depends. Think about the largest number
+    that your dataset can reach and zero-pad all the other numbers to have the same
+    number of characters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This trick works for integers. If you have a decimal, as in the `Price` attribute,
+    you need to multiply it by the number of decimal places. In this case, multiply
+    it per 100 before saving the value and divide it by 100 when you retrieve it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another issue is handling negative numbers. In this case, you need to add an
+    offset. This offset must be greater than the largest negative number of your entire
+    dataset. For example, if your offset is `100,000`, the value `-27` must be added
+    to `100,000` (resulting in `99973`) and zero-padded with six places, resulting
+    in `"099973"`. If you need to compare whether the number is greater than `5`,
+    you will need to add the offset and zero-pad the comparison value, resulting in
+    `Quantity > "100005"`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling Booleans
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You can store Boolean values as either `true`/`false` or `1`/`0`. You can select
+    what you prefer, just define a convention and use the same strategy in all Boolean
+    attributes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s an example of this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Handling dates
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When saving a datetime variable, you can use the ISO 8601 standard format, for
+    example, `5:15:10 PM December 24th 2016 UTC` becomes `2016-12-24T17:15:10.000Z`.
+    This format is queryable using strings. So `Date > "2016-12-24T00:00:00.000Z"`
+    will return the value of the previous example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now consider that you have a `LastAccess` attribute and you want to query all
+    the users that accessed your system in the last 5 minutes. In this case, you just
+    need to find the current time, subtract it by 5 minutes, and convert it into the
+    ISO string before querying.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a domain
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Creating a domain is pretty straightforward. You just need to set the domain
+    name as the parameter and it will be created with the `createDomain` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s an example of this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Regarding the attributes, you don't need to specify them while creating the
+    domain. There is no schema attached. Each item has its own list of attributes
+    that are not necessarily the same as the other attributes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limits
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'SimpleDB was designed for small workloads, so AWS has enforced some limits
+    that may restrict your application. In the following table, I''ve listed the most
+    important limits that you should be aware of before using SimpleDB in your system.
+    You can find more about this in the official documentation at [http://docs.aws.amazon.com/AmazonSimpleDB/latest/DeveloperGuide/SDBLimits.html](http://docs.aws.amazon.com/AmazonSimpleDB/latest/DeveloperGuide/SDBLimits.html):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Parameter** | **Restriction** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Domain size | 10 GB per domain |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Domain size | 1 billion attributes per domain |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Attribute value length | 1,024 bytes |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Maximum items in the `Select` response | 2,500 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Maximum query execution time | 5 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Maximum response size of `Select` | 1 MB |'
+  prefs: []
+  type: TYPE_TB
+- en: Inserting and querying data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The following example shows how to insert data into a SimpleDB domain. I''m
+    using `batchPutAttributes` because it allows multiple inserts simultaneously,
+    but you could call `putAttributes` to insert a single item:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The following example shows how to query the data that was previously inserted.
+    Despite being a NoSQL database, SimpleDB uses a SQL-like syntax for queries:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding code will generate the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Performance and concurrency
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: AWS will automatically create an index for every attribute that you create,
+    but querying data filtering by dates or integers converted into strings can easily
+    lead to performance issues. You should always be careful of your performance requirements
+    and the size of your domain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Also, like most NoSQL databases, SimpleDB doesn't support transactions, so concurrency
+    can be a real problem for data consistency. Instead of transactions, SimpleDB
+    offers *conditional operations*. For example, if you need to insert some data,
+    you can place a condition that will execute the operation only if the attribute
+    does not exist yet. Another use case is to implement a counter. You will update
+    the value of the counter to `X+1` only if the current value is `X`. If this condition
+    is not met, it's because another user have already incremented the value and your
+    update will be canceled.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s an example of a conditional operation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Managing the database
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You can manage your database using the AWS CLI or SDK, but many people prefer
+    to use a tool that provides a user interface. Since AWS doesn't offer a console
+    for SimpleDB, we need to rely on third-party tools. In this case, I can recommend
+    the Chrome extension SdbNavigator. It's a very simple tool but offers a nice user
+    interface with the essential features such as creating domains, inserting items,
+    and making queries.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Take a look at the following steps for managing the database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using Chrome, you can add the extension from [https://chrome.google.com/webstore/detail/sdbnavigator/ddhigekdfabonefhiildaiccafacphgg.](https://chrome.google.com/webstore/detail/sdbnavigator/ddhigekdfabonefhiildaiccafacphgg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'After installing it, add your AWS keys and select a region to connect. You
+    can add a new domain with the Add domain button:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/bda2ffed-14d2-403c-925c-94f68405f81f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'This tool has a button to add properties. When you add a new item, these properties
+    will become the items'' attributes:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/c5896d86-4b53-405c-a5da-b876bd6d70f6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The Add record button is used to add your domain items:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/48964ae1-80fc-4fd0-b062-58fdde867303.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Backing up and restoring data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Unfortunately, there is no native AWS feature to consistently back up and restore
+    SimpleDB domains. The solution is to make queries that will read all of the data
+    (backup) and scripts to insert (restore) this saved data when needed. However,
+    the main issue is consistency. If your application is running while you are copying
+    the data, there is no guarantee that your backup would be consistent. The application
+    may have started a delete operation and your backup may still have some part of
+    the items that should have been deleted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Besides this consistency problem, you still have issues with copying/inserting
+    data since AWS places many limits on this operation. For example, the maximum
+    number of items in `select` is 2,500 items. To solve this second problem, you
+    can try one of the many third-party tools available to mitigate this burden.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Controlling user access
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: SimpleDB relies on the AWS security model. So if you want to manage access,
+    you will need to create IAM users and roles. The granularity of this control lies
+    in the domains your users can access and the actions they can execute.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our Lambda functions, we *must* give permissions *explicitly*. You can''t
+    execute a SimpleDB request without setting the restrictions. This configuration
+    is done in the `serverless.yml` file under the `iamRoleStatements` function. In
+    the following example, I''m giving read (`sdb:Select`) and write (`sdb:PutAttributes`)
+    access to the `Products` and `ShoppingCart` domains. If you want to allow full
+    access, use the `"sdb:*"` action and set the domain with `domain/*`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: DynamoDB
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: DynamoDB is a fully managed, NoSQL database with high availability and that
+    can be configured to scale automatically. The only reason that it can't be considered
+    as a serverless database is due to its pricing model. You must pay for provisioned
+    resources even if no one is using your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, DynamoDB is a great database, with many useful features, and AWS offers
+    a generous permanent free tier. It is being extensively used in many serverless
+    projects because it is cheap, easy to use and offers predictable performance.
+    In this book, we are going to use DynamoDB as our main database. If you browse
+    this chapters' code files, you will see the data layer of the serverless store
+    implemented with SimpleDB and DynamoDB, but DynamoDB will be the default and the
+    database where we will discuss here what features needs to be implemented for
+    the serverless store.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Modeling the database
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In DynamoDB, a *table* is a collection of *items* and each item is a collection
+    of key-value pairs called *attributes*. Like most NoSQL databases, DynamoDB is
+    *schemaless*. You just need to define the primary key and you can add items with
+    different attributes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'DynamoDB supports the following data types:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Scalar**: Category of data types that store a single value:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`String`: UTF-8 strings with a maximum size of 400 KB.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Number`: It stores a maximum of 38 digits and accepts negative numbers as
+    well.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Boolean`: It stores true or false.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Binary`: It allows binary data to be saved. Due to maximum size of 400 KB,
+    it may not be a good choice for many applications. We are going to use S3 to store
+    product images and a `String` field in DynamoDB to save the S3 URL.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Null`: It represents an attribute with an unknown or undefined state.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Document**: It is a category of data types that store multiple values:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`List`: It stores an *ordered* collection of values. It''s similar to an array
+    where you can store elements of any type. Example: `[5, "foo", 2, -4, "bar"]`.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Map`: It stores an *unordered* collection of values. It''s similar to JSON
+    object. Example: `{ "Name": "foo", "Address": 123 }`.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Set**: It''s a data type where you store data as an array, but all elements
+    must be unique and of the same data type. Also, the order is not preserved. Example:
+    a set of numbers could be `[1, 7, 2, -4]`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'For the serverless store, we need to create two tables such as `Products` and
+    `ShoppingCart`. They will be defined as the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Products`: Take a look at the following table depicting its attributes:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '| **Attribute** | **Data Type** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ID` | String |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Name` | String |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Price` | Number |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Image` | String |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Comments` | List of Maps |'
+  prefs: []
+  type: TYPE_TB
+- en: '`Comments`: Take a look at the following table depicting its attributes:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '| **Attribute** | **Data Type** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ID` | `String` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Username` | `String` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Date` | `String` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Text` | `String` |'
+  prefs: []
+  type: TYPE_TB
+- en: '`ShoppingCart`: Take a look at the following table depicting its attributes:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '| **Attribute** | **Data Type** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `UserID` | String |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `LastUpdate` | String |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `SelectedProducts` | List of Maps |'
+  prefs: []
+  type: TYPE_TB
+- en: '`SelectedProducts`: Take a look at the following table depicting its attributes:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '| **Attribute** | **Data Type** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ProductID` | `String` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Quantity` | `Number` |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Some observations about this model are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Comments` and `SelectedProducts` attributes were defined as a list of map
+    objects, which means that we will save an ordered list of JSON objects
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Just like SimpleDB, there is no auto-increment field for DynamoDB, so we will
+    use UUIDs for the Comment IDs
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: DynamoDB doesn't support a datetime data type, so we will need to define the
+    `Date` and `LastUpdate` attributes as a string that uses the ISO format
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating a table
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We are going to create the tables for the serverless store using the AWS SDK.
+    As DynamoDB is a schemaless database, we just need to set the primary key and
+    the attributes will be defined when the items are inserted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Use the following example to create them:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can use the same code to create the `ShoppingCart` table. Just change the
+    table name to `ShoppingCart` and the primary key name to `UserID`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limits
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'DynamoDB imposes some limits that you need to consider before building your
+    application. They are listed as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Parameter** | **Restriction** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Number of tables | 256 per account |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Table size | There is no limit in the number of items |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Provisioned throughput | Up to 40,000 read and 40,000 write capacity units
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Item size | The sum of the size of all attributes of one item must not exceed
+    400 KB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Secondary indexes | 5 local and 5 global secondary indexes per table |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `API BatchGetItem()` | Maximum of 100 items or 16 MB retrieved |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `API BatchWriteItem()` | Maximum of 25 put or delete requests or 16 MB sent
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| API Query or Scan | The result set is limited to 1 MB |'
+  prefs: []
+  type: TYPE_TB
+- en: Inserting and querying data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We are going to this discuss in this section how to insert and query data with
+    DynamoDB.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inserting data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: DynamoDB offers two ways to insert data such as `putItem()` and `batchWriteItem()`.
+    The difference between them is that `putItem` allows you to create one new item
+    or update an existing item, while `batchWriteItem` allows you to create or delete
+    multiples items, but doesn't support the update operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following is an example of the `putItem` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: The Document Client API
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As you can see, the previous example shows how to insert a single item, but
+    the syntax is very complicated. To define a string attribute, we need to create
+    a JSON object where the key is `"S"` (string) and the value is the desired data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To make this task easier, we can use the Dynamo's Document Client API to abstract
+    the attribute values by using native JavaScript types for read and write operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following example shows how to insert the same item using this API. Note
+    that we need to retrieve the client using `new AWS.DynamoDB.DocumentClient()`
+    and the command is `put` instead of `putItem`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Querying data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To query the item that we have just inserted, DynamoDB offers two methods such
+    as `scan()` and `query()`. We will see how they work in the next sections. For
+    both of them, we are going to use the Document Client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The scan method
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The `scan` method is used to retrieve all items of a table without needing
+    to filter by a key. Filtering is possible, but is optional. The problem with this
+    method is that, for a large table, you need to make multiple requests because
+    it will interrupt the operation when it scans more than 1 MB of data. When the
+    scan operation is interrupted, the result set will contain a `LastEvaluatedKey`
+    parameter that can be used for further requests:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: The query method
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `query` method finds items based on the hash key. It is similar to the `scan`
+    method since a query will be interrupted if it reads more than 1 MB of data, returning
+    a `LastEvaluatedKey` parameter, but the main difference between `query` and `scan`
+    is that `query` will consider the filter conditions before reading the data and
+    `scan` will apply the filters after the table is read.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following is an example to query only the `Lonely Bird` product:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Performance and concurrency
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Like most NoSQL databases, there is no support for transactions in DynamoDB.
+    Atomic operations can only be done on the item level, which means that you can
+    atomically change two attributes of a single item, but you can't update two distinct
+    items in a single operation. Like SimpleDB, DynamoDB supports conditional updates
+    to implement counters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Regarding performance, DynamoDB creates indexes for the hash key and one optional
+    range key, but if you need to query data filtering by other fields, you need to
+    create additional indexes. For example, if you want to find all products that
+    cost more than US$ 10, you need to create an index for the `Price` attribute.
+    That's something that we don't need in our serverless store model, since we will
+    query only by the hash keys for both tables, but we will describe here how to
+    add extra indexes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, you need to understand that DynamoDB has the following two types of
+    index:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Local secondary index**: An index that has the same partition key as the
+    base table'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Global secondary index**: An index that is not restricted to the same partition
+    of the base table'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: One difference between them is that local indexes uses the same provisioned
+    throughput of the hash key and global indexes requires that you pay for an extra
+    provisioned throughput for them. The benefit of global indexes is that you don't
+    need to include a filter by the hash key, and you can filter directly by the key
+    that you have specified. In the previous example, if you want to query all products
+    with a price above US$ 10, you need to create a global index for the `Price` attribute.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now suppose that you have a table for `Orders` that saves the `OrderID`, `ProductID`,
+    `Price`, and other information. The `OrderID` would be the hash key and, for a
+    single order, we would have many items. For example, take a look at the following
+    table:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **OrderID** | **ProductID** | **Price** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `1` | `77` | `15.99` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `1` | `88` | `18.99` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `1` | `23` | `12.99` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `2` | `18` | `15.00` |'
+  prefs: []
+  type: TYPE_TB
+- en: In this model, if you want to query by the `OrderID` with number `1` and filter
+    by `Price` greater than 15, you would create a *local* secondary index for the
+    `Price` attribute and not a *global* index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following example shows the syntax to create local and global indexes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can use `DynamoDB.updateTable()` to add *global secondary indexes* after
+    a table is created, but you can only add *local secondary indexes* during the
+    creation of a table. It is not possible to update a table to add local indexes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Managing the database
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'AWS has a management console for DynamoDB where you can configure the capacity
+    of your tables, create indexes, and view CloudWatch metrics. In the following
+    steps, I will show how you can see and manipulate your table''s data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Browse the Management Console at this link [https://console.aws.amazon.com/dynamodb.](https://console.aws.amazon.com/dynamodb)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In the left menu, click on Tables:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/30e54ee9-aef7-421c-a927-6b924c224750.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Now click on your table Name and in the Items tab. In this tab, you can create,
+    delete, or update items. A scan query will be executed automatically, but you
+    can change the query parameters if you want to see other items. Click on the item
+    ID to open the edit modal:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/428ee72d-dc8c-4168-a6a7-86d078aba4c6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The Edit item modal allows you to see all properties of an item and update
+    the attributes if required:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/0efb45d7-7fc1-44e5-8a3d-4a2d4f78b6a4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Provisioned throughput
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: DynamoDB performance is based on provisioned throughput for read and write operations.
+    One *read capacity unit* represents one strongly consistent read per second or
+    two eventually consistent reads per second for objects with up to 4 KB in size,
+    while one *write capacity unit* means that you can write one 1 KB object per second.
+    You need to define those values when you create your table, but you can update
+    them if you want later. In this chapter's example, the table was created with
+    five read units and five write units for each key.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If your system requests more read/write operations than expected by your provisioned
+    capacity, AWS will allow the operations to be executed without errors for a short
+    period of time. If you continue to exceed the provisioned capacity, some requests
+    will fail with the `ProvisionedThroughputExceededException` error. The good news
+    is that the AWS SDK has built-in support for retrying throttled requests, so we
+    don't need to write the logic for this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Auto scaling
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You can configure CloudWatch to send e-mail alerts when your DynamoDB usage
+    is higher than your provisioned throughput and manually update the capacity when
+    necessary *or* you can configure auto scaling. As we want to avoid worrying about
+    servers and scalability, we will configure auto scaling to handle this burden
+    for us.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Auto scaling will actively manage the throughput capacity to scale up and down
+    to match your application utilization when your workload increases or decreases.
+    What we need to configure is a range (upper and lower limits) for read and write
+    capacity units and a target utilization percentage within this range. You can
+    access the auto scaling configuration through the Management Console. Click in
+    the table where you want to enable this setting and select the Capacity tab.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following screenshot shows an example of auto scaling configuration:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/7542bd2b-e390-47ba-9539-e96290b0a088.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Backing up and restoring data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Unfortunately, DynamoDB doesn''t provide a simple feature for backup and restore.
+    What AWS proposes is to use other two services for this task such as **AWS Data
+    Pipeline** and **Amazon Elastic MapReduce** (**EMR**). Due to the complexity and
+    length of this configuration, it won''t be covered in this book. You can follow
+    the AWS tutorial to implement a task for this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[http://docs.aws.amazon.com/datapipeline/latest/DeveloperGuide/dp-importexport-ddb.html](http://docs.aws.amazon.com/datapipeline/latest/DeveloperGuide/dp-importexport-ddb.html)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In short, what you need is to use a AWS Data Pipeline template for DynamoDB
+    and schedule a task that will start an EMR with Hive to save/restore a DynamoDB
+    table.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Controlling user access
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Just like SimpleDB, we manage DynamoDB user access through IAM roles. We must
+    give permissions *explicitly* to the Lambda functions to be able to execute the
+    requests. This configuration is done in the `serverless.yml` file under the `iamRoleStatements`
+    function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Improving the serverless store
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this book's GitHub repository, you will find a `scripts` folder that you
+    can use to create the tables for DynamoDB and SimpleDB, along with sample data
+    to be used in our tests. Also, in the root directory, you will find a `backend`
+    folder that contains a `repositories` folder with the `dynamodb.js`, `simpledb.js`,
+    and `fakedb.js` files. The sample application uses `fakedb` as the default database,
+    because it doesn't require any configuration since it provides only hardcoded
+    data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are going to implement the DynamoDB code now. In the `lib` folder, we are
+    going to change the dependencies from `const db = require('../repositories/fakedb')`
+    to `const db = require('../repositories/dynamodb')` and in the `dynamodb.js` file,
+    we need to develop four methods such as `retrieveAllProducts`, `retrieveCart`,
+    `saveCart`, and `processCheckout`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retrieving all products
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Retrieving all products is a simple function that will execute a `scan` operation.
+    As we have just a few items, we don''t need to worry about the 1 MB limit in this
+    case:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Retrieving the user's shopping cart
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Retrieving the user''s cart uses a simple query where we will filter by `UserID`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Saving the user's shopping cart
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The `saveCart` function receives the `userId` and `selectedProducts` as arguments,
+    where the `selectedProducts` is a pair of `ProductId-Quantity` elements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Processing the checkout
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Handling payment data is a complex process and is out of scope for this book.
+    In this case, we are going to implement a function that will just execute the
+    callback passing `null` as the error parameter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Amazon S3 (for media files)
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: S3 is not a database, it is only a storage system. It lacks a database engine
+    and many storage features, but it can be pretty useful for saving media files
+    such as photos, videos, and music.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This approach is already very popular. For example, if you develop an application
+    that uses a MongoDB database, you could use MongoDB GridFS to store large binary
+    data. However, the most efficient solution is to offload this kind of data to
+    cloud services because the machines responsible for your database are usually
+    the most expensive ones. It means that the cost per gigabyte in a database is
+    usually higher than a cloud storage service, such as S3.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our serverless store, we are storing the product images in SimpleDB/DynamoDB
+    as string fields. Instead of saving the full binary data, we save just the URL
+    of the image file. Example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://s3.amazonaws.com/serverless-store-media/product-images/lonely-bird.jpg](https://s3.amazonaws.com/serverless-store-media/product-images/lonely-bird.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we receive this information in the frontend, the `<img>` element has the
+    `src` attribute referencing this S3 URL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Instead of downloading the image from the database, the user will download the
+    image from S3, thus relieving the database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is one use case for S3\. There are two other common usages:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**The user needs to upload his avatar image**: Instead of saving in the database,
+    we can generate a temporary permission for the user to upload the file directly
+    to S3'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**The user wants to see his private album**: Instead of requesting a Lambda
+    function to download the files from S3, we can generate private temporary links
+    from where he will be able to download the files'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We will discuss in this section how to handle these examples and how to use
+    S3 as a database for media files.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Uploading and downloading files
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If your bucket stores public files, you can configure it to allow anonymous
+    requests to upload and download files. However, if the files are private, you
+    need to give pre-signed URLs to the client to ensure privacy and security. Both
+    the actions, namely upload and download, must be signed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These keys are generated at the backend because you need to use the SDK with
+    credential access to the bucket. Let''s take a look at the following steps to
+    upload and download files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create a Lambda function and expose an endpoint to allow it to be called by
+    the frontend code. Use the `getSignedUrl` function of the S3 object to obtain
+    the signed URL:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If the operation is to download a private file, render the HTML with an anchor
+    tag that uses this pre-signed URL in the `href` attribute and set the attribute
+    `target` to `_blank` in order to carry out the download:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If the operation is to upload a file, add an `input` element to receive the
+    file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And upload the file with an Ajax request using the pre-signed URL:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you have generated the pre-signed URL using a Lambda function, you will know
+    the filename and where the file will be stored, however, you won't know exactly
+    when the file upload will finish if it is really started by the user. One option
+    that you have is to add another Lambda function to receive the object created
+    event, which will be triggered by the S3 bucket.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Enabling CORS
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The previous code will only work if we enable CORS for the S3 bucket. CORS
+    headers are necessary because we are going to make upload and download requests
+    from a domain that is different from the S3 domain. This setting can be configured
+    using the S3 Console: [https://console.aws.amazon.com/s3](https://console.aws.amazon.com/s3).
+    Open your bucket properties and select Permissions, followed by CORS Configuration,
+    as shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/f26675ef-04cd-40e2-a7ad-49c7c50e4e52.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'This command will add a CORS configuration for GET requests. Before saving,
+    we need to add one line to include authorization for POST requests and change
+    the Allowed Header to * (all):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Backing up and restoring data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Amazon S3 was designed to provide up to 99.999999999% of durability, which means
+    that AWS makes a huge effort to replicate your data and keep it safe from disk
+    failures. Although you can rest assured that your data is safe on S3, you must
+    consider that it is not so safe against your own mistakes. For example, if you
+    have a feature that deletes specific files from S3, you can make a mistake and
+    delete a wrong file or, even worse, delete all of them. So, making backups is
+    important to ensure a safer operation for your business.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can back up files locally (downloading) or make copies in other external
+    services (such as Azure or Google Cloud), but it is usually not necessary. You
+    can save all files of a bucket in another bucket using a command of the AWS CLI:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you want to restore all files that were saved at specific time to the backup
+    bucket, you would need to add a `--delete` option to remove files in the target
+    bucket that do not exist in the backup bucket:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using S3 versioning
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: S3 versioning is another way to protect your data. Once enabled, every time
+    you modify an object, a new one will be saved, and when you delete an object,
+    S3 will just place a delete mark on it. Versioning allows you to recover files
+    that were accidentally deleted, but you will pay more to keep those files available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To configure S3 versioning, go to the Management Console and select the bucket
+    Properties. You will see an option to enable versioning:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/8adc7511-86cd-4aaf-aaa2-670c32822493.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'You can reduce costs by configuring life cycle rules to delete old versioned
+    files. This setting can be found under the Management tab:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/44059071-563b-4c41-8bc5-53c959992829.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'To finish this section, an observation about security: if your AWS access keys
+    get compromised, a malicious user could delete the files in the S3 bucket and
+    also remove versioned files. To prevent this, you can add an extra layer of protection
+    by enabling MFA Delete. With this setting, you can only permanently delete a file
+    if you have access to the AWS account *and* if you are able to provide an access
+    code from an authentication device.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, you learned how to model, query, and insert data using serverless
+    databases. We saw how SimpleDB works, but due to its lack of features, we also
+    covered how to use DynamoDB. Plus, you learned more about Amazon S3 and how to
+    use it to store media files.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we are going to learn how to use authentication and authorization
+    on AWS and also check out standard security practices to build a serverless project.
+  prefs: []
+  type: TYPE_NORMAL

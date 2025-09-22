@@ -1,0 +1,776 @@
+- en: Security
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following recipes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Authenticating your microservices
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Securing containers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Secure configuration
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Secure logging
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Infrastructure as Code
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As with many of the topics covered in this book, security in a microservice
+    architecture is about trade-offs. In a microservice architecture, individual code
+    bases have limited responsibilities. If an attacker is able to compromise a single
+    running service, they will only be able to perform actions that are governed by
+    that particular microservice. The distributed nature of a microservice architecture,
+    however, means that there are more targets for an attacker to potentially exploit
+    in services running in separate clusters. The network traffic between those clusters,
+    including traffic between edge services and internal services, presents many opportunities
+    for an attacker to discover vulnerabilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because of the distributed nature of microservice architectures, network topology
+    must be considered when configuring how services are able to communicate with
+    one another. This concern exists in monolithic code bases as well, where a running
+    instance of a single code base needs to communicate over the network with database
+    servers, caches, load balancers, and so on. It could be argued that microservice
+    architectures make these challenges more obvious and therefore force engineers
+    to consider them earlier.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Security is a big topic. This chapter will discuss a number of good practices
+    to consider when building, deploying, and operating microservices, but it's important
+    to note that this is not an exhaustive list of considerations. Good API practices
+    and defense in depth should be considered when developing any system and microservices
+    are no exception. I heartily recommend **OWASP** ([https://www.owasp.org/index.php/Main_Page](https://www.owasp.org/index.php/Main_Page))
+    as a resource for learning more about web application security.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Authenticating your microservices
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In [Chapter 1](d5b36f18-79eb-4c0a-bbde-3e94733ef97c.xhtml), *Breaking the Monolith*,
+    we introduced a Ruby on Rails code base that powers our fictional image-sharing
+    application, `pichat`. The Rails code base authenticates each request by inspecting
+    the Authorization header. If the header is present, the application attempts to
+    decode it using a shared secret read from an environment variable (see the *Secure* c*onfiguration*
+    recipe). If the token provided in the Authorization header is valid, the decoded
+    value contains contextual information about the user, including the user ID. That
+    information is then used to retrieve the user from the database so that the application
+    has context on the user making the request. If the Authorization header is missing
+    or cannot be decoded successfully, the application raises an exception and returns
+    an HTTP 401 to the caller, including an error message. In order to obtain a token
+    to include in the Authorization header, a client application can send a `POST`
+    request to the `/auth/login` endpoint with valid user credentials. The following
+    CURL commands demonstrate this flow:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we have a token, we can include it in the headers of subsequent requests:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Because `pichat-api` is a monolithic code base, it is playing many different
+    roles to support this flow. It is acting as an Authorization service, an Authentication
+    gateway, a user store, and an Authorization client. This kind of coupling of responsibilities
+    is exactly what we want to avoid in a microservice architecture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Luckily, it''s easy to divide these responsibilities into separate code bases
+    while keeping the flow the same. Encoding information in **JSON Web Tokens** (**JWT**)
+    using a shared secret allows individual microservices to securely authenticate
+    requests without having to make requests to a centralized authentication service
+    for each request. Obtaining an authentication token can be the responsibility
+    of a centralized service, but this fact can be made transparent to the client
+    using an API Gateway or a backend for a frontend. The following diagram demonstrates
+    how some of the responsibilities will be divided:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/995d3ee1-7c63-4015-85ea-eafd43997426.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: We will create an **Authentication Service** that handles user registration
+    and exchanges credentials for a JWT. We will then create a simple **API Gateway**
+    using the Zuul open source project that we covered in [Chapter 2](ab796ed6-2bb5-4fc1-b6db-6283ab5c54b4.xhtml),
+    *Edge Services*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Let''s have a look at the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s create the authentication service. Create a new Java project with the
+    following `build.gradle` file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: We'll be storing user credentials in a MySQL database, so we declare `mysql-connector-java`
+    as a dependency. We'll also use an open source JWT library called `jjwt`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Storing user credentials is an important topic. User passwords should never
+    be stored in plain text and many hashing algorithms, such as MD5 and SHA1, have
+    been shown to be vulnerable to various brute force attacks. In this example, we''ll
+    be using `bcrypt`. In a real-world usage, we''d consider multiple hashing steps,
+    such as hashing with SHA512 first and then running through `bcrypt`. We''d also
+    consider adding a per-user salt. The **Open Web Application Security Project**
+    has a lot of great recommendations for storing passwords: [https://www.owasp.org/index.php/Password_Storage_Cheat_Sheet](https://www.owasp.org/index.php/Password_Storage_Cheat_Sheet).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create a new class called `Application`. It will contain our main method as
+    well as `PasswordEncoder`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We''ll model the user credentials as a simple POJO with `email` and `password`
+    fields. Create a new package called `com.packtpub.microservices.ch06.auth.models`
+    and a new class called `UserCredential`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a model to represent the response to successful login and registration
+    requests. Successful responses will contain a JSON document containing a JWT.
+    Create a new class called `AuthenticationToken`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `UserCredential` class will be accessed using the Java Persistence API.
+    To do this, we have to first create `CrudRepository`. Create a new package called
+    `com.packtpub.microservices.ch06.auth.data` and a new class called `UserCredentialRepository`.
+    In addition to inheriting from `CrudRepository`, we''ll define a single method
+    used to retrieve a `UserCredential` instance by email:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When a user attempts to register or log in with invalid credentials, we want
+    to return an HTTP 401 status code as well as a message indicating that they provided
+    invalid credentials. In order to do this, we''ll create a single exception that
+    will be thrown in our controller methods:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create the controller. The login and registration endpoints will be served
+    from a single controller. The registration method will simply validate input and
+    create a new `UserCredential` instance, persisting it using the `CrudRepository` package
+    we created earlier. It will then encode a JWT with the user ID of the newly registered
+    user as the subject. The login method will verify the provided credentials and
+    provide a JWT with the user ID as its subject. The controller will need access
+    to `UserCredentialRepository` and `PasswordEncoder` defined in the main class.
+    Create a new package called `com.packtpub.microservices.ch06.auth.controllers`
+    and a new class called `UserCredentialController`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Because we are connecting to a local database, and because we use a shared
+    secret when signing JWTs, we need to create a small properties file. Create a
+    file called `application.yml` in the `src/main/resources` directory:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that we have a functioning authentication service, the next step is to create
+    a simple API Gateway using the open source gateway service, Zuul. In addition
+    to routing requests to downstream services, the API Gateway will also use an authentication
+    filter to verify that valid JWTs are passed in headers for requests that require
+    authentication.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create a new Java project with the following `build.gradle` file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that we're using the same JWT library as the Authentication service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create a new package called `com.packtpub.microservices.ch06.gateway` and a
+    new class called `Application`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We''ll create an authentication filter by creating a subclass of `OncePerRequestFilter`,
+    which aims to provide a single execution per request dispatch. The filter will
+    parse the JWT out of the Authorization header and try to decode it using a shared
+    secret. If the JWT can be verified and decoded, we can be sure that it was encoded
+    by an issuer that had access to the shared secret. We''ll treat this as our trust
+    boundary; anyone with access to the shared secret can be trusted, and therefore
+    we can trust that the subject of the JWT is the ID of the authenticated user.
+    Create a new class called `AuthenticationFilter`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Wire this together with a security configuration for the API Gateway project.
+    Create a new class called `SecurityConfig`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: As we can see, we're permitting any requests to the authentication service (requests
+    prefixed with `/auth/...`). We require that requests to the users or messages
+    service be authenticated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We need a configuration file to store the shared secret as well as the routing
+    information for the Zuul server. Create a file called `application.yml` in the
+    `src/main/resources` directory:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that we have a working authentication service and an API Gateway capable
+    of verifying JWTs, we can test our authentication scheme by running the API Gateway,
+    authentication service, and message service using the ports defined in the preceding
+    configuration file. The following CURL requests now show that valid credentials
+    can be exchanged for a JWT and the JWT can be used to access protected resources.
+    We can also show that requests to protected resources are rejected without a valid
+    JWT.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Note that in this example, the message service still doesn't do any authorization
+    of requests. Anyone making an authenticated request could theoretically access
+    anyone else's messages. The message service should be modified to check the user
+    ID from the subject of the JWT and only allow access to messages belonging to
+    that user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can use `curl` to test registering a new user account:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we have a JWT, we can include it in the headers of requests to the
+    message service to test that the API Gateway is able to verify and decode the
+    token:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The fact that we get a 404 from the message service shows that the request
+    is getting to that service. If we modify the JWT in the request headers, we should
+    get a 401:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Securing containers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The advent of containers has solved many problems for organizations that are
+    managing microservice architectures. Containers allow services to be bundled as
+    a self-contained unit, and the software and its dependencies can be built as a
+    single artifact and then shipped into any environment to be run or scheduled.
+    Instead of relying on complicated configuration-management solutions to manage
+    small changes to production systems, containers support the idea of immutable
+    infrastructure; once the infrastructure is built, it does not have to be upgraded
+    or maintained. Instead, you just build new infrastructure and throw away the old.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Containers also allow organizations to optimize their use of storage and compute
+    resources. Because software can be built as containers, multiple applications
+    can be running on a single virtual machine or piece of hardware, each unaware
+    of the others' existence. While multi-tenancy has many advantages, having multiple
+    services running on the same VM introduces new attack scenarios that a malicious
+    user could exploit. If an attacker is able to exploit a vulnerability in one service,
+    they may be able to use that exploit to attack services running on the same VM.
+    In this kind of setup, by default, the cluster is treated as the security boundary;
+    if you have access to the cluster, you must be trusted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Depending on the needs of an organization, treating the cluster as the security
+    boundary may not be sufficient and there may be a desire for more security and
+    isolation between containers. The seccomp security facility was introduced into
+    the Linux kernel in Version 2.6.12\. It supports restricting the system calls
+    that can be made from a process. Running containerized applications with a seccomp
+    policy essentially sandboxes the service and any other process running in the
+    container. In this recipe, we'll show you how to check that the seccomp is configured
+    in your Linux kernel and demonstrate running a container with a custom seccomp
+    policy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In order to use a seccomp policy with a Docker container, you must be running
+    the container on a host OS with a Linux kernel configured with seccomp support.
+    To check this, you can search for `CONFIG_SECCOMP` in the kernel configuration
+    file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that we've verified that seccomp is enabled in the Linux kernel, we can
+    take a look at the default profile that is packaged with Docker ([https://github.com/moby/moby/blob/master/profiles/seccomp/default.json](https://github.com/moby/moby/blob/master/profiles/seccomp/default.json)).
+    This default policy is sufficient for most needs and is fairly restrictive. If
+    seccomp support is enabled, containers will be run with this policy.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'To further verify that seccomp is configured and Docker is able to support
+    it, we''ll create a simple custom policy and then run a command in a container
+    that demonstrates that the policy is being enforced. Create a file called `policy.json`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, run a container executing a shell and try to create a file, then change
+    the ownership. The error message indicates that the container is being restricted
+    by the seccomp policy:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Secure configuration
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Services usually require some form of configuration. A service configuration
+    stores all of the information that could potentially vary depending on the environment
+    the service is deployed in. For example, when running a service locally on a developer's
+    workstation, the service should probably connect to a database that is also running
+    locally. In production, however, the service should connect to the production
+    database. Common data stored in configuration includes the location of and credentials
+    to data stores, access tokens, or other credentials for third-party services and
+    operational information, such as where to send metrics or what values to use when
+    initializing connection pools or configuring timeouts for network connections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It's important to store configuration separately from code. When you make a
+    configuration change, you should not have to commit a change to a source code
+    repository, create a new build, and run a separate deploy. Ideally, there should
+    be an easy way to change configuration without deploying a new version of a service.
+    Storing configuration in code (for example, hard coding a password in a source
+    code file) is also a bad practice from a security perspective. Anyone with access
+    to the source code has access to the configuration, and in the case of secrets,
+    this is rarely desired. It is a good practice to roll keys and credentials as
+    often as possible, so that even if a secret is compromised or is vulnerable to
+    being compromised, it will not be valid for very long. Hardcoding secrets makes
+    this difficult, which in practice often means it won't happen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A common best practice is to store configuration in environment variables. This
+    is a good way to expose configuration values to a process in a way that can be
+    changed easily depending on the environment a service is running in. Environment
+    variables are good for non-secret configuration values, such as hostnames, timeouts,
+    and log levels. Environment variables are not sufficient for storing secrets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Storing secrets as environment variables makes the values accessible to any
+    process running in the same container or process space as the service, which makes
+    them susceptible to being intercepted. There are various solutions for storing
+    secrets separately from the rest of an application's configuration. Applications
+    deployed on a Kubernetes cluster can use a special object type called `secret`,
+    which is intended for this purpose. Kubernetes secrets are encrypted using a private
+    key residing on a master node while in transit between nodes, however, the secret
+    is stored in plaintext at rest. Ideally, secrets should be stored as encrypted
+    values and only decrypted by a process that is explicitly permitted to do so.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Vault is an open source project actively maintained by HashiCorp. Its purpose
+    is to provide an easy-to-use system for storing and accessing secrets securely.
+    In addition to secret-storage, Vault provides access-log auditing, fine-grained
+    access-control, and easy rolling. In this recipe, we'll create a new service,
+    called attachment-service, that is responsible for handling messages' image and
+    video attachments. Attachment-service will use Vault to obtain valid AWS credentials
+    used to access an S3 bucket when uploading photo and video files. The service
+    will also use Vault to obtain database credentials to a MySQL database where attachment
+    metadata will be stored. Non-sensitive configurations, such as the name of the
+    database or the name of the S3 bucket to upload photos and videos to, will be
+    made available to the service as environment variables.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In order to demonstrate using Vault to securely store sensitive configuration
+    data, we''ll first create an attachment service that stores sensitive information
+    using environment variables. We''ll then integrate Vault so that the same configuration
+    is read from a secure store:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create a new Java project called `attachment-service` with the following `build.gradle`
+    file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a new package called `com.packtpub.microservices.ch06.attachment` and
+    create a new class called `Application`, which will serve as our service''s entry
+    point. In addition to running our Spring Boot application, this class will expose
+    one bean, which is the Amazon S3 client. Note that we''re using the `EnvironmentVariableCredentialsProvider`
+    class, which reads credentials from a set of environment variables for now, this
+    is not what we want to do in production:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a new package called `com.packtpub.microservices.ch06.attachment.models`
+    and a new class called `Attachment`. This will be the representation of attachments
+    that we store in a relational database:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In order to perform basic operations on the previously defined `Attachment`
+    class, we''ll create a new package called `com.packtpub.microservices.ch06.attachment.data`
+    and an interface called `AttachmentRepository`, which extends `CrudRepository`.
+    We''ll also define one custom method signature that allows a caller to find all
+    attachments related to a specific message:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also need a way to model incoming requests. Our service will accept requests
+    as JSON sent in the request body. The JSON object will have a file name and contain
+    the file data as a Base64-encoded string. Create a new class called `AttachmentRequest`
+    with the following definition:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In our controller, which we''ll define next, we''ll need to return an HTTP
+    404 response to callers if no attachments can be found for a particular message.
+    In order to do this, create a new package called `com.packtpub.microservices.ch06.attachment.exceptions`
+    and a new class called `AttachmentNotFoundException`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We''ll put everything together in our controller. In this basic example, two
+    methods are defined; one that lists attachments for a specific message and one
+    that creates a new attachment. The attachment is uploaded to an Amazon S3 bucket,
+    the name of which is specified in a configuration value. Create a new package
+    called `com.packtpub.microservices.ch06.attachment.controllers` and a new class
+    called `AttachmentController`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In order for any of this to work, we have to create a properties file. Java
+    properties files support a syntax for getting values from environment variables,
+    which is shown in the following code. Create a new file in the `src/main/resources`
+    directory called `application.yml`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: This example works well enough. `EnvironmentVariableCredentialsProvider` in
+    the AWS SDK expects `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` to be set,
+    and we specify that a number of non-sensitive configuration values should be similarly
+    read from environment variables. This is clearly better than hardcoding configuration
+    values, but we're still exposing secrets to any process running in the same container
+    or process space as our service. The environment variables also have to be set
+    somewhere (by a configuration management system or specified in a Dockerfile),
+    so we haven't solved the problem of storing sensitive secrets. Next, we'll modify
+    our new service to read S3 credentials from Vault.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this recipe, we'll be running Vault in development mode. Installing Vault
+    for production use is a big topic that cannot be properly covered in a single
+    recipe. For the production use of Vault, please consult the excellent documentation
+    available at [https://www.vaultproject.io/intro/index.html](https://www.vaultproject.io/intro/index.html).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Install `vault` on your local development machine. See [http://www.vaultproject.io](http://www.vaultproject.io)
+    for instructions for any platform. If you are running macOS X and use **HomeBrew**,
+    you can install Vault with a single command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Run the `vault server` in development mode, providing a simple-to-remember
+    root token:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Enable a new instance of a `kv` secrets engine with a path specific to this
+    service:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Write the AWS access key and secret pair to `vault` as secrets. Substitute
+    the placeholders for your actual AWS access key ID and AWS secret access key:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In order for our service to read these values from Vault, we''ll use a library
+    that simplifies Vault integration for Spring Boot applications. Modify our project''s
+    `build.gradle` file and add the following dependency:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our application needs a configuration class to store values read from Vault.
+    Create a new package called `com.packtpub.microservices.ch06.attachment.config`
+    and a new class called `Configuration`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Modify the `Application` class to create an instance of the class we just created.
+    Then use the instance when creating the S3 client so that we can use credentials
+    taken from Vault instead of environment variables:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: That's it! The attachment service is now configured to read AWS credentials
+    from Vault.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Secure logging
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Together with traces and metrics, logs are an essential component of an observable
+    system (we'll discuss Observability more generally in [Chapter 7](fc3632cc-83c0-44ff-b11d-87f556f7b46b.xhtml),
+    *Monitoring and Observability*). Logs are an ordered, timestamped sequence of
+    events that originated in a particular system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a microservice architecture, the increased complexity of having multiple
+    services makes having good logs essential. The exact criteria that makes logs
+    good is subjective, but generally speaking, good logs should help an engineer
+    piece together events that may have led to a specific error state or bug. Logs
+    are usually organized by levels, a configurable toggle that allows a developer
+    to instruct a service to be more or less verbose with the information sent to
+    logs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While essential for observing the behavior of systems in production, logs can
+    also present privacy and security risks. Having too much information sent from
+    systems to logs can give a would-be attacker information about users of your system,
+    or sensitive information such as tokens or keys that can be used to attack other
+    parts of your system. Having a microservice architecture spreads out this possible
+    attack surface, making it even more important to have a carefully planned strategy
+    for how your services should log information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Infrastructure as Code
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Microservices architectures typically require more frequent provisioning of
+    compute resources. Having more nodes in a system increases the attack surface
+    that an attacker could scan for possible vulnerabilities. One of the easiest ways
+    to leave a system vulnerable is to lose track of the inventory and leave multiple,
+    heterogeneous configurations active. Before configuration-management systems,
+    such as, Puppet or Ansible were popular, it was common to have a set of custom
+    shell scripts that would *bootstrap* new servers in a system. This worked well
+    enough, but as the needs of the system grew, and the shell scripts were modified,
+    it became unwieldy to bring older parts of the system up to date with the changing
+    standards. This type of configuration drift would often leave legacy parts of
+    a system vulnerable to attack. Configuration-management solved many of these problems
+    by allowing teams to use code, usually with a declarative syntax, to describe
+    how nodes in a system should be configured. Configuration-management systems typically
+    did not deal with provisioning actual compute resources, such as compute nodes,
+    data stores, or network storage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Infrastructure as Code is the process of managing infrastructure-provisioning
+    and maintenance through machine-readable code files rather than manually. Using
+    code to describe the infrastructure allows for effective versioning, reviews,
+    and rollbacks of changes to a system. Being able to automate the process of bringing
+    up a database node or adding a compute node to a cluster frees developers up to
+    worry about their applications, relatively assured that they are not leaving old
+    configurations out in the wild. Together with immutable infrastructure, Infrastructure
+    as Code provides an additional safety net against a system being compromised by
+    vulnerable, forgotten components.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this recipe, we'll demonstrate using *Terraform*, an open source tool created
+    by HashiCorp, to provision a collection of AWS resources, including an EC2 instance
+    and a Redis ElastiCache. We'll guarantee that resources provisioned with Terraform
+    share configurations with regards to network access, backups, and other security
+    considerations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Before using terraform, you''ll have to install it. Instructions are available
+    on the [project site](https://www.terraform.io/intro/getting-started/install.html),
+    but if you are running macOS X and use HomeBrew ([https://brew.sh/](https://brew.sh/)),
+    you can issue the following command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a new file called `example.tf`. This will contain configuration for
+    our EC2 instance and ElastiCache instance. We''ll use a default **Amazon Machine
+    Image** (**AMI**) and enable daily snapshots that will be kept for five days:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: Replace `ACCESS_KEY` and `SECRET_KEY` with a valid AWS access key pair.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Initialize terraform. This will install the AWS provider referenced in the
+    preceding file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Terraform works by presenting an execution plan and then asking whether you''d
+    like to proceed by applying the plan. Run the following command and type `yes`
+    when prompted:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: An execution plan has been generated and is shown in the following code. Resource
+    actions are indicated with the following symbols: `+ create`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Terraform will perform the following actions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Terraform will perform the actions described earlier. Only `yes` will be accepted
+    to approve:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Log into your AWS management console and you''ll see that a new Redis cluster
+    and EC2 instance have been created. Terraform can also help you clean up. In order
+    to destroy these two resources, run the destroy command and type in `yes` when
+    prompted:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: Terraform is an incredibly powerful tool. In this recipe, we used it to create
+    a single EC2 instance and an ElastiCache Cluster instance. You can do loads more
+    with Terraform – the subject of Infrastructure as Code could fill a cookbook of
+    its own. Thankfully, the docs provided by HashiCorp ([https://www.terraform.io/docs/index.html](https://www.terraform.io/docs/index.html))
+    are excellent and I would recommend reading them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using an Infrastructure as Code solution will make provisioning and managing
+    resources a much safer process, limiting the possibility of losing track of legacy
+    infrastructure with out-of-date configurations.
+  prefs: []
+  type: TYPE_NORMAL

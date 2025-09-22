@@ -1,0 +1,967 @@
+- en: Reliability Patterns
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following recipes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using circuit breakers to implement backpressure
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Retrying requests with exponential backoff
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Improving performance with caching
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Fronting your services with a CDN
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gracefully degrading the user experience
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Testing your failure scenarios with controlled game days
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introducing automated chaos
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Reliability is becoming an increasingly popular topic in the world of distributed
+    systems. Job postings for **Site Reliability Engineers** (**SRE**) or **chaos
+    engineers** are becoming common, and as more and more organizations move toward
+    cloud-native technologies, it's becoming impossible to ignore that system failure
+    is always a reality. Networks will experience congestion, switches, other hardware
+    components will fail, and a whole host of potential failure modes in systems will
+    surprise us in production. It is impossible to completely prevent failures, so
+    we should try to design our systems to be as tolerant of failure as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Microservices provide interesting and useful opportunities to design for reliability.
+    Because microservices encourage us to break our systems into services encapsulating
+    single responsibilities, we can use a number of useful reliability patterns to
+    isolate failures when they do occur. Microservice architectures also present a
+    number of challenges when planning for reliability. Increased reliance on network
+    requests, heterogeneous configurations, multiple data stores and connection pools,
+    and different technical stacks all contribute to an inherently more complex environment
+    where different styles of failure modes can surface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Whether dealing with a microservice architecture or a monolith code base, we
+    all find ourselves fundamentally surprised [1] (you can check this link for more
+    information: [https://www.youtube.com/watch?v=tZ2wj2pxO6Q](https://www.youtube.com/watch?v=tZ2wj2pxO6Q))
+    by the behavior of a system under some kind of failure state at one point or another.
+    Building resiliency into our systems from the start allows us to optimize how
+    we react in these situations. In this chapter, we''ll discuss a number of useful
+    reliability patterns that can be used when designing and building microservices
+    to prepare for and reduce the impact of system failures, both expected and unexpected.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using circuit breakers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Failures in distributed systems can be difficult to debug. A symptom (spikes
+    in latency or a high error rate) can appear far away from the underlying cause
+    (slow database query, garbage collection cycles causing a service to slow down
+    the processing of requests). Sometimes a complete outage can be the result of
+    a failure in a small part of the system, especially when components of the system
+    are having difficulty handling increases in load.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Whenever possible, we want to prevent failures in one part of a system from
+    cascading to other parts, causing widespread and hard-to-debug production issues.
+    Furthermore, if a failure is temporary, we'd like our system to be able to self-repair
+    when the failure is over. If a specific service is experiencing problems because
+    of a temporary spike in load, we should design our system in such a way that it
+    prevents requests to the unhealthy service, allowing it time to recover before
+    beginning to send it traffic again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Circuit breakers are used in houses to prevent the overuse of electricity from
+    heating up the internal wiring and burning the house down. A circuit is tripped
+    if the breaker detects that it is being overused and cannot handle the amount
+    of current being drawn from it. After some time passes, the circuit can be closed
+    again, allowing the system to function normally.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This same approach can be translated to software and applied to microservice
+    architectures. When a service invokes another service, we should wrap the RPC
+    call in a circuit breaker. If the request fails repeatedly, indicating that the
+    service is unhealthy, the circuit breaker is opened, preventing any further requests
+    from being attempted. The invoking service can then "fail fast" and decide how
+    to handle the failure mode. After a configurable period of time, we can allow
+    another request through, and if it succeeds, close the circuit again, allowing
+    the system to resume normal operation. You can a look at the following related
+    flowchart:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/e1b37656-3fa1-43e4-9872-321809e991ed.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Libraries that implement circuit breakers are available for most popular programming
+    languages. The Hystrix fault-tolerance library, built by Netflix and used in previous
+    recipes is one such library. Some frameworks, such as Twitter's Finagle, automatically
+    wrap RPCs in circuit breakers, keeping track of failures and automatically managing
+    the state of the breaker. Open source service-mesh software, such as **Conduit**
+    and **Linkerd**, automatically add circuit breakers to RPCs as well. In this recipe,
+    we'll introduce a library called `resilience4j` and use its circuit breaker implementation
+    to allow calls from one service to another to fail fast in the event of a failure
+    threshold being reached. To make the example more concrete, we'll modify a message
+    service, which calls a socialgraph service to determine whether two users follow
+    each other, and wrap RPC calls in a circuit breaker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'To demonstrate wrapping service invocations in circuit breakers, we''re going
+    to create a version of the `pichat` message service that exposes endpoints for
+    sending and retrieving messages. To send a message from a sender to a recipient,
+    those two users must have a friendship. Friendships are handled by a social-graph-service.
+    For the sake of simplicity, we''ll code up a simple mock social-graph-service
+    in Ruby, as we have done in previous recipes. The mock service will expose a single
+    endpoint that lists friendships for a specified user. Here is the source code
+    for the mock social-graph-service in Ruby:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: In our mock service, we're using strings in the `pichat:users:username` format
+    to identify users in our system. These are pseudo-URIs, which uniquely identify
+    users in our system. For now, just know that these are unique strings used to
+    identify users in our system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our mock social-graph-service exposes the following single endpoint:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding endpoint returns a JSON response body representing the friendships
+    that the requested user has:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With our mock social-graph-service running on the localhost, port `4567` (the
+    default port for Ruby Sinatra applications), we''re ready to start writing our
+    message service. As in previous recipes, we''ll use Java and the Spring Boot framework.
+    We''ll also use the `resilience4j` circuit-breaker library to wrap calls from
+    the message service to the social-graph-service. First, we''ll develop our message-service
+    code, then we''ll add in the `resilience4j` circuit-breaker library to add a level
+    of resilience to our service, as shown in the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create a new Gradle Java project and add the following code to `build.gradle`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our message-service code will have two beans that get autowired into our controller.
+    The first is an in-memory message repository (in a real-world example, this would
+    be replaced with a more durable persistence layer), and the second is a client
+    for the social-graph-service. Before we create those, let''s create some supporting
+    objects. Create a new package called `com.packtpub.microservices.ch05.message.exceptions`
+    and a new class called `MessageNotFoundException`. This will be used to indicate
+    that a message cannot be found, which will result in a `404` response from our
+    service, as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create another class in the exceptions package called `MessageSendForbiddenException`.
+    This will be used to indicate that a message cannot be sent because the sender
+    and the recipient are not friends. The response code from our service will be `403`
+    forbidden, as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create the `SocialGraphClient` class. Create a new package called `com.packtpub.microservices.ch05.message.clients`
+    and a new class called `SocialGraphClient`, as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s create our models. We''ll need a model to represent `UserFriendships`
+    that a specific user has as well as a model to represent `Messages`. Create a
+    new package called `com.packtpub.microservices.ch05.models` and a new class called
+    `Friendships` as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a new class, in the same package, called `Message` as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With our models created, we can now move on to our in-memory message repository.
+    This class simply uses `HashMap` to store messages keyed by `UUID`. These messages
+    are not durable and will not survive a restart of the service, so this is not
+    a recommended technique for a production service. The class has two methods: `saved`,
+    which generates UUID and stores a message in the map, and `get`, which attempts
+    to retrieve a message from the map. If no message is found, an exception is thrown,
+    as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our service has a single controller for messages. The controller has two endpoints,
+    one that allows a caller to retrieve a message by ID (or a `404` response if the
+    message is not found) and another that attempts to send a message (or a `403` response
+    if the sender and recipient of the message are not friends):'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a `Application` class that simply runs our application and creates the
+    necessary beans that get wired into our controller, as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This service works, and meets our primary requirement that a message cannot
+    be sent if the sender and recipient are not friends, but it is susceptible to
+    all the problems we described. If the social-graph-service is experiencing problems,
+    the message service will be dependent on timeouts in the `RestTemplate` client,
+    which will impact the number of requests the message service is able to serve.
+    Furthermore, if the social-graph-service is overwhelmed and starts returning `503` (an
+    HTTP status code meant to indicate that a service is temporarily unavailable)
+    the message service has no mechanism to allow the social-graph-service to recover.
+    Let''s now introduce the `resilience4j` circuit-breaker library and wrap calls
+    to the social-graph-service:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Open `build.gradle` and add the `resilience4j` circuit-breaker library to the
+    list of dependencies, as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Modify `SocialGraphClient` to use `CircuitBreaker` when invoking the social-graph-client.
+    In the event that the `SocialGraphClient` returns a failure, we''ll return an
+    empty `Friendships` instance, which will cause our service to respond to the user
+    request with a `403` forbidden (default closed). We''ll use the default configuration
+    for circuit breakers here, but you should consult the documentation for `resilience4j`,
+    which contains plenty of information about configuring circuit breakers to suit
+    the specific needs of your service. Take a look at this code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now our service wraps dangerous network calls in a circuit breaker, preventing
+    failures in the social-graph-service from cascading to the message service. In
+    the event of a temporary failure in the social-graph-service, the message service
+    will eventually fail fast and allow the social-graph-service time to recover.
+    You can test this by forcing the mock-social-graph service to return an error
+    code—that's left as a fun exercise for the reader!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retrying requests with exponential backoff
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Failure in distributed systems is inevitable. Instead of trying to prevent failure
+    entirely, we want to design systems that are capable of self-repair. To accomplish
+    this, it is essential to have a good strategy for clients to follow when initiating
+    retries. A service may become temporarily unavailable or experience a problem
+    that requires manual response from an on-call engineer. In either scenario, clients
+    should be able to queue and then retry requests to be given the best chance of
+    success.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Retrying endlessly in the event of an error is not an effective tactic. Imagine
+    a service starts to experience a higher-than-normal failure rate, perhaps even
+    failing 100% of requests. If clients all continuously enqueue retries without
+    ever giving up, you''ll end up with a thundering-herd problem—clients continuously
+    retrying requests without limit. As the timeline of the failure progresses, more
+    clients will experience failures, resulting in more retries. You''ll end up with
+    a traffic pattern, illustrated by the following diagram, which is a similar graph
+    to the one you''ll see during a denial-of-service attack. The end result will
+    be the same—cascading failures due to overwhelmed services and a shedding of legitimate
+    traffic. Your application will become unusable and the failing service will be
+    harder to isolate and repair:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/9ab2b33d-c4c1-4421-bd88-deaecaf2d6c1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The solution to prevent thundering herds is to add a backoff algorithm that
+    exponentially increases the wait period between retries and gives up after a certain
+    number of failures. This approach is referred to as capped exponential backoff.
+    Adding an exponentially-increasing sleep function between retries accomplishes
+    half of what we''re after—clients will slow down their retry attempts, distributing
+    load over time. Unfortunately, client retries will still be clustered, resulting
+    in periods of time where your service is being hammered by many concurrent requests.
+    The second half of our strategy addresses this problem by adding a randomized
+    value or jitter to our sleep function to distribute the retries over time. To
+    summarize, our retry strategy has the following three requirements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retries must be spaced out using an exponential backoff
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Retries must be randomized by adding jitter
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Retries must terminate after a specific amount of time
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Most HTTP libraries will have support for a retry strategy that meets these
+    requirements. In this recipe, we'll look at the HTTP `client` library for Java
+    written by Google.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'To demonstrate using exponential backoff and jitter, we''re going to create
+    a sample service in Ruby that has one simple job: to return an HTTP status that
+    indicates a failure. In previous recipes, we''ve used the `sinatra` Ruby library
+    to do this, so we''ll continue with this, a service that simply returns a `503`
+    HTTP status code for every request, as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create an HTTP client using the Google HTTP `client` Library. First, create
+    a new Gradle Java project with the following `build.gradle` file that imports
+    the necessary libraries and plugins, as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a new package called `com.packtpub.microservices.ch05.retryclient`.
+    Create a new class called `Main`. In the `Main` class, we''re just going to create
+    an HTTP request and execute it. If the request was successful, we''ll just print
+    its status code with a nice message. If the success fails, we''ll still print
+    its status code, but with a message indicating that something went wrong. The
+    first version of our HTTP client will not attempt any retries. The purpose of
+    this code is to write the simplest client possible, not to show off the features
+    of the Google HTTP `client` library, but I encourage you to consult the documentation
+    for the project to learn more about it. Let''s take a look at the following code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you run the preceding code either with your IDE or by running `./gradlew
+    run` from your command line, you''ll see that the code tries to make a single
+    HTTP request, receives `503` from our Ruby service, and then gives up. Let''s
+    now instrument it with a configurable backoff that has a randomization factor
+    for adding jitter, as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you run the program now and watch the logs of your Ruby service, you'll see
+    that the code makes multiple attempts to make the request, increasing the amount
+    of time it sleeps between retries, before eventually giving up after about 10
+    seconds. In a real-world setting, this could give the service enough time to possibly
+    recover while not creating a thundering herd that would eliminate any possibility
+    of repair.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Improving performance with caching
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Microservices should be designed in such a way that a single service is usually
+    the only thing that reads or writes to a particular data store. In this model,
+    services have full ownership over the domain models involved in the business capability
+    they provide. Having clean boundaries makes it easier to think about the life
+    cycle of data in a system. Some models in our system will change frequently, but
+    many will be read much more often than they are written. In these cases, we can
+    use a cache to store infrequently changed data, saving us from having to make
+    a request to the database every time the object is requested. Database queries
+    are typically more expensive than cache lookups, so it's ideal to use a cache
+    whenever possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition to help improve performance, having an effective caching layer can
+    help improve the reliability of a service. It's impossible to guarantee 100% availability
+    for a database, so in the event of a database failure, a service can revert to
+    serving cached data. In most cases, it's preferable for a user to receive some
+    data, even if it's old and potentially out of date, than to receive no data at
+    all. Having a cache layer allows you to configure your service to use it as another
+    source of available data to serve to users of your service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this recipe, we'll create a simple example service that serves information
+    about users of your application. It will have two endpoints, the first will accept
+    POST requests and will persist a properly formed user to a database. The second
+    will retrieve a user representation by the ID specified. IDs are stored as UUIDs,
+    which is preferable to autoincrementing IDs for many reasons, which we'll go into
+    in later chapters. We'll start with the basic service, then add caching so we
+    can see specifically what steps are required. In this recipe, we'll use Redis,
+    a popular open source in-memory data-structure store that is particular useful
+    for storing key-value pairs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Create a Gradle Java project called caching-user-service with the following
+    `build.gradle` file. Note that we''re adding dependencies for **Java Persistence
+    API** (**JPA**) and a Java MySQL `client` library:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create the `Main` class. As usual, this is the main entry point to our application
+    and is pretty simple:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a `User` class in the `com.packtpub.microservices.ch05.userservice.models` package.
+    This will serve as our entity representation and contains the fields that will
+    be stored in the database and eventually in our Redis cache:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To wire up our `User` entity to our MySQL database, create a `UserRepository`
+    interface that extends the `CrudRepository` interface defined by the `springframework`
+    data package, as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create the `UserController` class. This is `RestController`, which maps certain
+    endpoints to the functionality discussed previously, namely creating and retrieving
+    user records. Everything here should look familiar. Of note is that the `findById`
+    method returns `Optional<T>`, so we use `map` and `orElseGet` to return either
+    a `200 OK HTTP` response with the user in the response body or a `404` status,
+    as shown in the following code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Add the following `application.properties` file to the `src/main/resources`
+    directory. It contains the necessary configuration to connect to a local MySQL
+    instance. It''s assumed that you have installed MySQL and have it running locally.
+    You should have also created a database called `users`, a user with the username
+    `userservice`, and a password: `password`. Note that we''re setting `ddl-auto`
+    to `create`, which is a good practice for development, but should not be used
+    for production:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s add some caching! The first thing we''ll do is open the `application.properties`
+    file again and add some configuration for a `redis` instance running locally on
+    port `6379` (the default), as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With our application configured to use MySQL as a primary datasource and Redis
+    as a cache, we can now override methods in the `CrudRepository<T, ID>` interface
+    and add annotations instructing it to cache. We want to write to our cache every
+    time we call the `save` method with a `User` object, and read from the cache every
+    time we call `findById` with a valid user ID string:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: That's it! You can test this by running the service, creating a user, verifying
+    that the user is in both the MySQL database and Redis cache, and then deleting
+    the user from the database. Requests to the `users/ID` endpoint will still return
+    the user record. Before finishing this service, you'll want to make sure that
+    the cache is invalidated if a user is ever deleted. Any other endpoints that mutate
+    users should invalidate and/or rewrite the cache. This is left as an exercise
+    for the reader!
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Fronting your services with a CDN
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The **Content Delivery Network** (**CDN**) improves performance and availability
+    by delivering content through a globally distributed network of proxy servers.
+    When a user (usually through their mobile device) makes a request to your API
+    through a CDN, they will create a network connection with one of many **points
+    of presence** (**PoPs**), based on their geographic location. Instead of having
+    to make roundtrips to the origin data center for every single request, content
+    can be cached at the edge of a CDN, greatly reducing the response time for the
+    user and reducing unnecessary, costly traffic to the origin.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CDNs are a requirement if you plan to have a global user base. If every request
+    to your application's API has to perform a full roundtrip to a single origin,
+    you'll create a subpar experience for users in parts of the world physically distant
+    from the data center that you host your applications in. Even if you host your
+    applications in multiple data centers, you'll never be able to create as high-performing
+    an experience for as many users as you can using a CDN.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition to performance, CDNs can improve the availability of your application.
+    As we discussed in the previous recipe, many entities in your system are read
+    much more frequently than they are written. In these cases, you can configure
+    your CDN to cache payloads from a service for a specific amount of time (commonly
+    specified by a TTL or time-to-live). Caching responses from your service reduces
+    the amount of traffic to your origin, making it harder to run out of capacity
+    (compute, storage, or network). Additionally, if your service starts to experience
+    high latency, or total or partial failure, the CDN can be configured to serve
+    cached responses instead of continuing to send traffic to a failing service. This
+    allows you to at least be able to serve content to users in the event of service
+    downtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some CDN providers have APIs that allow you to automatically invalidate a resource.
+    In these cases, you can instrument your microservice to invalidate a resource
+    just as you would using a Redis- or Memcached-based cache, as discussed in the
+    previous recipe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are many different CDN providers out there. Some of the large ones include
+    **Akamai** and **Edgecast**. Amazon Web Services provides a CDN offering, called
+    CloudFront, that can be configured to serve requests to origin servers in AWS
+    or static resources hosted in S3 buckets. One of the more developer-friendly offerings
+    in the CDN market is from a company called **Fastly**. Fastly is built using **Varnish**,
+    an open source web-application accelerator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a provider, Fastly allows you to upload your own **Varnish Configuration
+    Language** (**VCL**) files, effectively allowing you to create caching rules based
+    on any aspect of the request (incoming headers, path segments, query string parameters,
+    and so on). Additionally, Fastly provide a **Fast Purge API** that allows you
+    to invalidate resources based on a URI.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this recipe, we'll go through the basic steps required to create an account
+    with a CDN provider and start serving traffic through a CDN. We'll do this with
+    a hypothetical service made accessible to the public internet with the hostname
+    `api.pichat.me`. The service authenticates requests by inspecting the value of
+    the Authorization header of the incoming request for a valid OAuth2 bearer token.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Create an account with Fastly, the CDN provider we'll be using in this example.
+    As of this writing, the signup URL is `https://www.fastly.com/signup`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Fastly will ask you to create a service. Enter a name for your service, along
+    with the domain (`api.pichat.me`) and the hostname of the origin server the application
+    is running on.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Using your DNS provider for the domain, create a CNAME for `api.pichat.me`,
+    pointing your domain to Fastly's servers. Read the updated documentation to find
+    out what hostnames to use.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Once that is set up and your service is created, requests to your hostname will
+    now go through the Fastly CDN. Read the Fastly documentation ([https://docs.fastly.com/guides/basic-setup/](https://docs.fastly.com/guides/basic-setup/))
+    to discover how to customize VCLs and other settings for your service.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Gracefully degrading the user experience
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We understand by now that a certain amount of failure is inevitable. In a sufficiently
+    complex system, some amount of failure will occur some of the time. By using the
+    techniques in this chapter, we can try and reduce the likelihood that one of these
+    failures will impact customers. Regardless of how much we try to prevent it from
+    happening, some kind of failure will probably impact the customer experience at
+    some point in your applications lifespan. Users, however, can be surprisingly
+    compassionate in the face of system outages, provided the user experience degrades
+    gracefully.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Consider this scenario: you are using an application that allows you to browse
+    a catalog of products and look for local stores that carry that product, along
+    with important information such as its address, phone number, and store hours.
+    Let''s say the service that provides information about local stores becomes unavailable.
+    This clearly impacts the user experience in a less-than-ideal way, but the application
+    can handle the failure in more than one way. The worst way, which would probably
+    result in the worst user experience, would be to allow the failure to cascade
+    and take down the product catalog. A slightly better way would be to allow the
+    user to continue searching for products, but when they go to find a local store
+    that carries the product, they''re informed via some kind of information box that
+    the local store information is currently unavailable. This is frustrating, but
+    at least they can still look at product information, such as price, models, and
+    colors. It would be better still to recognize that the service was not operating
+    and have some kind of informational banner informing the user that local store
+    information is temporarily unavailable. With this information, we can inform the
+    user of the situation, allowing them to decide whether they''d still like to go
+    ahead and search for products. The experience is suboptimal, but we would avoid
+    unnecessarily frustrating the user.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Verifying fault tolerance with Gameday exercises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter contains recipes that should help you create more reliable, resilient
+    microservice architectures. Each recipe documents a pattern or technique for anticipating
+    and dealing with some kind of failure scenario. Our aim when building resilient
+    systems is to tolerate failure with as little impact to our users as possible.
+    Anticipating and designing for failure is essential when building distributed
+    systems, but without verifying that our systems handle failure in the ways we
+    expect, we aren't doing much more than hoping, and hope is definitely not a strategy!
+  prefs: []
+  type: TYPE_NORMAL
+- en: When building systems, unit and functional tests are necessary parts of our
+    confidence-building toolkit. However, these tools alone are not enough. Unit and
+    functional tests work by isolating dependencies, good unit tests, for instance,
+    don't rely on network conditions, and functional tests don't involve testing under
+    production-level traffic conditions, instead focusing on various software components
+    working together properly under ideal conditions. To gain more confidence in the
+    fault tolerance of a system, it's necessary to observe it responding to failure
+    in production.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Gameday exercises are another useful tool for building confidence in the resiliency
+    of a system. These exercises involve forcing certain failure scenarios in production
+    to verify that our assumptions about fault tolerance match reality. John Allspaw
+    describes this practice in detail in his paper, *Fault Injection in Production*.
+    If we accept that failure is impossible to avoid completely, it becomes sensible
+    to force failure and observe how our system responds to it as a planned exercise.
+    It’s better to have a system fail for the first time while an entire team is watching
+    and ready to take action, than at 3 a.m. when a system alert wakes up an on-call
+    engineer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Planning a Gameday exercise provides a large amount of value. Engineers should
+    get together and brainstorm the various failure scenarios their service is likely
+    to experience. Work should then be scheduled to try to reduce or eliminate the
+    impact of those scenarios (that is, in the event of database failure, revert to
+    a cache). Each Gameday exercise should have a planning document that describes
+    the system being tested, the various failure scenarios, including steps that will
+    be taken to simulate the failures, expectations surrounding how the system should
+    respond to the failures, and the expected impact on users (if any). As the Gameday
+    exercise proceeds, the team should work through each of the scenarios, documenting
+    observations—it’s important to ensure that metrics we expect to see emitted are
+    being emitted, alerts that we expect to fire do indeed fire, and the failure is
+    handled in the way we expect. As observations are made, document any differences
+    between expectations and reality. These observations should become planned work
+    to bridge the gap between our ideal world and the real world.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead of walking through code, this recipe will demonstrate a process and
+    template that can be used to run Gameday exercises. The following is not the only
+    way to conduct Gameday exercises, but one that should serve as a good starting
+    point for your organization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Prerequisites
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As always, there are some prerequisites you should ensure you meet before attempting
+    to run a Gameday exercise. Specifically, your teams should be used to instrumenting
+    code with the necessary metrics and alerts to provide a good degree of observability
+    into your production environment. Your teams should have experience working within
+    a well-understood and practiced incident-response process that includes having
+    regular retrospectives to continuously improve in light of production incidents.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, your organization should be accustomed to talking openly about failure
+    and unexpected production incidents, and be committed to processes that encourage
+    continuous improvement. These prerequisites should suggest that your teams have
+    the necessary organizational support and psychological safety to conduct these
+    kinds of resiliency exercises.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The first step in a Gameday exercise is selecting a system that will be tested.
+    When you're just getting started with Gamedays, it's wise to select a system that
+    is well understood, has failed before, and has a limited blast radius in terms
+    of the impact on users.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Once the service is selected, gather the team responsible for its development
+    and operation, and start brainstorming different failure scenarios. If there is
+    a data store, consider what could happen if it were suddenly unavailable due to
+    a hardware failure. Perhaps the database could be shut down manually. What happens
+    if the database is terminated in an unsafe way? The service runs in some kind
+    of clustered configuration, so what happens if one node is removed from the load
+    balancer? What happens when all nodes fail and are removed from the load-balancing
+    pool? Another area to test is unexpected latency. In a distributed system, sufficiently
+    high latency is impossible to distinguish from lack of service availability, so
+    there are a number of interesting bugs that can lurk here. Getting the team together
+    to discuss all of these scenarios (as well as others) can be a great way to learn
+    more about a system. Document all of the scenarios that you plan to test.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Schedule a time and a room for the Gameday experiment (if you're a remote team,
+    arrange for everyone to be on a video call together). Invite the team responsible
+    for the service being tested, a representative from your customer support team,
+    and any other stakeholders who are interested in seeing the experiment.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Using a template, such as the one included here, plan out in detail how the
+    experiment is going to be conducted. On the day at the scheduled time, start with
+    an overview of the system being tested. This is a good opportunity to ensure that
+    everyone has a consistent view of how the system works. Then go through each scenario,
+    assigning the actual action to someone on the team.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Document observations during the experiment, detailing how the system reacted
+    to the failure injection.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the event that observations made during the experiment are different than
+    expectations, schedule follow-up tasks, in the form of tickets, for the team to
+    correct the discrepancy.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: A template for Gameday exercises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The following template can be used for planning and executing a Gameday exercise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**System: **Message Service'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '****System Overview: ****'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A detailed description (possibly including diagrams) of the system under test.
+    It’s a good idea to document how requests are routed to the system, some of the
+    major systems that interact with it, data stores it uses and their general configuration,
+    and any downstream services it depends on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Dashboards:**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Links to important dashboards to watch while the Gameday exercise is underway.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Test Scenarios:**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Scenario:** Database becomes unavailable due to nodes being terminated.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Method:**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Shut down database EC2 nodes manually using AWS CLI tools (include actual command).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Expectations:**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: List how you expect the service to react. Include details about expected changes
+    in metrics, alerts that should be fired, system behavior, and user impact.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Observations:**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Document observations during the actual test.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Follow-up Action Items:**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create tickets for any follow-up work that should be done as a result of the
+    experiment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing automated chaos
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Running manual Gameday exercises is a great way to introduce the practice of
+    failure injection. Forcing failures in production helps build confidence in the
+    resilience of systems and identifies opportunities for improvement. Gameday helps
+    teams gain a better overall understanding of how their systems behave when confronted
+    with a number of failure scenarios. As a team conducts more exercises, it will
+    start to accumulate tools for performing common tasks, such as introducing latency
+    in the network or spiking CPU usage. Tooling helps automate mundane tasks, improving
+    the efficiency of Gameday exercises. There are a variety of open source and commercial
+    tools designed to automate chaos engineering that teams can take advantage of
+    right away.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Gameday exercises are planned and scheduled. Some organizations go one step
+    further and introduce continuous failure injection as a way of ensuring that systems
+    are handling common failure scenarios smoothly. In early 2011, Netflix announced
+    the creation of the Simian Army—a suite of tools designed to inject common failures
+    into a production environment. Arguably the most famous member of the Simian Army,
+    Chaos Monkey, randomly shuts down nodes in a production environment. The Simian
+    Army tools have been open sourced and are available to use in your own organization.
+    They can be scheduled to run as part of a Gameday exercise, or set up to run on
+    specific schedules (that is, Monday to Friday, 9 a.m. to 5 p.m., when on-call
+    engineers are usually in the office).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pioneers in this space, PagerDuty, have conducted "failure Fridays" since 2013\.
+    Every Friday, engineers get together to attack a specific service. Over time,
+    engineers started building commands into their Chat Bot to perform common functions
+    such as isolating a node from other network traffic, even adding a "roulette"
+    command that would randomly select hosts for rebooting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hosted commercial services have been developed to help automate chaos engineering.
+    Gremlin is a hosted product designed to help teams run Gameday exercises by providing
+    access to a library of "attacks" executed through agents installed on nodes in
+    your environment. Gremlin provides an API and a web interface that allows users
+    to configure attacks designed to spike resource usage (CPU, memory, disk), simulate
+    random failures by killing processes or rebooting hosts, and simulate common network
+    conditions, such as latency and **Network Time Protocol** (**NTP**) drift. Having
+    a product like Gremlin lowers the amount of upfront effort needed to start doing
+    failure injection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another open source tool is the Chaos toolkit, a CLI tool designed to make it
+    easier to design and run experiments. In this recipe, we'll install the Chaos
+    toolkit and use it to execute a simple experiment against a hypothetical user
+    service. The user service will be the same one we wrote in the *Improving performance
+    with caching* recipe earlier in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The Chaos toolkit is written in Python and can be installed using `pip`. We''ll
+    need a working Python3 environment. This recipe will assume you are installing
+    it on macOS X using Homebrew. First, install `pyen`—a utility that supports managing
+    multiple Python development environments, as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Install Python3 by executing the following command line:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With a newly-installed Python3 environment, go ahead and install the Chaos
+    toolkit by executing the following command line:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The Chaos toolkit uses the JSON files to describe experiments. Each experiment
+    should have a title, description, and optionally some tags used to categorize
+    experiments. The `steady-state-hypothesis` section describes how the service is
+    expected to behave under normal conditions. In our situation, we assume that the
+    service will return either `200` in the event that a user is found, or `404` in
+    the event that a user has not been found:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Run this experiment:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: If successful, the output should indicate that the service responds well when
+    MySQL is unavailable. However, in its current state, the experiment will leave
+    MySQL stopped, which isn't ideal. Now you have something to fix, which is left
+    as an exercise to the reader, and you can rerun your experiment. Congratulations!
+    You just ran your first automated chaos experiment.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL

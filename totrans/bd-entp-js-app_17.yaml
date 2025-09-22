@@ -1,0 +1,1858 @@
+- en: Migrating to Docker
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So far, we have focused on developing the backend and frontend of our application,
+    and have paid little attention to our infrastructure. In the next two chapters,
+    we will focus on creating a scalable infrastructure using Docker and Kubernetes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, we’ve manually configured two Virtual Private Servers (VPSs), and deployed
+    each of our backend APIs and client applications on them. As we continue to develop
+    our applications on our local machine, we test each commit locally, on Travis
+    CI, and on our own Jenkins CI server. If all tests pass, we use Git to pull changes
+    from our centralized remote repository on GitHub and restart our application. While
+    this approach works for simple apps with a small user base, it will not hold up
+    for enterprise software.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Therefore, we''ll begin this chapter by understanding why manual deployment
+    should be a thing of the past, and the steps we can make towards full automation
+    of the deployment process. Specifically, by following this chapter, you will learn:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What **Docker** and what containers in general is,
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to download and run Docker images
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to compose your own `Dockerfile` and use it to containerize parts of our
+    application
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to optimize an image
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Problems with manual deployment
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Here are some of the weaknesses in our current approach:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Lack of consistency**: Most enterprise-level applications are developed by
+    a team. It is likely that each team member will use a different operating system,
+    or otherwise configure their machine differently from others. This means that
+    the environment of each team members’ local machine will be different from each
+    other, and by extension, from the production servers''. Therefore, even if all
+    our tests pass locally, it does not guarantee that it will pass on production.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Lack of independence**: When a few services depend on a shared library, they
+    must all use the same version of the library.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Time-consuming and error-prone**: Every time we want a new environment (staging/production)
+    or the same environment in multiple locations, we need to manually deploy a new
+    VPS instance and repeat the same steps to configure users, firewalls, and install
+    the necessary packages. This produces two problems:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Time-consuming**: Manual setup can take anything from minutes to hours.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Error-prone**: Humans are prone to errors. Even if we have carried out the
+    same steps hundreds of times, a few mistakes will creep in somewhere.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Furthermore, this problem scales with the complexity of the application and
+    deployment process. It may be manageable for small applications, but for larger
+    applications composed of dozens of microservices, this becomes too chaotic.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Risky deployment**: Because the job of server configuration, updating, building,
+    and running our application can only happen at deployment time, there’s more risk
+    of things going wrong when deploying.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Difficult to maintain**: Managing a server/environment does not stop after
+    the application has been deployed. There will be software updates, and your application
+    itself will be updated. When that happens, you’d have to manually enter into each
+    server and apply the update, which is, again, time-consuming and error-prone.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Downtime**: Deploying our application on a single server means that there’s
+    a single point of failure (SPOF). This means that if we need to update our application
+    and restart, the application will be unavailable during that time. Therefore,
+    applications developed this way cannot guarantee high availability or reliability.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Lack of version control**: With our application code, if a bug was introduced
+    and somehow slipped through our tests and got deployed on to production, we can
+    simply rollback to the last-known-good version. The same principles should apply
+    to our environment as well. If we changed our server configuration or upgraded
+    a dependency that breaks our application, there’s no quick-and-easy way to revert
+    these changes. The worse case is when we indiscriminately upgrade multiple packages
+    without first noting down the previous version, then we won’t even know how to
+    revert the changes!'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Inefficient distribution of resources**: Our API, frontend client, and Jenkins
+    CI are each deployed on their own VPS, running their own operating system, and
+    controlling their own isolated pool of resources. First of all, running each service
+    on its own server can get expensive quickly. Right now, we only have three components,
+    but a substantial application may have dozens to hundreds of individual services.
+    Furthermore, it’s likely that each service is not utilizing the full capabilities
+    of the server. It is important to have a buffer at times of higher load, but we
+    should minimize unused/idle resources as much as possible:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '![](img/4f9fb1b5-4f15-4c32-afd9-96feb2895d82.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Introduction to Docker
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Docker is an open source project that provides the tools and ecosystem for developers
+    to build and run applications inside containers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What are containers?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Containerization is a method of virtualization. Virtualization is a method of
+    running a virtual instance of a computer system inside a layer abstracted from
+    the hardware. Virtualization allows you to run multiple operating systems on the
+    same physical host machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From the view of an application running inside a virtualized system, it has
+    no knowledge or interaction with the host machine, and may not even know that
+    it is running in a virtual environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Containers are a type of virtual system. Each container is allocated a set amount
+    of resources (CPU, RAM, storage). When a program is running inside a container,
+    its processes and child processes can only manipulate the resources allocated
+    to the container, and nothing more.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can view a container as an isolated environment, or sandbox, on which to
+    run your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Workflow
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So, what's a typical workflow for running a program (or programs) inside a container?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, you''d specify the setup of your environment and application inside
+    a *Dockerfile*, where each line is a step in the setup process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Then, you’d actually carry out the steps specified in the Dockerfile to generate
+    an *image*. An image is a static, immutable file that contains the executable
+    code of our application. The image is self-contained and includes our application
+    code, as well as all of its dependencies such as system libraries and tools.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then, you'd use Docker to run the image. A running instance of an image is a
+    container. Your application runs inside that container.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By analogy, a Dockerfile contains the instructions on assembling an electric
+    motor. You follow the instructions to generate the motor (image), and you can
+    add electricity to the motor to make it run (container).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The only difference between Docker and our analogy is that many Docker containers
+    can run on top of the same Docker image.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How does Docker solve our issues?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Now that we know what Docker is, and have a rough idea of how to work with
+    it, let’s see how Docker can patch up the flaws in our current workflow:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Provides consistency**: We can run multiple containers on the same image.
+    Because setup and configuration are done on the image, all of our containers will
+    have the same environment. By extension, this means that a test that passes in
+    our local Docker instance would pass on production. This is also known as *reproducibility*,
+    and reduce cases where a developer says “But it works on my machine!”. Furthermore,
+    a Docker container should have all dependencies packaged inside it. This means
+    it can be deployed anywhere, regardless of the operating system. Ubuntu Desktop,
+    Red Hat Enterprise Linux Server, MacOS – it doesn’t matter.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Provides independence**: Every container includes all of its own dependencies,
+    and can choose whichever version it wants to use.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Saves time and reduces errors**: Each setup and configuration step used to
+    build our image is specified in code. Therefore, the steps can be carried out
+    automatically by Docker, mitigating the risk of human error. Furthermore, once
+    the image is built, you can reuse the same image to run multiple containers. Both
+    of these factors mean a huge saving in man-hours.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Risky deployment**: Server configuration and building of our application
+    happen at build time, and we can test the running of the container beforehand.
+    The only difference between our local or staging environment, and the production
+    environment, would be the differences in hardware and networking.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Easier to maintain**: When an update to the application is required, you’d
+    simply update your application code and/or Dockerfile, and build the image again.
+    Then, you can run these new images and reconfigure your web server to direct requests
+    at the new containers, before retiring the outdated ones.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Eliminate downtime**: We can deploy as many instances of our application
+    as we want with ease, as all it requires is a single `docker run` command. They
+    can run in parallel as our web server begins directing new traffic to the updated
+    instances, while waiting for existing requests to be fulfilled by the outdated
+    instances.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Version control**: The Dockerfile is a text file, and should be checked into
+    the project repository. This means that if there’s a new dependency for our environment,
+    it can be tracked, just like our code. If our environment starts to produce a
+    lot of errors, rolling back to the previous version is as simple as deploying
+    the last-known-good image.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Improve efficient usage of resources**: Since containers are standalone,
+    they can be deployed on any machine. However, this also means multiple containers
+    can be deployed on the same machine. Therefore, we can deploy the more lightweight
+    or less mission-critical services together on the same machine:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '![](img/966d8339-227b-4649-ac48-407cc96aaf57.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: For instance, we can deploy our frontend client and Jenkins CI on the same host
+    machine. The client is lightweight as it’s a simple static web server, and Jenkins
+    is used in development and is fine if it is slow to respond at times.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This has the added benefit that two services share the same OS, meaning the
+    overall overhead is smaller. Furthermore, pooling resources, leads to an overall
+    more efficient use of our resources:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/1d4e7ed3-59b2-4bde-8012-2d1c15738b19.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: All of these benefits stem from the fact that our environments are now specified
+    as code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mechanics of Docker
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So, now that you understand *why* we need Docker, and, at a high level, *how*
+    to work with Docker, let’s turn our attention to *what* a Docker container and
+    image actually are.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What is a Docker container?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Docker is based on Linux Containers (LXC), a containerization technology built
+    into Linux. LXC itself relies on two Linux kernel mechanisms – **control groups**
+    and **namespaces**. So, let's briefly examine each one in more detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Control groups
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Control groups (cgroups) separate processes by groups, and attach one or more
+    subsystems to each group:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/9b2d9ba5-cda9-4fed-a028-fae6f8a8bd2b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: The subsystem can restrict the resource usage of each attached group. For example,
+    we can place our application's process into the foo cgroup, attach the memory
+    subsystem to it, and restrict our application to using, say, 50% of the host’s
+    memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are many different subsystems, each responsible for different types of
+    resources, such as CPU, block I/O, and network bandwidth.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Namespaces
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Namespaces package system resources, such as filesystems, network access, and
+    so on, and present them to a process. From the view of the process, it does not
+    even know that there are resources outside of its allocation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the resources that can be namespaced is process IDs (PIDs). In Linux,
+    PIDs are organized as a tree, with the system’s initiation process (`systemd`)
+    given the PID 1, and located at the root of the tree.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we namespace PIDs, we are masking a child process from the rest of the processes,
+    by resetting the root of the child process to have a PID of 1\. This means descendant
+    processes will treat the child process as if it is a root, and they will have
+    no knowledge of any other processes past that point:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/68a3b66b-5163-4ad0-9d8b-64a34673e3fd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: You can view your system's process tree by running `pstree` in your terminal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The combination of the two Linux kernel mechanisms described here allows us
+    to have containers that are isolated from each other (using namespaces) and restricted
+    in resources (using control groups). Each container can have its own filesystem,
+    networks, and so on in isolation from other containers on the same host machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: LXC and Docker
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: It’s important to note that Docker is *not* a new containerization technology—it
+    is not replacing LXC. Rather, it is providing a standard way to define, build,
+    and run LXCs using Dockerfile and the wider Docker toolchain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In fact, on 22nd June 2015, Docker, CoreOS, and other leaders in the container
+    industry established the Open Container Initiative (OCI: [opencontainers.org](https://www.opencontainers.org/)),
+    a project that aims to create open industry standards around container formats
+    and runtimes. The OCI has an open governance structure, and has support from the
+    Linux Foundation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Currently, the OCI provides two standard specifications:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Image Specification (image-spec: [github.com/opencontainers/image-spec](https://github.com/opencontainers/image-spec)):
+    This specifies how an image definition should be formatted. For instance, the
+    OCI image should be composed of an *image manifest*, an *image configuration*,
+    and a *filesystem (layer) serialization*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Runtime Specification (runtime-spec: [github.com/opencontainers/runtime-spec](https://github.com/opencontainers/runtime-spec))
+    This specifies how a system may run an OCI-compliant image. Docker donated its
+    container format and runtime, runC ([github.com/opencontainers/runc](https://github.com/opencontainers/runc)),
+    to the OCI.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Apart from heavily contributing to the OCI standards, Docker has also made working
+    with containers easier by providing tools that abstract low-level processes (like
+    managing control groups) away from the end user, and providing a registry (Docker
+    Hub) where developers can share and fork each other's images.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Virtual Machines
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: It’s also important to note that containers are not the only method of virtualization.
+    Another common method to provide an isolated, virtual environment is by using
+    *Virtual Machines* (VMs).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The purpose of a Virtual Machine is similar to that of a container—providing
+    an isolated virtual environment—but the mechanics of it is quite different.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A VM is an emulated computer system that runs on top of another computer system.
+    It does this via a *hypervisor—*a program that has access to the physical hardware
+    and manages the distribution and separation of resources between different VMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The hypervisor is the software that separates the hardware layer from the virtual
+    environments, as shown in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/916e129e-bbd7-4270-843e-4e1def882d1e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Hypervisors can be embedded in the system hardware and runs directly on it,
+    at which point they are known as Type 1 hypervisors, that is, native, bare-metal,
+    or embedded hypervisors. They may also run on top of the host’s operating system,
+    at which point they are known as Type 2 hypervisors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type 1 hypervisor technology has been part of Linux since 2006, when it introduced
+    the *Kernel-based Virtual Machine* (KVM).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Containers versus Virtual Machines
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When comparing containers with VMs, here are the major differences:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Virtual machines are an emulation of an entire computer system (full virtualization),
+    including emulated hardware. This means users can interact with emulated, virtual
+    hardware such as a network card, graphics adapter, CPUs, memory, and disks.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Virtual Machines use more resources because they are *hardware virtualization*,
+    or *full virtualization*, as opposed to containers, which are virtualized at the
+    operating system (OS) level.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Processes inside a container are run directly on the host machine’s kernel.
+    Multiple containers on the same machine would all shares the host’s kernel. In
+    contrast, processes inside a VM runs on the VM's own virtual kernel and OS.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Processes which run inside a container are isolated by namespaces and control
+    group. Processes running inside a VM are separated by the emulated hardware.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What is a Docker image?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We now know what a Docker container is, and how it is implemented at a high
+    level. Let’s shift our focus onto Docker images, which are what containers are
+    running on top of.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Remember, a Docker image is a data file which contains our application and all
+    of its dependencies, packaged into one entity. Let’s take a look at the anatomy
+    of a Docker image, which will put us in good stead when we want to build our own
+    image.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Images are layered
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: An image is an ordered list of *layers*, where each layer is an operation used
+    to set up the image and container. These operations may include setting/updating
+    system configuration, environment variables, installation of libraries or programs,
+    and so on. These operations are specified inside a *Dockerfile*. Therefore, every
+    layer corresponds to an instruction in the image’s Dockerfile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For instance, if we are to generate a Docker image for our backend API, we
+    need it to have the Node ecosystem installed, have our application code copied
+    over, and our application built using yarn. Therefore, our image may have the
+    following layers (lower layers are run first):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Run `yarn run build`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Copy application code inside the image
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Install a specific version of Node and yarn
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[Using a base Ubuntu image]'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Each of these operations produces a layer, which can be viewed as a *snapshot*
+    of the image at this point of the setup process. The next layer depends on the
+    previous layer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the end, you get an ordered list of sequentially-dependent layers, which
+    makes up the final image. This final image can then be used as a base layer for
+    another image—an image is simply a set of sequential, dependent, read-only layers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running a container
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To tie up everything you've learned so far about containers, images, and layers,
+    let’s take a look at what happens when we run a container.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When running a container, a new writable *container layer* is created on top
+    of the read-only image (which is composed of read-only layers):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/33ba984c-49f4-46cd-8cbc-ee300283bff6.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Any file changes are contained within the container layer. This means that when
+    we are done with a container, we can simply exit the container (remove the writable
+    container layer), and all changes will be discarded.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We won’t go into too much detail here, but you can persist files from a container
+    by writing to a mounted volume, and you can keep the changes in your current container
+    by creating a new image based on those changes using `docker commit`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because a container is simply an isolated, writable layer on top of a stateless,
+    read-only image, you can have multiple containers sharing access to the same image.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/f65e34c1-2290-4ebe-8a01-1ef3b44ed456.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Setting up the Docker Toolchain
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You now know the why's, what's, and how's, so it's now time to solidify our
+    understanding by Dockerizing our existing application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s start by installing Docker. This will allow us to generate images and
+    run them as containers on our local machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are two *editions* of Docker—**Community Edition** (**CE**) and **Enterprise
+    Edition** (**EE**). We will be using the CE.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding the Docker package repository
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Docker is on the official Ubuntu repository, but that version is likely to be
+    out of date. Instead, we will download Docker from Docker's own official repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, let''s install the packages that''ll ensure `apt` can use the Docker
+    repository over HTTPS:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, add Docker''s official GPG key. This allows you to verify that the Docker
+    package you have downloaded has not been corrupted:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding command uses `curl` to download the GPG key and add it to `apt`.
+    We can then use `apt-key` to verify that the key has the fingerprint `9DC8 5822
+    9FC7 DD38 854A  E2D8 8D81 803C 0EBF CD88`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Please note that your fingerprint may be different.** Always refer to the
+    latest key published publicly on the Docker website.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then, add the Docker repository to the list of repositories for the apt search
+    for when it''s trying to find a package:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, update the apt package index so that apt is aware of the packages
+    in the Docker repository:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Installing Docker
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Docker is now available on the official Docker package registry as docker-ce.
+    But before we install docker-ce, we should remove older versions of Docker that
+    may be on our machine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we can install `docker-ce`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Verify if the installation is working by running `sudo docker version`. You
+    should get an output similar to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Docker Engine, Daemon, and Client
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We’ve successfully installed Docker, but, as alluded to earlier, Docker is actually
+    a suite of tools. When we "install Docker", we are actually installing the *Docker
+    Engine*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Docker Engine consists of the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Docker daemon (mysqld, which runs as a background process):'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: a lightweight container runtime that runs your container
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tools that you need to build your images
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tools to handle a cluster of containers, such as networking, load balancing,
+    and so on
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The Docker client (mysql), a command-line interface that allows you to interact
+    with the Docker daemon
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The Docker daemon and client, together, make up the Docker Engine. This is similar
+    to how npm and node get bundled together.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Docker daemon exposes a REST API, which the Docker client uses to interact with
+    the Docker daemon. This is similar to how the `mysql` client interacts with the
+    `mysqld` daemon, or how your terminal shell provides you with an interface to
+    interact with your machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/3e08e1f7-7372-4a90-9f42-6d60978069bf.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: We now have Docker installed and are ready to use it to run our application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running Elasticsearch on Docker
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The easiest component of our application to Dockerize is Elasticsearch. It is
+    easy because we don't need to write our own Dockerfile – the Docker image for
+    the most current versions of Elasticsearch are already provided by Elastic. We
+    just need to download the image and run them in place of our local Elasticsearch
+    installation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Elastic provides three types of Elasticsearch images:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`elasticsearch` (basic): Elasticsearch with X-Pack Basic features pre-installed
+    and automatically activated with a free license'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`elasticsearch-platinum`: Elasticsearch with all X-Pack features pre-installed
+    and activated using a 30-day trial license'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`elasticsearch-oss`: Only Elasticsearch'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We won't be needing X-Pack, and so we will use the `elasticsearch-oss` flavor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Go to Elastic''s Docker Registry at `https://www.docker.elastic.co/`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/ab6712a5-c10e-441b-979d-67bf4d96c50e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Then, run the `docker pull` command to get the most recent version of Elasticsearch,
+    making sure to replace `elasticsearch` with `elasticsearch-oss`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: All Elasticsearch Docker images use centos:7 as the base image. Here, `469cfcc7a4b3`
+    is the layer that comprises the centos:7 image, and you can see that subsequent
+    layers are built on top of that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can verify that the image is downloaded properly by running `docker images`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Docker stores its files under `/var/lib/docker`. The metadata for all Docker
+    images can be found at `/var/lib/docker/image/overlay2/imagedb/content/sha256/`,
+    and the contents of the images themselves can be found at `/var/lib/docker/overlay2`.
+    For our `elasticsearch-oss` image, we can view its metadata inside the file at
+    `/var/lib/docker/image/overlay2/imagedb/content/sha256/3822ba554fe95f9ef68baa75cae97974135eb6aa8f8f37cadf11f6a59bde0139`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`overlay2` signifies that Docker is using OverlayFS as its storage driver.
+    In earlier versions of Docker, the default storage driver was AUFS. However, it’s
+    been superseded by OverlayFS as the latter is faster and has a simpler implementation.
+    You can find out which storage driver Docker is using by running `docker info`
+    and looking at the value of the SD field.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running a container
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'To have confidence that our Dockerized Elasticsearch container is working,
+    we should first stop our existing Elasticsearch daemon:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As a test, run the E2E tests on our API repository and make sure you get errors
+    similar to `Error: No Living connections`. This means Elasticsearch is not running
+    and our API cannot connect to it.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, use the `docker run` command to run the `elasticsearch-oss` image as a
+    container:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Just as you can retrieve a list of Docker images available with `docker images`,
+    you can retrieve a list of Docker containers using `$ docker ps`. Run the following
+    command in a new terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Internally, Docker has added a writable layer on top of the `elasticsearch-oss`
+    image, and stores it under a directory at `/var/lib/docker/containers`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`config.v2.json` contains the metadata of the container, such as its status,
+    its process ID (PID), when it was started, the image it is running from, its name,
+    and its storage driver. <hash>-json.log stores the standard output when the container
+    is running.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, with our container running, when we run our tests again, they are all
+    passing! If we stop the container and run our tests again, they would, once again,
+    fail:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can still view the stopped container using `docker ps`. However, by default,
+    the `docker ps` command lists only running containers. You must use the `-a` flag
+    to ensure that stopped containers are listed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Understanding the docker run option
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Now that we have demonstrated our Dockerized Elasticsearch instance works,
+    let’s go back and examine the `docker run` command we used to run it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Identifying a container by name
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'You can identify a container using one of three identifiers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The UUID long identifier, for example, `a415f4b646e3a715dc9fa446744934fc99ea33dd28761456381b9b7f6dcaf76b`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The UUID short identifier, for example, `a415f4b646e3`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The name, for example, `nostalgic_euler`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If you do not assign a name to a container when you run `docker run`, the Docker
+    daemon will auto-generate a name for you, which has the structure `<adjective>_<noun>`.
+    However, it might be more helpful to assign a name that describes the container’s
+    function within the context of the whole application. We can do that through the
+    `--name` flag.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting environment variables
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `-e` flag allows us to set environment variables. Environment variables
+    set with the `-e` flag will override any environment variables set in the Dockerfile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of Elasticsearch’s biggest strengths is that it is a distributed data storage
+    system, where multiple nodes form a *cluster* that collectively holds all the
+    pieces of the whole dataset. When developing with Elasticsearch, however, we don’t
+    need this clustering.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Therefore, we are setting the environment variable `discovery.type` to the value
+    of single-node to tell Elasticsearch to run as a single node, and not attempt
+    to join a cluster (because there are no clusters).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running as daemon
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Since Elasticsearch acts as a database, we don’t need to keep an interactive
+    terminal open, and can run it as a background daemon process instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can use the `-d` flag to run a container in the background.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Network port mapping
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Every container is accessible through its own IP address. For instance, we
+    can find the IP address of our `elasticsearch-oss` container by running `docker
+    inspect`, and looking under `NetworkSettings.IPAddress`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can also use the `--format` or `-f` flag to retrieve only the field you
+    are interested in:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: However, our local instance of our API assumes that Elasticsearch is available
+    on localhost:9200, not 172.17.0.2\. If we are going to provide an equivalent behavior
+    to our non-containerized Elasticsearch, we must make Elasticsearch available on
+    localhost:9200\. That’s the job of the `-p` flag.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `-p` flag *publishes* a port of the container and binds it to the host
+    port:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: In our case, we are binding the 9200 port of `0.0.0.0` to the 9200 port of the
+    container. `0.0.0.0` is a special address that refers to your local development
+    machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 0.0.0.0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You can refer to your local machine in many ways, in different contexts, locally
+    within the same machine or within a private network.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Within the context of our local machine, we can use the `127.0.0.0/8` *loopback
+    addresses*. Anything sent to the loopback address is sent back to the sender;
+    therefore, we can use `127.0.0.1` to refer to our own machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If your computer is part of a private network, your computer will be assigned
+    an IP on this network. These private IP addresses have a limited range, as defined
+    in [RFC 1918](http://www.ietf.org/rfc/rfc1918.txt):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`10.0.0.0` - `10.255.255.255` (`10/8` prefix)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`172.16.0.0` - `172.31.255.255` (`172.16/12` prefix)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`192.168.0.0` - `192.168.255.255` (`192.168/16` prefix)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`0.0.0.0` is a special address, which includes both your local loopback addresses
+    and the IP address of your private network. For instance, if your private IP address
+    is `10.194.33.8`, anything sent to `127.0.0.1` and `10.194.33.8` will be available
+    for any services which are listening to `0.0.0.0`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Therefore, when we bind `0.0.0.0:9200` to the container’s port, `9200`, we are
+    forwarding any request coming into our local machine on port 9200 to the container.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This means that when we run our E2E tests, whenever our backend API is sending
+    a request to `localhost:9200`, that request is forwarded inside the container
+    via its `9200` port.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can see all port mappings by using the `docker port` command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Updating our test script
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We’ve successfully used Elasticsearch inside a Docker container rather than
+    our local instance. This is great for testing, because any changes to the database
+    are erased after the container is stopped and removed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Update `scripts/e2e.test.sh` to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Instead of relying on the tester to manually start the Elasticsearch service,
+    we are now adding that as part of the script.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Furthermore, we've added some echo statements to implement a progress bar.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dockerizing our backend API
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Running Elasticsearch on Docker was easy, because the image was already generated
+    for us. However, Dockerizing the rest of the application requires slightly more
+    effort.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will start with Dockerizing the backend API, as this is a precondition for
+    the frontend client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Specifically, we''d need to do the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Write a Dockerfile that sets up our environment so that we can run our API.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Generate the image from our Dockerfile.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Run our API inside a container based on the image, while ensuring that it can
+    communicate with the Elasticsearch instance that is running inside another Docker
+    container.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The next task is to write our Dockerfile, but before we dive straight in, let
+    me give you an overview of the structure and syntax of a Dockerfile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Overview of a Dockerfile
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'A Dockerfile is a text file, where each line consists of an *instruction* followed
+    by one or more *arguments*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: There are many types of instructions. Here, we will explain the most important
+    ones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For a complete reference of all instructions and arguments in a valid Dockerfile,
+    refer to the Dockerfile reference at [docs.docker.com/engine/reference/builder/](https://docs.docker.com/engine/reference/builder/):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`FROM`: This specifies the *base image*, which is the Docker image we are basing
+    our own image on. Each Dockerfile must have a `FROM` instruction as the *first*
+    instruction. For example, if we want our application to run on an Ubuntu 18.04
+    machine, then we’d specify `FROM` ubuntu:bionic.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`RUN`: This specifies the command(s) to run at build time, when we run `docker
+    build`. Each `RUN` command corresponds to a layer that comprises our image.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CMD / ENTRYPOINT`: This specifies the command to execute at runtime, after
+    the container is initiated with `docker run`. At least one of the `CMD` and/or
+    the `ENTRYPOINT` command should be specified. `CMD` should be used to provide
+    *default* arguments for an `ENTRYPOINT` command. There should be one, and only
+    one, `CMD` instruction in a Dockerfile. If multiple are provided, the last one
+    will be used.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ADD / COPY`: This copies files, directories, or remote file URLs to a location
+    inside the filesystem of the image. `COPY` is similar to `ADD` except it does
+    not support remote URLs, it does not unpack archive files, and it does not invalidate
+    cached `RUN` instructions (even if the contents has changed). You can look at
+    `COPY` as a lightweight version of `ADD`. You should use `COPY` over `ADD` whenever
+    possible.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`WORKDIR`: This changes the working directory for any `RUN`, `CMD`, `ENTRYPOINT`,
+    `COPY`, and `ADD` instructions that come after the `WORKDIR` instruction in the
+    Dockerfile'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ENV`: This sets environment variables that are available during build *and*
+    runtime.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ARG`: This defines variables that can be defined at build time (not runtime)
+    by passing the `--build-arg <varname>=<value>` flag into `docker build`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ENV` and `ARG` both provide variables during build time, but `ENV` values
+    also persist into the built image. In cases where `ENV` and `ARG` variables share
+    the same name, the `ENV` variable takes precedence:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`EXPOSE`: This acts as a form of documentation that informs developers of which
+    ports are being listened to by services running inside the container.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Despite its name, EXPOSE does not expose the port from the container to the
+    host. Its purpose is solely for documentation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are other, less commonly used instructions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`ONBUILD`: This allows you to add commands that are to be run by child images
+    (images which use the current image as a base image). The commands would be run
+    immediately after the `FROM` instruction in the child image.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`LABEL`: This allows you to attach arbitrary metadata, in the form of key-value
+    pairs, to the image. Any containers loaded with the image would also carry that
+    label. Uses for labels are very broad; for example, you can use it to enable load
+    balancers to identify containers based on their labels.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`VOLUME`: This specifies a mount point in the host’s filesystem where you can
+    persist data, even after the container is destroyed.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`HEALTHCHECK`: This specifies commands that are run at regular intervals to
+    check that the container is not just alive, but functional. For example, if a
+    web server process is running, but unable to receive requests, it would be deemed
+    unhealthy.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`USER`: This specifies the username or UID to use when building/running the
+    image.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`STOPSIGNAL`: This specifies the system call signal that will be sent to the
+    container to exit.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dockerfile instructions are case-insensitive. However, the convention is to
+    use UPPERCASE. You can also add comments in Dockerfiles using hashes (`#`):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Writing our Dockerfile
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we have a broad understanding of what instructions are available in
+    a Dockerfile, let’s write our own Dockerfile for our backend API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Picking a base image
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The first decision to make is to pick a base image. Normally, we would choose
+    a Linux distribution as our base image. For instance, we can pick Ubuntu as our
+    base image:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: We use the `bionic` *tag* to specify the exact version of Ubuntu we want (18.04
+    Long Term Support (LTS)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, as it turns out, Node has its own official Docker image available on
+    Docker Hub ([hub.docker.com/_/node/](https://hub.docker.com/_/node/)). Therefore,
+    we can use the Node Docker image as our base image instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To use the Node Docker image as the base image, replace our `FROM` instruction
+    with `FROM node:8`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: For local development, we have been using NVM to manage our Node versions. This
+    is useful when working on multiple JavaScript projects because it allows us to
+    switch between different versions of Node easily. However, there are no such requirements
+    for our container – our backend API image will only ever run one version of Node.
+    Therefore, our Docker image should have a specific version. We used the tag `8`
+    because Node 8 is the latest LTS version available at the time of writing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Node Docker image has yarn pre-installed, so there are no more dependencies
+    we need to install.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Copying project files
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Next, we need to copy in our project code into our container. We will use the
+    `COPY` instruction, which has the following signature:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`src` is the path on the host machine where files will be copied from. The
+    src path will be resolved against the *context*, which is a directory we can specify
+    when we run `docker build`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`dest` is the path inside the container where the files are to be copied to.
+    The `dest` path can be either absolute or relative. If relatively, it will be
+    resolved against the `WORKDIR`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Below the `FROM` instruction, add a `WORKDIR` and `COPY` instruction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: This simply copies all the files from the context to the `/root/` inside the
+    container.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building our application
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Next, we need to install the npm packages required by our application, and
+    build our application using `yarn run build`. Add the following lines after the
+    `COPY` instruction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: Specifying the executable
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Every container needs to execute a command to run after the container is initialized.
+    For us, this will be using the node command to run our application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: Building our image
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Our Dockerfile is now ready, and we can use it to generate the image using
+    `docker build`, which has the following signature:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `docker build` command builds an image based on the Dockerfile and a *context*.
+    The context is a directory which should contain all the files that are needed
+    to build the image. In our case, it is also where our application code is to be
+    copied from.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, if we are at the project root directory, we can run the following
+    command to build our image, using the current working directory as the context:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'By default, if you don’t specify the location of the Dockerfile, Docker would
+    try to find it at the root of the context. So, if you are in the root directory
+    of the context, you can simply run the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'However, we don''t want to copy *all* of the contents of the project, because:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It's generally a bad idea to add things you don't need—it makes it harder for
+    someone trying to understand the logic of the application, because there's more
+    noise
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It adds to the size of the image
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For instance, there is over 320 MB inside the .git, node_modules, and docs directories—files
+    which we don't need inside our container to build and run our application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: Therefore, we can use a special file called `.dockerignore`, which is similar
+    to `.gitignore`, and will disregard certain files from the context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But instead of specifying which files we will ignore, we’ll be more explicit
+    and add a rule to ignore *all* files, and add exceptions to this rule in subsequent
+    lines. Add the following lines to `.dockerignore`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, run `$ docker build -t hobnob:0.1.0 .` and check that the image is created
+    by running `docker images`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: Although the image size is still quite large (814 MB), much of this comes from
+    the standard node image, which is 673 MB. Without limiting the scope of the context,
+    the hobnob image size easily goes over 1 GB.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running our image
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Ensure that the Elasticsearch container is running and that it has bound its
+    port to our local machine. Then, run our hobnob image using `docker run`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that we are using the `--env-file` option to pass in our environment variables
+    at runtime instead of build time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To check that our container is running without errors, check the stdout produced
+    inside the container, which we can conveniently check using `docker logs`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the container's log does not show the preceding success message, go back
+    and repeat the steps closely. You may want to use `docker stop hobnob` and `docker
+    rm hobnob` to stop and remove the container, and `docker rmi hobnob` to remove
+    the image. You may also enter into the container (like with SSH) by executing
+    `docker exec -it hobnob bash`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Assuming everything is up and running, we’d still need to check that the application
+    is actually functional by querying the API using curl:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: This means that the request from our host has successfully reached our application,
+    and that the application can successfully communicate with our database!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Persisting data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The last essential step before we complete our migration to Docker is to persist
+    the data inside our Elasticsearch container(s).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Docker containers, by their nature, are ephemeral, which means after they are
+    removed, the data contained inside them are lost.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To persist data, or to allow containers to use existing data, we must use *Volumes*.
+    Let’s use the docker CLI to create it now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can use the `-v` flag to instruct Docker to mount this named volume into
+    the `/usr/share/elasticsearch/data` directory inside the `elasticsearch` container:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, if we remove the `elasticsearch` container and deploy a new one using the
+    preceding command, the data is persisted in the esdata named volume.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Following best practices
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Next, let's improve our Dockerfile by applying best practices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Shell versus exec forms
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The `RUN`, `CMD`, and `ENTRYPOINT` Dockerfile instructions are all used to
+    run commands. However, there are two ways to specify the command to run:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*shell* form; `RUN yarn run build`: The command is run inside a new shell process,
+    which, by default, is `/bin/sh -c` on Linux and `cmd /S /C` on Windows'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*exec* form; `RUN ["yarn", "run", "build"]`: The command is not run inside
+    a new shell process'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The shell form exists to allow you to use shell processing features like variable
+    substitution and to chain multiple commands together. However, not every command
+    requires these features. In those cases, you should use the exec form.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When shell processing is not required, the exec form is preferred because it
+    saves resources by running one less process (the shell process).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can demonstrate this by using ps, which is a Linux command-line tool that
+    shows you a snapshot of the current processes. First, let’s enter into our container
+    using `docker exec`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, run `ps` to get a list of currently-running processes. We are using the
+    `-o` option to select only the parameters we are interested in:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, with the shell form, `/bin/sh` is run as the root init process
+    (PID 1), and it is the parent process that invokes the node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ignore the bash and ps processes. Bash is the process we were using to interact
+    with the container when we ran `docker exec -it hobnob bash`, and ps is the process
+    we ran to get the output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, if we update the `RUN` and `CMD` commands inside our Dockerfile to the
+    exec form, we get the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we run this new image and enter into the container, we can run our ps command
+    again, and see that the node process is now the root process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: Allowing Unix signaling
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: One may argue that an extra process is not important in the grand scheme of
+    things, but there are further implications of running commands inside a shell.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When using the shell form for the `CMD` or `ENTRYPOINT` instruction, the executable
+    is run inside an additional shell process, which means it will not be run with
+    PID of 1, which means it will *not* receive Unix signals.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unix signals are passed by the Docker daemon to control containers. For instance,
+    when running docker stop hobnob, the daemon will send a `SIGTERM` signal to the
+    hobnob container’s root process (PID 1).
+  prefs: []
+  type: TYPE_NORMAL
+- en: When using the shell form, it is the shell which receives this signal. If we
+    are using sh as the shell, it will not pass the signal on to the processes it
+    is running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, we have not added any code in our Node.js applications to respond to
+    Unix signals. The easiest way to resolve this is to wrap it in an init system
+    so that when that system receives a `SIGTERM` signal, it will terminate all of
+    the container’s processes. As of Docker 1.13, a lightweight init system called
+    Tini was included by default, and can be enabled by using the `--init` flag passed
+    to `docker run`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Therefore, when we run our hobnob image, we should use the following command
+    instead:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: Running as a non-root user
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: By default, Docker will run commands inside the container as the root user.
+    This is a security risk. Therefore, we should run our application as a non-root
+    user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Conveniently, the Node Docker image already has a user called node. We can use
+    the USER instruction to instruct Docker to run the image as the node user instead
+    of root.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because of this, we should also move our application to a location accessible
+    by the node user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Update the Dockerfile with the following lines; place them immediately after
+    the `FROM` instruction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also need to change the `COPY` instruction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: Although we have set the `USER` instruction to use the node user, the `USER`
+    instruction only affects the `RUN`, `CMD`, and `ENTRYPOINT` instructions. By default,
+    when we use `COPY` to add files into our container, those are added as the root
+    user. To sign the copied files to another user or group, we can use the `--chown`
+    flag.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Change the `COPY` instruction to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: Taking advantage of the cache
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: At the moment, we are copying our entire application code, installing its dependencies,
+    and then building the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But what if I make changes to my application code, but do not introduce any
+    new dependencies? In our current approach, we’d have to run all three steps again,
+    and the `RUN ["yarn"]` step is likely going to take a long time as it has to download
+    thousands of files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: Fortunately, Docker implements a clever caching mechanism. Whenever Docker generates
+    an image, it stores the underlying layers in the filesystem. When Docker is asked
+    to build a new image, instead of blindly following the instructions again, Docker
+    will check its existing cache of layers to see if there are layers it can simply
+    reuse.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As Docker steps through each instruction, it will try to use the cache whenever
+    possible, and will only invalidate the cache under the following circumstances:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Starting from the same parent image, there are no cached layers that were built
+    with *exactly* the same instruction as the next instruction in our current Dockerfile.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If the next instruction is `ADD` or `COPY`, Docker will create a checksum for
+    each file, based on the *contents* of each file. If *any* of the checksums do
+    not match the ones in the cached layer, the cache is invalidated.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Therefore, we can modify the preceding three instructions (`COPY`, `RUN`, `RUN`)
+    to the following four instructions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, if our dependencies that are specified solely inside our `package.json`,
+    `package-log.json`, and `yarn.lock` files, have not changed, then the first two
+    steps here will not be run again. Instead, the cached layer that we previously
+    generated will be used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Caveats
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Let’s say we have the following Dockerfile:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: If we ran this one month ago, and have the layers stored in the cache, and went
+    to build it again today, Docker will use the cached layer, even though the apt
+    sources list is likely to be out of date.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is done so that you can have a reproducible build. Let’s imagine I made
+    some changes to my code. If I build a new image and it fails, I want to be certain
+    that this is because of the changes I have made, not because of a bug in one of
+    the packages that was silently updated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you’d like to disable the cache and build a brand new image, you can do so
+    by passing the `--no-cache` flag to docker build.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using a lighter image
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We have been using the node:8 image as the base of our Hobnob image. However,
+    like Elasticsearch, Node Docker images come in many flavors:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**standard**: This uses buildpack-deps:jessie as its base image. buildpack-deps
+    is an image that provides a collection of the most common build dependencies,
+    such as the GNU Compiler Collection ([gcc.gnu.org](https://gcc.gnu.org/)) and
+    GNU Make ([gnu.org/software/make/](https://www.gnu.org/software/make/)). The buildpack-deps:jessie
+    image is, itself, based on the debian:jessie Debian 8 image.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**slim**: This is the same as the standard image, but does not contain all
+    the build dependencies. Instead, it only contains curl, wget, ca-certificates,
+    and the minimal set of packages that are required to work with Node.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**stretch**: This is similar to the standard flavor, but uses Debian 9 (Stretch)
+    instead of Debian 8 (Jessie).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**alpine**: The standard and slim flavors use Debian as its base image. The
+    alpine flavor uses Alpine Linux as its base image. Alpine is a distribution which
+    is extremely lightweight, and thus its images are also smaller than others.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'If we look at the Docker images for all the popular Linux distributions, you’ll
+    find that alpine is, by far, the smallest:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Keeping a container lightweight is important, as it affects how quickly a container
+    can be deployed. Let''s pull the more lightweight Node Docker images and compare
+    them:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you can see, the `node:8-alpine` image is the smallest. So, let’s use that
+    as our base image. Just to recap, your Docker image should now look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, let’s remove the previous hobnob image and build a new one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, the size of our image has decreased from 814 MB to 210 MB –
+    a 74% decrease!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Removing obsolete files
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'At the moment, we are copying the src directory into the container, and then
+    using it to build our application. However, after the project is built, the src
+    directory and other files like package.json and yarn.lock are not required to
+    run the application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can see that 138.1 MB is actually being used for the Yarn cache, which we
+    don’t need. Therefore, we should remove these obsolete *artifacts*, and leave
+    only the dist and node_modules directories.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After the RUN ["yarn", "run", "build"] instruction, add an additional instruction
+    to remove the obsolete files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs: []
+  type: TYPE_PRE
+- en: However, if you run docker build on this new Dockerfile, you may be surprised
+    to see that the size of the image has not decreased. This is because each layer
+    is simply a diff on the previous layer, and once a file is added to an image,
+    it cannot be removed from the history.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To minimize the image''s size, we must remove the artifacts before we finish
+    with the instruction. This means that we must squash all of our installation and
+    build commands into a single `RUN` instruction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, the image is just 122 MB, which is a 42% space saving!
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs: []
+  type: TYPE_PRE
+- en: However, doing so will forfeit the benefits we get from caching. Luckily, Docker
+    supports a feature called *multi-stage builds*, which allows us to cache our layers,
+    as well as have a small file size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Multi-stage builds
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Multi-stage builds is a feature that was added in Docker v17.05\. It allows
+    you to use multiple `FROM` instructions to define multiple images as *stages*
+    inside a single Dockerfile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can extract artifacts from the previous stage and add them to the next stage
+    in a single instruction (and thus a single layer).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our case, we can define two stages – one for building our application, and
+    the second one that just copies the dist and `node_modules` directory and specifies
+    the CMD instruction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE62]'
+  prefs: []
+  type: TYPE_PRE
+- en: We use the `as` keyword to name our stage, and refer to them in the `COPY` instructions
+    using the `--from` flag.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, if we build this using Dockerfile, we end up with two images:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE63]'
+  prefs: []
+  type: TYPE_PRE
+- en: The one without a name, `<none>`, represents the first stage, and the hobnob:0.1.0
+    image is the second stage. As you can see, our image is now only 122 MB, but we
+    still benefited from our multi-layer Dockerfile and caching.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Security
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Lastly, the security of our Docker image is important. Conveniently, the Docker
+    team has provided a tool called *Docker Bench for Security* ([github.com/docker/docker-bench-security](https://github.com/docker/docker-bench-security))
+    that will analyze your running containers against a large list of common best
+    practices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The tool is available as a container itself, and can be run using the following
+    command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE64]'
+  prefs: []
+  type: TYPE_PRE
+- en: After you’ve run the test, study each warning and see if you can improve on
+    the setup.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We have now encapsulated our application’s component services into portable,
+    self-contained Docker images, which can be run as containers. In doing so, we
+    have improved our deployment process by making it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Portable:** The Docker images can be distributed just like any other file.
+    They can also be run in any environment.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Predictable/Consistent:** The image is self-contained and pre-built, which
+    means it will run in the same way wherever it is deployed.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Automated:** All instructions are specified inside a Dockerfile, meaning
+    our computer can run them like code.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: However, despite containerizing our application, we are still manually running
+    the `docker run` commands. Furthermore, we are running single instances of these
+    containers on a single server. If the server fails, our application will go down.
+    Moreover, if we have to make an update to our application, there'll still be downtime
+    (although now it's a shorter downtime because deployment can be automated).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Therefore, while Docker is part of the solution, it is not the whole solution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will build on this chapter and use cluster orchestration
+    systems such as Kubernetes to manage the running of these containers. Kubernetes
+    allows us to create distributed clusters of redundant containers, each deployed
+    on a different server, so that when one server fails, the containers deployed
+    on the other servers will still keep the whole application running. This also
+    allows us to update one container at a time without downtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Overall, Kubernetes will allow us to scale our application to handle heavy loads,
+    and allows our application to have a reliable uptime, even when we experience
+    hardware failures.
+  prefs: []
+  type: TYPE_NORMAL
