@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# TypeScript3 快速启动指南
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/c5a71e5d0a21b1aefe718d9d54222984`](https://zh.annas-archive.org/md5/c5a71e5d0a21b1aefe718d9d54222984)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

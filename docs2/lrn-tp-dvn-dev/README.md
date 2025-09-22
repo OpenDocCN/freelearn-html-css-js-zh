@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# 类型驱动开发学习指南
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/3f893a61c8c853d83d7f1763db1e22fe`](https://zh.annas-archive.org/md5/3f893a61c8c853d83d7f1763db1e22fe)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

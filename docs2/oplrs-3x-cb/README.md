@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# OpenLayers 3.x 秘籍
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/c2c602442468c70156da920a343b9914`](https://zh.annas-archive.org/md5/c2c602442468c70156da920a343b9914)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

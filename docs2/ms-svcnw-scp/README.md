@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# 精通 ServiceNow 脚本编程
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/535d1bd00848e9abf39377b172ea1a58`](https://zh.annas-archive.org/md5/535d1bd00848e9abf39377b172ea1a58)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

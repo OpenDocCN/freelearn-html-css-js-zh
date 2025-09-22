@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# WebGL2 实时 3D 图形指南
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/3ea1d675edee104977ae6a3aa2711874`](https://zh.annas-archive.org/md5/3ea1d675edee104977ae6a3aa2711874)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
