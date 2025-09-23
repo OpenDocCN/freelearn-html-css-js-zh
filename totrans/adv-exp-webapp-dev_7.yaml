@@ -1,0 +1,271 @@
+- en: Chapter 7. Production
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter we will discuss putting an Express application into production.
+    We start this chapter by making our Express application a bit more robust as we
+    look at handling exceptions. We then take a look at a series of performance improvements
+    we will need to make in order for our application to survive in a production environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Error handling, domains, and crash-only design
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The Node community has embraced a crash-only design pattern, which simply means
+    this: if you get an uncaught exception, catch it, log it, and restart the process.
+    Crash-only design and domains work quite well as a pattern, particularly if your
+    application is using `cluster`. Let''s make a change to our `cluster` module,
+    `./lib/cluster/index.js`, on `vision-core`. Here, we include the `domain` module;
+    instead of simply including our module to run in a cluster, we create a domain
+    and call the `run` method. We then include a domain-based `error` handler that
+    logs and then closes the process via `process.exit(1)`. The cluster `exit` handler
+    will pick this up and `fork` a new process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Redis sessions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The majority of Express applications in production that require session support
+    will probably use Redis, so making Redis performant is quite important. Our Redis
+    client, `node-redis`, uses a pure JavaScript parser; the node-redis documentation
+    suggests using an alternative module for parsing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Hiredis is a binding to the official Hiredis C library; it''s non-blocking
+    and fast. If you install `hiredis`, node-redis will use it by default. Let''s
+    install Hiredis on `vision-core`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: SSL termination
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**SSL termination** is the term given to the decrypting of a TLS-encrypted
+    (HTTPS) stream into plain text (HTTP). The TLS module in Node core is not as fast
+    as some other technologies used for terminating SSL and is generally not used
+    in production. Our application runs entirely over HTTPS, so TLS performance is
+    vital.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Fortunately, we have options for SSL; we will use `stud`, a network proxy that
+    terminates TLS/SSL connections and forwards the unencrypted traffic to a web server.
+    Stud is built on `libev` and is non-blocking; it is designed to handle tens of
+    thousands of connections efficiently on multicore machines. Let''s clone the stud
+    GitHub repository:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now compile stud from source:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When the installation is complete, we can generate a stud file. Stud comes
+    with a default configuration that we can request via:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our stud file, `./vision-web/stud.conf`, requires a couple of important changes
+    for it to work; the `frontend` configuration should be set to port `8443`, and
+    the `backend` configuration should be set to our Hipache load balancer for `vision-web`,
+    which we have hosted on port `3003`. Finally, we set `pem-file`, which is a single
+    PEM file that includes an SSL certificate and private key:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we have our stud configuration in place, our Hipache load balancer
+    will no longer need to terminate SSL. Let''s remove the SSL configuration from
+    our Hipache configuration, `./vision-web/config/server.json`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: With our configuration in place, let's create a certificate with a private key
+    as a single PEM file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simply copy your `cert.pem` and `key.pem` into a single file called `./lib/secure/vision.pem`;
+    private key first followed by your certificate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, we can run stud in front of our Hipache load balancer; stud will handle
+    SSL and will direct unencrypted traffic to Hipache as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Please run the following set of commands to run our stack behind stud:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Caching
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Our static file requirements are minimal; the only static content we serve
+    would be the components used on the client side of our application. In order to
+    cache our static files/components, let''s make a simple change to `vision-web/lib/express/index.js`.
+    We set the `maxAge` property to a week, which we store in config, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s add the config value, `staticCache`, to `vision-web/config/*.json`,
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, when we hit our application, the response headers will have a cache-control
+    header. If you visit the homepage for our application and check the response headers
+    via your browser tools for any of the resources served, you should see:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Favicon
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Lets add a favicon to our application using the `connect.favicon` middleware.
+    From a performance perspective, this has some value as we can cache it. Also,
+    your browser will request a favicon even if one does not exist, and this can result
+    in 404 errors being thrown. We will use the existing `staticCache` config value
+    to set `maxAge` for the favicon. Let''s edit the Express server, `/vision-web/lib/express/index.js`,
+    and add the `favicon` middleware:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Minification
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We can improve page load time by minifying our static assets. We will minify
+    our JavaScript and CSS files by installing the following two grunt tasks:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`grunt-contrib-uglify`: This allows you to minify JavaScript files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`grunt-contrib-cssmin`: This allows you to minify CSS files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s add these minification tasks to our grunt file, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s run the following commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Not all of our JavaScript components have a minified version, so we minify these
+    as well, adding a `.min` version for json2 and handlebars.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compression
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We can improve page load times further by compressing static files. Express
+    includes the `compress` middleware, which will gzip an HTTP response. Let''s edit
+    the Express server, `/vision-web/lib/express/index.js`, and add the `compress`
+    middleware, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you visit the homepage for our application and check the response headers
+    via your browser tools for all of the resources served, you should see this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Logging
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The Express server, `./lib/express/index.js`, uses the `logger` middleware
+    for logging. The Express logger should only be used in development. In fact, in
+    a production environment, this will seriously impact performance as console functions
+    are synchronous. Let''s change the Express server and switch off logging when
+    in production, as shown in the following code snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Express in commercial production environments can look a little different, but
+    for good reason. Many of the tasks Express/Node support can be performed better
+    by other tools. In our application, we have tried to stay on the node stack; we
+    have chosen to use stud to terminate SSL as our entire application runs on SSL.
+    Stud will outperform all in this space, including Nginx and Haproxy. Stud will
+    forward unencrypted responses to Hipache, which balances load. Hipache is based
+    on node-http-proxy; it uses cluster for failover. More importantly, unlike node-http-proxy,
+    it can manage memory, making it a reasonable choice for a load balancer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hipache works well, but if it's performance you really seek, Nginx and Haproxy
+    are the de facto tools to reach for. For failover, we are using node's cluster
+    module, which along with domains, makes our application a little more robust.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our static file requirements are minimal, so we have chosen to serve, cache,
+    compress, and minify our static resources via Express. Any deviation from these
+    minimal requirements will make me reach for either Nginx or Haproxy to deliver
+    statics, or a Content Delivery Network.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have managed to automate many tasks. Our code coverage is sitting at around
+    80 percent, running YSlow and PageSpeed on our application produces good results.
+    Ideally, we would like to have driven all our requirements via test, driven some
+    of the smaller code modules with unit tests, and added more acceptance tests using
+    Cucumber. I hope that you have at least managed to get the feel of all these elements
+    and will be able to make your own informed choices about testing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Node/Express stack is a great platform for building web applications. Working
+    with full-stack JavaScript is a great development experience. The node community
+    and the thousands of Node module developers make Node a vibrant and interesting
+    space to work in.
+  prefs: []
+  type: TYPE_NORMAL

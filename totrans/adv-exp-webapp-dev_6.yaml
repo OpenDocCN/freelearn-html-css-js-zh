@@ -1,0 +1,484 @@
+- en: Chapter 6. Scaling
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter we will look at options for scaling Express. Our current solution
+    will not scale beyond a single process/server; introducing a few simple changes
+    will allow us to scale Vision both horizontally and vertically. We will also take
+    a look at an alternative web architecture, and examine how decoupling our application
+    can improve our application and help us scale Express further.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scaling Express sessions with Redis
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Running our Express application with the `NODE_ENV` set to `production` will
+    output the following message:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The default session store for Express is an in-memory store; tying sessions
+    to a single process does not scale.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Also, if the server crashes then we lose those sessions. If we want to scale
+    the Express application to more than one server, we will need a memory store that
+    is decoupled from the Express application. Express has a couple of optional stores;
+    here we will use Redis via `connect-redis`. Let's configure the vision application
+    to use Redis as a session store.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will now make a couple of changes to the Express server `./lib/express/index.js`.
+    We start by bringing in the `Redis` module we previously created, that configures
+    and connects to a Redis server. We instantiate one of these into `redis`. We then
+    require `connect-redis` which returns `RedisStore`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We have in place an existing `sessionStore` which is configured to use `MemoryStore`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s replace this with our new `RedisStore`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our application is now ready to use Redis to store sessions. We can monitor
+    Redis session activity via `redis-cli` by running the following commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Scaling Socket.IO with Redis
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Socket.IO also uses an in-memory store to store its events. There are a couple
+    of issues with this; the first being that if the server fails we lose those messages
+    stored in memory. The second is if we attempt to scale our application by adding
+    more servers, the Socket.IO in-memory store will be tied to a single server; the
+    servers we add will not know which Socket.IO connections are open on other servers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can solve these problems by using the Socket.IO `RedisStore`. We start by
+    requiring a `RedisStore`, which is a `redis` module from the Socket.IO namespace.
+    We can also use the vision `Redis` module to create three redis clients: `pub`,
+    `sub`, and `client`. In order to configure Socket.IO to use the `RedisStore`,
+    we set the Socket.IO `''store''` to a `RedisStore`, which passes `redis`, `pub`,
+    `sub`, and `client` as the arguments.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Scaling Express horizontally
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Our current application architecture has coupled together an API; a consuming
+    web client and a worker which populates a Redis cache. This approach works for
+    many applications and will allow it to scale horizontally with the help of a load
+    balancer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But let's say for example, we would like our API to support clients other than
+    web, say for example, we introduced a mobile client that used our API; ideally
+    we would like to scale our API in isolation and remove anything related to the
+    web client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scaling our worker horizontally would simply mean replicating the same work
+    over and over again, which would be pointless. Later, we will discuss how to scale
+    the worker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the rest of this chapter we will outline how to split apart our application
+    in order to scale horizontally. We will use the source code from the `chapter-6`
+    version of the vision application. We will, of course, document anything of interest
+    which is required to achieve our goal. We will create four new projects: `vision-core`,
+    `vision-web`, `vision-api`, and `vision-worker`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Download the source code for this chapter here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://github.com/AndrewKeig/vision-core](https://github.com/AndrewKeig/vision-core)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://github.com/AndrewKeig/vision-web](https://github.com/AndrewKeig/vision-web)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://github.com/AndrewKeig/vision-api](https://github.com/AndrewKeig/vision-api)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://github.com/AndrewKeig/vision-worker](https://github.com/AndrewKeig/vision-worker)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: vision-core
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our first task is to extract everything that can be shared between the `vision-web`,
+    `vision-api`, and `vision-worker` projects into a new `vision-core` project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This includes the following sections: `./cache`, `./lib/configuration`, `./lib/db`,
+    `./lib/github`, `./lib/logger`, `./lib/models`, and `./lib/project`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `vision-core` project is not an application so we remove everything in
+    the root of the project, including `./app.js` and our `./gruntfile.js`, and add
+    a `./index.js` file, which simply exports all of the functionalities shown:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In order to share the private `vision-core` project with visions other private
+    projects, we add a GitHub dependency to config: `./config/packge.json`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: vision-api
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let''s create a `vision-api` project which contains the web API. Here we need
+    to reuse everything related to the API that includes the following middleware:
+    `./lib/middleware/id`, `./lib/middleware/notFound`, the routes for `./lib/routes/project`,
+    `./lib/routes/github`, and `./lib/routes/heartbeat`. We also include the config
+    files `./config` and all the tests `./test`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In order to secure `vision-api`, we will use basic authentication, which uses
+    a username and password to authenticate a user. These credentials are transported
+    in plain text, so you are advised to use HTTPS. We have already shown you how
+    to setup HTTPS, hence, this part will not be repeated. In order to set up basic
+    authentication, we can use the `passport-http`; let''s install it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We start by adding a username and password to `./config/*.json`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: We are now ready to implement an `ApiAuth` strategy into `./lib/auth/index.js`.
+    We start by defining a function, `ApiAuth`, then we import the `passport` and
+    `passport-http` modules. We instantiate a `BasicStrategy` function and add it
+    to `passport`, passing a verify function. Inside this verify function, we have
+    the option of rejecting the user by passing false out of the callback. We call
+    `findUser` and check if `username` and `password` are the same as those stored
+    in `./config/*.json`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `vision-api` project will need a new Express server `./express/index.js`.
+    We start by requiring `config` via `vision-core`. We require the `apiAuth` module
+    which handles authentication, then we apply the passport basic middleware to all
+    of the routes using `app.all`. We set `session:false` as basic authentication
+    is stateless.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As we are moving to multiple Express servers to support our application, we
+    will move `vision-api` onto port `3001`. Let''s configure this into `./config/*.json`,
+    as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: vision-worker
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Let's continue and create a new project called `vision-worker`, which consists
+    of two scripts `./populate.js` script and `./lib/cache/populate.js`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Of course we could scale this worker with something such as **RabbitMQ.** This
+    would allow us to spawn multiple producers and consumers, and from this respect,
+    the solution we have is not optimum. If you are interested in improving this part
+    of the application, please refer to Packt's *Instant RabbitMQ Message Application
+    Development*. This book explains how you can implement a worker pattern with RabbitMQ.
+  prefs: []
+  type: TYPE_NORMAL
+- en: vision-web
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Finally, we create a new project called `vision-web` which will include everything
+    related to the web client ; simply include everything from `chapter 6` and remove
+    everything we moved to `core` and reference core from `./package.json`. Our current
+    set of `routes` require some significant changes; now that we have decoupled our
+    service layer into its own repository called `vision-api`. vision-web will no
+    longer make service calls directly into the project and github services; these
+    services now exist in the vision-api project, instead we will call the API services
+    exposed on vision-api.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's add the configuration to `./config/*.json` for our `vision-api` project.
+    The `vision-api` project has been configured to run on port `3001` and uses basic
+    authentication for security, so we include the `username` and `password` in the
+    `url`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In order to call services on our `vision-api` project , we will simplify things
+    by using `Request` module. Request is a simple client that allows us to make HTTP
+    requests; lets install it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With our configuration in place, we move onto our project route `./lib/routes/project.js`.
+    Here we simply replace all calls to our Project service with the corresponding
+    calls in vision-api. We start by pulling in the configuration we defined in the
+    code snippet above. Each route constructs a URL using this configuration, we use
+    the Request module to call into the API. We return a response which consists of
+    the `response.statusCode` and the body of the response:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s repeat the same process for our GitHub route `./lib/routes/github.js`;
+    removing calls to the GitHub service with calls to the corresponding endpoints
+    on our `vision-api` project:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Lets update our tests `./test/project.js`, `./test/github.js`. We now remove
+    anything Mongoose related with direct calls using `Request` module to vision-api
+    in order to seed test data to MongoDB:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Vertical scale with Cluster
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Our `vision-web` and `vision-api` Express applications currently run in a single
+    thread. In order to scale our application vertically, in order to take advantage
+    of multi-core systems, and provide redundancy in case of failure, we can use the
+    cluster module and spread the load over multiple processes. Lets add the Cluster
+    module to vision-core `./lib/cluster/index.js`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s export the cluster module out of `vision-core`; by adding the following
+    to `./index.js`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s change our Express application in `vision-web` and `vision-api ./app.js`,
+    and add a third option for running our application, that is, running with cluster
+    support:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Balancing load with Hipache
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**Hipache** is a distributed proxy designed to route high volumes of HTTP and
+    WebSocket traffic. Hipache supports dynamic configuration via Redis, so changing
+    the configuration and adding vhosts does not require a restart. Based on the node-http-proxy
+    library, Hipache provides support for load balancing websockets, SSL, dead backend
+    detection, and is clustered for failover. Let''s install it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s setup a host for both `vision-web` and `vision-api` by editing the `hosts`
+    file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Add two new entries:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And then flush the cache for these changes to take effect:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In order to configure a server, we will need a configuration file for each
+    application we want to load balance. In our case, it is `vision-web` and `vision-api`.
+    Here is the configuration file for `vision-api`, `./config/server.json`. Importantly,
+    we are running `vision-api` on port `8443`. We configure an SSL certificate under
+    the HTTPS section as Hipache will terminate SSL not our Express server:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: Let's make a change to the Express server `./lib/express/server.js`, and return
+    a standard HTTP server when running in production; Hipache will now terminate
+    SSL.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: We now add Hipache configuration for the `vision-api ./config/server.json`.
+    Please note that we are running `vision-api` on port `3001`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will need to revisit GitHub and change the urls under `settings/applications/developer
+    applications/vision` to `https://web.vision.net:8443`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's update the `vision-web` configuration `./config/*.json`, and change the
+    GitHub authentication urls to `web.vision.net`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s also update the API `url` configuration in the same set of config files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our final change will allow us to support multiple ports for each application;
+    we will change the port setting in the Express server `./lib/express/index.js`,
+    so that it checks `process.env.PORT` for a port number:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We now start the process of running our application under a load balancer.
+    In order to start the Hipache load balancer for `vision-api`, run the following
+    commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In order to start the Hipache load balancer for `vision-web`, we run the following
+    commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'So, we now have a running Hipache instance for `vision-api` and another for
+    `vision-web`. Let''s create a vhost in Redis and associate the Hipache instance
+    with a series of servers. Now run the redis command line interface:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'First off, let''s get the `vision-web` application up and running and assign
+    a backend running on port `3003` to `web.vision`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s review the configuration for `web.vision`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s get the `vision-api` application up and running and assign a backend
+    running on port `3005` to `api.vision`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s review the configuration for `api.vision`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s run the application under a load balancer, set the `PORT` environment
+    variable and set NODE_ENV to `production` when running `npm start`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We now have a vision application running under a load balancer, go visit `https://web.vision.net:844`
+    `3`. In order to add more backends to our load balancer, let''s start `vision-api`
+    and `vision-web` under another port:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When we run the following commands, the backends running on ports `3004` and
+    `3006` will be added to the load balancer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Scaling a Web application is nontrivial. Node; using the cluster module allows
+    us to scale it vertically. Scaling horizontally requires us to reach out to the
+    wider community. In our application we have chosen Hipache; a node based load
+    balancer. In the next chapter we will discuss production-level improvements that
+    we can make to our application when we look at performance and reliability issues.
+  prefs: []
+  type: TYPE_NORMAL

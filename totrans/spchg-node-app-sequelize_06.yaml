@@ -1,0 +1,763 @@
+- en: '6'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Implementing Transactions with Sequelize
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Throughout the previous chapters, we went over how to ensure that data integrity
+    is maintained from within our Node.js application using life cycle events, validations,
+    and constraints. However, these methods do not guarantee that the data is internally
+    consistent in the database itself. Databases offer a way to atomicize integrity
+    using **transactions**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transactions are used for ensuring a process has been completed without interruptions
+    such as a connection failure or the power abruptly failing. They are also used
+    for isolating, or locking, applications from manipulating data concurrently, which
+    alleviates **race****condition** issues. Transactions promise data validity by
+    following the **ACID** principle, which stands for **atomic** (“all-or-nothing”
+    behavior), **consistent** (adheres to constraints), **isolated** (transactions
+    happen sequentially and unbeknownst toward each other), and **durable** (persistent
+    storage).
+  prefs: []
+  type: TYPE_NORMAL
+- en: A generic use case for transactions would be transferring funds from one user
+    account to another. If *User A* had 30 coins in their account and was charged
+    20 coins by *User B* just before *User A* decided to make a purchase from another
+    user for 15 coins, then the database should prevent *User A* from being able to
+    purchase the item that costs 15 coins due to a low balance. The database would
+    see that *User A* was charged 20 coins prior to charging 15 coins and then would
+    issue a **rollback** for the second transaction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transactions also offer a feature called **savepoints** that would act as “snapshots
+    of time for the database” with changes made from the transaction itself, which
+    is useful for multi-step transactions. For instance, in a bank scenario, we only
+    transact the currency itself, but in a vendor’s shop, we would have to ensure
+    the item and currencies are in their appropriate places.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By default, Sequelize does not execute queries under a transaction, but it does
+    offer two methods for interacting with transactions that are referred to as managed
+    and unmanaged transactions. Managed transactions will either commit the changes
+    or roll back their changes automatically/implicitly depending on whether there
+    is an error. Unmanaged transactions rely on the developer to invoke the appropriate
+    methods for committing or rolling back changes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following areas:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A more in-depth look at – and examples of—managed and unmanaged transactions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using **Continuation-Local Storage** (**CLS**) for partial transactions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Managing and configuring advanced transaction options including isolation levels
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using life cycle events and locks with transactions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Specifically, we will look at the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Managed and unmanaged transactions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Running transactions concurrently
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Isolation levels and advanced configuration
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Putting it all together
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can always reference Sequelize’s code base to maintain an up-to-date list
+    of available transaction methods here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://github.com/sequelize/sequelize/blob/v6/src/transaction.js](https://github.com/sequelize/sequelize/blob/v6/src/transaction.js)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You can find the code files of this chapter at [https://github.com/PacktPublishing/Supercharging-Node.js-Application-with-Sequelize/blob/main/ch6](https://github.com/PacktPublishing/Supercharging-Node.js-Application-with-Sequelize/blob/main/ch6).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Managed and unmanaged transactions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Managed transactions are typically easier for developers with previous **object-relational
+    mapping** (**ORM**) experience, and unmanaged transactions may be more familiar
+    to developers who write **Structured Query Language** (**SQL**) directly. Unmanaged
+    transactions are explicit by design, but managed transactions have some implicit
+    behaviors for state management such as automatically creating a transaction instance
+    and calling your callback method with that transaction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s look at the steps for creating unmanaged transactions, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We would start by creating a transaction instance, like so:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we will want to wrap our queries in a `try` block. For this example,
+    we will increment and decrement two account balances by `100` using the same transaction
+    instance, like so:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The following line of code will commit our transaction if our previous two
+    queries are executed successfully:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we can close the `try` block and add a `catch` block for handling any
+    errors thrown from our transaction, as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The `tx.rollback()` command will tell the database to revert any changes made
+    within this transaction. You may roll back a transaction at any time regardless
+    of whether there is a conditional statement or for error handling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Sequelize can automate a lot of this work for you by using *managed transactions*.
+    Let us presume that our `Account` model has a constraint where the balance had
+    to be greater than zero, and the sender account only had five coins in its balance.
+    We can rewrite our previous unmanaged transaction example into a managed transaction,
+    like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Managed transactions will automatically commit or roll back depending on whether
+    an exception was thrown from an applicable query. You can still roll back manually
+    within a managed transaction by throwing an error within the transaction block,
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Sometimes, our application will require different transactions to run concurrently.
+    We can chain multiple transactions recursively or we could use a module called
+    CLS. In the next section, we will cover how to use concurrent transactions with
+    both methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running transactions concurrently
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Depending on whether your application requires isolation between reads and
+    writes, within the database, you may need to explicitly run multiple transactions
+    at the same time. Sequelize offers two methods for running transactions concurrently:
+    recursively chaining transactions (Sequelize’s native method) or integrating your
+    application with a third-party module called CLS.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: SQLite does not support running multiple transactions concurrently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running transactions concurrently with Sequelize
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We can run transactions concurrently with Sequelize concurrently by chaining
+    two transaction methods together, which would look similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we can run multiple queries simultaneously while using different transactions,
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'By default, Sequelize will not use a transaction instance variable. If we were
+    to omit the `{ transaction: tx2 }` option for the last `Account.create` command,
+    then Sequelize would not use a transaction instance variable and would act like
+    the first `Account.create` command with `{ transaction: null }`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running transactions with CLS
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Using CLS with Sequelize will help you automatically pass transactions to all
+    queries, as well as provide something similar to thread-local storage. The advantage
+    of CLS’ automatic transaction execution is that some database pool drivers require
+    us to commit transactions across the wire, which would be cumbersome to manage
+    manually. The thread-local storage gives us the ability to share context across
+    transactions created in separate parts within our application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: To learn more about CLS, refer to the project’s Git repository at [https://github.com/othiym23/node-continuation-local-storage](https://github.com/othiym23/node-continuation-local-storage).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This book does not integrate CLS with Sequelize, but for completeness, we will
+    cover how to enable CLS with Sequelize for your project. We will need to install
+    the necessary package, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we can initialize a CLS namespace, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can then pass the `namespace` variable to the Sequelize constructor’s `useCLS`
+    method, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Since we are using Sequelize’s constructor, all of Sequelize’s instances will
+    share the same namespace. Individual CLS instances are not supported by Sequelize
+    at this time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Borrowing from the previous section’s example, we omit to classify the transaction
+    parameter within our queries, as highlighted in the following example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With CLS, Sequelize will pass the innermost scoped transaction instance variable,
+    which would be `tx2` from the previous example. If we were to omit the `{ transaction:
+    null }` option for the first `Account.create` command, then Sequelize will presumptuously
+    use `tx2` for its transaction, as in the last `Account.create` command. The second—or
+    middle—`Account.create` command would still explicitly use the `tx1` transaction
+    instance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Since Sequelize automatically passes a transaction to queries, the following
+    two examples would execute with the same `tx` instance variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, enabling CLS with Sequelize can offer some advantages and organize
+    the project’s code base a bit better.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For even more functionality with CLS, refer to a project called CLS-Hooked:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://github.com/jeff-lewis/cls-hooked](https://github.com/jeff-lewis/cls-hooked)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Isolation levels and advanced configuration
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this section, we will be covering the different isolation levels and configuration
+    options available from Sequelize for every type of transaction. For managed transactions,
+    the method signature looks like this: `sequelize.transaction(options, callback)`.
+    The unmanaged transaction signature is `sequelize.transaction(options)`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is a list of configurable options for both transaction types:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`type`—A SQLite option to set the transaction type. Possible values are `DEFERRED`
+    (the default), `IMMEDIATE`, and `EXCLUSIVE`. Refer to [https://www.sqlite.org/lang_transaction.xhtml](https://www.sqlite.org/lang_transaction.xhtml).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`isolationLevel`—Sets the transaction’s isolation level. The following explanations
+    are under the context of MySQL but should be applicable to other `READ_UNCOMMITTED`—Reads
+    data using non-locking mechanisms. This could cause concurrency issues using stale,
+    or invalid, data from other transactions that have been rolled back.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`READ_COMMITTED`—Performs consistent reads even from within the same transaction.
+    In other words, reading data will be consistent with updates performed from prior
+    queries within the same transaction.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`REPEATABLE_READ`—Similar to `READ_COMMITTED` when it comes to reading the
+    information, but there are some stipulations when it comes to MySQL’s InnoDB database
+    engines explicitly. Refer to [https://dev.mysql.com/doc/refman/5.7/en/innodb-transaction-isolation-levels.xhtml#isolevel_repeatable-read](https://dev.mysql.com/doc/refman/5.7/en/innodb-transaction-isolation-levels.xhtml#isolevel_repeatable-read)
+    for more information on how to consistently lock records for when you need to.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`SERIALIZABLE`—A stricter ruleset than `REPEATABLE_READ`. This isolation level
+    is generally used for figuring out concurrency and deadlock-related issues for
+    the database.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`deferrable`—Applicable to PostgreSQL only, this setting determines whether
+    constraints can be deferred or checked immediately.*   `logging`—A function that
+    Sequelize will pass a query and its parameters as arguments.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sequelize offers constant variables for convenience when setting isolation
+    levels, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can also set the transaction’s isolation level on an instance level by setting
+    the `isolationLevel` option when initializing Sequelize, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, any subsequent transactions will use the `READ_COMMITTED` level by default.
+    These isolation levels pertain to reading data. In the next section, we will go
+    over locking mechanisms for writing data to the database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Locking rows with Sequelize
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Sometimes, our application requires us to temporarily lock information while
+    performing a transaction and prevent other transactions from committing to the
+    same table or row. Database practitioners may know this mechanism as a `SELECT
+    FOR UPDATE` query. You can see an example of such a query in the following code
+    snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Presuming that each `row` and `seat` instance is unique per `venue` instance,
+    the previous example will lock that particular seat’s record until the transaction
+    has been committed or rolled back.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Suppose we wanted to retrieve a list of seats that were not in a pending transaction.
+    If our DBMS supports the `SKIP LOCKED` command, then we can use a `skipLocked:
+    true` configuration option when querying data. To demonstrate the `SKIP LOCKED`
+    feature, we can begin by adding a locked record for a particular seat, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, the following query will use the `SKIP LOCKED` rule and return any applicable
+    row that is not locked by another pending transaction (in this particular case,
+    row 5, seat 13):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: MySQL added support for `SKIP LOCKED` from version 8.0.1\. This book’s code
+    base will not require `skipLocked`, but if you are using an older version and
+    try to use `skipLocked`, then Sequelize will silently omit the `SKIP LOCKED` command
+    from the query and may yield unexpected behaviors or results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using life cycle events for transactions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Sequelize only offers one life cycle—even for transactions—explicitly at the
+    moment. This life cycle event, named `afterCommit`, can be used for both managed
+    and unmanaged transactions. This event will not be triggered if the transaction
+    gets rolled back, nor can the event modify its transaction object (unlike traditional
+    life cycle events).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To invoke the `afterCommit` hook, we can add the event to the transaction’s
+    instance, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can append `afterCommit` events to an entire model via the `afterSave` event.
+    A good use case for using `afterCommit` is sending serialized data to some other
+    service, application, blockchain database, and so on. Here is an example of how
+    to use `afterCommit`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: So far, we have gone over the different kinds of transactions that Sequelize
+    offers, namespace environments for transactions, isolation levels, locking, and
+    life cycle events. Using a combination of these skillsets, we can finally start
+    implementing some of this knowledge into our application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Putting it all together
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we have gone over the core tenets of using transactions with Sequelize,
+    we can begin adding to our *Avalon Airlines* project. Our business partner just
+    informed us that the investors want a small demonstration for booking a flight
+    without processing a payment. For this task, we will need to add a couple of new
+    files, update the `BoardingTicket` and `FlightSchedule` models, add new routes
+    to our express application, and install a new Node.js package.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, let us begin by adding the new Node.js package that the project will
+    require. This package is known as Luxon ([https://moment.github.io/luxon/](https://moment.github.io/luxon/)),
+    which is a date-and-time JavaScript library. Use the following command to add
+    the package:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we will want to modify a life cycle event that exists within the `BoardingTicket`
+    model located in `models/boardingticket.js` by adding/changing the following highlighted
+    code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The other model that we will need to add a few updates to is the `FlightSchedule`
+    model located in `models/flightschedule.js`. Add the following line of code to
+    the top of the file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After that, add another validation within the `validate` object just below
+    the `validDestination` method, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we can add a new folder and file located at `routes/flights.js` from the
+    project’s main directory and add the following lines of code to load the appropriate
+    modules and files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For our first flight-related route, we will need to find a way to create our
+    airplanes first. Looking at the attributes from `models/airplane.js`, we can determine
+    that we will need a model name and the number of seats for each airplane. The
+    code is illustrated in the following code snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Within the `POST` data, we will expect `name` and `seats` values to be sent
+    to our Express application. Now, we can add the airplane creation logic, along
+    with closing and exporting the function, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our next function will be for creating flight schedules. We will require `airplaneId`,
+    `origin`, `destination`, and `departure` `POST` values for creating flight schedules,
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'First, let us validate and parse the departure time into a native `DateTime`
+    object, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we will want to check whether the airplane actually exists, so we’ll
+    execute the following code to find out:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the airplane does exist, we will want to create a flight schedule for it.
+    We will wrap the creation in a transaction to ensure that creating the schedule,
+    and associating the schedule with a particular airplane, would yield no errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For this particular demonstration, a transaction is not necessary, but in a
+    real-world application, we would want to make sure that an airplane is not overbooked
+    based on routing and departing times. The transaction block would look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We follow this by setting the associated airplane, returning the schedule record,
+    finishing the transaction, and rendering a response with **JavaScript Object Notation**
+    (**JSON**) data, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The last part of this file is capturing any errors from the previous `try`
+    block and exporting the `createSchedule` function, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we can create a new file located at `routes/tickets.js` that will serve
+    as the route for booking our actual flight. For demonstration purposes, we will
+    omit complex functionalities such as determining prices and customer sessions
+    and fill in those details with constant values. After creating the file, we would
+    load our models at the top of the file, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For our `bookTicket` method, we will need a `scheduleId` and `seat` `POST`
+    parameter, in addition to opening a transaction for creating a ticket. Here’s
+    how we can add these:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Check to see whether the `FlightSchedule` model exists by executing the following
+    code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let’s create our new boarding ticket, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We’ll now set our boarding ticket’s associations and then return the ticket
+    while completing the transaction, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Capture any errors and export the function, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we will want to add a module called `body-parser` that helps transform
+    different `req.body` in Express). For more information, visit [https://github.com/expressjs/body-parser](https://github.com/expressjs/body-parser).
+    We can install and add the package to our `package.json` file with the following
+    command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our last file to edit would be the `index.js` file within the project’s main
+    directory. We will want to add the following module after requiring the express
+    module on the first line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Just below the `const models = require("./models");` line, we will want to
+    add our new exported functions. Here’s how we do this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Just above the first route, `app.get(''/'', …)`, add the following line of
+    code for JSON `POST` support:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we will want to add the following line of code above the `app.get(''/airplanes/:id'',
+    ...)` line for our `createAirplane` route:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we can add our remaining new routes just above the `app.listen(3000,
+    ...)` line, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Since all of our changes have been committed, we can now run our application
+    by executing the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In order to test our application, we can use cURL or any HTTP REST utility
+    such as Postman ([https://www.postman.com/](https://www.postman.com/)) or HTTPie
+    ([https://httpie.io/](https://httpie.io/)). Let us create a new airplane before
+    a flight schedule, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We should see a response similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This particular A320 model has up to 150 seats available at a time for customers.
+    When we adjust our total number of seats available, our new command would look
+    like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding command should return a response similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We will want to keep the `id` value in mind for the next command when creating
+    a schedule:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding request should result in an error that looks similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We currently do not fly to Chicago’s O’Hare International Airport! The new
+    destination will now be Miami using the `MIA` code, as illustrated here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The response should look similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For the booking request, we will need the previous response’s `id` value and
+    a seating assignment, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The response would look similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we were to repeat the previous command, an error message would be shown
+    to us indicating that the seat has already been taken, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: That wraps up our changes to the *Avalon Airlines* project. We implemented a
+    way to create airplanes and new flight schedules and assign boarding tickets with
+    transactions. This should complete the requirements for our next investor meeting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we went through the differences between managed and unmanaged
+    transactions, using CLS for global scoping transactions, the supported isolation
+    levels, applicable life cycle events, and locking transactions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will be covering how to handle customized, JSON, and
+    **binary large object** (**BLOB**) data directly from Sequelize to the DBMS. The
+    following chapter will also contain further instructions on completing the *Avalon
+    Airlines* project.
+  prefs: []
+  type: TYPE_NORMAL
