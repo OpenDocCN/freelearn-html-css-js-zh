@@ -1,0 +1,3973 @@
+- en: '13'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '13'
+- en: Messaging and Integration Patterns
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 消息和集成模式
+- en: If scalability is about distributing systems, integration is about connecting
+    them. In the previous chapter, we learned how to distribute an application, fragmenting
+    it across several processes and machines. For this to work properly, all those
+    pieces have to communicate in some way and, hence, they have to be integrated.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果可扩展性是关于分布式系统，那么集成就是关于连接它们。在前一章中，我们学习了如何分布一个应用程序，将其碎片化到多个进程和机器上。为了使其正常工作，所有这些部分都必须以某种方式通信，因此它们必须被集成。
+- en: 'There are two main techniques to integrate a distributed application: one is
+    to use shared storage as a central coordinator and keeper of all the information,
+    the other one is to use messages to disseminate data, events, and commands across
+    the nodes of the system. This last option is what really makes the difference
+    when scaling distributed systems, and it''s also what makes this topic so fascinating
+    and sometimes complex.'
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 整合分布式应用程序主要有两种技术：一种是用共享存储作为所有信息的中心协调者和守护者，另一种是使用消息在系统的节点之间传播数据、事件和命令。这种最后一种选项是真正使分布式系统扩展化的关键，也是使这个主题如此吸引人并且有时复杂的原因。
+- en: Messages are used in every layer of a software system. We exchange messages
+    to communicate on the Internet; we can use messages to send information to other
+    processes using pipes; we can use messages within an application as an alternative
+    to direct function invocation (the Command pattern), and also device drivers use
+    messages to communicate with the hardware. Any discrete and structured data that
+    is used as a way to exchange information between components and systems can be
+    seen as a *message*. However, when dealing with distributed architectures, the term **messaging
+    system** is used to describe a specific class of solutions, patterns, and architectures
+    that are meant to facilitate the exchange of information over the network.
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 消息被用于软件系统的每一层。我们在互联网上通过交换消息进行通信；我们可以使用消息通过管道将信息发送到其他进程；我们可以在应用程序中使用消息作为直接函数调用的替代（命令模式），设备驱动程序也使用消息与硬件进行通信。任何用作组件和系统之间信息交换的离散和结构化数据都可以被视为一种*消息*。然而，在处理分布式架构时，术语**消息系统**被用来描述一类旨在促进网络信息交换的特定解决方案、模式和架构。
+- en: As we will see, several traits characterize these types of systems. We might
+    choose to use a broker versus a peer-to-peer structure, we might use a request/reply
+    message exchange or one-way type of communication, or we might use queues to deliver
+    our messages more reliably; the scope of the topic is really broad. The book *Enterprise
+    Integration Patterns* by Gregor Hohpe and Bobby Woolf gives us an idea about the
+    vastness of the topic. Historically, it is considered the *Bible* of messaging
+    and integration patterns and has more than 700 pages describing 65 different integration
+    patterns. In this final chapter, we will explore the most important of those well-known
+    patterns—plus some more modern alternatives—considering them from the perspective
+    of Node.js and its ecosystem.
+  id: totrans-5
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们将看到的，这些类型的系统有几个特点。我们可能会选择使用代理而不是对等结构，我们可能会使用请求/回复消息交换或单向通信类型，或者我们可能会使用队列来更可靠地传递我们的消息；这个主题的范围真的很广。Gregor
+    Hohpe 和 Bobby Woolf 所著的《企业集成模式》一书为我们提供了关于这个主题广度的概念。从历史上看，它被认为是消息和集成模式的**圣经**，有超过700页描述了65种不同的集成模式。在本章的最后，我们将探讨这些众所周知模式中最重要的一些——以及一些更现代的替代方案——从Node.js及其生态系统的角度来考虑。
+- en: 'To sum up, in this chapter, we will learn about the following topics:'
+  id: totrans-6
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 总结来说，在本章中，我们将学习以下主题：
+- en: The fundamentals of a messaging system
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 消息系统的基本原理
+- en: The Publish/Subscribe pattern
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 发布/订阅模式
+- en: Task distribution patterns and pipelines
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 任务分配模式和管道
+- en: Request/reply patterns
+  id: totrans-10
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 请求/回复模式
+- en: Let's begin with the fundamentals.
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们从基本原理开始。
+- en: Fundamentals of a messaging system
+  id: totrans-12
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 消息系统的基本原理
+- en: 'When talking about messages and messaging systems, there are four fundamental
+    elements to take into consideration:'
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当谈到消息和消息系统时，有四个基本要素需要考虑：
+- en: The direction of the communication, which can be one-way only or a request/reply
+    exchange
+  id: totrans-14
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 通信的方向，可以是单向的，也可以是请求/回复的交换
+- en: The purpose of the message, which also determines its content
+  id: totrans-15
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 消息的目的，这也决定了其内容
+- en: The timing of the message, which can be sent and received in-context (synchronously)
+    or out-of-context (asynchronously)
+  id: totrans-16
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 消息的时机，可以是同步（在上下文中发送和接收）或异步（不在上下文中）
+- en: The delivery of the message, which can happen directly or via a broker
+  id: totrans-17
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 消息的传递，可以是直接发生或通过代理
+- en: In the sections that follow, we are going to formalize these aspects to provide
+    a base for our later discussions.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在接下来的章节中，我们将对这些方面进行形式化，为我们的后续讨论提供一个基础。
+- en: One way versus request/reply patterns
+  id: totrans-19
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 单向与请求/回复模式
+- en: The most fundamental aspect in a messaging system is the direction of the communication,
+    which often also determines its semantics.
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在消息系统中，最基本的一个方面是通信的方向，这通常也决定了其语义。
+- en: 'The simplest communication pattern is when the message is pushed *one way* from
+    a source to a destination; this is a trivial situation, and it doesn''t need much
+    explanation:'
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最简单的通信模式是消息从源到目的地单向推送；这是一个简单的情况，不需要太多解释：
+- en: '![](img/B15729_13_01.png)'
+  id: totrans-22
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B15729_13_01.png)'
+- en: 'Figure 13.1: One-way communication'
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图13.1：单向通信
+- en: A typical example of one-way communication is an email or a web server that
+    sends a message to a connected browser using WebSockets, or a system that distributes
+    tasks to a set of workers.
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 单向通信的一个典型例子是电子邮件或使用WebSockets向连接的浏览器发送消息的Web服务器，或者将任务分配给一组工作者的系统。
+- en: 'On the other side, we have the Request/Reply exchange pattern, where the message
+    in one direction is always matched (excluding error conditions) by a message in
+    the opposite direction. A typical example of this exchange pattern is the invocation
+    of a web service or sending a query to a database. The following diagram shows
+    this simple and well-known scenario:'
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一方面，我们有请求/回复交换模式，其中一条方向的消息总是与相反方向的消息相匹配（排除错误条件）。这种交换模式的典型例子是调用Web服务或向数据库发送查询。以下图表显示了这种简单且众所周知的情况：
+- en: '![](img/B15729_13_02.png)'
+  id: totrans-26
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B15729_13_02.png)'
+- en: 'Figure 13.2: Request/Reply message exchange pattern'
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图13.2：请求/回复消息交换模式
+- en: 'The Request/Reply pattern might seem a trivial pattern to implement, however,
+    as we will see later, it becomes more complicated when the communication channel
+    is asynchronous or involves multiple nodes. Take a look at the example represented
+    in the next diagram:'
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请求/回复模式可能看起来是一个简单的实现模式，然而，正如我们稍后将看到的，当通信通道是异步的或涉及多个节点时，它变得更加复杂。看看下一个图表中代表的例子：
+- en: '![A close up of a womans face  Description automatically generated](img/B15729_13_03.png)'
+  id: totrans-29
+  prefs: []
+  type: TYPE_IMG
+  zh: '![一位女士脸部特写  自动生成的描述](img/B15729_13_03.png)'
+- en: 'Figure 13.3: Multi-node request/reply communication'
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图13.3：多节点请求/回复通信
+- en: With the setup shown in *Figure 13.3*, we can better appreciate the complexity
+    of some request/reply patterns. If we consider the direction of the communication
+    between any two nodes, we can surely say that it is one way. However, from a global
+    point of view, the initiator sends a request and in turn receives an associated
+    response, even if from a different node. In these situations, what really differentiates
+    a Request/Reply pattern from a bare one-way loop is the relationship between the
+    request and the reply, which is kept in the initiator. The reply is usually handled
+    in the same context as the request.
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过图13.3所示的设置，我们可以更好地理解某些请求/回复模式的复杂性。如果我们考虑任意两个节点之间的通信方向，我们可以说它一定是单向的。然而，从全局角度来看，发起者发送一个请求，然后相应地收到一个来自不同节点的响应。在这些情况下，真正区分请求/回复模式与裸单向循环的是请求和回复之间的关系，这种关系被保存在发起者那里。回复通常与请求在相同的环境中处理。
+- en: Message types
+  id: totrans-32
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 消息类型
+- en: 'A **message** is essentially a means to connect different software components
+    and there are different reasons for doing so: it might be because we want to obtain
+    some information held by another system or component, to execute operations remotely,
+    or to notify some peers that something has just happened.'
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**消息**本质上是一种连接不同软件组件的手段，这样做有不同的原因：可能是因为我们想要获取另一个系统或组件持有的某些信息，远程执行操作，或者通知一些对等体刚刚发生了某些事情。'
+- en: 'The message content will also vary depending on the reason for the communication.
+    In general, we can identify three types of messages, depending on their purpose:'
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 消息内容也会根据通信的原因而变化。一般来说，我们可以根据其目的识别三种类型的消息：
+- en: Command Messages
+  id: totrans-35
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 命令消息
+- en: Event Messages
+  id: totrans-36
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 事件消息
+- en: Document Messages
+  id: totrans-37
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 文档消息
+- en: Command Messages
+  id: totrans-38
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 命令消息
+- en: You should already be familiar with the **Command Message** as it's essentially
+    a serialized Command object (we learned about this in the *Command* section in
+    *Chapter 9*, *Behavioral Design Patterns*)
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该已经熟悉**命令消息**，因为它本质上是一个序列化的命令对象（我们在第9章的*命令*部分中学习了这一点，*行为设计模式*）
+- en: 'The purpose of this type of message is to trigger the execution of an action
+    or a task on the receiver. For this to be possible, the Command Message has to
+    contain the essential information to run the task, which usually includes the
+    name of the operation and a list of arguments. The Command Message can be used
+    to implement **remote procedure call** (**RPC**) systems, distributed computations,
+    or can be more simply used to request some data. RESTful HTTP calls are simple
+    examples of commands; each HTTP verb has a specific meaning and is associated
+    with a precise operation: `GET`, to retrieve the resource; `POST`, to create a
+    new one; `PUT`/`PATCH`, to update it; and `DELETE`, to destroy it.'
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种类型消息的目的是触发接收器上动作或任务的执行。为了实现这一点，命令消息必须包含运行任务所需的基本信息，这通常包括操作名称和参数列表。命令消息可以用来实现**远程过程调用（RPC**）系统、分布式计算，或者更简单地用来请求某些数据。RESTful
+    HTTP调用是命令的简单例子；每个HTTP动词都有特定的含义，并与一个精确的操作相关联：`GET`，用于检索资源；`POST`，用于创建新资源；`PUT`/`PATCH`，用于更新资源；和`DELETE`，用于销毁资源。
+- en: Event Messages
+  id: totrans-41
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 事件消息
+- en: An **Event Message** is used to notify another component that something has
+    occurred. It usually contains the *type* of the event and sometimes also some
+    details such as the context, the subject, or the actor involved.
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**事件消息**用于通知另一个组件发生了某些事情。它通常包含事件的*类型*，有时也包含一些细节，如上下文、主题或涉及的参与者。'
+- en: In web development, we are using an Event Message when, for example, we leverage WebSockets
+    to send notifications from the server to the client to communicate changes to
+    some data or mutations in the state of the system.
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在Web开发中，当我们利用WebSockets从服务器向客户端发送通知，以通知某些数据的变化或系统状态的突变时，我们会使用事件消息。
+- en: Events are a very important integration mechanism in distributed applications,
+    as they enable us to keep all the nodes of the system on the same page.
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 事件是分布式应用中非常重要的集成机制，因为它们使我们能够保持系统所有节点的同步。
+- en: Document Messages
+  id: totrans-45
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 文档消息
+- en: The **Document Message** is primarily meant to transfer data between components
+    and machines. A typical example is a message used to transfer the results of a database
+    query.
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**文档消息**主要用于在组件和机器之间传输数据。一个典型的例子是用于传输数据库查询结果的消息。'
+- en: The main characteristic that differentiates a Document Message from a Command
+    Message (which might also contain data) is that the message does not contain any
+    information that tells the receiver what to do with the data. On the other hand,
+    the main difference between a Document Message and an Event Message is the absence
+    of an association with a particular occurrence with something that happened. Often,
+    the replies to Command Messages are Document Messages, as they usually contain
+    only the data that was requested or the result of an operation.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 区分文档消息和命令消息（可能也包含数据）的主要特征是，消息不包含任何信息告诉接收者如何处理数据。另一方面，文档消息和事件消息之间的主要区别是它们与特定事件发生的关联的缺失。通常，命令消息的回复是文档消息，因为它们通常只包含请求的数据或操作的结果。
+- en: Now that we know how to categorize the semantics of a message, let's learn about
+    the semantic of the communication channel used to move our messages around.
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经了解了如何对消息的语义进行分类，让我们来了解用于移动我们消息的通信通道的语义。
+- en: Asynchronous messaging, queues, and streams
+  id: totrans-49
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 异步消息、队列和流
+- en: At this point in the book, you should already be familiar with the characteristics
+    of an asynchronous operation. Well, it turns out that the same principles can
+    be applied to messaging and communications.
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这本书的这一部分，你应该已经熟悉了异步操作的特点。嗯，结果证明，同样的原则也可以应用于消息和通信。
+- en: 'We can compare synchronous communications to a phone call: the two peers must be
+    connected to the same channel at the same time and they should exchange messages
+    in real time. Normally, if we want to call someone else, we either need another
+    phone or terminate the ongoing communication to start a new one.'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以将同步通信比作电话通话：两个对等方必须同时连接到相同的频道，并且他们应该实时交换消息。通常，如果我们想给其他人打电话，我们要么需要另一部电话，要么终止正在进行的通信以开始新的通话。
+- en: 'Asynchronous communication is similar to an SMS: it doesn''t require the recipient
+    to be connected to the network the moment we send it; we might receive a response
+    immediately or after an unknown delay, or we might not receive a response at all.
+    We might send multiple SMSes to multiple recipients one after the other and receive
+    their responses (if any) in any order. In short, we have better parallelism with
+    the use of fewer resources.'
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 异步通信类似于短信：它不需要接收者在发送时连接到网络；我们可能会立即收到回复，或者在一个未知的延迟后收到回复，或者根本收不到回复。我们可能会连续给多个接收者发送多条短信，并按任何顺序收到他们的回复（如果有的话）。简而言之，我们使用更少的资源就实现了更好的并行性。
+- en: 'Another important characteristic of asynchronous communications is that the
+    messages can be stored and then delivered as soon as possible or at a later time.
+    This can be useful when the receiver is too busy to handle new messages or when
+    we want to guarantee delivery. In messaging systems, this is made possible using
+    a **message queue**, a component that mediates the communication between the producer
+    of the messages and the consumer, storing any message before it gets delivered
+    to its destination, as shown in the following diagram:'
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 异步通信的另一个重要特征是消息可以被存储，然后尽可能快地或稍后交付。当接收者太忙而无法处理新消息，或者我们想要保证交付时，这可能很有用。在消息系统中，这是通过使用**消息队列**来实现的，这是一个组件，它协调消息生产者和消费者之间的通信，在消息被交付到目的地之前存储任何消息，如图中所示：
+- en: '![A picture containing clock  Description automatically generated](img/B15729_13_04.png)'
+  id: totrans-54
+  prefs: []
+  type: TYPE_IMG
+  zh: '![包含时钟的图片  自动生成的描述](img/B15729_13_04.png)'
+- en: 'Figure 13.4: A message queue'
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 13.4：消息队列
+- en: If for any reason the consumer crashes, disconnects from the network, or experiences
+    a slowdown, the messages are accumulated in the queue and dispatched as soon as
+    the consumer comes back online. The queue can be located in the producer, or be
+    split between the producer and the consumer (in peer-to-peer architectures), or
+    live in a dedicated external system acting as middleware for the communication
+    (**broker**).
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果消费者由于任何原因崩溃、断开网络连接或速度减慢，消息将积累在队列中，并在消费者重新上线时立即分发。队列可以位于生产者处，或者在生产者和消费者之间分割（在对等架构中），或者存在于一个专门的外部系统中，作为通信的中间件（**代理**）。
+- en: Another data structure that has a similar (but not the same!) goal as a message
+    queue is the **log**. A log is an append-only data structure, which is durable
+    and whose messages can be read as they arrive or by accessing its history. In
+    the context of messaging and integration systems, this is also known as a data
+    **stream.**
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个与消息队列有类似（但不同！）目标的数据结构是**日志**。日志是一个只追加的数据结构，它是持久的，其消息可以按到达顺序读取或通过访问其历史记录来读取。在消息和集成系统的上下文中，这也被称为数据**流**。
+- en: Compared to a queue, in a stream, messages are not removed when they are retrieved
+    or processed. This way, consumers can retrieve the messages as they arrive or
+    can query the stream at any time to retrieve past messages. This means that a
+    stream provides more freedom when it comes to accessing the messages, while queues
+    usually expose only one message at a time to their consumers. Most importantly,
+    a stream can be shared by more than one consumer, which can access the messages
+    (even the same messages) using different approaches.
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与队列相比，在流中，当消息被检索或处理时，消息不会被移除。这样，消费者可以在消息到达时检索消息，或者在任何时候查询流以检索过去的消息。这意味着流在访问消息方面提供了更多的自由度，而队列通常一次只向消费者暴露一条消息。最重要的是，流可以被多个消费者共享，他们可以使用不同的方法访问消息（甚至是相同的消息）。
+- en: '*Figure 13.5* gives you an idea of the structure of a stream compared to that
+    of a message queue:'
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*图 13.5* 给出了流与消息队列结构的比较：'
+- en: '![A close up of a logo  Description automatically generated](img/B15729_13_05.png)'
+  id: totrans-60
+  prefs: []
+  type: TYPE_IMG
+  zh: '![一个标志的特写  自动生成的描述](img/B15729_13_05.png)'
+- en: 'Figure 13.5: A stream'
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 13.5：流
+- en: You will be able to better appreciate the difference between a queue and a stream
+    later in the chapter when we implement a sample application using both approaches.
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章后面，当我们使用这两种方法实现一个示例应用程序时，你将能够更好地欣赏队列和流之间的差异。
+- en: The final fundamental element to consider in a messaging system is the way the
+    nodes of the system are connected together, which can be directly or through an
+    intermediary.
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在一个消息系统中需要考虑的最后一个基本元素是系统节点之间的连接方式，这可以是直接的，也可以是通过中介实现的。
+- en: Peer-to-peer or broker-based messaging
+  id: totrans-64
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 对等或基于代理的消息
+- en: 'Messages can be delivered directly to the receiver in a **peer-to-peer** fashion,
+    or through a centralized intermediary system called a **message broker**. The
+    main role of the broker is to decouple the receiver of the message from the sender.
+    The following diagram shows the architectural difference between the two approaches:'
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 消息可以直接以**对等**方式发送给接收者，或者通过一个称为**消息代理**的集中式中介系统。代理的主要作用是将消息的接收者与发送者解耦。以下图表显示了两种方法之间的架构差异：
+- en: '![A close up of a device  Description automatically generated](img/B15729_13_06.png)'
+  id: totrans-66
+  prefs: []
+  type: TYPE_IMG
+  zh: '![设备特写  自动生成描述](img/B15729_13_06.png)'
+- en: 'Figure 13.6: Peer-to-peer communication versus message brokering'
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图13.6：对等通信与消息代理的比较
+- en: 'In a peer-to-peer architecture, every node is directly responsible for the
+    delivery of the message to the receiver. This implies that the nodes have to know
+    the address and port of the receiver and they have to agree on a protocol and
+    message format. The broker eliminates these complexities from the equation: each
+    node can be totally independent and can communicate with an unspecified number
+    of peers without directly knowing their details.'
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在对等架构中，每个节点直接负责将消息发送给接收者。这意味着节点必须知道接收者的地址和端口号，并且它们必须就协议和消息格式达成一致。代理消除了这些复杂性：每个节点可以完全独立，并且可以与未直接了解其详情的不确定数量的对等节点进行通信。
+- en: A broker can also act as a bridge between different communication protocols.
+    For example, the popular RabbitMQ broker ([nodejsdp.link/rabbitmq](http://nodejsdp.link/rabbitmq))
+    supports **Advanced Message Queuing Protocol** (**AMQP**), **Message Queue Telemetry
+    Transport** (**MQTT**), and **Simple/Streaming Text Orientated Messaging Protocol** (**STOMP**),
+    enabling multiple applications supporting different messaging protocols to interact.
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 代理还可以充当不同通信协议之间的桥梁。例如，流行的RabbitMQ代理([nodejsdp.link/rabbitmq](http://nodejsdp.link/rabbitmq))支持**高级消息队列协议**(**AMQP**)、**消息队列遥测传输**(**MQTT**)和**简单/流文本定向消息协议**(**STOMP**)，使支持不同消息协议的多个应用程序能够交互。
+- en: MQTT ([nodejsdp.link/mqtt](http://nodejsdp.link/mqtt)) is a lightweight messaging
+    protocol, specifically designed for machine-to-machine communications (such as
+    the Internet of things). AMQP ([nodejsdp.link/amqp](http://nodejsdp.link/amqp))
+    is a more complex messaging protocol, designed to be an open source alternative
+    to proprietary messaging middleware. STOMP ([nodejsdp.link/stomp](http://nodejsdp.link/stomp))
+    is a lightweight text-based protocol, which comes from "the HTTP school of design".
+    All three are application layer protocols and are based on TCP/IP.
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: MQTT([nodejsdp.link/mqtt](http://nodejsdp.link/mqtt))是一种轻量级消息协议，专门设计用于机器到机器通信（如物联网）。AMQP([nodejsdp.link/amqp](http://nodejsdp.link/amqp))是一种更复杂的消息协议，旨在成为专有消息中间件的开放源代码替代品。STOMP([nodejsdp.link/stomp](http://nodejsdp.link/stomp))是一种轻量级基于文本的协议，源自“HTTP设计学校”。所有三者都是应用层协议，基于TCP/IP。
+- en: Besides the advantages in terms of decoupling and interoperability, a broker
+    can offer additional features such as persistent queues, routing, message transformations,
+    and monitoring, without mentioning the broad range of messaging patterns that
+    many brokers support out of the box.
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除了解耦和互操作性的优势之外，代理还可以提供诸如持久队列、路由、消息转换和监控等附加功能，而不必提及许多代理默认支持的广泛的消息模式。
+- en: 'Of course, nothing prevents us from implementing all these features using a
+    peer-to-peer architecture, but unfortunately, there is much more effort involved.
+    Nonetheless, there might be different reasons for choosing a peer-to-peer approach
+    instead of a broker:'
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当然，我们没有任何阻止我们使用对等架构实现所有这些功能的，但不幸的是，这需要更多的努力。尽管如此，选择对等方法而不是代理可能存在不同的原因：
+- en: By removing the broker, we are removing a single point of failure from the system
+  id: totrans-73
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 通过移除代理，我们消除了系统中的单个故障点
+- en: A broker has to be scaled, while in a peer-to-peer architecture we only need
+    to scale the single nodes of the application
+  id: totrans-74
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 代理需要扩展，而在对等架构中，我们只需要扩展应用程序的单个节点
+- en: Exchanging messages without intermediaries can greatly reduce the latency of
+    the communication
+  id: totrans-75
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 无中介交换消息可以大大减少通信的延迟
+- en: By using a peer-to-peer messaging system we can have much more flexibility and
+    power because we are not bound to any particular technology, protocol, or architecture.
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过使用对等消息系统，我们可以拥有更多的灵活性和能力，因为我们不受任何特定技术、协议或架构的约束。
+- en: Now that we know the basics of a messaging system, let's explore some of the
+    most important messaging patterns. Let's start with the Publish/Subscribe pattern.
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经了解了消息系统的基本知识，让我们探索一些最重要的消息模式。让我们从发布/订阅模式开始。
+- en: Publish/Subscribe pattern
+  id: totrans-78
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 发布/订阅模式
+- en: '**Publish/Subscribe** (often abbreviated to Pub/Sub) is probably the best-known
+    one-way messaging pattern. We should already be familiar with it, as it''s nothing
+    more than a distributed Observer pattern. As in the case of Observer, we have
+    a set of *subscribers* registering their interest in receiving a specific category
+    of messages. On the other side, the *publisher* produces messages that are distributed
+    across all the relevant subscribers. *Figure 13.7* shows the two main variants
+    of the Pub/Sub pattern; the first is based on a peer-to-peer architecture, and
+    the second uses a broker to mediate the communication:'
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**发布/订阅**（通常缩写为Pub/Sub）可能是最知名的单向消息模式。我们应该已经熟悉它，因为它不过是一个分布式观察者模式。正如观察者模式的情况一样，我们有一组*订阅者*注册他们对接收特定类别消息的兴趣。在另一边，*发布者*产生消息，这些消息被分发到所有相关的订阅者。*图
+    13.7* 展示了Pub/Sub模式的两个主要变体；第一个是基于对等架构，第二个使用代理来调解通信：'
+- en: '![](img/B15729_13_07.png)'
+  id: totrans-80
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/B15729_13_07.png)'
+- en: 'Figure 13.7: Publish/Subscribe messaging pattern'
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 13.7：发布/订阅消息模式
+- en: What makes Pub/Sub so special is the fact that the publisher doesn't know in
+    advance who the recipients of the messages are. As we said, it's the subscriber
+    that has to register its interest to receive a particular message, allowing the
+    publisher to work with an unspecified number of receivers. In other words, the
+    two sides of the Pub/Sub pattern are *loosely coupled*, which makes this an ideal
+    pattern to integrate the nodes of an evolving distributed system.
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Pub/Sub之所以特别，是因为发布者事先不知道消息的接收者是谁。正如我们所说的，是订阅者必须注册其兴趣以接收特定消息，这使得发布者可以与不确定数量的接收者一起工作。换句话说，Pub/Sub模式的两边是*松散耦合*的，这使得它成为集成不断发展的分布式系统节点的理想模式。
+- en: The presence of a broker further improves the decoupling between the nodes of
+    the system because the subscribers interact only with the broker, not knowing
+    which node is the publisher of a message. As we will see later, a broker can also
+    provide a message queuing system, allowing reliable delivery even in the presence
+    of connectivity problems between the nodes.
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 代理的存在进一步提高了系统节点之间的解耦，因为订阅者只与代理交互，不知道哪个节点是消息的发布者。正如我们稍后将看到的，代理还可以提供消息队列系统，即使在节点之间存在连接问题的情况下也能保证可靠地交付。
+- en: Now, let's work on an example to demonstrate this pattern.
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们通过一个例子来演示这个模式。
+- en: Building a minimalist real-time chat application
+  id: totrans-85
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 构建简约的实时聊天应用程序
+- en: To show a real-life example of how the Pub/Sub pattern can help us integrate
+    a distributed architecture, we are now going to build a very basic real-time chat application using
+    pure WebSockets. Then, we will scale it by running multiple instances, and finally,
+    using a messaging system, we will build a communication channel between all the
+    server instances.
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了展示Pub/Sub模式如何帮助我们集成分布式架构的一个真实例子，我们现在将使用纯WebSocket构建一个非常基本的实时聊天应用程序。然后，我们将通过运行多个实例来扩展它，最后，使用消息系统，我们将在所有服务器实例之间建立一个通信通道。
+- en: Implementing the server side
+  id: totrans-87
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 实现服务器端
+- en: Now, let's take one step at a time. Let's first build a basic chat application,
+    then we'll scale it to multiple instances.
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们一步一步来。首先，我们将构建一个基本的聊天应用程序，然后将其扩展到多个实例。
+- en: 'To implement the real-time capabilities of a typical chat application, we will
+    rely on the `ws` package ([nodejsdp.link/ws](http://nodejsdp.link/ws)), which
+    is a pure WebSocket implementation for Node.js. Implementing real-time applications
+    in Node.js is pretty simple, and the code we are going to write will confirm this
+    assumption. So, let''s create the server side of our chat application in a file
+    called `index.js`:'
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了实现典型聊天应用程序的实时功能，我们将依赖于`ws`包（[nodejsdp.link/ws](http://nodejsdp.link/ws)），这是一个针对Node.js的纯WebSocket实现。在Node.js中实现实时应用程序相当简单，我们将要编写的代码将证实这一假设。因此，让我们在名为`index.js`的文件中创建我们聊天应用程序的服务器端：
+- en: '[PRE0]'
+  id: totrans-90
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'That''s it! That''s all we need to implement the server-side component of our
+    chat application. This is how it works:'
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就这样！这就是我们需要实现我们聊天应用程序服务器端组件的所有内容。这是它的工作方式：
+- en: We first create an HTTP server and forward every request to a special handler ([nodejsdp.link/serve-handler](http://nodejsdp.link/serve-handler)),
+    which will take care to serve all the static files from the `www` directory. This
+    is needed to access the client-side resources of our application (for example,
+    HTML, JavaScript, and CSS files).
+  id: totrans-92
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们首先创建一个HTTP服务器，并将每个请求转发到特殊的处理程序([nodejsdp.link/serve-handler](http://nodejsdp.link/serve-handler))，该处理程序将负责从`www`目录中提供所有静态文件。这是为了访问我们应用的客户端资源（例如，HTML、JavaScript和CSS文件）。
+- en: We then create a new instance of the WebSocket server, and we attach it to our
+    existing HTTP server. Next, we start listening for incoming WebSocket client connections
+    by attaching an event listener for the `connection` event.
+  id: totrans-93
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们创建WebSocket服务器的新实例，并将其附加到现有的HTTP服务器上。接下来，我们通过附加对`connection`事件的监听器来开始监听传入的WebSocket客户端连接。
+- en: Each time a new client connects to our server, we start listening for incoming
+    messages. When a new message arrives, we broadcast it to all the connected clients.
+  id: totrans-94
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 每当一个新的客户端连接到我们的服务器时，我们开始监听传入的消息。当收到一条新消息时，我们将它广播给所有已连接的客户端。
+- en: The `broadcast()` function is a simple iteration over all the known clients,
+    where the `send()` function is invoked on each connected client.
+  id: totrans-95
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`broadcast()`函数是对所有已知客户端的简单迭代，其中在每个已连接客户端上调用`send()`函数。'
+- en: This is the magic of Node.js! Of course, the server that we just implemented
+    is very minimal and basic, but as we will see, it does its job.
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是Node.js的魔力！当然，我们刚刚实现的服务器非常简单和基础，但正如我们将看到的，它确实完成了它的任务。
+- en: Implementing the client side
+  id: totrans-97
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 实现客户端
+- en: 'Next, it''s time to implement the client side of our chat application. This
+    can be done with another compact and simple fragment of code, essentially a minimal
+    HTML page with some basic JavaScript code. Let''s create this page in a file named `www/index.html` as
+    follows:'
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，是时候实现我们聊天应用的客户端了。这可以通过另一段紧凑且简单的代码片段来完成，本质上是一个包含一些基本JavaScript代码的最小HTML页面。让我们在名为`www/index.html`的文件中创建这个页面，如下所示：
+- en: '[PRE1]'
+  id: totrans-99
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: The HTML page we just created doesn't really need many comments, it's just a
+    piece of straightforward web development. We use the native WebSocket object to
+    initialize a connection to our Node.js server, and then start listening for messages
+    from the server, displaying them in new `div` elements as they arrive. For sending
+    messages, instead, we use a simple textbox and a button within a form.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们刚刚创建的HTML页面实际上并不需要很多注释，它只是一段直接的Web开发。我们使用原生的WebSocket对象初始化与我们的Node.js服务器的连接，然后开始监听来自服务器的消息，当消息到达时，在新的`div`元素中显示它们。对于发送消息，我们则使用一个简单的文本框和一个表单内的按钮。
+- en: Please note that when stopping or restarting the chat server, the WebSocket
+    connection is closed and the client will not try to reconnect automatically (as
+    we might expect from a production-grade application). This means that it is necessary
+    to refresh the browser after a server restart to reestablish the connection (or
+    implement a reconnection mechanism, which we will not cover here for brevity).
+    Also, in this initial version of our app, the clients will not receive any message
+    sent while they were not connected to the server.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，当停止或重新启动聊天服务器时，WebSocket连接将被关闭，客户端不会尝试自动重新连接（正如我们可能从生产级应用中期望的那样）。这意味着在服务器重启后，需要刷新浏览器以重新建立连接（或者实现重新连接机制，这里为了简洁我们不涉及）。此外，在我们应用的这个初始版本中，客户端将不会收到在他们未连接到服务器时发送的任何消息。
+- en: Running and scaling the chat application
+  id: totrans-102
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 运行和扩展聊天应用
+- en: 'We can try to run our application immediately. Just launch the server with
+    the following command:'
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以立即尝试运行我们的应用。只需使用以下命令启动服务器：
+- en: '[PRE2]'
+  id: totrans-104
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'Then, open a couple of browser tabs or even two different browsers, point them
+    at `http://localhost:8080`, and start chatting:'
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，打开几个浏览器标签或甚至两个不同的浏览器，将它们指向`http://localhost:8080`，并开始聊天：
+- en: '![](img/B15729_13_08.png)'
+  id: totrans-106
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/B15729_13_08.png)'
+- en: 'Figure 13.8: Our new chat application in action'
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图13.8：我们的新聊天应用正在运行
+- en: 'Now, we want to see what happens when we try to scale our application by launching
+    multiple instances. Let''s try to do that. Let''s start another server on another
+    port:'
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们想看看当我们尝试通过启动多个实例来扩展我们的应用时会发生什么。让我们试试。让我们在另一个端口上启动另一个服务器：
+- en: '[PRE3]'
+  id: totrans-109
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: The desired outcome should be that two different clients, connected to two different
+    servers, should be able to exchange chat messages. Unfortunately, this is not
+    what happens with our current implementation. We can test this by opening another
+    browser tab to `http://localhost:8081`.
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所期望的结果是，两个连接到不同服务器的不同客户端应该能够交换聊天消息。不幸的是，我们的当前实现并不是这样。我们可以通过打开另一个浏览器标签到`http://localhost:8081`来测试这一点。
+- en: In a real-world application, we would use a load balancer to distribute the
+    load across our instances, but for this demo we will not use one. This allows
+    us to access each server instance in a deterministic way to verify how it interacts
+    with the other instances.
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在实际应用中，我们会使用负载均衡器来分配负载到我们的实例，但在这个演示中我们不会使用。这允许我们以确定性的方式访问每个服务器实例，以验证它如何与其他实例交互。
+- en: When sending a chat message on one instance, we only broadcast the message locally,
+    distributing it only to the clients connected to that particular server. In practice,
+    the two servers are not talking to each other. We need to integrate them, and
+    that's exactly what we are going to see next.
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当在一个实例上发送聊天消息时，我们只在本地广播消息，只将其分发到连接到该特定服务器的客户端。实际上，这两个服务器并没有相互交谈。我们需要将它们整合起来，这正是我们接下来要看到的。
+- en: Using Redis as a simple message broker
+  id: totrans-113
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用 Redis 作为简单的消息代理
+- en: We start our analysis of the most common Pub/Sub implementations by introducing **Redis** ([nodejsdp.link/redis](http://nodejsdp.link/redis)),
+    which is a very fast and flexible in-memory data structure store. Redis is often
+    used as a database or a cache server, however, among its many features there is
+    a pair of commands specifically designed to implement a centralized Pub/Sub message
+    exchange pattern.
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们通过介绍**Redis**([nodejsdp.link/redis](http://nodejsdp.link/redis))开始分析最常用的 Pub/Sub
+    实现，它是一个非常快速且灵活的内存数据结构存储。Redis 常常被用作数据库或缓存服务器，然而，在其众多特性中，有一对专门设计用于实现集中式 Pub/Sub
+    消息交换模式的命令。
+- en: Redis' message brokering capabilities are (intentionally) very simple and basic,
+    especially if we compare them to those of more advanced message-oriented middleware.
+    However, this is one of the main reasons for its popularity. Often, Redis is already
+    available in an existing infrastructure, for example, used as a cache server or
+    as a session data store. Its speed and flexibility make it a very popular choice
+    for sharing data in a distributed system. So, as soon as the need for a publish/subscribe
+    broker arises in a project, the most simple and immediate choice is to reuse Redis
+    itself, avoiding the need to install and maintain a dedicated message broker.
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Redis 的消息代理能力（有意）非常简单和基本，尤其是如果我们将其与更高级的消息导向中间件相比。然而，这正是其受欢迎的主要原因之一。通常，Redis
+    已经存在于现有的基础设施中，例如，用作缓存服务器或会话数据存储。它的速度和灵活性使其成为在分布式系统中共享数据的非常受欢迎的选择。因此，一旦在项目中出现发布/订阅代理的需求，最简单和最直接的选择就是重用
+    Redis 本身，避免安装和维护专用的消息代理。
+- en: Let's now work on an example to demonstrate the simplicity and power of using
+    Redis as a message broker.
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们来做一个示例，以展示使用 Redis 作为消息代理的简单性和强大功能。
+- en: This example requires a working installation of Redis, listening on its default
+    port. You can find more details at [nodejsdp.link/redis-quickstart](http://nodejsdp.link/redis-quickstart).
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此示例需要一个在默认端口上监听的正常安装的 Redis。更多详细信息可以在[nodejsdp.link/redis-quickstart](http://nodejsdp.link/redis-quickstart)找到。
+- en: 'Our plan of action is to integrate our chat servers using Redis as a message
+    broker. Each instance publishes any message received from its clients to the broker,
+    and at the same time, it subscribes for any message coming from other server instances.
+    As we can see, each server in our architecture is both a subscriber and a publisher.
+    The following diagram shows a representation of the architecture that we want
+    to obtain:'
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的行动计划是使用 Redis 作为消息代理来整合我们的聊天服务器。每个实例都会将其从客户端接收到的任何消息发布到代理，同时，它也会订阅来自其他服务器实例的任何消息。正如我们所看到的，我们架构中的每个服务器既是订阅者也是发布者。以下图表展示了我们想要获得的架构表示：
+- en: '![](img/B15729_13_09.png)'
+  id: totrans-119
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/B15729_13_09.png)'
+- en: 'Figure 13.9: Using Redis as a message broker for our chat application'
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 13.9：使用 Redis 作为聊天应用的消息代理
+- en: 'Based on the architecture described in *Figure 13.9*, we can sum up the journey
+    of a message as follows:'
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 根据图 13.9 中描述的架构，我们可以总结消息的旅程如下：
+- en: The message is typed into the textbox of the web page and sent to the connected
+    instance of our chat server.
+  id: totrans-122
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 消息被输入到网页的文本框中，并发送到我们聊天服务器的连接实例。
+- en: The message is then published to the broker.
+  id: totrans-123
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 消息随后被发布到代理。
+- en: The broker dispatches the message to all the subscribers, which in our architecture are
+    all the instances of the chat server.
+  id: totrans-124
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 代理将消息分发给所有订阅者，在我们的架构中，这些订阅者都是聊天服务器的实例。
+- en: In each instance, the message is distributed to all the connected clients.
+  id: totrans-125
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在每个实例中，消息被分发到所有连接的客户端。
+- en: 'Let''s see in practice how this works. Let''s modify the server code by adding
+    the publish/subscribe logic:'
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看实际操作是如何工作的。让我们通过添加发布/订阅逻辑来修改服务器代码：
+- en: '[PRE4]'
+  id: totrans-127
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'The changes that we made to our original chat server are highlighted in the
+    preceding code. This how the new implementation works:'
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们对原始聊天服务器所做的更改在前面代码中突出显示。这就是新实现的工作方式：
+- en: To connect our Node.js application to the Redis server, we use the `ioredis`
+    package ([nodejsdp.link/ioredis](http://nodejsdp.link/ioredis)), which is a complete
+    Node.js client supporting all the available Redis commands. Next, we instantiate
+    two different connections, one used to subscribe to a channel, the other to publish
+    messages. This is necessary in Redis, because once a connection is put in subscriber
+    mode, only commands related to the subscription can be used. This means that we
+    need a second connection for publishing messages.
+  id: totrans-129
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 为了将我们的Node.js应用程序连接到Redis服务器，我们使用`ioredis`包([nodejsdp.link/ioredis](http://nodejsdp.link/ioredis))，这是一个支持所有可用Redis命令的完整Node.js客户端。接下来，我们实例化两个不同的连接，一个用于订阅频道，另一个用于发布消息。这在Redis中是必要的，因为一旦连接被置于订阅模式，就只能使用与订阅相关的命令。这意味着我们需要第二个连接来发布消息。
+- en: When a new message is received from a connected client, we publish the message
+    in the `chat_messages` channel. We don't directly broadcast the message to our
+    clients because our server is subscribed to the same channel (as we will see in
+    a moment), so it will come back to us through Redis. For the scope of this example,
+    this is a simple and effective mechanism. However, depending on the requirements
+    of your application, you may instead want to broadcast the message immediately
+    and ignore any message arriving from Redis and originating from the current server
+    instance. We leave this to you as an exercise.
+  id: totrans-130
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当从连接的客户端接收到新消息时，我们在`chat_messages`频道中发布该消息。我们不直接将消息广播给我们的客户端，因为我们的服务器订阅了相同的频道（正如我们稍后将看到的），所以它将通过Redis返回给我们。在这个示例的范围内，这是一个简单而有效的机制。然而，根据您应用程序的需求，您可能希望立即广播消息并忽略来自Redis的消息，这些消息来自当前服务器实例。我们将此留作您的练习。
+- en: As we said, our server also has to subscribe to the `chat_messages` channel,
+    so we register a listener to receive all the messages published into that channel
+    (either by the current server instance or any other chat server instance). When
+    a message is received, we simply broadcast it to all the clients connected to
+    the current WebSocket server.
+  id: totrans-131
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 正如我们所说，我们的服务器也需要订阅`chat_messages`频道，因此我们注册了一个监听器来接收发布到该频道的所有消息（无论是当前服务器实例还是任何其他聊天服务器实例）。当接收到消息时，我们只需将其广播给所有连接到当前WebSocket服务器的客户端。
+- en: 'These few changes are enough to integrate all the chat server instances that
+    we might decide to start. To prove this, you can try starting multiple instances
+    of our application:'
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些小小的改动就足以集成我们可能决定启动的所有聊天服务器实例。为了证明这一点，您可以尝试启动我们应用程序的多个实例：
+- en: '[PRE5]'
+  id: totrans-133
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: You can then connect multiple browser tabs to each instance and verify that
+    the messages you send to one instance are successfully received by all the other
+    clients connected to the other instances.
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，您可以将多个浏览器标签连接到每个实例，并验证您发送到其中一个实例的消息是否被所有连接到其他实例的其他客户端成功接收。
+- en: Congratulations! We just integrated multiple nodes of a distributed real-time
+    application using the Publish/Subscribe pattern.
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 恭喜！我们刚刚使用发布/订阅模式集成了分布式实时应用程序的多个节点。
+- en: Redis allows us to publish and subscribe to channels identified by a string,
+    for example, `chat.nodejs`. But it also allows us to use glob-style patterns to
+    define subscriptions that can potentially match multiple channels, for example, `chat.*`.
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Redis允许我们通过字符串标识的频道发布和订阅，例如，`chat.nodejs`。但它还允许我们使用glob样式模式来定义可以潜在匹配多个频道的订阅，例如，`chat.*`。
+- en: Peer-to-peer Publish/Subscribe with ZeroMQ
+  id: totrans-137
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用ZeroMQ的P2P发布/订阅
+- en: The presence of a broker can considerably simplify the architecture of a messaging
+    system. However, in some circumstances, this may not be the best solution. This
+    includes all the situations where a low latency is critically important, or when
+    scaling complex distributed systems, or when the presence of a single point of
+    failure is not an option. The alternative to using a broker is, of course, implementing
+    a peer-to-peer messaging system.
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 代理的存在可以大大简化信息系统的架构。然而，在某些情况下，这可能不是最佳解决方案。这包括所有低延迟至关重要的情形，或者在扩展复杂的分布式系统时，或者当单点故障的存在不是可选项时。当然，使用代理的替代方案是实现对等网络信息系统。
+- en: Introducing ZeroMQ
+  id: totrans-139
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 介绍ZeroMQ
+- en: If our project is a good candidate for a peer-to-peer architecture, one of the
+    best solutions to evaluate is certainly **ZeroMQ** ([nodejsdp.link/zeromq](http://nodejsdp.link/zeromq),
+    also known as zmq or ØMQ). ZeroMQ is a networking library that provides the basic
+    tools to build a large variety of messaging patterns. It is low-level, extremely
+    fast, and has a minimalistic API, but it offers all the basic building blocks
+    to create a solid messaging system, such as atomic messages, load balancing, queues,
+    and many more. It supports many types of transport, such as in-process channels
+    (`inproc://`), inter-process communication (`ipc://`), multicast using the PGM
+    protocol (`pgm://` or `epgm://`), and, of course, the classic TCP (`tcp://`).
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们的项目适合对等网络架构，那么当然值得评估的最佳解决方案之一是**ZeroMQ**（[nodejsdp.link/zeromq](http://nodejsdp.link/zeromq)，也称为zmq或ØMQ）。ZeroMQ是一个网络库，提供了构建各种信息传递模式的基本工具。它是低层的，非常快，具有最小化的API，但它提供了创建坚固信息系统的所有基本构建块，例如原子消息、负载均衡、队列等等。它支持许多类型的传输，例如进程内通道（`inproc://`）、进程间通信（`ipc://`）、使用PGM协议的组播（`pgm://`或`epgm://`），当然还有经典的TCP（`tcp://`）。
+- en: Among the features of ZeroMQ, we can also find tools to implement a Publish/Subscribe
+    pattern, which is exactly what we need for our example. So, what we are going
+    to do now is remove the broker (Redis) from the architecture of our chat application
+    and let the various nodes communicate in a peer-to-peer fashion, leveraging the
+    publish/subscribe sockets of ZeroMQ.
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在ZeroMQ的特性中，我们也可以找到实现发布/订阅模式的工具，这正是我们示例中需要的。因此，我们现在要做的就是从我们的聊天应用架构中移除代理（Redis），并让各个节点以对等的方式通信，利用ZeroMQ的发布/订阅套接字。
+- en: A ZeroMQ socket can be considered as a network socket on steroids, which provides
+    additional abstractions to help implement the most common messaging patterns.
+    For example, we can find sockets designed to implement publish/subscribe, request/reply,
+    or one-way push communications.
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以将ZeroMQ套接字视为强化版的网络套接字，它提供了额外的抽象来帮助实现最常见的信息传递模式。例如，我们可以找到设计用于实现发布/订阅、请求/响应或单向推送通信的套接字。
+- en: Designing a peer-to-peer architecture for the chat server
+  id: totrans-143
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 为聊天服务器设计对等网络架构
+- en: When we remove the broker from our architecture, each instance of the chat server
+    has to directly connect to the other available instances in order to receive the
+    messages they publish. In ZeroMQ, we have two types of sockets specifically designed
+    for this purpose: `PUB` and `SUB`. The typical pattern is to bind a `PUB` socket
+    to a local port where it will start listening for incoming subscription requests
+    from sockets of type `SUB`.
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们从架构中移除代理时，聊天服务器的每个实例都必须直接连接到其他可用的实例，以便接收它们发布的消息。在ZeroMQ中，我们有两种专门为此目的设计的套接字类型：“PUB”和“SUB”。典型的模式是将一个“PUB”套接字绑定到本地端口，它将开始监听来自类型为“SUB”的套接字的订阅请求。
+- en: A subscription can have a *filter* that specifies what messages are delivered
+    to the connected `SUB` sockets. The filter is a simple **binary buffer** (so it
+    can also be a string), which will be matched against the beginning of the message
+    (which is also a binary buffer). When a message is sent through the `PUB` socket
+    it is broadcast to all the connected `SUB` sockets, but only after their subscription
+    filters are applied. The filters will be applied to the publisher side only if
+    a *connected* protocol is used, such as, for example, TCP.
+  id: totrans-145
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 订阅可以有一个*过滤器*，用于指定哪些消息被发送到连接的`SUB`套接字。过滤器是一个简单的**二进制缓冲区**（因此它也可以是一个字符串），它将与消息的开始部分（也是一个二进制缓冲区）进行匹配。当通过`PUB`套接字发送消息时，它将被广播到所有连接的`SUB`套接字，但只有在它们的订阅过滤器应用之后。如果使用*连接*协议，如TCP，则过滤器将只应用于发布方。
+- en: 'The following diagram shows the pattern applied to our distributed chat server
+    architecture (with only two instances, for simplicity):'
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下图显示了应用于我们的分布式聊天服务器架构的模式（为了简单起见，只包含两个实例）：
+- en: '![A close up of a logo  Description automatically generated](img/B15729_13_10.png)'
+  id: totrans-147
+  prefs: []
+  type: TYPE_IMG
+  zh: '![一个标志的特写  描述由自动生成](img/B15729_13_10.png)'
+- en: 'Figure 13.10: Chat server messaging architecture using ZeroMQ PUB/SUB sockets'
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 13.10：使用 ZeroMQ PUB/SUB 套接字的聊天服务器消息架构
+- en: '*Figure 13.10* shows us the flow of information when we have two instances
+    of the chat application, but the same concept can be applied to *N* instances.
+    This architecture tells us that each node must be aware of the other nodes in
+    the system to be able to establish all the necessary connections. It also shows
+    us how the subscriptions go from a `SUB` socket to a `PUB` socket, while messages
+    travel in the opposite direction.'
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*图 13.10* 展示了当我们有两个聊天应用程序实例时的信息流，但相同的原理也可以应用于 *N* 个实例。这种架构告诉我们，每个节点必须意识到系统中的其他节点，才能建立所有必要的连接。它还展示了订阅是如何从
+    `SUB` 套接字流向 `PUB` 套接字的，而消息则相反方向传输。'
+- en: Using the ZeroMQ PUB/SUB sockets
+  id: totrans-150
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 使用 ZeroMQ PUB/SUB 套接字
+- en: 'Let''s see how the ZeroMQ `PUB`/`SUB` sockets work in practice by modifying
+    our chat server:'
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们通过修改我们的聊天服务器来了解 ZeroMQ `PUB`/`SUB` 套接字在实际中的应用：
+- en: '[PRE6]'
+  id: totrans-152
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'The preceding code clearly shows that the logic of our application became slightly
+    more complicated, however, it''s still straightforward considering that we are
+    implementing a peer-to-peer Publish/Subscribe pattern. Let''s see how all the
+    pieces come together:'
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上述代码清楚地表明，我们应用程序的逻辑变得稍微复杂了一些，然而，考虑到我们正在实现一个点对点发布/订阅模式，它仍然很简单。让我们看看所有这些部分是如何组合在一起的：
+- en: We import two new packages. First, we import `yargs` ([nodejsdp.link/yargs](http://nodejsdp.link/yargs)),
+    which is a command-line argument parser; we need this to easily accept named arguments.
+    Secondly, we import the `zeromq` package ([nodejsdp.link/zeromq](http://nodejsdp.link/zeromq)),
+    which is a Node.js client for ZeroMQ.
+  id: totrans-154
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们导入两个新的包。首先，我们导入 `yargs` ([nodejsdp.link/yargs](http://nodejsdp.link/yargs))，这是一个命令行参数解析器；我们需要这个来轻松接受命名参数。其次，我们导入
+    `zeromq` 包([nodejsdp.link/zeromq](http://nodejsdp.link/zeromq))，这是一个 ZeroMQ 的
+    Node.js 客户端。
+- en: In the `initializeSockets()` function, we immediately create our `Publisher`
+    socket and bind it to the port provided in the `--pub` command-line argument.
+  id: totrans-155
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在 `initializeSockets()` 函数中，我们立即创建我们的 `Publisher` 套接字并将其绑定到 `--pub` 命令行参数中提供的端口。
+- en: We create the `Subscriber` socket and we connect it to the `Publisher` sockets
+    of the other instances of our application. The ports of the target `Publisher`
+    sockets are provided in the `--sub` command-line arguments (there might be more
+    than one). We then create the actual subscription, by providing `chat` as a filter,
+    which means that we will receive only the messages beginning with `chat`.
+  id: totrans-156
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们创建 `Subscriber` 套接字并将其连接到我们应用程序其他实例的 `Publisher` 套接字。目标 `Publisher` 套接字的端口在
+    `--sub` 命令行参数中提供（可能不止一个）。然后，我们通过提供 `chat` 作为过滤器来创建实际的订阅，这意味着我们只会接收到以 `chat` 开头的消息。
+- en: We start listening for messages arriving at our `Subscriber` socket using a
+    `for await...of` loop, since `subSocket` is an async iterable. With each message
+    we receive, we do some simple parsing to remove the `chat` prefix, and then we
+    `broadcast()` the actual payload to all the clients connected to the current WebSocket
+    server.
+  id: totrans-157
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们使用 `for await...of` 循环开始监听到达我们的 `Subscriber` 套接字的消息，因为 `subSocket` 是一个异步可迭代对象。对于收到的每条消息，我们进行一些简单的解析以移除
+    `chat` 前缀，然后通过 `broadcast()` 将实际的有效负载广播给连接到当前 WebSocket 服务器的所有客户端。
+- en: When a new message is received by the WebSocket server of the current instance,
+    we broadcast it to all the connected clients but we also publish it through our `Publisher` socket.
+    We use `chat` as a prefix followed by a space, so that the message will be published
+    to all the subscriptions using `chat` as a filter.
+  id: totrans-158
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当当前实例的 WebSocket 服务器接收到一条新消息时，我们将它广播给所有连接的客户端，但我们也会通过我们的 `Publisher` 套接字发布它。我们使用
+    `chat` 作为前缀，后面跟着一个空格，这样消息就会被发布到所有使用 `chat` 作为过滤器的订阅中。
+- en: We have now built a simple distributed system, integrated using a peer-to-peer
+    Publish/Subscribe pattern!
+  id: totrans-159
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们现在已经构建了一个简单的分布式系统，使用点对点发布/订阅模式进行集成！
+- en: 'Let''s fire it up, let''s start three instances of our application by making
+    sure to connect their `Publisher` and `Subscriber` sockets properly:'
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们启动它，确保通过正确连接它们的 `Publisher` 和 `Subscriber` 套接字来启动我们应用程序的三个实例：
+- en: '[PRE7]'
+  id: totrans-161
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: The first command will start an instance with an HTTP server listening on port
+    `8080`, while binding its `Publisher` socket on port `5000` and connecting the
+    `Subscriber` socket to ports `5001` and `5002`, which is where the `Publisher`
+    sockets of the other two instances should be listening at. The other two commands
+    work in a similar way.
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第一个命令将启动一个实例，该实例有一个监听在端口`8080`的HTTP服务器，同时将其`Publisher`套接字绑定在端口`5000`上，并将`Subscriber`套接字连接到端口`5001`和`5002`，这是其他两个实例的`Publisher`套接字应该监听的地方。其他两个命令以类似的方式工作。
+- en: 'Now, the first thing you will see is that ZeroMQ will not complain if a `Subscriber`
+    socket can''t establish a connection to a `Publisher` socket. For example, at
+    the time of the first command, there are no `Publisher` sockets listening on ports `5001` and `5002`,
+    however, ZeroMQ is not throwing any error. This is because ZeroMQ is built to
+    be resilient to faults and it implements a built-in connection retry mechanism.
+    This feature also comes in particularly handy if any node goes down or is restarted.
+    The same *forgiving* logic applies to the `Publisher` socket: if there are no
+    subscriptions, it will simply drop all the messages, but it will continue working.'
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，你首先会看到的是，如果`Subscriber`套接字无法连接到`Publisher`套接字，ZeroMQ不会抱怨。例如，在第一次命令执行时，没有`Publisher`套接字监听在端口`5001`和`5002`上，然而，ZeroMQ并没有抛出任何错误。这是因为ZeroMQ被设计成具有容错性，并实现了内置的连接重试机制。如果任何节点宕机或重启，这个特性尤其有用。同样的**宽容**逻辑也适用于`Publisher`套接字：如果没有订阅，它将简单地丢弃所有消息，但会继续工作。
+- en: At this point, we can try to navigate with a browser to any of the server instances
+    that we started and verify that the messages are properly propagated to all the
+    chat servers.
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这一点上，我们可以尝试使用浏览器导航到我们启动的任何服务器实例，并验证消息是否被正确传播到所有聊天服务器。
+- en: In the previous example, we assumed a static architecture where the number of
+    instances and their addresses are known in advance. We can introduce a service
+    registry, as explained in *Chapter 12*, *Scalability and Architectural Patterns*,
+    to connect our instances dynamically. It is also important to point out that ZeroMQ
+    can be used to implement a broker using the same primitives we demonstrated here.
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的例子中，我们假设了一个静态架构，其中实例的数量和它们的地址是事先已知的。我们可以引入一个服务注册表，如第12章*可扩展性和架构模式*中所述，以动态连接我们的实例。重要的是要指出，ZeroMQ可以使用我们在这里展示的相同原语来实现一个代理。
+- en: Reliable message delivery with queues
+  id: totrans-166
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用队列进行可靠的消息交付
+- en: An important abstraction in a messaging system is the **message queue** (**MQ**).
+    With a message queue, the sender and the receiver(s) of the message don't necessarily
+    need to be active and connected at the same time to establish a communication,
+    because the queuing system takes care of storing the messages until the destination
+    is able to receive them. This behavior is opposed to the *fire-and-forget* paradigm,
+    where a subscriber can receive messages only during the time it is connected to
+    the messaging system.
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在消息系统中，一个重要的抽象是**消息队列**（**MQ**）。有了消息队列，消息的发送者和接收者不必同时活跃和连接以建立通信，因为排队系统负责存储消息，直到目的地能够接收它们。这种行为与*火速遗忘*范例相反，其中订阅者只能在连接到消息系统时接收消息。
+- en: A subscriber that is able to always reliably receive all the messages, even
+    those sent when it's not listening for them, is called a **durable subscriber**.
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 能够始终可靠地接收所有消息的订阅者，即使是在它没有监听时发送的消息，被称为**持久订阅者**。
+- en: 'We can summarize the **delivery semantic** of a messaging system in three categories:'
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以将消息系统的**交付语义**总结为三个类别：
+- en: '**At most once**: Also known as *fire-and-forget*, the message is not persisted,
+    and the delivery is not acknowledged. This means that the message can be lost
+    in cases of crashes or disconnections of the receiver.'
+  id: totrans-170
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**最多一次**：也称为*火速遗忘*，消息不会被持久化，交付也不会得到确认。这意味着在接收者崩溃或断开连接的情况下，消息可能会丢失。'
+- en: '**At least once**: The message is guaranteed to be received at least once,
+    but duplicates might occur if, for example, the receiver crashes before notifying
+    the sender of the reception. This implies that the message has to be persisted
+    in the eventuality it has to be sent again.'
+  id: totrans-171
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**至少一次**：消息保证至少被接收一次，但如果例如接收者在通知发送者接收之前崩溃，可能会发生重复。这意味着消息必须在可能需要再次发送的情况下持久化。'
+- en: '**Exactly once**: This is the most reliable delivery semantic. It guarantees
+    that the message is received once and only once. This comes at the expense of
+    a slower and more data-intensive mechanism for acknowledging the delivery of messages.'
+  id: totrans-172
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**恰好一次**：这是最可靠的投递语义。它保证消息只被接收一次。这以牺牲较慢和更密集的数据确认机制为代价。'
+- en: We have a durable subscriber when our messaging system can achieve an "at least
+    once" or an "exactly once" delivery semantic and to do that, the system has to
+    use a message queue to accumulate the messages while the subscriber is disconnected.
+    The queue can be stored in memory or persisted on disk to allow the recovery of
+    its messages even if the queuing system restarts or crashes.
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们的消息系统可以实现“至少一次”或“恰好一次”的投递语义时，我们就拥有了一个持久订阅者，为了做到这一点，系统必须使用消息队列在订阅者断开连接时积累消息。队列可以存储在内存中或持久化到磁盘上，以便在队列系统重启或崩溃时恢复其消息。
+- en: 'The following diagram shows a graphical representation of a durable subscriber
+    backed by a message queue:'
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下图表显示了由消息队列支持的可持久订阅者的图形表示：
+- en: '![A close up of text on a white background  Description automatically generated](img/B15729_13_11.png)'
+  id: totrans-175
+  prefs: []
+  type: TYPE_IMG
+  zh: '![白色背景上的文本特写  描述自动生成](img/B15729_13_11.png)'
+- en: 'Figure 13.11: Example behavior of a messaging system backed by a queue'
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图13.11：基于队列的消息系统的示例行为
+- en: '*Figure 13.11* shows us how a message queue can help us implement the Durable
+    Subscriber pattern. As we can see, during normal operations (1) messages travel
+    from the publisher to the subscriber through the message queue. When the subscriber
+    goes offline (2) because of a crash, a malfunction, or simply a planned maintenance
+    period, any message sent by the publisher is stored and accumulated safely in
+    the message queue. Afterward, when the subscriber comes back online (3), all messaged
+    accumulated in the queue are sent to the subscriber, so no message is lost.'
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*图13.11* 展示了消息队列如何帮助我们实现持久订阅者模式。正如我们所见，在正常操作期间（1），消息通过消息队列从发布者传输到订阅者。当订阅者因崩溃、故障或简单的计划维护期而离线（2）时，发布者发送的任何消息都会安全地存储和积累在消息队列中。之后，当订阅者重新上线（3）时，队列中积累的所有消息都会发送给订阅者，因此不会丢失任何消息。'
+- en: The durable subscriber is probably the most important pattern enabled by a message
+    queue, but it's certainly not the only one, as we will see later in the chapter.
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 持久订阅者可能是消息队列所启用的最重要的模式，但绝对不是唯一的，正如我们将在本章后面看到的那样。
+- en: Next, we are going to learn about AMQP, which is the protocol we are going to
+    use throughout the rest of the chapter to implement our message queue examples.
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们将学习AMQP，这是我们将在本章的其余部分用来实现消息队列示例的协议。
+- en: Introducing AMQP
+  id: totrans-180
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 介绍AMQP
+- en: A message queue is normally used in situations where messages must not be lost,
+    which includes mission-critical applications such as banking systems, air traffic
+    management and control systems, medical applications, and so on. This usually
+    means that the typical enterprise-grade message queue is a very complex piece
+    of software, which utilizes bulletproof protocols and persistent storage to guarantee
+    the delivery of the message even in the presence of malfunctions. For this reason,
+    enterprise messaging middleware has been, for many years, a prerogative of tech
+    giants such as Oracle and IBM, each one of them usually implementing their own
+    proprietary protocol, resulting in a strong customer lock-in. Fortunately, it's
+    been a few years now since messaging systems entered the mainstream, thanks to
+    the growth of open protocols such as AMQP, STOMP, and MQTT. Throughout the rest
+    of the chapter we are going to use AMQP as the messaging protocol for our queuing
+    system, so let's give it a proper introduction.
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 消息队列通常用于消息不能丢失的情况，这包括银行系统、空中交通管理及控制系统、医疗应用等关键任务应用。这通常意味着典型的企业级消息队列是一个非常复杂的软件组件，它利用了防弹协议和持久化存储来确保即使在出现故障的情况下也能保证消息的投递。因此，多年来，企业消息中间件一直是像Oracle和IBM这样的科技巨头的专属领域，他们通常实施自己的专有协议，导致客户锁定现象严重。幸运的是，自从消息系统进入主流以来，已经有几年时间了，这得益于像AMQP、STOMP和MQTT这样的开放协议的增长。在接下来的章节中，我们将使用AMQP作为我们的队列系统的消息协议，因此让我们给它一个适当的介绍。
+- en: '**AMQP** is an open standard protocol supported by many message-queuing systems.
+    Besides defining a common communication protocol, it also provides a model to
+    describe routing, filtering, queuing, reliability, and security.'
+  id: totrans-182
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**AMQP** 是由许多消息队列系统支持的开放标准协议。除了定义一个通用的通信协议外，它还提供了一个模型来描述路由、过滤、队列、可靠性和安全性。'
+- en: 'The following diagram shows us all the AMQP components at a glance:'
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下图表展示了所有 AMQP 组件的概览：
+- en: '![A screenshot of a map  Description automatically generated](img/B15729_13_12.png)'
+  id: totrans-184
+  prefs: []
+  type: TYPE_IMG
+  zh: '![地图截图  描述自动生成](img/B15729_13_12.png)'
+- en: 'Figure 13.12: Example of an AMQP-based messaging system'
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图13.12：基于 AMQP 的消息系统示例
+- en: 'As shown in *Figure 13.12*, in AMQP there are three essential components:'
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如 *图13.12* 所示，在 AMQP 中有三个基本组件：
+- en: '**Queue**: The data structure responsible for storing the messages consumed
+    by the clients. The messages from a queue are pushed (or pulled) to one or more
+    consumers. If multiple consumers are attached to the same queue, the messages
+    are load balanced across them. A queue can be any of the following:'
+  id: totrans-187
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**队列**：负责存储客户端消费的消息的数据结构。队列中的消息会被推送到一个或多个消费者。如果同一队列连接了多个消费者，消息将在它们之间进行负载均衡。队列可以是以下任何一种：'
+- en: '**Durable**: This means that the queue is automatically recreated if the broker
+    restarts. A durable queue does not imply that its contents are preserved as well;
+    in fact, only messages that are marked as persistent are saved to the disk and
+    restored in case of a restart.'
+  id: totrans-188
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**持久**：这意味着如果代理重启，队列将自动重新创建。持久队列并不意味着其内容也会被保留；实际上，只有标记为持久的消息才会保存到磁盘并在重启时恢复。'
+- en: '**Exclusive**: This means that the queue is bound to only one particular subscriber
+    connection. When the connection is closed, the queue is destroyed.'
+  id: totrans-189
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**专用**：这意味着队列仅绑定到特定的订阅者连接。当连接关闭时，队列将被销毁。'
+- en: '**Auto-delete**: This will cause the queue to be deleted when the last subscriber
+    disconnects.'
+  id: totrans-190
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**自动删除**：这将导致当最后一个订阅者断开连接时删除队列。'
+- en: '**Exchange**: This is where a message is published. An exchange routes the
+    messages to one or more queues depending on the algorithm it implements:'
+  id: totrans-191
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**交换**：这是消息发布的地点。交换根据其实现的算法将消息路由到一个或多个队列：'
+- en: '**Direct exchange**: It routes the messages by matching an entire routing key
+    (for example, `chat.msg`)'
+  id: totrans-192
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**直接交换**：通过匹配整个路由键（例如，`chat.msg`）来路由消息'
+- en: '**Topic exchange**: It distributes the messages using a glob-like pattern matched
+    against the routing key (for example, `chat.#` matches all the routing keys starting
+    with `chat.`)'
+  id: totrans-193
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**主题交换**：它使用与路由键匹配的 glob-like 模式来分发消息（例如，`chat.#` 匹配以 `chat.` 开头的所有路由键）。'
+- en: '**Fanout exchange**: It broadcasts a message to all the connected queues, ignoring
+    any routing key provided'
+  id: totrans-194
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**扇出交换**：它将消息广播到所有连接的队列，忽略任何提供的路由键。'
+- en: '**Binding**: This is the link between exchanges and queues. It also defines
+    the routing key or the pattern used to filter the messages that arrive from the
+    exchange.'
+  id: totrans-195
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**绑定**：这是交换机和队列之间的链接。它还定义了用于过滤从交换机到达的消息的路由键或模式。'
+- en: These components are managed by a broker, which exposes an API for creating
+    and manipulating them. When connecting to a broker, a client creates a **channel**—an
+    abstraction of a connection—which is responsible for maintaining the state of
+    the communication with the broker.
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些组件由一个代理管理，该代理公开了一个用于创建和操作它们的 API。当连接到代理时，客户端创建一个 **通道**——连接的抽象，它负责维护与代理的通信状态。
+- en: In AMQP, we can obtain the Durable Subscriber pattern by creating any type of
+    queue that is not exclusive or auto-delete.
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 AMQP 中，我们可以通过创建任何非专用或自动删除的队列来获得持久订阅者模式。
+- en: The AMQP model is way more complex than the messaging systems we have used so
+    far (Redis and ZeroMQ). However, it offers a set of features and a level of reliability
+    that would be very hard to obtain using only primitive publish/subscribe mechanisms.
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: AMQP 模型比我们迄今为止使用的消息系统（Redis 和 ZeroMQ）要复杂得多。然而，它提供了一套功能和可靠性级别，仅使用原始的发布/订阅机制很难获得。
+- en: You can find a detailed introduction to the AMQP model on the RabbitMQ website
+    at [nodejsdp.link/amqp-components](http://nodejsdp.link/amqp-components).
+  id: totrans-199
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您可以在 RabbitMQ 网站上找到对 AMQP 模型的详细介绍：[nodejsdp.link/amqp-components](http://nodejsdp.link/amqp-components)。
+- en: Durable subscribers with AMQP and RabbitMQ
+  id: totrans-200
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: AMQP 和 RabbitMQ 的持久订阅者
+- en: Let's now practice what we learned about durable subscribers and AMQP and work
+    on a small example. A typical scenario where it's important to not lose any message is
+    when we want to keep the different services of a microservice architecture in
+    sync (we already described this integration pattern in the previous chapter).
+    If we want to use a broker to keep all our services on the same page, it's important
+    that we don't lose any information, otherwise we might end up in an inconsistent
+    state.
+  id: totrans-201
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们来练习我们关于持久订阅者和AMQP的知识，并工作在一个小例子上。一个重要的场景是，当我们想要保持微服务架构中不同服务的同步时（我们已经在上一章中描述了这种集成模式）。如果我们想使用代理来确保所有服务保持一致，那么我们很重要的一点是不要丢失任何信息，否则我们可能会陷入不一致的状态。
+- en: Designing a history service for the chat application
+  id: totrans-202
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 设计聊天应用的历史服务
+- en: Let's now extend our small chat application using a microservice approach. Let's
+    add a history service that persists our chat messages inside a database, so that
+    when a client connects, we can query the service and retrieve the entire chat
+    history. We are going to integrate the history service with the chat server using
+    the RabbitMQ broker ([nodejsdp.link/rabbitmq](http://nodejsdp.link/rabbitmq))
+    and AMQP.
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们将使用微服务方法扩展我们的小型聊天应用。让我们添加一个历史服务，将我们的聊天消息持久化存储在数据库中，这样当客户端连接时，我们可以查询该服务并检索整个聊天历史。我们将使用RabbitMQ代理([nodejsdp.link/rabbitmq](http://nodejsdp.link/rabbitmq))和AMQP将历史服务与聊天服务器集成。
+- en: 'The following diagram shows our planned architecture:'
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下面的图示显示了我们的计划架构：
+- en: '![A close up of a piece of paper  Description automatically generated](img/B15729_13_13.png)'
+  id: totrans-205
+  prefs: []
+  type: TYPE_IMG
+  zh: '![一张纸的特写  自动生成的描述](img/B15729_13_13.png)'
+- en: 'Figure 13.13: Architecture of our chat application with AMQP and history service'
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图13.13：我们的聊天应用架构与AMQP和历史服务
+- en: As shown in *Figure 13.13*, we are going to use a single fanout exchange; we
+    don't need any complicated routing logic, so our scenario does not require any
+    exchange more complex than that. Next, we will create one queue for each instance
+    of the chat server.
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如*图13.13*所示，我们将使用单个fanout交换机；我们不需要任何复杂的路由逻辑，因此我们的场景不需要比这更复杂的交换机。接下来，我们将为每个聊天服务器的实例创建一个队列。
+- en: These queues are exclusive since we are not interested in receiving any messages
+    missed while a chat server is offline; that's the job of our history service,
+    which can eventually also implement more complicated queries against the stored
+    messages. In practice, this means that our chat servers are not durable subscribers
+    and their queues will be destroyed as soon as the connection is closed. The history
+    service instead cannot afford to lose any messages, otherwise it would not fulfill
+    its very purpose. Therefore, the queue we are going to create for it has to be
+    durable, so that any message that is published while the history service is disconnected
+    will be kept in the queue and delivered when it comes back online.
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些队列是专用的，因为我们不感兴趣在聊天服务器离线时接收任何丢失的消息；这是历史服务的任务，它最终也可以对存储的消息执行更复杂的查询。在实践中，这意味着我们的聊天服务器不是持久订阅者，它们的队列将在连接关闭时被销毁。而历史服务不能承受任何消息的丢失，否则它将无法实现其根本目的。因此，我们将为它创建的队列必须是持久的，这样任何在历史服务断开连接时发布的消息都将被保留在队列中，并在它重新上线时交付。
+- en: We are going to use the familiar LevelUP as the storage engine for the history
+    service, while we will use the `amqplib` package ([nodejsdp.link/amqplib](http://nodejsdp.link/amqplib))
+    to connect to RabbitMQ using the AMQP protocol.
+  id: totrans-209
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用熟悉的LevelUP作为历史服务的存储引擎，同时我们将使用`amqplib`包([nodejsdp.link/amqplib](http://nodejsdp.link/amqplib))通过AMQP协议连接到RabbitMQ。
+- en: The example that follows requires a working RabbitMQ server, listening on its
+    default port. For more information, please refer to its official installation
+    guide at [nodejsdp.link/rabbitmq-getstarted](http://nodejsdp.link/rabbitmq-getstarted).
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下面的例子需要一个正在运行的RabbitMQ服务器，监听其默认端口。更多信息，请参阅其官方安装指南[http://nodejsdp.link/rabbitmq-getstarted](http://nodejsdp.link/rabbitmq-getstarted)。
+- en: Implementing a history service using AMQP
+  id: totrans-211
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 使用AMQP实现历史服务
+- en: 'Let''s now implement our history service! We are going to create a standalone
+    application (a typical microservice), which is implemented in the `historySvc.js`
+    module. The module is made up of two parts: an HTTP server to expose the chat
+    history to clients, and an AMQP consumer responsible for capturing the chat messages
+    and storing them in a local database.'
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们实现我们的历史服务！我们将创建一个独立的应用程序（一个典型的微服务），它实现于`historySvc.js`模块。该模块由两部分组成：一个HTTP服务器，用于向客户端公开聊天历史；以及一个AMQP消费者，负责捕获聊天消息并将它们存储在本地数据库中。
+- en: 'Let''s see what this looks like in the code that follows:'
+  id: totrans-213
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看下面的代码中它是如何实现的：
+- en: '[PRE8]'
+  id: totrans-214
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'We can immediately see that AMQP requires a little bit of setting up, which
+    is necessary to create and connect all the components of the model. Let''s see
+    in detail how it works:'
+  id: totrans-215
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以立即看到，AMQP需要一点设置，这是创建和连接模型所有组件所必需的。让我们详细看看它是如何工作的：
+- en: We first establish a connection with the AMQP broker, which in our case is RabbitMQ.
+    Then, we create a channel, which is similar to a session that will maintain the
+    state of our communications.
+  id: totrans-216
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们首先与AMQP代理建立连接，在我们的例子中是RabbitMQ。然后，我们创建一个通道，它类似于一个会话，将保持我们通信的状态。
+- en: Next, we set up an exchange, named `chat`. As we already mentioned, it is a fanout
+    exchange. The `assertExchange()` command will make sure that the exchange exists
+    on the broker, otherwise it will create it.
+  id: totrans-217
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来，我们设置一个名为`chat`的交换机。正如我们之前提到的，它是一个`fanout`交换机。`assertExchange()`命令将确保交换机在代理上存在，否则它将创建它。
+- en: We also create a queue called `chat_history`. By default, the queue is durable
+    (not exclusive and not auto-delete), so we don't need to pass any extra options
+    to support durable subscribers.
+  id: totrans-218
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们还创建了一个名为`chat_history`的队列。默认情况下，队列是持久的（不是`exclusive`也不是`auto-delete`），因此我们不需要传递任何额外的选项来支持持久的订阅者。
+- en: Next, we bind the queue to the exchange we previously created. Here, we don't
+    need any other particular option (such as a routing key or pattern), as the exchange
+    is of the type fanout, so it doesn't perform any filtering.
+  id: totrans-219
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来，我们将队列绑定到我们之前创建的交换机。在这里，我们不需要任何其他特定的选项（如路由键或模式），因为交换机是`fanout`类型，所以它不执行任何过滤。
+- en: Finally, we can begin to listen for messages coming from the queue we just created.
+    We save every message that we receive in a LevelDB database using a monotonic
+    timestamp as the key (see [nodejsdp.link/monotonic-timestamp](http://nodejsdp.link/monotonic-timestamp))
+    to keep the messages sorted by date. It's also interesting to see that we are
+    acknowledging every message using `channel.ack(msg)`, but only after the message
+    is successfully saved into the database. If the ACK (acknowledgment) is not received
+    by the broker, the message is kept in the queue to be processed again.
+  id: totrans-220
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，我们可以开始监听来自我们刚刚创建的队列的消息。我们使用单调时间戳作为键将我们接收到的每条消息保存到LevelDB数据库中（见[nodejsdp.link/monotonic-timestamp](http://nodejsdp.link/monotonic-timestamp)），以按日期排序消息。同时，我们也注意到我们使用`channel.ack(msg)`来确认每条消息，但只有在消息成功保存到数据库后才会这样做。如果代理没有收到ACK（确认），则消息将保留在队列中以便再次处理。
+- en: 'If we are not interested in sending explicit acknowledgments, we can pass the
+    `{ noAck: true }` option  to the `channel.consume()` API.'
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '如果我们不想发送显式的确认，我们可以将`{ noAck: true }`选项传递给`channel.consume()`API。'
+- en: Integrating the chat application with AMQP
+  id: totrans-222
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 将聊天应用程序与AMQP集成
+- en: 'To integrate the chat servers using AMQP, we have to use a setup very similar
+    to the one we implemented in the history service, but with some small variations.
+    So, let''s see how the new `index.js` module looks with the introduction of AMQP:'
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要使用AMQP集成聊天服务器，我们必须使用与我们在历史服务中实现的方式非常相似的设置，但有一些小的变化。因此，让我们看看引入AMQP后新的`index.js`模块看起来如何：
+- en: '[PRE9]'
+  id: totrans-224
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'As we can see, AMQP made the code a little bit more verbose on this occasion
+    too, but at this point we should already be familiar with most of it. There are
+    just a few aspects to be aware of:'
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如我们所见，AMQP在这个场合也让代码变得稍微冗长了一些，但到目前为止，我们应该已经熟悉了其中大部分。只是有几个方面需要注意：
+- en: 'As we mentioned, our chat server doesn''t need to be a durable subscriber:
+    a fire-and-forget paradigm is enough. So when we create our queue, we pass the
+    `{ exclusive: true }` option, indicating that the queue is scoped to the current
+    connection and therefore it will be destroyed as soon as the chat server shuts
+    down.'
+  id: totrans-226
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '正如我们提到的，我们的聊天服务器不需要是一个持久的订阅者：一个“发射并忘记”的范式就足够了。因此，当我们创建我们的队列时，我们传递了`{ exclusive:
+    true }`选项，表示队列的作用域仅限于当前连接，因此当聊天服务器关闭时，它将被销毁。'
+- en: 'For the same reason as in the previous point, we don''t need to send back any
+    acknowledgement when we read a message from the queue. So, to make things easier,
+    we pass the `{ noAck: true }` option when starting to consume the messages from
+    the queue.'
+  id: totrans-227
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '由于与前一点相同的原因，当我们从队列中读取消息时，我们不需要发送任何确认。因此，为了使事情更简单，我们在开始从队列中消费消息时传递了 `{ noAck:
+    true }` 选项。'
+- en: Publishing a new message is also very easy. We simply have to specify the target
+    exchange (`chat`) and a routing key, which in our case is empty (`''`) because
+    we are using a fanout exchange, so there is no routing to perform.
+  id: totrans-228
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 发布一条新消息也非常简单。我们只需指定目标交换机（`chat`）和一个路由键，在我们的例子中，这是一个空字符串（`''`），因为我们使用的是扇出交换机，所以不需要执行任何路由。
+- en: The other peculiarity of this version of our chat server is that we can now
+    present to the user the full history of the chat, thanks to our history microservice.
+    We do that by querying the history microservice and sending every past message
+    to the client as soon as a new connection is established.
+  id: totrans-229
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们聊天服务器的另一个独特之处在于，我们现在可以向用户展示完整的聊天历史，这要归功于我们的历史微服务。我们通过查询历史微服务，并在建立新连接时立即将每条过去的信息发送给客户端来实现这一点。
+- en: 'We can now run our new improved chat application. To do that, first make sure
+    to have RabbitMQ running locally on your machine, then let''s start two chat servers
+    and the history service in three different terminals:'
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们可以运行我们新的改进后的聊天应用了。为此，首先确保你的机器上运行着 RabbitMQ，然后让我们在三个不同的终端中启动两个聊天服务器和历史服务：
+- en: '[PRE10]'
+  id: totrans-231
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: We should now focus our attention on how our system, and in particular the history
+    service, behaves in case of downtime. If we stop the history server and continue
+    to send messages using the web UI of the chat application, we will see that when
+    the history server is restarted, it will immediately receive all the messages
+    it missed. This is a perfect demonstration of how the Durable Subscriber pattern
+    works!
+  id: totrans-232
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们现在应该关注我们的系统，特别是历史服务，在出现故障时的行为。如果我们停止历史服务器，并继续使用聊天应用的 Web UI 发送消息，我们会看到当历史服务器重新启动时，它会立即接收到它错过的所有消息。这是一个完美的演示，说明了持久订阅模式是如何工作的！
+- en: It is interesting to see how the microservice approach allows our system to
+    survive even without one of its components—the history service. There would be
+    a temporary reduction of functionality (no chat history available) but people
+    would still be able to exchange chat messages in real time. Awesome!
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 看到微服务方法如何使我们的系统即使在缺少其组件之一——历史服务的情况下也能生存，这很有趣。虽然功能会有暂时性的减少（没有聊天历史可用），但人们仍然能够实时交换聊天消息。太棒了！
+- en: Reliable messaging with streams
+  id: totrans-234
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用流进行可靠的消息传递
+- en: At the beginning of this chapter, we mentioned that a possible alternative to
+    message queues are **streams**. The two paradigms are similar in scope, but fundamentally
+    different in their approach to messaging. In this section, we are going to unveil
+    the power of streams by leveraging Redis Streams to implement our chat application.
+  id: totrans-235
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章的开头，我们提到消息队列的一个可能替代方案是**流**。这两个范例在范围上相似，但在处理消息的方法上根本不同。在本节中，我们将通过利用 Redis
+    Streams 来实现我们的聊天应用，来揭示流的力量。
+- en: Characteristics of a streaming platform
+  id: totrans-236
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 流媒体平台的特征
+- en: In the context of system integration, a **stream** (or **log**) is an ordered,
+    append-only, durable data structure. Messages—which in the context of streams
+    would be more appropriately called **records**—are always added at the end of
+    the stream and, unlike queues, they are not automatically deleted when they are
+    consumed. Essentially, this characteristic makes a stream more similar to a data
+    store than to a message broker. And like a data store, a stream can be queried
+    to retrieve a batch of past records or replayed starting from a specific record.
+  id: totrans-237
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在系统集成的情况下，一个**流**（或**日志**）是一个有序的、只追加的、持久的数据结构。消息——在流的情况下，更恰当地称为**记录**——总是添加到流的末尾，并且与队列不同，它们在消费后不会自动删除。本质上，这个特征使流更像是一个数据存储，而不是消息代理。像数据存储一样，流可以被查询以检索一批过去的记录或从特定记录开始回放。
+- en: Another important characteristic of streams is that records are pulled by the
+    consumer from the stream. This intrinsically allows the consumer to process the
+    records at its own pace without risking being overwhelmed.
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 流的另一个重要特征是，记录是由消费者从流中拉取的。这本质上是允许消费者以自己的节奏处理记录，而不会风险被淹没。
+- en: 'Based on these features, a stream allows us to implement reliable message delivery
+    out of the box, since no data is ever *lost* from the stream (even though data
+    can still be removed explicitly or can be deleted after an optional retention
+    period). In fact, as *Figure 13.14* shows, if a consumer crashes, all it has to
+    do is start reading the stream from where it left off:'
+  id: totrans-239
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 基于这些特性，流使我们能够直接实现可靠的消息传递，因为从流中永远不会丢失任何数据（尽管数据仍然可以被显式删除，或者可以在可选的保留期后删除）。事实上，如
+    *图 13.14* 所示，如果消费者崩溃，它只需从上次停止的地方开始读取流：
+- en: '![A close up of text on a white background  Description automatically generated](img/B15729_13_14.png)'
+  id: totrans-240
+  prefs: []
+  type: TYPE_IMG
+  zh: '![白色背景上的文本特写  自动生成的描述](img/B15729_13_14.png)'
+- en: 'Figure 13.14: Reliable message delivery with streams'
+  id: totrans-241
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 13.14：使用流实现可靠的消息传递
+- en: As *Figure 13.14* shows, during normal operations (1) the consumer processes
+    the records in the stream as soon as they are added by the producer. When the
+    consumer becomes unavailable (2) because of a problem or a scheduled maintenance,
+    the producer simply continues to add records to the stream as normal. When the
+    consumer comes back online (3), it starts processing the records from the point
+    where it left. The main aspect of this mechanism is that it's very simple and
+    barebone, but it's quite effective at making sure that no message is lost even
+    when the consumer is not available.
+  id: totrans-242
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如 *图 13.14* 所示，在正常操作期间（1）消费者在生产者添加记录后立即处理流中的记录。当消费者因问题或计划维护而不可用（2）时，生产者会继续像往常一样向流中添加记录。当消费者重新上线（3）时，它从上次离开的地方开始处理记录。这个机制的主要方面是它非常简单和基础，但它在确保即使消费者不可用时也不会丢失任何消息方面非常有效。
+- en: Streams versus message queues
+  id: totrans-243
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 流与消息队列的比较
+- en: As we have seen so far, there are a lot of differences, but also a lot of similarities
+    between a message queue and a stream. So, when should you use one in place of
+    the other?
+  id: totrans-244
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如我们所见，消息队列和流之间有很多不同之处，也有很多相似之处。那么，在什么情况下你应该使用其中一个而不是另一个呢？
+- en: Well, the obvious use case for streams is when we have to process sequential
+    data (streaming data) that may also require the consumer to process messages in
+    batch or to look for correlations in past messages. Also, modern streaming platforms
+    allow the ingestion of gigabytes of data per second and the distribution of both
+    the data and the processing of the data across multiple nodes.
+  id: totrans-245
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 好吧，流的最明显用途是在我们需要处理顺序数据（流数据）时，这些数据可能还需要消费者批量处理消息或查找过去消息中的相关性。此外，现代流平台允许每秒处理数吉字节的数据，并将数据及其处理分布在多个节点上。
+- en: Both message queues and streams are well suited to implement simple Publish/Subscribe
+    patterns, even with reliable message delivery. However, message queues are better
+    suited for complex system integration tasks, since they provide advanced routing
+    of messages and allow us to have different priorities for different messages (in
+    streams, the order of the records is always preserved).
+  id: totrans-246
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 无论是消息队列还是流，都非常适合实现简单的发布/订阅模式，即使是有可靠的消息传递。然而，消息队列更适合复杂的系统集成任务，因为它们提供了高级的消息路由，并允许我们对不同消息有不同的优先级（在流中，记录的顺序始终被保留）。
+- en: As we will see later, both can also be used to implement task distribution patterns,
+    even though, in a standard architecture, message queues could be more suitable
+    thanks to message priorities and more advanced routing mechanisms.
+  id: totrans-247
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们稍后将会看到的，两者也可以用来实现任务分配模式，尽管在标准架构中，由于消息优先级和更高级的路由机制，消息队列可能更适合。
+- en: Implementing the chat application using Redis Streams
+  id: totrans-248
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 使用 Redis Streams 实现聊天应用
+- en: At the moment of writing, the most popular streaming platforms out there are
+    Apache Kafka ([nodejsdp.link/kafka](http://nodejsdp.link/kafka)) and Amazon Kinesis
+    ([nodejsdp.link/kinesis](http://nodejsdp.link/kinesis)). However, for simpler
+    tasks, we can rely again on Redis, which implements a log data structure called
+    **Redis Streams**.
+  id: totrans-249
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在撰写本文时，最受欢迎的流平台是 Apache Kafka ([nodejsdp.link/kafka](http://nodejsdp.link/kafka))
+    和 Amazon Kinesis ([nodejsdp.link/kinesis](http://nodejsdp.link/kinesis))。然而，对于更简单的任务，我们还可以依赖
+    Redis，它实现了一个称为 **Redis Streams** 的日志数据结构。
+- en: In the next code sample, we are going to see Redis Streams in action by adapting
+    our chat application. The immediate advantage of using a stream over a message
+    queue is that we don't need to rely on a dedicated component to store and retrieve
+    the history of the messages exchanged in a chat room, but we can simply query
+    the stream every time we need to access older messages. As we will see, this simplifies
+    a lot the architecture of our application and certainly makes streams a better
+    choice than message queues, at least for our very simple use case.
+  id: totrans-250
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在接下来的代码示例中，我们将通过调整我们的聊天应用来展示Redis流的实际应用。使用流而不是消息队列的即时优势是，我们不需要依赖一个专门的组件来存储和检索聊天室中交换的消息的历史记录，而只需在需要访问旧消息时简单地查询流。正如我们将看到的，这极大地简化了我们的应用程序架构，并且确实使流比消息队列成为一个更好的选择，至少对于我们的非常简单的用例来说是这样。
+- en: 'So, let''s dive into some code. Let''s update the `index.js` of our chat application
+    to use Redis Streams:'
+  id: totrans-251
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 那么，让我们深入一些代码。让我们更新我们的聊天应用程序的`index.js`以使用Redis流：
+- en: '[PRE11]'
+  id: totrans-252
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: As always, the overall structure of the application has remained the same; what
+    changed is the API we used to exchange messages with the other instances of the
+    application.
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 总体而言，应用程序的结构保持不变；改变的是我们用来与其他应用程序实例交换消息的API。
+- en: 'Let''s take a look at those APIs more closely:'
+  id: totrans-254
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们更仔细地看看这些API：
+- en: 'The first command we want to analyze is `xadd`. This command appends a new
+    record to a stream, and we are using it to add a new chat message as it arrives
+    from a connected client. We pass to `xadd` the following arguments:'
+  id: totrans-255
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们想要分析的第一个命令是`xadd`。这个命令将一个新的记录追加到流中，我们使用它来添加从连接的客户端接收到的新的聊天消息。我们向`xadd`传递以下参数：
+- en: The name of the stream, which in our case is `chat_stream`.
+  id: totrans-256
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 流的名称，在我们的例子中是`chat_stream`。
+- en: The ID of the record. In our case, we provide an asterisk (`*`), which is a
+    special ID that asks Redis to generate an ID for us. This is usually what we want,
+    as IDs have to be monotonic to preserve the lexicographic order of the records
+    and Redis takes care of that for us.
+  id: totrans-257
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 记录的ID。在我们的例子中，我们提供了一个星号（`*`），这是一个特殊的ID，请求Redis为我们生成一个ID。这通常是我们的需求，因为ID必须是单调的，以保持记录的字典序，而Redis会为我们处理这一点。
+- en: It follows a list of key-value pairs. In our case, we specify only a `'message'`
+    key of the value `msg` (which is the message we receive from the client).
+  id: totrans-258
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 它遵循一系列键值对。在我们的例子中，我们只指定了`'message'`键的值`msg`（这是我们从客户端接收到的消息）。
+- en: 'This is one of the most interesting aspects of using streams: we query the
+    past records of the stream to retrieve the chat history. We do this every time
+    a client connects. We use the `xrange` command for that, which, as the name implies,
+    allows us to retrieve all the records in the stream within the two specified IDs.
+    In our case we are using the special IDs `''-''` (minus) and `''+''` (plus) which
+    indicate the lowest possible ID and the highest possible ID. This essentially
+    means that we want to retrieve all the records currently in the stream.'
+  id: totrans-259
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 这是有趣的流使用的一个方面：我们查询流的过去记录来检索聊天历史。每次客户端连接时，我们都会这样做。我们使用`xrange`命令来完成这项任务，正如其名称所暗示的，它允许我们在两个指定的ID之间检索流中的所有记录。在我们的例子中，我们使用了特殊的ID
+    `'-'`（减号）和`'+'`（加号），它们表示最低可能的ID和最高可能的ID。这实际上意味着我们想要检索流中当前的所有记录。
+- en: 'The last interesting part of our new chat application is where we wait for
+    new records to be added to the stream. This allows each application instance to
+    read new chat messages as they are added into the queue, and it''s an essential
+    part for the integration to work. We use an infinite loop and the `xread` command
+    for the task, providing the following arguments:'
+  id: totrans-260
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们新聊天应用程序中最有趣的部分之一是我们等待新记录被添加到流中。这允许每个应用程序实例在消息被添加到队列时读取新的聊天消息，这对于集成工作至关重要。我们使用无限循环和`xread`命令来完成这项任务，提供以下参数：
+- en: '`BLOCK` means that we want the call to block until new messages arrive.'
+  id: totrans-261
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`BLOCK`表示我们希望调用阻塞，直到有新消息到达。'
+- en: Next, we specify the timeout after which the command will simply return with
+    a `null` result. In our case, `0` means that we want to wait forever.
+  id: totrans-262
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来，我们指定命令超时后直接返回一个`null`结果。在我们的例子中，`0`表示我们希望无限期地等待。
+- en: '`STREAMS` is a keyword that tells Redis that we are now going to specify the
+    details of the streams we want to read.'
+  id: totrans-263
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`STREAMS`是一个关键字，告诉Redis我们现在将指定我们想要读取的流的详细信息。'
+- en: '`chat_stream` is the name of the stream we want to read.'
+  id: totrans-264
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`chat_stream`是我们想要读取的流的名称。'
+- en: Finally, we supply the record ID (`lastRecordId`) after which we want to start
+    reading the new messages. Initially, this is set to `$` (dollar sign), which is
+    a special ID indicating the highest ID currently in the stream, which should essentially
+    start to read the stream after the last record currently in the stream. After
+    we read the first record, we update the `lastRecordId` variable with the ID of
+    the last record read.
+  id: totrans-265
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，我们提供记录ID（`lastRecordId`），这是我们想要开始读取新消息之后的ID。最初，这设置为`$`（美元符号），这是一个特殊ID，表示当前流中最高的ID，应该基本上在流中的最后一个记录之后开始读取流。在我们读取第一个记录后，我们使用读取的最后一个记录的ID更新`lastRecordId`变量。
+- en: 'Within the previous example, we also made use of some clever destructuring
+    instructions. Consider for example the following code:'
+  id: totrans-266
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的例子中，我们还使用了一些巧妙的解构指令。例如，考虑以下代码：
+- en: '[PRE12]'
+  id: totrans-267
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'This instruction could be expanded to something like the following:'
+  id: totrans-268
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个指令可以扩展为以下内容：
+- en: '[PRE13]'
+  id: totrans-269
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'But since we are not interested in getting the `recordId` and the `propertyId`,
+    we are simply keeping them out of the destructuring instruction. This particular
+    destructuring, in combination with the `for...of loop`, is necessary to parse
+    the data returned from the `xrange` command, which in our case is in the following
+    form:'
+  id: totrans-270
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但由于我们不对获取`recordId`和`propertyId`感兴趣，所以我们只是将它们从解构指令中排除。这种特定的解构，与`for...of循环`结合使用，是解析`xrange`命令返回的数据所必需的，在我们的案例中，其形式如下：
+- en: '[PRE14]'
+  id: totrans-271
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: We applied a similar principle to parse the return value of `xread`. Please
+    refer to the API documentation of those instructions for a detailed explanation
+    of their return value.
+  id: totrans-272
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们应用了类似的原则来解析`xread`的返回值。请参考这些指令的API文档以获取它们返回值的详细解释。
+- en: You can read more about the `xadd` command and the format of record IDs in the
+    official Redis documentation at [nodejsdp.link/xadd](http://nodejsdp.link/xadd).
+  id: totrans-273
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以在官方Redis文档中了解更多关于`xadd`命令和记录ID格式的信息，[nodejsdp.link/xadd](http://nodejsdp.link/xadd)。
+- en: The `xread` command has also a fairly complicated arguments list and return
+    value that you can read more about at [nodejsdp.link/xread](http://nodejsdp.link/xread).
+  id: totrans-274
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`xread`命令也有一个相当复杂的参数列表和返回值，你可以在[nodejsdp.link/xread](http://nodejsdp.link/xread)了解更多。'
+- en: Also, check out the documentation for `xrange` at [nodejsdp.link/xrange](http://nodejsdp.link/xrange).
+  id: totrans-275
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 还请查看`xrange`的文档，[nodejsdp.link/xrange](http://nodejsdp.link/xrange)。
+- en: Now, you can start a couple of server instances again and test the application
+    to see how the new implementation works.
+  id: totrans-276
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，你可以再次启动几个服务器实例，测试应用程序以查看新实现的效果。
+- en: It's interesting to highlight again the fact that we didn't need to rely on
+    a dedicated component to manage our chat history, but instead, all we needed to
+    do was to retrieve the past records from the stream with `xrange`. This aspect
+    of streams makes them intrinsically reliable as no message is *lost* unless explicitly
+    deleted.
+  id: totrans-277
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 再次强调一个有趣的事实，我们不需要依赖专门的组件来管理我们的聊天历史，而只需从流中检索过去的记录即可，使用`xrange`。流这一特性使得它们本质上可靠，因为没有消息是*丢失*的，除非明确删除。
+- en: Records can be removed from the stream with the `xdel` ([nodejsdp.link/xdel](http://nodejsdp.link/xdel))
+    or `xtrim` commands ([nodejsdp.link/xtrim](http://nodejsdp.link/xtrim)) or with
+    the `MAXLEN` option of `xadd` ([nodejsdp.link/xadd-maxlen](http://nodejsdp.link/xadd-maxlen)).
+  id: totrans-278
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以使用`xdel` ([nodejsdp.link/xdel](http://nodejsdp.link/xdel))或`xtrim`命令([nodejsdp.link/xtrim](http://nodejsdp.link/xtrim))，或者使用`xadd`命令的`MAXLEN`选项([nodejsdp.link/xadd-maxlen](http://nodejsdp.link/xadd-maxlen))从流中删除记录。
+- en: 'This concludes our exploration of the Publish/Subscribe pattern. Now, it''s
+    time to discover another important category of messaging patterns: task distribution
+    patterns.'
+  id: totrans-279
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就结束了我们对发布/订阅模式的探索。现在，是时候发现另一个重要的消息模式类别：任务分配模式。
+- en: Task distribution patterns
+  id: totrans-280
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 任务分配模式
+- en: In *Chapter 11*, *Advanced Recipes*, you learned how to delegate costly tasks
+    to multiple local processes. Even though this was an effective approach, it cannot
+    be scaled beyond the boundaries of a single machine, so in this section, we are
+    going to see how it's possible to use a similar pattern in a distributed architecture,
+    using remote workers located anywhere in a network.
+  id: totrans-281
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*第11章*，*高级食谱*中，你学习了如何将耗时的任务委派给多个本地进程。尽管这是一个有效的方法，但它不能扩展到单台机器的边界之外，因此在本节中，我们将看到如何在一个分布式架构中使用类似的模式，使用位于网络任何位置的远程工作者。
+- en: The idea is to have a messaging pattern that allows us to spread tasks across
+    multiple machines. These tasks might be individual chunks of work or pieces of
+    a bigger task split using a *divide and conquer* approach.
+  id: totrans-282
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 理念是拥有一种消息模式，使我们能够将任务分散到多台机器上。这些任务可能是单个工作块或使用 *分而治之* 方法分割的大任务的一部分。
+- en: 'If we look at the logical architecture represented in the following diagram,
+    we should be able to recognize a familiar pattern:'
+  id: totrans-283
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们查看以下图中表示的逻辑架构，我们应该能够识别出一个熟悉的模式：
+- en: '![](img/B15729_13_15.png)'
+  id: totrans-284
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/B15729_13_15.png)'
+- en: 'Figure 13.15: Distributing tasks to a set of consumers'
+  id: totrans-285
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 13.15：将任务分配给一组消费者
+- en: As we can see from the diagram of *Figure 13.15*, the Publish/Subscribe pattern
+    is not suitable for this type of application, as we absolutely don't want a task
+    to be received by multiple workers. What we need instead, is a message distribution
+    pattern similar to a load balancer that dispatches each message to a different
+    consumer (also called a **worker**, in this case). In messaging systems terminology,
+    this pattern is also known as **competing consumers**, fanout distribution, or
+    **ventilator**.
+  id: totrans-286
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如我们从 *图 13.15* 的图中可以看到，发布/订阅模式不适用于此类应用程序，因为我们绝对不希望任务被多个工作者接收。我们需要的，是一个类似于负载均衡器的消息分配模式，将每条消息分配给不同的消费者（在这种情况下也称为
+    **工作者**）。在消息系统术语中，这种模式也称为 **竞争消费者**、fanout 分配或 **通风器**。
+- en: One important difference to the HTTP load balancers that we saw in the previous
+    chapter is that, here, the consumers have a more active role. In fact, as we will
+    see later, most of the time it's not the producer that connects to the consumers,
+    but the consumers themselves that connect to the task producer or to the task
+    queue in order to receive new jobs. This is a great advantage in a scalable system
+    as it allows us to seamlessly increase the number of workers without modifying
+    the producer or adopting a service registry.
+  id: totrans-287
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与我们在上一章中看到的 HTTP 负载均衡器的一个重要区别是，在这里，消费者有更积极的角色。实际上，正如我们稍后将看到的，大多数时候不是生产者连接到消费者，而是消费者自己连接到任务生产者或任务队列以接收新工作。这在可扩展系统中是一个巨大的优势，因为它允许我们无缝地增加工作者的数量，而无需修改生产者或采用服务注册表。
+- en: 'Also, in a generic messaging system, we don''t necessarily have request/reply
+    communication between the producer and the workers. Instead, most of the time,
+    the preferred approach is to use one-way asynchronous communication, which enables
+    better parallelism and scalability. In such an architecture, messages can potentially
+    always travel in one direction, creating **pipelines**, as shown in the following
+    diagram:'
+  id: totrans-288
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，在通用消息系统中，我们不一定在生产者和工作者之间有请求/回复通信。相反，大多数情况下，首选的方法是使用单向异步通信，这可以实现更好的并行性和可扩展性。在这种架构中，消息可能始终单向传输，创建
+    **管道**，如下图中所示：
+- en: '![](img/B15729_13_16.png)'
+  id: totrans-289
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/B15729_13_16.png)'
+- en: 'Figure 13.16: A messaging pipeline'
+  id: totrans-290
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 13.16：消息管道
+- en: Pipelines allow us to build very complex processing architectures without the
+    overhead of a synchronous request/reply communication, often resulting in lower
+    latency and higher throughput. In *Figure 13.16*, we can see how messages can
+    be distributed across a set of workers (fanout), forwarded to other processing
+    units, and then aggregated into a single node (fanin), usually called the **sink**.
+  id: totrans-291
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 管道允许我们构建非常复杂的处理架构，而不需要同步请求/回复通信的开销，通常会导致更低的延迟和更高的吞吐量。在 *图 13.16* 中，我们可以看到消息如何被分配到一组工作者（fanout），转发到其他处理单元，然后聚合到一个单一节点（fanin），通常称为
+    **汇点**。
+- en: 'In this section, we are going to focus on the building blocks of these kinds
+    of architectures, by analyzing the two most important variations: peer-to-peer
+    and broker-based.'
+  id: totrans-292
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们将关注这类架构的构建块，通过分析两种最重要的变体：对等和基于代理的。
+- en: The combination of a pipeline with a task distribution pattern is also called
+    a **parallel pipeline**.
+  id: totrans-293
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 管道与任务分配模式的组合也称为 **并行管道**。
+- en: The ZeroMQ Fanout/Fanin pattern
+  id: totrans-294
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: ZeroMQ Fanout/Fanin 模式
+- en: We have already discovered some of the capabilities of ZeroMQ for building peer-to-peer
+    distributed architectures. In the previous section, in fact, we used `PUB` and `SUB` sockets
+    to disseminate a single message to multiple consumers, and now, we are going to
+    see how it's possible to build parallel pipelines using another pair of sockets
+    called `PUSH` and `PULL`.
+  id: totrans-295
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经发现了 ZeroMQ 在构建对等分布式架构方面的某些功能。实际上，在前一节中，我们使用了 `PUB` 和 `SUB` 插座将单条消息传播给多个消费者，现在我们将看到如何使用另一对称为
+    `PUSH` 和 `PULL` 的插座构建并行管道。
+- en: PUSH/PULL sockets
+  id: totrans-296
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: PUSH/PULL 插座
+- en: 'Intuitively, we can say that the `PUSH` sockets are made for *sending* messages,
+    while the `PULL` sockets are meant for *receiving*. It might seem a trivial combination,
+    however, they have some extra features that make them perfect for building one-way
+    communication systems:'
+  id: totrans-297
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 直观地说，我们可以认为 `PUSH` 插座是为 *发送* 消息而设计的，而 `PULL` 插座是为 *接收* 消息而设计的。然而，它们有一些额外的功能，使它们非常适合构建单向通信系统：
+- en: Both can work in *connect* mode or *bind* mode. In other words, we can create
+    a `PUSH` socket and bind it to a local port listening for the incoming connections
+    from a `PULL` socket, or vice versa, a `PULL` socket might listen for connections
+    from a `PUSH` socket. The messages always travel in the same direction, from `PUSH` to `PULL`,
+    it's only the initiator of the connection that can be different. The bind mode
+    is the best solution for *durable* nodes, such as, for example, the task producer
+    and the sink, while the connect mode is perfect for *transient* nodes, such as
+    the task workers. This allows the number of transient nodes to vary arbitrarily
+    without affecting the more stable, durable nodes.
+  id: totrans-298
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 它们都可以在 *连接* 模式或 *绑定* 模式下工作。换句话说，我们可以创建一个 `PUSH` 插座并将其绑定到本地端口，以监听来自 `PULL` 插座的传入连接，或者反之亦然，一个
+    `PULL` 插座可能会监听来自 `PUSH` 插座的连接。消息始终沿同一方向传输，从 `PUSH` 到 `PULL`，只是连接的发起者可能不同。绑定模式是
+    *持久* 节点（例如，任务生产者和汇入点）的最佳解决方案，而连接模式是 *短暂* 节点（例如，任务工作者）的完美选择。这允许短暂节点的数量任意变化，而不会影响更稳定、持久的节点。
+- en: If there are multiple `PULL` sockets connected to a single `PUSH` socket, the
+    messages are evenly distributed across all the `PULL` sockets. In practice, they
+    are load balanced (peer-to-peer load balancing!). On the other hand, a `PULL`
+    socket that receives messages from multiple `PUSH` sockets will process the messages
+    using a fair queuing system, which means that they are consumed evenly from all
+    the sources—a round-robin applied to inbound messages.
+  id: totrans-299
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果有多个 `PULL` 插座连接到单个 `PUSH` 插座，消息将均匀地分布在所有 `PULL` 插座上。在实践中，它们是负载均衡的（对等负载均衡！）。另一方面，接收来自多个
+    `PUSH` 插座的消息的 `PULL` 插座将使用公平队列系统处理消息，这意味着它们从所有来源均匀消费——对入站消息应用轮询。
+- en: The messages sent over a `PUSH` socket that doesn't have any connected `PULL`
+    sockets do not get lost. They are instead queued until a node comes online and
+    starts pulling the messages.
+  id: totrans-300
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 没有连接任何 `PULL` 插座的 `PUSH` 插座发送的消息不会丢失。相反，它们会被排队，直到节点上线并开始拉取消息。
+- en: We are now starting to understand how ZeroMQ is different from traditional web
+    services and why it's a perfect tool for building a distributed messaging system.
+  id: totrans-301
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们现在开始理解 ZeroMQ 与传统 Web 服务有何不同，以及为什么它是构建分布式消息系统的完美工具。
+- en: Building a distributed hashsum cracker with ZeroMQ
+  id: totrans-302
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 使用 ZeroMQ 构建分布式哈希校验破解器
+- en: Now it's time to build a sample application to see the properties of the `PUSH`/`PULL` sockets
+    we just described in action.
+  id: totrans-303
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在是时候构建一个示例应用程序，以查看我们刚才描述的 `PUSH`/`PULL` 插座的特性了。
+- en: 'A simple and fascinating application to work with would be a *hashsum cracker*:
+    A system that uses a brute-force approach to try to match a given hashsum (such
+    as MD5 or SHA1) to the hashsum of every possible variation of characters of a
+    given alphabet, thus discovering the original string the given hashsum was created
+    from.'
+  id: totrans-304
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个简单而迷人的应用示例是 *哈希校验破解器*：一个使用暴力破解法尝试将给定的哈希值（如 MD5 或 SHA1）与给定字母表中每个可能字符变体的哈希值相匹配的系统，从而发现原始字符串是由给定的哈希值创建的。
+- en: This is an *embarrassingly parallel* workload ([nodejsdp.link/embarrassingly-parallel](http://nodejsdp.link/embarrassingly-parallel)),
+    which is perfect for building an example demonstrating the power of parallel pipelines.
+  id: totrans-305
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是一个 *令人尴尬的并行* 工作负载 ([nodejsdp.link/embarrassingly-parallel](http://nodejsdp.link/embarrassingly-parallel))，非常适合构建一个展示并行管道力量的示例。
+- en: Never use plain hashsums to encrypt passwords as they are very easy to crack.
+    Use instead a purpose-built algorithm such as **bcrypt** ([nodejsdp.link/bcrypt](http://nodejsdp.link/bcrypt)),
+    **scrypt** ([nodejsdp.link/scrypt](http://nodejsdp.link/scrypt)), **PBKDF2** ([nodejsdp.link/pbkdf2](http://nodejsdp.link/pbkdf2)),
+    or **Argon2** ([nodejsdp.link/argon2](http://nodejsdp.link/argon2)).
+  id: totrans-306
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 永远不要使用纯哈希值来加密密码，因为它们很容易被破解。相反，使用专门设计的算法，如**bcrypt**([nodejsdp.link/bcrypt](http://nodejsdp.link/bcrypt))、**scrypt**([nodejsdp.link/scrypt](http://nodejsdp.link/scrypt))、**PBKDF2**([nodejsdp.link/pbkdf2](http://nodejsdp.link/pbkdf2))或**Argon2**([nodejsdp.link/argon2](http://nodejsdp.link/argon2))。
+- en: 'For our application, we want to implement a typical parallel pipeline where
+    we have the following:'
+  id: totrans-307
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于我们的应用程序，我们希望实现一个典型的并行管道，其中包含以下内容：
+- en: A node to create and distribute tasks across multiple workers
+  id: totrans-308
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 一个节点用于创建和分配任务到多个工作者
+- en: Multiple worker nodes (where the actual computation happens)
+  id: totrans-309
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 多个工作节点（实际计算发生的地方）
+- en: A node to collect all the results
+  id: totrans-310
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 一个节点用于收集所有结果
+- en: 'The system we just described can be implemented in ZeroMQ using the following
+    architecture:'
+  id: totrans-311
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们刚才描述的系统可以使用以下架构在ZeroMQ中实现：
+- en: '![](img/B15729_13_17.png)'
+  id: totrans-312
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B15729_13_17.png)'
+- en: 'Figure 13.17: The architecture of a typical pipeline with ZeroMQ'
+  id: totrans-313
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图13.17：使用ZeroMQ的典型管道架构
+- en: In our architecture, we have a *ventilator* generating intervals of variations
+    of characters in the given alphabet (for example, the interval 'aa' to 'bb' includes
+    the variations 'aa', 'ab', 'ba', 'bb') and distributing those intervals to the
+    workers as tasks. Each worker, then, calculates the hashsum of every variation
+    in the given interval, trying to match each resulting hashsum against the control
+    hashsum given as input. If a match is found, the result is sent to a results collector
+    node (sink).
+  id: totrans-314
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的架构中，我们有一个*通风器*生成给定字母表（例如，'aa'到'bb'的区间包括变体'aa'、'ab'、'ba'、'bb'）的字符变体区间，并将这些区间作为任务分配给工作者。然后，每个工作者计算给定区间中每个变体的哈希值，尝试将每个生成的哈希值与作为输入提供的控制哈希值匹配。如果找到匹配项，结果将被发送到结果收集节点（汇点）。
+- en: The durable nodes of our architecture are the ventilator and the sink, while
+    the transient nodes are the workers. This means that each worker connects its `PULL` socket
+    to the ventilator and its `PUSH` socket to the sink, this way we can start and
+    stop as many workers as we want without changing any parameter in the ventilator
+    or the sink.
+  id: totrans-315
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们架构中的持久节点是通风器和汇点，而临时节点是工作者。这意味着每个工作者将其`PULL`套接字连接到通风器，将其`PUSH`套接字连接到汇点，这样我们就可以启动和停止任意数量的工作者，而无需在通风器或汇点中更改任何参数。
+- en: Implementing the producer
+  id: totrans-316
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 实现生产者
+- en: 'To represent intervals of variations, we are going to use indexed n-ary trees.
+    If we imagine having a tree in which each node has exactly *n* children, where
+    each child is one of the *n* elements of the given alphabet and we assign an index
+    to each node in breadth-first order, then, given the alphabet `[a, b]` we should
+    obtain a tree such as the following:'
+  id: totrans-317
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了表示变体区间，我们将使用索引n叉树。如果我们想象有一个每个节点恰好有*n*个子节点的树，其中每个子节点是给定字母表中的*n*个元素之一，并且我们按广度优先顺序为每个节点分配一个索引，那么，给定字母表`[a,
+    b]`，我们应该得到如下所示的树：
+- en: '![A close up of a clock  Description automatically generated](img/B15729_13_18.png)'
+  id: totrans-318
+  prefs: []
+  type: TYPE_IMG
+  zh: '![时钟的特写  描述自动生成](img/B15729_13_18.png)'
+- en: 'Figure 13.18: Indexed n-ary tree for alphabet [a, b]'
+  id: totrans-319
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图13.18：字母表[a, b]的索引n叉树
+- en: It's then possible to obtain the variation corresponding to an index by traversing
+    the tree from the root to the given index, appending the element of the nodes
+    found along the way to the variation being calculated. For example, given the
+    tree in *Figure 13.18*, the variation corresponding to the index 13 will be 'bba'.
+  id: totrans-320
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过从根节点遍历到指定的索引，并将沿途找到的节点元素添加到正在计算的变体中，可以获取对应索引的变体。例如，给定*图13.18*中的树，对应索引13的变体将是'bb'。
+- en: We'll leverage the `indexed-string-variation` package ([nodejsdp.link/indexed-string-variation](http://nodejsdp.link/indexed-string-variation))
+    to aid us in calculating the corresponding variation given its index in the n-ary
+    tree. This operation is done in the workers, so all we have to do in the ventilator
+    is to produce intervals of indexes to give to the workers, which in turn will
+    calculate all the variations of characters represented by those intervals.
+  id: totrans-321
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将利用`indexed-string-variation`包([nodejsdp.link/indexed-string-variation](http://nodejsdp.link/indexed-string-variation))来帮助我们根据其在n叉树中的索引计算相应的变体。此操作在工作者节点上完成，因此我们只需要在通风器中生成要提供给工作者的索引区间，然后工作者将计算这些区间中字符的所有变体的哈希值，尝试将每个生成的哈希值与作为输入提供的控制哈希值匹配。如果找到匹配项，结果将被发送到结果收集节点（汇点）。
+- en: 'Now, after the necessary theory, let''s start to build our system by implementing
+    the component responsible to generate the tasks to distribute (`generateTasks.js`):'
+  id: totrans-322
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，在必要的理论之后，让我们开始通过实现负责生成要分配的任务的组件来构建我们的系统（在`generateTasks.js`文件中）：
+- en: '[PRE15]'
+  id: totrans-323
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: The `generateTasks()` generator creates intervals of integers of `batchSize`
+    size, starting from `1` (we exclude `0`, which is the root of the tree, corresponding
+    to the empty variation) and ending at the largest possible index (`nVariations`)
+    for the given `alphabet` and the maximum word length provided (`maxLength`). Then,
+    we pack all the data about the task into an object and `yield` it to the caller.
+  id: totrans-324
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`generateTasks()`生成器创建大小为`batchSize`的整数区间，从`1`开始（我们排除了`0`，它是树的根，对应于空变体）到给定`alphabet`和提供的最大单词长度（`maxLength`）的最大可能索引。然后，我们将所有关于任务的数据打包到一个对象中，并将其`yield`给调用者。'
+- en: Please consider that to generate longer strings it may be necessary to switch
+    to `BigInt` ([nodejsdp.link/bigint](http://nodejsdp.link/bigint)) to represent
+    their indexes, since the maximum safe integer manageable by JavaScript is currently
+    2^(53) – 1, which is the value of `Number.MAX_SAFE_INTEGER`. Note that using very
+    large integers may have a negative impact on the performances of the variations
+    generator.
+  id: totrans-325
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，为了生成更长的字符串，可能需要切换到`BigInt` ([nodejsdp.link/bigint](http://nodejsdp.link/bigint))来表示它们的索引，因为JavaScript当前可以管理的最大安全整数是2^(53)
+    – 1，即`Number.MAX_SAFE_INTEGER`的值。请注意，使用非常大的整数可能会对变体生成器的性能产生负面影响。
+- en: 'Now, we need to implement the logic of our producer, which is responsible for
+    distributing the tasks across all workers (in the `producer.js` file):'
+  id: totrans-326
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们需要实现我们的生产者逻辑，它负责将任务分配给所有工作器（在`producer.js`文件中）：
+- en: '[PRE16]'
+  id: totrans-327
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: To avoid generating too many variations, our generator uses only the lowercase
+    letters of the English alphabet and sets a limit on the size of the words generated.
+    This limit is provided as an input in the command-line arguments (`maxLength`)
+    together with the hashsum to match (`searchHash`).
+  id: totrans-328
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了避免生成过多的变体，我们的生成器仅使用英语字母表的小写字母，并限制生成单词的大小。这个限制作为命令行参数（`maxLength`）提供，与要匹配的哈希值（`searchHash`）一起。
+- en: 'But the part that we are most interested in analyzing is how we distribute
+    the tasks across the workers:'
+  id: totrans-329
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但我们最感兴趣分析的部分是如何在工作器之间分配任务：
+- en: 'We first create a `PUSH` socket and we bind it to the local port `5016`, which
+    is where the `PULL` socket of the workers will connect to receive their tasks.
+    We then wait 1 second for all the workers to connect: we do this because if the
+    producer starts while the workers are already running, the workers may connect
+    at different times (because of their timer-based reconnection algorithm) and that
+    may cause the first connecting worker to receive most of the tasks.'
+  id: totrans-330
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们首先创建一个`PUSH`套接字，并将其绑定到本地端口`5016`，这是工作器的`PULL`套接字连接以接收其任务的地方。然后我们等待1秒钟，以便所有工作器都连接：我们这样做是因为如果生产者在工作器已经运行时开始，工作器可能会在不同时间连接（因为它们的基于计时器的重新连接算法），这可能会导致第一个连接的工作器接收大部分任务。
+- en: For each generated task, we stringify it and send it to a worker using the `send()` function
+    of the `ventilator` socket. Each connected worker will receive a different task
+    following a round-robin approach.
+  id: totrans-331
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 对于每个生成的任务，我们将其转换为字符串并发送到一个工作器，使用`ventilator`套接字的`send()`函数。每个连接的工作器将根据轮询方法接收不同的任务。
+- en: Implementing the worker
+  id: totrans-332
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 实现工作器
+- en: 'Now it''s time to implement the worker, but first, let''s create a component
+    to process the incoming tasks (in the `processTask.js` file):'
+  id: totrans-333
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在是时候实现工作器了，但首先，让我们创建一个组件来处理传入的任务（在`processTask.js`文件中）：
+- en: '[PRE17]'
+  id: totrans-334
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'The logic of the `processTask()` function is quite simple: it iterates over
+    the indexes within the given interval, then for each index it generates the corresponding
+    variation of characters (`word`). Next, it calculates the SHA1 checksum for the
+    `word` and it tries to match it against the `searchHash` passed within the `task`
+    object. If the two digests match, then it returns the source `word` to the caller.'
+  id: totrans-335
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`processTask()`函数的逻辑相当简单：它遍历给定的区间内的索引，然后对于每个索引，它生成相应的字符变体（`word`）。接下来，它计算`word`的SHA1校验和，并尝试将其与`task`对象中传递的`searchHash`匹配。如果两个摘要匹配，则它将源`word`返回给调用者。'
+- en: 'Now we are ready to implement the main logic of our worker (`worker.js`):'
+  id: totrans-336
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经准备好实现我们工作器的主逻辑（在`worker.js`文件中）：
+- en: '[PRE18]'
+  id: totrans-337
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: 'As we said, our worker represents a transient node in our architecture, therefore,
+    its sockets should connect to a remote node instead of listening for the incoming
+    connections. That''s exactly what we do in our worker, we create two sockets:'
+  id: totrans-338
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们所说，我们的工作者代表我们架构中的一个临时节点，因此，它的套接字应该连接到远程节点而不是监听传入的连接。这正是我们在工作者中做的，我们创建了两个套接字：
+- en: A `PULL` socket that connects to the ventilator, for receiving the tasks
+  id: totrans-339
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 一个连接到通风器的`PULL`套接字，用于接收任务
+- en: A `PUSH` socket that connects to the sink, for propagating the results
+  id: totrans-340
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 一个连接到接收器的`PUSH`套接字，用于传播结果
+- en: 'Besides this, the job done by our worker is very simple: it processes every
+    task received, and if a match is found, we send a message to the results collector
+    through the `toSink` socket.'
+  id: totrans-341
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，我们的工作者完成的工作非常简单：它处理收到的每个任务，如果找到匹配项，我们就通过`toSink`套接字向结果收集器发送消息。
+- en: Implementing the results collector
+  id: totrans-342
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 实现结果收集器
+- en: 'For our example, the results collector (sink) is a very basic program that
+    simply prints the messages received by the workers to the console. The contents
+    of the `collector.js` file are as follows:'
+  id: totrans-343
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于我们的示例，结果收集器（接收器）是一个非常基础的程序，它只是将工作者接收到的消息打印到控制台。`collector.js`文件的内容如下：
+- en: '[PRE19]'
+  id: totrans-344
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: It's interesting to see that the results collector (as the producer) is also
+    a durable node of our architecture and therefore we bind its `PULL` socket instead
+    of connecting it explicitly to the `PUSH` socket of the workers.
+  id: totrans-345
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有趣的是看到结果收集器（就像生产者一样）也是我们架构中的一个持久节点，因此我们绑定它的`PULL`套接字而不是将其显式连接到工作者的`PUSH`套接字。
+- en: Running the application
+  id: totrans-346
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 运行应用程序
+- en: 'We are now ready to launch our application; let''s start a couple of workers
+    and the results collector (each one in a different terminal):'
+  id: totrans-347
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经准备好启动我们的应用程序；让我们启动几个工作者和结果收集器（每个在不同的终端中）：
+- en: '[PRE20]'
+  id: totrans-348
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'Then it''s time to start the producer, specifying the maximum length of the
+    words to generate and the SHA1 checksum that we want to match. The following is
+    a sample command line:'
+  id: totrans-349
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后是启动生产者的时候了，指定要生成的单词的最大长度和我们想要匹配的SHA1校验和。以下是一个示例命令行：
+- en: '[PRE21]'
+  id: totrans-350
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: When the preceding command is run, the producer will start generating tasks
+    and distributing them to the set of workers we started. We are telling the producer
+    to generate all possible words with 4 lowercase letters (because our alphabet
+    comprises only lowercase letters) and we also provide a sample SHA1 checksum that
+    corresponds to a secret 4-letter word.
+  id: totrans-351
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当运行前面的命令时，生产者将开始生成任务并将它们分配给我们启动的工作者集合。我们告诉生产者生成所有可能的4个小写字母组成的单词（因为我们的字母表只包含小写字母），我们还提供了一个与秘密4字母单词对应的SHA1校验和样本。
+- en: The results of the computation, if any, will appear in the terminal of the results
+    collector application.
+  id: totrans-352
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果有计算结果，将出现在结果收集器应用程序的终端中。
+- en: Please note that given the low-level nature of `PUSH`/`PULL` sockets in ZeroMQ
+    and in particular the lack of message acknowledgments, if a node crashes, then
+    all the tasks it was processing will be lost. It's possible to implement a custom
+    acknowledgment mechanism on top of ZeroMQ but we'll leave that as an exercise
+    for the reader.
+  id: totrans-353
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，鉴于ZeroMQ中`PUSH`/`PULL`套接字的低级性质以及特别是缺乏消息确认，如果一个节点崩溃，那么它正在处理的全部任务都将丢失。可以在ZeroMQ之上实现自定义确认机制，但我们将把这个留作读者的练习。
+- en: Another known limitation of this implementation is the fact that the workers
+    won't stop processing tasks if a match is found. This feature was intentionally
+    left out to make the examples as focused as possible on the pattern being discussed.
+    You can try adding this "stopping" mechanism as an exercise.
+  id: totrans-354
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种实现的一个已知限制是，如果找到匹配项，工作者不会停止处理任务。这个特性是有意被省略的，以便尽可能使示例专注于正在讨论的模式。你可以尝试添加这个“停止”机制作为练习。
+- en: Pipelines and competing consumers in AMQP
+  id: totrans-355
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: AMQP中的管道和竞争消费者
+- en: In the previous section, we saw how a parallel pipeline can be implemented in a peer-to-peer
+    context. Now, we are going to explore this pattern when applied in a broker-based
+    architecture using RabbitMQ.
+  id: totrans-356
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一节中，我们看到了如何在点对点环境中实现并行管道。现在，我们将探索当在基于代理的架构中使用RabbitMQ时应用此模式的情况。
+- en: Point-to-point communications and competing consumers
+  id: totrans-357
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 点对点通信和竞争消费者
+- en: 'In a peer-to-peer configuration, a pipeline is a very straightforward concept
+    to imagine. With a message broker in the middle, though, the relationships between
+    the various nodes of the system are a little bit harder to understand: the broker
+    itself acts as an intermediary for our communications and, often, we don''t really
+    know who is on the other side listening for messages. For example, when we send
+    a message using AMQP, we don''t deliver it directly to its destination, but instead
+    to an exchange and then to a queue. Finally, it will be for the broker to decide
+    where to route the message, based on the rules defined in the exchange, the bindings,
+    and the destination queues.'
+  id: totrans-358
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在对等网络配置中，管道是一个非常直观的概念。然而，在中间有消息代理的情况下，系统各个节点之间的关系就稍微难以理解了：代理本身充当我们通信的中介，而且我们通常并不真正知道谁在另一端监听消息。例如，当我们使用
+    AMQP 发送消息时，我们并不是直接将其发送到目的地，而是发送到一个交换机，然后到一个队列。最后，代理将根据交换机中定义的规则来决定将消息路由到何处。
+- en: If we want to implement a pipeline and a task distribution pattern using a system
+    like AMQP, we have to make sure that each message is received by only one consumer,
+    but this is impossible to guarantee if an exchange can potentially be bound to
+    more than one queue. The solution, then, is to send a message directly to the
+    destination queue, bypassing the exchange altogether. This way, we can make sure
+    that only one queue will ever receive the message. This communication pattern
+    is called **point-to-point**.
+  id: totrans-359
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们想在类似 AMQP 的系统中实现管道和任务分配模式，我们必须确保每个消息只被一个消费者接收，但如果一个交换机可能绑定到多个队列，这就无法保证。因此，解决方案是直接将消息发送到目标队列，完全绕过交换机。这样，我们可以确保只有一个队列会收到消息。这种通信模式被称为**点对点**。
+- en: 'Once we are able to send a set of messages directly to a single queue, we are
+    already half-way to implementing our task distribution pattern. In fact, the next
+    step comes naturally: when multiple consumers are listening on the same queue,
+    the messages will be distributed evenly across them, following a fanout distribution
+    pattern. As we already mentioned, in the context of message brokers this is better
+    known as the **Competing Consumers** pattern.'
+  id: totrans-360
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦我们能够直接将一组消息发送到单个队列，我们就已经完成了任务分配模式的一半。实际上，下一步自然而然地到来：当多个消费者监听同一个队列时，消息将均匀地分配给它们，遵循扇出分配模式。正如我们之前提到的，在消息代理的上下文中，这通常被称为**竞争消费者**模式。
+- en: Next, we are going to reimplement our simple hashsum cracker using AMQP, so
+    we can appreciate the differences to the peer-to-peer approach we have discussed
+    in the previous section.
+  id: totrans-361
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们将使用 AMQP 重新实现我们的简单哈希值破解器，这样我们可以欣赏到与之前章节中讨论的对等网络方法之间的差异。
+- en: Implementing the hashsum cracker using AMQP
+  id: totrans-362
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 使用 AMQP 实现哈希值破解器
+- en: 'We just learned that exchanges are the point in a broker where a message is
+    multicast to a set of consumers, while queues are the place where messages are
+    load balanced. With this knowledge in mind, let''s now implement our brute-force
+    hashsum cracker on top of an AMQP broker (which in our case is RabbitMQ). The
+    following figure gives you an overview of the system we want to implement:'
+  id: totrans-363
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们刚刚了解到，交换机是代理中消息被多播到一组消费者的点，而队列是消息进行负载均衡的地方。带着这些知识，现在让我们在 AMQP 代理（在我们的例子中是
+    RabbitMQ）上实现我们的暴力破解哈希值破解器。以下图示为我们想要实现的系统的概述：
+- en: '![A screenshot of a cell phone  Description automatically generated](img/B15729_13_19.png)'
+  id: totrans-364
+  prefs: []
+  type: TYPE_IMG
+  zh: '![手机屏幕截图  自动生成的描述](img/B15729_13_19.png)'
+- en: 'Figure 13.19: Task distribution architecture using a message queue broker'
+  id: totrans-365
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 13.19：使用消息队列代理的任务分配架构
+- en: 'As we discussed, to distribute a set of tasks across multiple workers, we need
+    to use a single queue. In *Figure 13.19*, we called this the *tasks queue*. On
+    the other side of the tasks queue, we have a set of workers, which are *competing
+    consumers*: in other words, each one will receive a different message from the
+    queue. The effect is that multiple tasks will execute in parallel on different
+    workers.'
+  id: totrans-366
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们讨论的，为了将一组任务分配给多个工作者，我们需要使用单个队列。在*图 13.19*中，我们称这个队列为**任务队列**。在任务队列的另一侧，我们有一组工作者，它们是**竞争消费者**：换句话说，每个都会从队列中接收不同的消息。结果是，多个任务将在不同的工作者上并行执行。
+- en: The results generated by the workers are published into another queue, which
+    we called the *results queue*, and then consumed by the results collector, which
+    is actually equivalent to a sink. In the entire architecture, we don't make use
+    of any exchange, we only send messages directly to their destination queue, implementing
+    a point-to-point type of communication.
+  id: totrans-367
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 工作进程生成的结果被发布到另一个队列，我们称之为*结果队列*，然后由结果收集器消费，实际上相当于一个接收器。在整个架构中，我们没有使用任何交换，我们只是直接将消息发送到它们的目标队列，实现了点对点类型的通信。
+- en: Implementing the producer
+  id: totrans-368
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 实现生产者
+- en: 'Let''s see how to implement such a system, starting from the producer (in the `producer.js`
+    file):'
+  id: totrans-369
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看如何实现这样一个系统，从生产者（在`producer.js`文件中）开始：
+- en: '[PRE22]'
+  id: totrans-370
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'As we can see, the absence of any exchange or binding makes the setup of an
+    AMQP-based application much simpler. There are however a few details to note:'
+  id: totrans-371
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如我们所见，没有交换或绑定的存在使得基于AMQP的应用程序的设置变得非常简单。然而，有几个细节需要注意：
+- en: Instead of creating a standard channel, we are creating a `confirmChannel`.
+    This is necessary as it creates a channel with some extra functionality, in particular,
+    it provides the `waitForConfirms()` function that we use later in the code to
+    wait until the broker confirms the reception of all the messages. This is necessary
+    to prevent the application from closing the connection to the broker too soon,
+    before all the messages have been dispatched from the local queue.
+  id: totrans-372
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们不是创建一个标准的通道，而是在创建一个`confirmChannel`。这是必要的，因为它创建了一个具有一些额外功能的通道，特别是它提供了我们在代码中稍后使用的`waitForConfirms()`函数，该函数用于等待代理确认接收了所有消息。这是必要的，以防止应用程序在所有消息从本地队列发送之前过早地关闭与代理的连接。
+- en: The core of the producer is the `channel.sendToQueue()` API, which is actually
+    new to us. As its name says, that's the API responsible for delivering a message
+    straight to a queue—the `tasks_queue` in our example—bypassing any exchange or
+    routing.
+  id: totrans-373
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 生产者的核心是`channel.sendToQueue()` API，实际上对我们来说是个新概念。正如其名称所示，这是负责将消息直接发送到队列的API——在我们的例子中是`tasks_queue`——绕过任何交换或路由。
+- en: Implementing the worker
+  id: totrans-374
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 实现工作进程
+- en: 'On the other side of the `tasks_queue`, we have the workers listening for the
+    incoming tasks. Let''s update the code of our existing `worker.js` module to use
+    AMQP:'
+  id: totrans-375
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在`tasks_queue`的另一侧，我们有监听传入任务的工人。让我们更新现有的`worker.js`模块代码以使用AMQP：
+- en: '[PRE23]'
+  id: totrans-376
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: Our new worker is also very similar to the one we implemented in the previous
+    section using ZeroMQ, except for the parts related to the exchange of messages.
+    In the preceding code, we can see how we first get a reference to the queue called `tasks_queue`
+    and then we start listening for incoming tasks using `channel.consume()`. Then,
+    every time a match is found, we send the result to the collector via the `results_queue`,
+    again using point-to-point communication. It's also important to note how we are
+    acknowledging every message with `channel.ack()` after the message has been completely
+    processed.
+  id: totrans-377
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的新工作进程与我们在上一节中使用ZeroMQ实现的类似，除了与消息交换相关的部分。在前面的代码中，我们可以看到我们首先获取名为`tasks_queue`的队列的引用，然后我们开始使用`channel.consume()`监听传入的任务。然后，每次找到匹配项时，我们通过`results_queue`将结果发送到收集器，再次使用点对点通信。同样重要的是要注意，我们在消息完全处理完毕后使用`channel.ack()`对每条消息进行确认。
+- en: If multiple workers are started, they will all listen on the same queue, resulting
+    in the messages being load balanced between them (they become *competing consumers*).
+  id: totrans-378
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果启动了多个工作进程，它们都将监听同一个队列，导致消息在它们之间进行负载均衡（它们成为*竞争消费者*）。
+- en: Implementing the result collector
+  id: totrans-379
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 实现结果收集器
+- en: 'The results collector is again a trivial module, simply printing any message
+    received to the console. This is implemented in the `collector.js` file, as follows:'
+  id: totrans-380
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 结果收集器再次是一个简单的模块，只是将接收到的任何消息打印到控制台。这实现在`collector.js`文件中，如下所示：
+- en: '[PRE24]'
+  id: totrans-381
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: Running the application
+  id: totrans-382
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 运行应用程序
+- en: 'Now everything is ready to give our new system a try. First, make sure that
+    the RabbitMQ server is running, then you can launch a couple of workers (in two
+    separate terminals), which will both connect to the same queue (`tasks_queue`)
+    so that every message will be load balanced between them:'
+  id: totrans-383
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在一切准备就绪，我们可以尝试我们的新系统。首先，确保RabbitMQ服务器正在运行，然后你可以启动几个工作进程（在两个不同的终端中），它们都将连接到同一个队列（`tasks_queue`），这样每个消息都会在它们之间进行负载均衡：
+- en: '[PRE25]'
+  id: totrans-384
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'Then, you can run the `collector` module and then the `producer` (by providing
+    the maximum word length and the hash to crack):'
+  id: totrans-385
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，你可以运行`collector`模块，然后运行`producer`（提供最大单词长度和要破解的哈希）：
+- en: '[PRE26]'
+  id: totrans-386
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: With this, we implemented a message pipeline and the Competing Consumers pattern
+    using AMQP.
+  id: totrans-387
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有了这个，我们使用 AMQP 实现了一个消息管道和竞争消费者模式。
+- en: 'It''s interesting to note that our new version of the hashsum cracker based
+    on AMQP takes slightly longer (compared to the ZeroMQ-based version) to execute
+    all the tasks and find a match. This is a practical demonstration of how a broker
+    can actually introduce a negative performance impact, compared to a more low-level
+    peer-to-peer approach. However, let''s not forget that with AMQP we are getting
+    much more out of the box compared to our ZeroMQ implementation. For example, with
+    the AMQP implementation, if a worker crashes, the messages it was processing won''t
+    be lost and will eventually be passed to another worker. So, remember to always
+    look at the bigger picture when choosing the right approach to use for your application:
+    a small delay may mean nothing compared to a massive increase in the overall complexity
+    of the system or to a lack of some important features.'
+  id: totrans-388
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 值得注意的是，我们基于 AMQP 的新版哈希值破解器在执行所有任务和找到匹配项方面花费的时间略长（与基于 ZeroMQ 的版本相比）。这实际上是一个演示，说明与更底层的点对点方法相比，代理可以如何引入负面的性能影响。然而，我们不应忘记，与我们的
+    ZeroMQ 实现相比，使用 AMQP 我们可以获得更多开箱即用的功能。例如，使用 AMQP 实现时，如果工作进程崩溃，它正在处理的消息不会丢失，最终会被传递给另一个工作进程。因此，记住在选择适用于您应用程序的正确方法时，始终要考虑大局：短暂的延迟与系统整体复杂性的大幅增加或某些重要功能的缺失相比可能微不足道。
+- en: Now, let's consider another broker-based approach for implementing task distribution
+    patterns, this time built on top of Redis Streams.
+  id: totrans-389
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们考虑另一种基于代理的任务分配模式实现方法，这次是在 Redis Streams 之上构建的。
+- en: Distributing tasks with Redis Streams
+  id: totrans-390
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用 Redis Streams 分配任务
+- en: After seeing how the Task Distribution pattern can be implemented using ZeroMQ
+    and AMQP, we are now going to see how we can implement this pattern leveraging
+    Redis Streams.
+  id: totrans-391
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在了解了如何使用 ZeroMQ 和 AMQP 实现任务分配模式之后，我们现在将看到如何利用 Redis Streams 来实现这个模式。
+- en: Redis consumer groups
+  id: totrans-392
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: Redis 消费者组
+- en: Before diving into some code, we need to learn about a critical feature of Redis
+    that allows us to implement a Task Distribution pattern using Redis Streams. This
+    feature is called **consumer groups** and is an implementation of the Competing
+    Consumer pattern (with the addition of some useful accessories) on top of Redis
+    Streams.
+  id: totrans-393
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在深入研究代码之前，我们需要了解 Redis 的一个关键特性，它允许我们使用 Redis Streams 实现任务分配模式。这个特性被称为 **消费者组**，它是在
+    Redis Streams 之上实现竞争消费者模式（添加了一些有用的附件）的一个实现。
+- en: A consumer group is a stateful entity, identified by a name, which comprises
+    a set of consumers identified by a name. When the consumers in the group try to
+    read the stream, they will receive the records in a round-robin configuration.
+  id: totrans-394
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 消费者组是一个有状态的实体，由一个名称标识，它包含一组由名称标识的消费者。当组中的消费者尝试读取流时，它们将以轮询配置接收记录。
+- en: Each record has to be explicitly acknowledged, otherwise, the record will be
+    kept in a *pending* state. Each consumer can only access its own history of pending
+    records unless it explicitly *claims* the records of another consumer. This is
+    useful if a consumer crashes while processing a record. When the consumer comes
+    back online, the first thing it should do is retrieve its list of pending records
+    and process those before requesting new records from the stream. *Figure 13.20*
+    provides a visual representation of how consumer groups work in Redis.
+  id: totrans-395
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 每条记录都必须被显式地确认，否则，记录将保持在 *待处理* 状态。每个消费者只能访问其自己的待处理记录历史，除非它显式地 *声明* 另一个消费者的记录。这在消费者在处理记录时崩溃时很有用。当消费者重新上线时，它应该做的第一件事是检索其待处理记录列表并处理这些记录，然后再从流中请求新的记录。*图
+    13.20* 提供了消费者组在 Redis 中如何工作的视觉表示。
+- en: '![A picture containing screenshot  Description automatically generated](img/B15729_13_20.png)'
+  id: totrans-396
+  prefs: []
+  type: TYPE_IMG
+  zh: '![包含截图的图片 自动生成描述](img/B15729_13_20.png)'
+- en: 'Figure 13.20: A Redis Stream consumer group'
+  id: totrans-397
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 13.20：Redis Stream 消费者组
+- en: We can note how the two consumers in the group receive two different records
+    (B for Consumer 1 and C for Consumer 2) when they try to read from the stream.
+    The consumer group also stores the ID of the last retrieved record (record C),
+    so that at the successive read operation the consumer group knows what's the next
+    record to read. We can also note how Consumer 1 has a pending record (A), which
+    is a record that it's still processing or couldn't process. Consumer 1 can implement
+    a retry algorithm to make sure to process all the pending records assigned to
+    itself.
+  id: totrans-398
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以注意到，当两个消费者尝试从流中读取时，他们接收到了两个不同的记录（B为消费者1和C为消费者2）。消费者组还存储了最后检索到的记录的ID（记录C），这样在后续的读取操作中，消费者组就知道下一个要读取的记录是什么。我们还可以注意到消费者1有一个挂起的记录（A），这是一个它仍在处理或无法处理的记录。消费者1可以实现重试算法，以确保处理分配给它的所有挂起记录。
+- en: A Redis Stream can have multiple consumer groups. This way it's possible to
+    simultaneously apply different types of processing to the same data.
+  id: totrans-399
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Redis Stream可以有多个消费者组。这样，就可以同时对相同的数据应用不同类型的处理。
+- en: Now let's put into practice what we just learned about Redis consumer groups
+    to implement our hashsum cracker.
+  id: totrans-400
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们将我们刚刚学到的关于Redis消费者组的知识付诸实践，以实现我们的hashsum破解器。
+- en: Implementing the hashsum cracker using Redis Streams
+  id: totrans-401
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 使用Redis Streams实现hashsum破解器
+- en: 'The architecture of our hashsum cracker with Redis Streams is going to resemble
+    closely that of the previous AMQP example. In fact, we are going to have two different
+    streams (in the AMQP examples they were queues): one stream to hold the tasks
+    to be processed (`tasks_stream`) and another stream to hold the results coming
+    from the workers (`results_stream`).'
+  id: totrans-402
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们使用Redis Streams的hashsum破解器的架构将非常类似于之前的AMQP示例。实际上，我们将有两个不同的流（在AMQP示例中它们是队列）：一个流用于存储要处理的任务（`tasks_stream`）和另一个流用于存储来自工作进程的结果（`results_stream`）。
+- en: Then, we are going to use a consumer group to distribute the tasks from the
+    `tasks_stream` to the workers of our application (our workers are the consumers).
+  id: totrans-403
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，我们将使用消费者组将`tasks_stream`中的任务分配给我们的应用程序的工作进程（我们的工作进程是消费者）。
+- en: Implementing the producer
+  id: totrans-404
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 实现生产者
+- en: 'Let''s start by implementing the producer (in the `producer.js` file):'
+  id: totrans-405
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们从实现生产者（在`producer.js`文件中）开始：
+- en: '[PRE27]'
+  id: totrans-406
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: As we can see, there is nothing new to us in the implementation of the new `producer.js`
+    module. In fact, we already know very well how to add records to a stream; all
+    we have to do is invoke `xadd()` as discussed in the *Reliable messaging with
+    streams* section.
+  id: totrans-407
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如我们所见，在新的`producer.js`模块的实现中，对我们来说没有什么新的东西。事实上，我们非常清楚如何向流中添加记录；我们只需要调用*可靠消息传递与流*部分中讨论的`xadd()`即可。
+- en: Implementing the worker
+  id: totrans-408
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 实现工作进程
+- en: 'Next, we need to adapt our worker so it can interface with a Redis Stream using
+    a consumer group. This is the core of all the architecture, as in here, in the
+    worker, we leverage consumer groups and their features. So, let''s implement the
+    new `worker.js` module:'
+  id: totrans-409
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们需要调整我们的工作进程，使其能够通过消费者组与Redis Stream接口。这是所有架构的核心，因为在工作进程中，我们利用消费者组和它们的特性。因此，让我们实现新的`worker.js`模块：
+- en: '[PRE28]'
+  id: totrans-410
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'OK, there are a lot of moving parts in the new worker code. So, let''s analyze
+    it one step at a time:'
+  id: totrans-411
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 好的，新的工作代码中有许多动态部分。因此，让我们一步一步地分析它：
+- en: 'First, we need to make sure that the consumer group exists before we can use
+    it. We can do that with the `xgroup` command, which we invoke with the following
+    parameters:'
+  id: totrans-412
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 首先，在我们能够使用它之前，我们需要确保消费者组存在。我们可以使用`xgroup`命令来做到这一点，我们通过以下参数来调用它：
+- en: '`''CREATE''` is the keyword to use when we want to create a consumer group.
+    In fact, with the `xgroup` command, we can also destroy the consumer group, remove
+    a consumer, or update the last read record ID, using different subcommands.'
+  id: totrans-413
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`''CREATE''`是我们想要创建消费者组时使用的关键字。实际上，使用`xgroup`命令，我们还可以使用不同的子命令来销毁消费者组、删除消费者或更新最后读取的记录ID。'
+- en: '`''tasks_stream''` is the name of the stream we want to read from.'
+  id: totrans-414
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`''tasks_stream''`是我们想要读取的流的名称。'
+- en: '`''workers_group''` is the name of the consumer group.'
+  id: totrans-415
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`''workers_group''`是消费者组的名称。'
+- en: The fourth argument represents the record ID from where the consumer group should
+    start consuming records from the stream. Using `'$'` (dollar sign) means that
+    the consumer group should start reading the stream from the ID of the last record
+    currently in the stream.
+  id: totrans-416
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 第四个参数表示消费者组应该从流中开始消费记录的记录ID。使用`'$'`（美元符号）表示消费者组应该从流中当前最后一条记录的ID开始读取。
+- en: '`''MKSTREAM''` is an extra parameter that instructs Redis to create the stream
+    if it doesn''t exist already.'
+  id: totrans-417
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`''MKSTREAM''` 是一个额外的参数，指示 Redis 在不存在的情况下创建流。'
+- en: 'Next, we read all the pending records belonging to the current consumer. Those
+    are the leftover records from a previous run of the consumer that weren''t processed
+    because of an abrupt interruption of the application (such as a crash). If the
+    same consumer (with the same name) terminated properly during the last run, without
+    errors, then this list would most likely be empty. As we already mentioned, each
+    consumer has access only to its own pending records. We retrieve this list with
+    a `xreadgroup` command and the following arguments:'
+  id: totrans-418
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来，我们读取属于当前消费者的所有待处理记录。这些是从消费者之前运行中遗留的记录，由于应用程序的突然中断（如崩溃）而没有被处理。如果相同的消费者（具有相同的名称）在上次运行中正确终止，没有错误，那么这个列表很可能是空的。正如我们之前提到的，每个消费者只能访问其自己的待处理记录。我们使用
+    `xreadgroup` 命令和以下参数检索此列表：
+- en: '`''GROUP'', ''workers_group'', consumerName` is a mandatory trio where we specify
+    the name of the consumer group (`''workers_group''`) and the name of the consumer
+    (`consumerName`) that we read from the command-line inputs.'
+  id: totrans-419
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`''GROUP'', ''workers_group'', consumerName` 是一个强制性的三联组，其中我们指定消费者组的名称（`''workers_group''`）和从命令行输入读取的消费者名称（`consumerName`）。'
+- en: Then we specify the stream we would like to read with `'STREAMS', 'tasks_stream'`.
+  id: totrans-420
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后我们指定我们想要读取的流，使用 `'STREAMS', 'tasks_stream'`。
+- en: Finally, we specify `'0'` as the last argument, which is the ID from which we
+    should start reading. Essentially, we are saying that we want to read all pending
+    messages belonging to the current consumer starting from the first message.
+  id: totrans-421
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，我们指定 `'0'` 作为最后一个参数，这是我们应开始读取的 ID。本质上，我们是在说我们想要从第一条消息开始读取属于当前消费者的所有待处理消息。
+- en: 'Then, we have another call to `xreadgroup()`, but this time it has a completely
+    different semantic. In this case, in fact, we want to start reading new records
+    from the stream (and not access the consumer''s own history). This is possible
+    with the following list of arguments:'
+  id: totrans-422
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们再次调用 `xreadgroup()`，但这次它具有完全不同的语义。在这种情况下，实际上，我们想要从流中开始读取新的记录（而不是访问消费者的历史记录）。这可以通过以下参数列表实现：
+- en: 'As in the previous call of `xreadgroup()`, we specify the consumer group that
+    we want to use for the read operation with the three arguments: `''GROUP'', ''workers_group'',
+    consumerName`.'
+  id: totrans-423
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 与之前的 `xreadgroup()` 调用一样，我们使用三个参数指定我们想要用于读取操作的消费者组：`'GROUP', 'workers_group',
+    consumerName`。
+- en: 'Then we indicate that the call should block if there are no new records currently
+    available instead of returning an empty list. We do that with the following two
+    arguments: `''BLOCK'', ''0''`. The last argument is the timeout after which the
+    function returns anyway, even without results. `''0''` means that we want to wait
+    indefinitely.'
+  id: totrans-424
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们指示如果当前没有新记录可用，调用应阻塞而不是返回空列表。我们使用以下两个参数来实现这一点：`'BLOCK', '0'`。最后一个参数是函数返回的超时时间，即使没有结果也会返回。`'0'`
+    表示我们希望无限期地等待。
+- en: The next two arguments, `'COUNT'` and `'1'`, tell Redis that we are interested
+    in getting one record per call.
+  id: totrans-425
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 下两个参数 `'COUNT'` 和 `'1'` 告诉 Redis 我们对每次调用获取一条记录感兴趣。
+- en: Next, we specify the stream we want to read from with `'STREAMS', 'tasks_stream'`.
+  id: totrans-426
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来，我们使用 `'STREAMS', 'tasks_stream'` 指定我们想要读取的流。
+- en: Finally, with the special ID `'>'`(greater than symbol), we indicate that we
+    are interested in any record not yet retrieved by this consumer group.
+  id: totrans-427
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，使用特殊的 ID `'>'`（大于符号），我们表明我们感兴趣的是任何尚未被此消费者组检索的记录。
+- en: Finally, in the `processAndAck()` function, we check if we have a match and
+    if that's the case, we append a new record to the `results_stream`. At last, when
+    all the processing for the record returned by `xreadgroup()` completes, we invoke
+    the Redis `xack` command to acknowledge that the record has been successfully
+    consumed, which results in the record being removed from the pending list for
+    the current consumer.
+  id: totrans-428
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，在 `processAndAck()` 函数中，我们检查是否有匹配项，如果是的话，我们将一条新的记录追加到 `results_stream`。最后，当
+    `xreadgroup()` 返回的记录的所有处理都完成后，我们调用 Redis 的 `xack` 命令来确认该记录已被成功消费，这将导致记录从当前消费者的待处理列表中移除。
+- en: Phew! There was a lot going on in the `worker.js` module. It's interesting to
+    note that most of the complexity comes from the large amount of arguments required
+    by the various Redis commands.
+  id: totrans-429
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 呼吸！在 `worker.js` 模块中发生了很多事情。值得注意的是，大部分复杂性都来自于各种 Redis 命令所需的大量参数。
+- en: You may be surprised to know that this example just scratches the surface, as
+    there is a lot more to know about Redis Streams, and in particular, consumer groups.
+    Check out the official Redis introduction to Streams for more details at [nodejsdp.link/redis-streams](http://nodejsdp.link/redis-streams).
+  id: totrans-430
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可能会惊讶地发现，这个例子只是触及了表面，因为关于Redis Streams还有很多东西要了解，特别是消费者组。查看官方Redis关于流的介绍，了解更多详情，请访问[nodejsdp.link/redis-streams](http://nodejsdp.link/redis-streams)。
+- en: 'Now, everything should be ready for us to try out this new version of the hashsum
+    cracker. Let''s start a couple of workers, but this time remember to assign them
+    a name, which will be used to identify them in the consumer group:'
+  id: totrans-431
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，一切准备就绪，我们可以尝试这个hashsum破解器的新版本了。让我们启动几个工作进程，但这次记得给他们分配一个名称，这个名称将用于在消费者组中识别它们：
+- en: '[PRE29]'
+  id: totrans-432
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'Then, you can run the collector and the producer as we did in the previous
+    examples:'
+  id: totrans-433
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，你可以像之前的示例那样运行收集器和生产者：
+- en: '[PRE30]'
+  id: totrans-434
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: This concludes our exploration of the task distribution patterns, so now, we'll
+    take a closer look at the request/reply patterns.
+  id: totrans-435
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这标志着我们对任务分配模式的探索结束，因此现在我们将更深入地研究请求/回复模式。
+- en: Request/Reply patterns
+  id: totrans-436
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 请求/回复模式
+- en: One-way communications can give us great advantages in terms of parallelism
+    and efficiency, but alone they are not able to solve all our integration and communication
+    problems. Sometimes, a good old request/reply pattern might just be the perfect
+    tool for the job. But, there are situations in which all we have is an asynchronous
+    one-way channel. It's therefore important to know the various patterns and approaches
+    required to build an abstraction that would allow us to exchange messages in a request/reply
+    fashion on top of a one-way channel. That's exactly what we are going to learn
+    next.
+  id: totrans-437
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 单向通信可以在并行性和效率方面给我们带来巨大的优势，但仅凭它们并不能解决我们所有的集成和通信问题。有时，一个简单的请求/回复模式可能正是完成这项工作的完美工具。但是，也存在这样的情况，我们唯一拥有的只是一个异步的单向通道。因此，了解构建抽象所需的多种模式和方法是重要的，这样我们才能在单向通道上以请求/回复的方式交换消息。这正是我们接下来要学习的。
+- en: Correlation Identifier
+  id: totrans-438
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 关联标识符
+- en: The first Request/Reply pattern that we are going to learn is called the **Correlation
+    Identifier** and it represents the basic block for building a request/reply abstraction
+    on top of a one-way channel.
+  id: totrans-439
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将要学习的第一个请求/回复模式被称为**关联标识符**，它是在单向通道上构建请求/回复抽象的基本块。
+- en: 'The pattern involves marking each request with an identifier, which is then
+    attached to the response by the receiver: this way, the sender of the request
+    can correlate the two messages and return the response to the right handler. This
+    elegantly solves the problem in the context of a one-way asynchronous channel,
+    where messages can travel in any direction at any time. Let''s take a look at
+    the example in the following diagram:'
+  id: totrans-440
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种模式涉及在每个请求上标记一个标识符，然后由接收者将其附加到响应上：这样，请求的发送者就可以关联这两个消息，并将响应返回给正确的处理者。这种方式优雅地解决了单向异步通道中的问题，其中消息可以在任何时间以任何方向旅行。让我们看一下以下图中的示例：
+- en: '![](img/B15729_13_21.png)'
+  id: totrans-441
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/B15729_13_21.png)'
+- en: 'Figure 13.21: Request/reply message exchange using correlation identifiers'
+  id: totrans-442
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图13.21：使用关联标识符进行请求/回复消息交换
+- en: The scenario depicted in *Figure 13.21* shows how using a correlation ID allows
+    us to match each response with the right request, even if those are sent and then
+    received in a different order. The way this works will be much clearer once we
+    start working on our next example.
+  id: totrans-443
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*图13.21*中描述的场景展示了如何使用关联ID来匹配每个响应与正确的请求，即使它们是按不同的顺序发送和接收的。一旦我们开始处理下一个示例，这种工作方式将变得更加清晰。'
+- en: Implementing a request/reply abstraction using correlation identifiers
+  id: totrans-444
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 使用关联标识符实现请求/回复抽象
+- en: Let's now start working on an example by choosing the simplest type of one-way
+    channel; one that is point-to-point (which directly connects two nodes of the
+    system) and fully duplex (messages can travel in both directions).
+  id: totrans-445
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们现在通过选择最简单类型的单向通道来开始一个示例；这是一个点对点（直接连接系统中的两个节点）且全双工（消息可以双向旅行）的通道。
+- en: 'In this *simple channel* category, we can find, for example, WebSockets: they
+    establish a point-to-point connection between the server and browser, and the
+    messages can travel in any direction. Another example is the communication channel
+    that is created when a child process is spawned using `child_process.fork()` (we
+    already met this API in *Chapter 11*, *Advanced Recipes*). This channel too is
+    asynchronous, point-to-point, and duplex since it connects the parent only with
+    the child process and it allows messages to travel in any direction. This is probably
+    the most basic channel of this category, so that''s what we are going to use in
+    the next example.'
+  id: totrans-446
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个*简单通道*类别中，我们可以找到，例如，WebSocket：它们在服务器和浏览器之间建立一个点对点连接，消息可以双向传输。另一个例子是使用`child_process.fork()`（我们在*第11章*，*高级食谱*中已经遇到这个API）创建的通信通道。这个通道也是异步的、点对点的、全双工的，因为它只连接父进程和子进程，并允许消息双向传输。这可能是这个类别中最基本的通道，所以这就是我们将在下一个示例中使用的。
+- en: The plan for the next application is to build an abstraction in order to wrap
+    the channel created between the parent process and the child process. This abstraction
+    should provide a request/reply communication channel by automatically marking
+    each request with a correlation identifier and then matching the ID of any incoming
+    reply against the list of request handlers awaiting a response.
+  id: totrans-447
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下一个应用程序的计划是构建一个抽象，以封装父进程和子进程之间创建的通道。这个抽象应该通过自动标记每个请求的关联标识符，然后匹配任何传入回复的ID与等待响应的请求处理程序列表，来提供一个请求/回复通信通道。
+- en: From *Chapter 11*, *Advanced Recipes*, we should remember that the parent process
+    can send a message to a child with `child.send(message)`, while receiving messages
+    is possible with the `child.on('message', callback)` event handler.
+  id: totrans-448
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从*第11章*，*高级食谱*，我们应该记住，父进程可以使用`child.send(message)`向子进程发送消息，而接收消息则是通过`child.on('message',
+    callback)`事件处理程序实现的。
+- en: In a similar way, the child process can send a message to the parent process
+    using `process.send(message)` and receive messages with `process.on('message',
+    callback)`.
+  id: totrans-449
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以类似的方式，子进程可以使用`process.send(message)`向父进程发送消息，并使用`process.on('message', callback)`接收消息。
+- en: This means that the interface of the channel available in the parent process
+    is identical to the one available in the child. This will allow us to build a
+    common abstraction that can be used from both ends of the channel.
+  id: totrans-450
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这意味着父进程中可用的通道接口与子进程中可用的接口相同。这将允许我们构建一个可以从通道两端使用的通用抽象。
+- en: Abstracting the request
+  id: totrans-451
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 抽象请求
+- en: 'Let''s start building this abstraction by considering the part responsible
+    for sending new requests. Let''s create a new file called `createRequestChannel.js`
+    with the following content:'
+  id: totrans-452
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们通过考虑负责发送新请求的部分来开始构建这个抽象。让我们创建一个名为`createRequestChannel.js`的新文件，内容如下：
+- en: '[PRE31]'
+  id: totrans-453
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: 'This is how our request abstraction works:'
+  id: totrans-454
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是我们的请求抽象是如何工作的：
+- en: The `createRequestChannel()` is a factory that wraps the input channel and returns
+    a `sendRequest()` function used to send a request and receive a reply. The magic
+    of the pattern lies in the `correlationMap` variable, which stores the association
+    between the outgoing requests and their reply handlers.
+  id: totrans-455
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`createRequestChannel()`是一个工厂，它包装输入通道并返回一个`sendRequest()`函数，用于发送请求并接收回复。这个模式的魔力在于`correlationMap`变量，它存储了出站请求和它们的回复处理程序之间的关联。'
+- en: The `sendRequest()` function is used to send new requests. Its job is to generate
+    a correlation ID using the `nanoid` package ([nodejsdp.link/nanoid](http://nodejsdp.link/nanoid))
+    and then wrap the request data in an envelope that allows us to specify the correlation
+    ID and the type of the message. The correlation ID and the handler responsible
+    for returning the reply data to the caller (which uses `resolve()` under the hood)
+    are then added to the `correlationMap` so that the handler can be retrieved later
+    using the correlation ID. We also implemented a very simple request timeout logic.
+  id: totrans-456
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`sendRequest()`函数用于发送新的请求。它的任务是使用`nanoid`包（[nodejsdp.link/nanoid](http://nodejsdp.link/nanoid)）生成一个关联ID，然后将请求数据包装在一个允许我们指定关联ID和消息类型的信封中。关联ID和负责将回复数据返回给调用者（在底层使用`resolve()`）的处理程序随后被添加到`correlationMap`中，以便可以使用关联ID稍后检索处理程序。我们还实现了一个非常简单的请求超时逻辑。'
+- en: When the factory is invoked, we also start listening for incoming messages.
+    If the correlation ID of the message (contained in the `inReplyTo` property) matches
+    any of the IDs contained in the `correlationMap` map, we know that we just received
+    a reply, so we obtain the reference to the associated response handler and we
+    invoke it with the data contained in the message.
+  id: totrans-457
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当工厂被调用时，我们也会开始监听传入的消息。如果消息的相关 ID（包含在 `inReplyTo` 属性中）与 `correlationMap` 映射中包含的任何
+    ID 匹配，我们知道我们刚刚收到了一个回复，所以我们获取相关响应处理器的引用，并使用消息中的数据调用它。
+- en: That's it for the `createRequestChannel.js` module. Let's move on to the next
+    part.
+  id: totrans-458
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是 `createRequestChannel.js` 模块的结束。让我们继续下一部分。
+- en: Abstracting the reply
+  id: totrans-459
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 抽象回复
+- en: 'We are just a step away from implementing the full pattern, so let''s see how
+    the counterpart of the request channel, which is the reply channel, works. Let''s
+    create another file called `createReplyChannel.js`, which will contain the abstraction
+    for wrapping the reply handler:'
+  id: totrans-460
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们离实现完整模式只有一步之遥，所以让我们看看请求通道的对立面，即回复通道，是如何工作的。让我们创建另一个名为 `createReplyChannel.js`
+    的文件，该文件将包含包装回复处理器的抽象：
+- en: '[PRE32]'
+  id: totrans-461
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: 'Our `createReplyChannel()` function is again a factory that returns another
+    function used to register new reply handlers. This is what happens when a new
+    handler is registered:'
+  id: totrans-462
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的 `createReplyChannel()` 函数再次是一个工厂，它返回另一个用于注册新回复处理器的函数。这是注册新处理器时发生的情况：
+- en: When we receive a new request, we immediately invoke the handler by passing
+    the data contained in the message.
+  id: totrans-463
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当我们收到一个新的请求时，我们立即通过传递消息中的数据调用处理器。
+- en: Once the handler has done its work and returned its reply, we build an envelope
+    around the data and include the type of the message and the correlation ID of
+    the request (the `inReplyTo` property), then we put everything back into the channel.
+  id: totrans-464
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 一旦处理器完成其工作并返回其回复，我们就在数据周围构建一个信封，包括消息的类型和请求的相关 ID（`inReplyTo` 属性），然后将所有内容放回通道中。
+- en: 'The amazing thing about this pattern is that in Node.js it comes very easily:
+    everything for us is already asynchronous, so an asynchronous request/reply communication
+    built on top of a one-way channel is not very different from any other asynchronous
+    operation, especially if we build an abstraction to hide its implementation details.'
+  id: totrans-465
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个模式令人惊叹的地方在于，在 Node.js 中它非常容易实现：对我们来说，一切都是异步的，所以基于单向通道的异步请求/回复通信与其他任何异步操作没有太大区别，特别是如果我们构建一个抽象来隐藏其实现细节。
+- en: Trying the full request/reply cycle
+  id: totrans-466
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 尝试完整的请求/回复周期
+- en: 'Now we are ready to try our new asynchronous request/reply abstraction. Let''s
+    create a sample *replier* in a file named `replier.js`:'
+  id: totrans-467
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们已经准备好尝试我们新的异步请求/回复抽象。让我们在名为 `replier.js` 的文件中创建一个示例 *回复者*：
+- en: '[PRE33]'
+  id: totrans-468
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: Our replier simply calculates the sum between the two numbers received in the
+    request and returns the result after a certain delay (which is also specified
+    in the request). This will allow us to verify that the order of the responses
+    can be different from the order in which we sent the requests, to confirm that
+    our pattern is working. With the last instruction of the module, we send a message
+    back to the parent process to indicate that the child is ready to accept requests.
+  id: totrans-469
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的回复者简单地计算请求中接收到的两个数字之间的和，并在一定延迟后（该延迟也在请求中指定）返回结果。这将允许我们验证响应的顺序可以与发送请求的顺序不同，以确认我们的模式正在工作。模块的最后一条指令，我们向父进程发送一条消息，表示子进程已准备好接受请求。
+- en: 'The final step to complete the example is to create the requestor in a file
+    named `requestor.js`, which also has the task of starting the replier using `child_process.fork()`:'
+  id: totrans-470
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 完成示例的最终步骤是在名为 `requestor.js` 的文件中创建请求者，该文件还具有使用 `child_process.fork()` 启动回复者的任务：
+- en: '[PRE34]'
+  id: totrans-471
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: The requestor starts the replier (1) and then passes its reference to our `createRequestChannel()` abstraction.
+    We then wait for the child process to be available (2) and run a couple of sample
+    requests (3, 4). Finally, we wait for both requests to complete (5) and we disconnect
+    the channel (6) to allow the child process (and therefore the parent process)
+    to exit gracefully.
+  id: totrans-472
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请求者启动回复者（1）然后将其引用传递给我们的 `createRequestChannel()` 抽象。然后我们等待子进程可用（2）并运行几个示例请求（3，4）。最后，我们等待两个请求都完成（5）并断开通道（6），以便子进程（以及父进程）能够优雅地退出。
+- en: 'To try out the sample, simply launch the `requestor.js` module. The output
+    should be something similar to the following:'
+  id: totrans-473
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要尝试示例，只需启动 `requestor.js` 模块。输出应该类似于以下内容：
+- en: '[PRE35]'
+  id: totrans-474
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: This confirms that our implementation of the Request/Reply messaging pattern
+    works perfectly and that the replies are correctly associated with their respective
+    requests, no matter in what order they are sent or received.
+  id: totrans-475
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这证实了我们的请求/回复消息模式实现得非常完美，并且回复被正确地关联到它们各自的请求，无论它们的发送或接收顺序如何。
+- en: The technique we've discussed in this section works great when we have a single
+    point-to-point channel. But what happens if we have a more complex architecture
+    with multiple channels or queues? That's what we are going to see next.
+  id: totrans-476
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在本节中讨论的技术在只有一个点对点通道时效果很好。但如果我们有一个更复杂的架构，包含多个通道或队列，会发生什么呢？这正是我们接下来要看到的。
+- en: Return address
+  id: totrans-477
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 返回地址
+- en: The Correlation Identifier is the fundamental pattern for creating a request/reply
+    communication on top of a one-way channel. However, it's not enough when our messaging architecture
+    has more than one channel or queue, or when there can be potentially more than
+    one requestor. In these situations, in addition to a correlation ID, we also need
+    to know the **return address**, a piece of information that allows the replier
+    to send the response back to the original sender of the request.
+  id: totrans-478
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 相关标识符是在单通道上创建请求/回复通信的基本模式。然而，当我们的消息架构有多个通道或队列，或者可能存在多个请求者时，这就不够了。在这些情况下，除了相关ID之外，我们还需要知道**返回地址**，这是一条信息，允许回复者将响应发送回请求的原始发送者。
+- en: Implementing the Return Address pattern in AMQP
+  id: totrans-479
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 在AMQP中实现返回地址模式
+- en: In the context of an AMQP-based architecture, the return address is the queue
+    where the requestor is listening for incoming replies. Because the response is
+    meant to be received by only one requestor, it's important that the queue is private
+    and not shared across different consumers. From these properties, we can infer
+    that we are going to need a transient queue scoped to the connection of the requestor,
+    and that the replier has to establish a point-to-point communication with the
+    return queue to be able to deliver its responses.
+  id: totrans-480
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在基于AMQP的架构中，返回地址是请求者监听传入回复的队列。因为响应只应该被一个请求者接收，所以队列必须是私有的，并且不能在不同消费者之间共享。从这些属性中，我们可以推断出我们需要一个作用域限于请求者连接的短暂队列，并且回复者必须与返回队列建立点对点通信，以便能够发送其响应。
+- en: 'The following diagram gives us an example of this scenario:'
+  id: totrans-481
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下图表为我们提供了一个这种场景的示例：
+- en: '![](img/B15729_13_22.png)'
+  id: totrans-482
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B15729_13_22.png)'
+- en: 'Figure 13.22: Request/reply messaging architecture using AMQP'
+  id: totrans-483
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图13.22：使用AMQP的请求/回复消息架构
+- en: '*Figure 13.22* shows us how each requestor has its own private queue, specifically
+    intended to handle the replies to their requests. All requests are sent instead
+    to a single queue, which is then consumed by the replier. The replier will route
+    the replies to the correct response queue thanks to the *return address* information
+    specified in the request.'
+  id: totrans-484
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*图13.22* 展示了每个请求者都有自己的私有队列，专门用于处理其请求的回复。所有请求都发送到一个单一的队列，然后由回复者消费。回复者将利用请求中指定的
+    *返回地址* 信息将回复路由到正确的响应队列。'
+- en: In fact, to create a Request/Reply pattern on top of AMQP, all we need to do
+    is to specify the name of the response queue in the message properties, so that
+    the replier knows where the response message has to be delivered.
+  id: totrans-485
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实际上，为了在AMQP之上创建请求/回复模式，我们只需要在消息属性中指定响应队列的名称，这样回复者就知道响应消息应该发送到哪个位置。
+- en: The theory seems very straightforward, so let's see how to implement this in
+    a real application.
+  id: totrans-486
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 理论看起来非常直接，那么让我们看看如何在实际应用中实现它。
+- en: Implementing the request abstraction
+  id: totrans-487
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 实现请求抽象
+- en: 'Let''s now build a request/reply abstraction on top of AMQP. We will use RabbitMQ
+    as a broker, but any compatible AMQP broker should do the job. Let''s start with
+    the request abstraction, implemented in the `amqpRequest.js` module. We will show
+    the code here one piece at a time to make the explanation easier. Let''s start
+    from the constructor of the `AMQPRequest` class:'
+  id: totrans-488
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们将在AMQP之上构建一个请求/回复抽象。我们将使用RabbitMQ作为代理，但任何兼容的AMQP代理都应该可以完成这项工作。让我们从请求抽象开始，它在`amqpRequest.js`模块中实现。我们将分步骤展示代码，以便更容易解释。让我们从`AMQPRequest`类的构造函数开始：
+- en: '[PRE36]'
+  id: totrans-489
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: As we can see from the preceding code, we will again be using the Correlation
+    Identifier pattern, so we are going to need a map to hold the association between
+    the message ID and the relative handler.
+  id: totrans-490
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前述代码所示，我们还将再次使用相关标识符模式，因此我们需要一个映射来保存消息ID和相对处理器的关联。
+- en: 'Then, we need a method to initialize the AMQP connection and its objects:'
+  id: totrans-491
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，我们需要一个方法来初始化AMQP连接及其对象：
+- en: '[PRE37]'
+  id: totrans-492
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: The interesting thing to observe here is how we create the queue to hold the
+    replies (1). The peculiarity is that we don't specify any name, which means that
+    a random one will be chosen for us. In addition to this, the queue is *exclusive*,
+    which means that it's bound to the currently active AMQP connection and it will
+    be destroyed when the connection closes. There is no need to bind the queue to
+    an exchange as we don't need any routing or distribution to multiple queues, which
+    means that the messages have to be delivered straight into our response queue.
+    In the second part of the function (2), we start to consume the messages from
+    the `replyQueue`. Here we match the ID of the incoming message with the one we
+    have in our `correlationMap` and invoke the associated handler.
+  id: totrans-493
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里值得观察的有趣之处在于我们如何创建一个用于存储回复的队列（1）。其特殊性在于我们没有指定任何名称，这意味着将为我们随机选择一个。除此之外，队列是**独占的**，这意味着它绑定到当前活动的AMQP连接，并在连接关闭时被销毁。我们没有必要将队列绑定到交换机，因为我们不需要任何路由或多队列的分配，这意味着消息必须直接发送到我们的响应队列。在函数的第二部分（2）中，我们开始从`replyQueue`消费消息。在这里，我们将传入消息的ID与我们`correlationMap`中的ID进行匹配，并调用相关处理程序。
+- en: 'Next, let''s see how it''s possible to send new requests:'
+  id: totrans-494
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，让我们看看如何发送新的请求：
+- en: '[PRE38]'
+  id: totrans-495
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: The `send()` method accepts as input the name of the requests `queue` and the `message` to
+    send. As we learned in the previous section, we need to generate a correlation
+    ID (1) and associate it to a handler responsible for returning the reply to the
+    caller (2). Finally, we send the message (3), specifying the `correlationId` and
+    the `replyTo` property as metadata. In AMQP, in fact, we can specify a set of
+    properties (or metadata) to be passed to the consumer, together with the main
+    message. The metadata object is passed as the third argument of the `sendToQueue()`
+    method.
+  id: totrans-496
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`send()`方法接受要发送的请求`queue`名称和要发送的`message`作为输入。正如我们在上一节中学到的，我们需要生成一个关联ID（1）并将其关联到负责向调用者返回回复的处理程序（2）。最后，我们发送消息（3），指定`correlationId`和`replyTo`属性作为元数据。实际上，在AMQP中，我们可以指定一组要传递给消费者的属性（或元数据），与主要消息一起传递。元数据对象作为`sendToQueue()`方法的第三个参数传递。'
+- en: It's important to note that we are using the `channel.sentToQueue()` API instead
+    of `channel.publish()` to send the message. This is because we are not interested
+    in implementing a publish/subscribe distribution pattern using exchanges, but
+    a more basic point-to-point delivery straight into the destination queue.
+  id: totrans-497
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 需要注意的是，我们使用`channel.sentToQueue()` API而不是`channel.publish()`来发送消息。这是因为我们并不感兴趣使用交换来实现发布/订阅的分布模式，而是更基本的点对点直接发送到目标队列。
+- en: 'The last piece of our `AMQPRequest` class is where we implement the `destroy()`
+    method, which is used to close the connection and the channel:'
+  id: totrans-498
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们`AMQPRequest`类的最后一部分是实现`destroy()`方法的地方，该方法用于关闭连接和通道：
+- en: '[PRE39]'
+  id: totrans-499
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: That's it for the `amqpRequest.js` module.
+  id: totrans-500
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`amqpRequest.js`模块的内容到此结束。'
+- en: Implementing the reply abstraction
+  id: totrans-501
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 实现回复抽象
+- en: 'Now it''s time to implement the reply abstraction in a new module named `amqpReply.js`:'
+  id: totrans-502
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在是时候在一个名为`amqpReply.js`的新模块中实现回复抽象了：
+- en: '[PRE40]'
+  id: totrans-503
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: 'In the `initialize()` method of the `AMQPReply` class, we create the queue
+    that will receive the incoming requests (1): we can use a simple durable queue
+    for this purpose. The `handleRequests()` method (2) is used to register new request
+    handlers from where new replies can be sent. When sending back a reply (3), we
+    use `channel.sendToQueue()` to publish the message straight into the queue specified
+    in the `replyTo` property of the message (our return address). We also set the `correlationId` in
+    the reply, so that the receiver can match the message with the list of pending
+    requests.'
+  id: totrans-504
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在`AMQPReply`类的`initialize()`方法中，我们创建一个将接收传入请求的队列（1）：我们可以为此目的使用一个简单的持久队列。`handleRequests()`方法（2）用于从新请求处理器注册新请求，以便可以发送新回复。在发送回复（3）时，我们使用`channel.sendToQueue()`将消息直接发布到消息的`replyTo`属性指定的队列（我们的返回地址）。我们还设置了回复中的`correlationId`，以便接收者可以将消息与挂起的请求列表进行匹配。
+- en: Implementing the requestor and the replier
+  id: totrans-505
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 实现请求者和回复者
+- en: Everything is now ready to give our system a try, but first, let's build a pair
+    sample requestor and replier to see how to use our new abstraction.
+  id: totrans-506
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在一切准备就绪，可以尝试我们的系统了，但首先，让我们构建一对示例请求者和回复者，看看如何使用我们的新抽象。
+- en: 'Let''s start with the `replier.js` module:'
+  id: totrans-507
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们从`replier.js`模块开始：
+- en: '[PRE41]'
+  id: totrans-508
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: It's nice to see how the abstraction we built allows us to hide all the mechanisms
+    to handle the correlation ID and the return address. All we need to do is initialize
+    a new `reply` object, specifying the name of the queue where we want to receive
+    our requests (`'requests_queue'`). The rest of the code is just trivial; in practice,
+    our sample replier simply calculates the sum of the two numbers received as the
+    input and sends back the result in an object.
+  id: totrans-509
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 很好地看到我们构建的抽象如何使我们能够隐藏处理关联ID和返回地址的所有机制。我们所需做的只是初始化一个新的`reply`对象，指定我们希望接收请求的队列名称（`'requests_queue'`）。其余的代码只是微不足道的；在实践中，我们的样本replier只是计算接收到的两个数字之和，并将结果作为一个对象发送回去。
+- en: 'On the other side, we have a sample requestor implemented in the `requestor.js` file:'
+  id: totrans-510
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在另一边，我们在`requestor.js`文件中实现了一个样本请求者：
+- en: '[PRE42]'
+  id: totrans-511
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: Our sample requestor sends 20 random requests at one-second intervals to the `requests_queue` queue.
+    In this case, also, it's interesting to see that our abstraction is doing its
+    job perfectly, hiding all the details behind the implementation of the asynchronous
+    Request/Reply pattern.
+  id: totrans-512
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的样本请求者以一秒的间隔向`requests_queue`队列发送20个随机请求。在这种情况下，也很有趣地看到我们的抽象正在完美地完成其工作，隐藏了异步请求/回复模式实现背后的所有细节。
+- en: 'Now, to try out the system, simply run the `replier` module followed by a couple
+    of `requestor` instances:'
+  id: totrans-513
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，为了尝试这个系统，只需运行`replier`模块，然后是几个`requestor`实例：
+- en: '[PRE43]'
+  id: totrans-514
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: You will see a set of operations published by the requestors and then received
+    by the replier, which in turn will send back the responses to the right requestor.
+  id: totrans-515
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您将看到请求者发布的一组操作，然后由replier接收，然后replier将响应发送回正确的请求者。
+- en: Now we can try other experiments. Once the replier is started for the first
+    time, it creates a durable queue and this means that if we now stop it and then
+    run the replier again, no request will be lost. All the messages will be stored
+    in the queue until the replier is started again!
+  id: totrans-516
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们可以尝试其他实验。一旦replier首次启动，它将创建一个持久队列，这意味着如果我们现在停止它，然后再次运行replier，则不会丢失任何请求。所有消息都将存储在队列中，直到replier再次启动！
+- en: Note that based on how we implemented the application, a request will time out
+    after 10 seconds. So, in order for a reply to reach the requestor in time, the
+    replier can afford to have only a limited downtime (certainly less than 10 seconds).
+  id: totrans-517
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，根据我们的应用程序实现方式，请求将在10秒后超时。因此，为了使回复及时到达请求者，replier可以承受有限的停机时间（肯定小于10秒）。
+- en: Another nice feature that we get for free by using AMQP is the fact that our
+    replier is scalable out of the box. To test this assumption, we can try to start
+    two or more instances of the replier, and watch the requests being load balanced
+    between them. This works because, every time a requestor starts, it attaches itself
+    as a listener to the same durable queue, and as a result, the broker will load
+    balance the messages across all the consumers of the queue (remember the Competing
+    Consumers pattern?). Sweet!
+  id: totrans-518
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过使用AMQP，我们还获得了一个免费的好特性，那就是我们的replier是即插即用的可扩展的。为了测试这个假设，我们可以尝试启动两个或更多个replier实例，并观察请求如何在它们之间进行负载均衡。这是因为每次请求者启动时，它都会将自己附加为监听器到同一个持久队列，结果，代理将消息在队列的所有消费者之间进行负载均衡（记得竞争消费者模式吗？）。太棒了！
+- en: ZeroMQ has a pair of sockets specifically meant for implementing request/reply
+    patterns, called `REQ`/`REP`, however, they are synchronous (only one request/response
+    at a time). More complex request/reply patterns are possible with more sophisticated
+    techniques. For more information, you can read the official guide at [nodejsdp.link/zeromq-reqrep](http://nodejsdp.link/zeromq-reqrep).
+  id: totrans-519
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ZeroMQ有一对专门用于实现请求/回复模式的套接字，称为`REQ`/`REP`，然而，它们是同步的（一次只能有一个请求/响应）。通过更复杂的技术可以实现更复杂的请求/回复模式。更多信息，您可以阅读[官方指南](http://nodejsdp.link/zeromq-reqrep)。
+- en: A Request/Reply pattern with a return address is also possible on top of Redis
+    Streams and resembles very closely the system we implemented with AMQP. We'll
+    leave this to you to implement as an exercise.
+  id: totrans-520
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在Redis Streams之上也可以实现带有返回地址的请求/回复模式，并且与我们使用AMQP实现的系统非常相似。我们将把这个留给你作为练习来实现。
+- en: Summary
+  id: totrans-521
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 摘要
+- en: 'You have reached the end of this chapter. Here, you learned the most important
+    messaging and integration patterns and the role they play in the design of distributed
+    systems. You should now have mastered the three most important types of message
+    exchange patterns: Publish/Subscribe, Task Distribution, and Request/Reply, implemented
+    either on top of a peer-to-peer architecture or using a broker. We analyzed the
+    pros and cons of each pattern and architecture, and we saw that by using a broker
+    (implementing either a message queue or data stream), it''s possible to implement
+    reliable and scalable applications with little effort, but at the cost of having
+    one more system to maintain and scale.'
+  id: totrans-522
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您已到达本章的结尾。在这里，您学习了最重要的消息和集成模式以及它们在分布式系统设计中的作用。现在，您应该已经掌握了三种最重要的消息交换模式：发布/订阅、任务分配和请求/回复，这些模式可以在对等架构之上实现，或者使用代理来实现。我们分析了每种模式和架构的优缺点，并看到通过使用代理（实现消息队列或数据流），可以轻松实现可靠和可扩展的应用程序，但代价是需要维护和扩展一个额外的系统。
+- en: You have also learned how ZeroMQ allows you to build distributed systems where
+    you can have total control over every aspect of the architecture, fine tuning
+    its properties around your very own requirements.
+  id: totrans-523
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您还学习了ZeroMQ如何让您构建可以完全控制架构每个方面的分布式系统，并根据您自己的需求对属性进行微调。
+- en: Ultimately, both approaches will give you all the tools that you need to build
+    any type of distributed systems, from basic chat applications to web-scale platforms
+    used by millions of people.
+  id: totrans-524
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最终，这两种方法都将为您提供构建任何类型分布式系统所需的所有工具，从基本的聊天应用程序到数百万用户使用的Web规模平台。
+- en: 'This chapter also closes the book. By now, you should have a toolbelt full
+    of patterns and techniques that you can go and apply in your projects. You should
+    also have a deeper understanding of how Node.js development works and what its
+    strengths and weaknesses are. Throughout the book, you also had the chance to
+    work with a myriad of packages and solutions developed by many extraordinary developers.
+    In the end, this is the most beautiful aspect of Node.js: its people, a community
+    where everybody plays their part in giving something back.'
+  id: totrans-525
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章也标志着本书的结束。到目前为止，您应该已经拥有一套充满模式和技术的工具箱，可以将其应用于您的项目。您还应该对Node.js开发的工作方式以及其优势和劣势有更深入的了解。在整个书中，您也有机会与许多杰出开发者开发的众多包和解决方案一起工作。最终，这是Node.js最美好的方面：其人，一个每个人都在为回馈社会贡献自己力量的社区。
+- en: We hope you enjoyed our small contribution and we look forward to seeing yours.
+  id: totrans-526
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们希望您喜欢我们的小小贡献，并期待看到您的作品。
+- en: Sincerely, Mario Casciaro and Luciano Mammino.
+  id: totrans-527
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 诚挚地，马里奥·卡西亚罗和卢西亚诺·马米诺。
+- en: Exercises
+  id: totrans-528
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 练习
+- en: '**13.1 History service with streams**: In our publish/subscribe example with
+    Redis Stream, we didn''t need a history service (as we did instead in the related
+    AMQP example) because all the message history was saved in the stream anyway.
+    Now, implement such a history service, storing all the incoming messages in a
+    separate database and use this service to retrieve the chat history when a new
+    client connects. Hint: the history service will need to remember the ID of the
+    last message retrieved across restarts.'
+  id: totrans-529
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**13.1 使用流的记录服务**：在我们的Redis Stream发布/订阅示例中，我们不需要记录服务（如我们在相关的AMQP示例中所做的那样），因为所有消息历史都已经在流中保存了。现在，实现这样一个记录服务，将所有传入的消息存储在单独的数据库中，并在新客户端连接时使用此服务检索聊天历史。提示：记录服务需要记住在重启之间检索的最后一条消息的ID。'
+- en: '**13.2 Multiroom chat**: Update the chat application example we created in
+    this chapter to be able to support multiple chat rooms. The application should
+    also support displaying the message history when the client connects. You can
+    choose the messaging system you prefer, and even mix different ones.'
+  id: totrans-530
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**13.2 多房间聊天**：更新本章中我们创建的聊天应用程序示例，使其能够支持多个聊天室。应用程序还应支持在客户端连接时显示消息历史。您可以选择您喜欢的消息系统，甚至混合不同的系统。'
+- en: '**13.3 Tasks that stop**: Update the hashsum cracker examples we implemented
+    in this chapter and add the necessary logic to stop the computation on all nodes
+    once a match has been found.'
+  id: totrans-531
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**13.3 停止的任务**：更新本章中我们实现的hashsum cracker示例，并添加必要的逻辑，以便在找到匹配项后停止所有节点的计算。'
+- en: '**13.4 Reliable task processing with ZeroMQ**: Implement a mechanism to make
+    our hashsum cracker example with ZeroMQ more reliable. As we already mentioned,
+    with the implementation we saw in this chapter, if a worker crashes, all the tasks
+    it was processing are lost. Implement a peer-to-peer queuing system and an acknowledgment
+    mechanism to make sure that the message is always processed at least once (excluding
+    errors due to hypothetical unprocessable tasks).'
+  id: totrans-532
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**13.4 使用ZeroMQ进行可靠的作业处理**：实现一种机制，使我们的ZeroMQ哈希校验器示例更加可靠。正如我们之前提到的，在本章中我们看到的实现中，如果一个工作进程崩溃，它正在处理的全部任务都会丢失。实现一个对等队列系统和确认机制，以确保消息总是至少被处理一次（排除由于假设不可处理的任务导致的错误）。'
+- en: '**13.5 Data aggregator**: Create an abstraction that can be used to send a
+    request to all the nodes connected to the system and then returns an aggregation
+    of all the replies received by those nodes. Hint: you can use publish/reply to
+    send the request, and any one-way channel to send back the replies. Use any combination
+    of the technologies we have learned.'
+  id: totrans-533
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**13.5 数据聚合器**：创建一个抽象，可以用来向连接到系统的所有节点发送请求，然后返回这些节点接收到的所有回复的聚合。提示：你可以使用发布/回复来发送请求，并使用任何单向通道来发送回复。可以使用我们学到的任何技术组合。'
+- en: '**13.6 Worker status CLI**: Use the data aggregator component defined in *Exercise
+    13.5* to implement a command-line application that, when invoked, displays the
+    current status of all the workers of the hashsum cracker application (for example,
+    which chunk they are processing, whether they found a match, and so on).'
+  id: totrans-534
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**13.6 工作状态CLI**：使用*练习13.5*中定义的数据聚合器组件来实现一个命令行应用程序，当调用时，显示哈希校验器应用程序中所有工作进程的当前状态（例如，它们正在处理哪个块，是否找到了匹配项等）。'
+- en: '**13.7 Worker status UI**: Implement a web application (from client to server)
+    to expose the status of the workers of the hashsum cracker application through
+    a web UI that can report in real time when a match is found.'
+  id: totrans-535
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**13.7 工作状态UI**：实现一个从客户端到服务器的Web应用程序，通过一个可以实时报告找到匹配项的Web UI来公开哈希校验器应用程序中工作进程的状态。'
+- en: '**13.8 Pre-initialization queues are back**: In the AMQP request/reply example,
+    we implemented a *Delayed Startup* pattern to deal with the fact that the `initialize()`
+    method is asynchronous. Now, refactor that example by adding pre-initialization
+    queues as we learned in *Chapter 11*, *Advanced Recipes*.'
+  id: totrans-536
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**13.8 预初始化队列回归**：在AMQP请求/回复示例中，我们实现了一个**延迟启动**模式来处理`initialize()`方法是异步的事实。现在，通过添加我们在*第11章*，*高级食谱*中学到的预初始化队列来重构该示例。'
+- en: '**13.9 Request/reply with Redis Streams**: Build a request/reply abstraction
+    on top of Redis Streams.'
+  id: totrans-537
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**13.9 使用Redis Streams进行请求/回复**：在Redis Streams之上构建请求/回复抽象。'
+- en: '**13.10 Kafka**: If you are brave enough, try to reimplement all relevant examples
+    in this chapter using Apache Kafka ([nodejsdp.link/kafka](http://nodejsdp.link/kafka))
+    instead of Redis Streams.'
+  id: totrans-538
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**13.10 Kafka**：如果你足够勇敢，尝试使用Apache Kafka ([nodejsdp.link/kafka](http://nodejsdp.link/kafka))而不是Redis
+    Streams来重新实现本章中所有相关的示例。'
