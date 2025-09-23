@@ -1,0 +1,486 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;11.&#xA0;Custom Shaders and Render Postprocessing"><div class="titlepage"><div><div><h1 class="title"><a id="ch11"/>Chapter 11. Custom Shaders and Render Postprocessing</h1></div></div></div><p>We're getting to the end of the book, and in this chapter, we'll look at the one main feature of Three.js we haven't touched upon: render postprocessing. Besides that, in this chapter, we'll also introduce you to how you can create custom shaders. The main points we'll discuss in this chapter are the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Setting up Three.js for postprocessing</li><li class="listitem" style="list-style-type: disc">Discussing the basic postprocessing passes provided by Three.js, such as <code class="literal">THREE.BloomPass</code> and <code class="literal">THREE.FilmPass</code></li><li class="listitem" style="list-style-type: disc">Applying effects to part of the scene using masks</li><li class="listitem" style="list-style-type: disc">Using <code class="literal">THREE.TexturePass</code> to store rendering results</li><li class="listitem" style="list-style-type: disc">Using <code class="literal">THREE.ShaderPass</code> to add even more basic postprocessing effects, such as sepia filters, mirror effects, and color adjustments</li><li class="listitem" style="list-style-type: disc">Using <code class="literal">THREE.ShaderPass</code> for various blurring effects and more advanced filters</li><li class="listitem" style="list-style-type: disc">Creating a custom postprocessing effect by writing a simple shader</li></ul></div><p>In the <span class="emphasis"><em>Introducing requestAnimationFrame</em></span> section of <a class="link" href="ch01.html" title="Chapter 1. Creating Your First 3D Scene with Three.js">Chapter 1</a>, <span class="emphasis"><em>Creating Your First 3D Scene with Three.js</em></span>, we set up a rendering loop that we've used throughout the book to render and animate our scene. For postprocessing, we need to make a couple of changes to this setup to allow Three.js to postprocess the final rendering. In the first section, we'll look at how to do this.</p><div class="section" title="Setting up Three.js for postprocessing"><div class="titlepage"><div><div><h1 class="title"><a id="ch11lvl1sec54"/>Setting up Three.js for postprocessing</h1></div></div></div><p>To set up Three.js for<a id="id1054" class="indexterm"/> postprocessing, we need to make a couple of changes in our current setup. We need to take the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create <code class="literal">THREE.EffectComposer</code>, which we can use to add postprocessing passes.</li><li class="listitem">Configure <code class="literal">THREE.EffectComposer</code> so that it renders our scene and applies any additional postprocessing steps.</li><li class="listitem">In the render loop, use <code class="literal">THREE.EffectComposer</code> to render the scene, apply the passes, and show the output.</li></ol></div><p>As always, we <a id="id1055" class="indexterm"/>have an example that you can use to experiment with and adopt for your own uses. The first example for this chapter can be accessed from <code class="literal">01-basic-effect-composer.html</code>. You can use the menu in the top-right corner to modify the properties of the postprocessing step used in this example. In this example, we render a simple globe and add an old-television-like effect to it. This television effect is added after the scene is rendered using <code class="literal">THREE.EffectComposer</code>. The following screenshot shows this example:</p><p> </p><div class="mediaobject"><img src="graphics/2215OS_11_01.jpg" alt="Setting up Three.js for postprocessing"/></div><p>
+</p><div class="section" title="Creating THREE.EffectComposer"><div class="titlepage"><div><div><h2 class="title"><a id="ch11lvl2sec80"/>Creating THREE.EffectComposer</h2></div></div></div><p>Let's first look <a id="id1056" class="indexterm"/>at the additional JavaScript files you need to include. These files can be found in the Three.js distribution in the <code class="literal">examples/js/postprocessing</code> and <code class="literal">examples/js/shaders</code> directories.</p><p>The minimal setup you need to get <code class="literal">THREE.EffectComposer</code> working is the following:</p><div class="informalexample"><pre class="programlisting">&lt;script type="text/javascript" src="../libs/postprocessing/EffectComposer.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript" src="../libs/postprocessing/MaskPass.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript" src="../libs/postprocessing/RenderPass.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript" src="../libs/shaders/CopyShader.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript" src="../libs/postprocessing/ShaderPass.js"&gt;&lt;/script&gt;</pre></div><p>The <code class="literal">EffectComposer.js</code> file provides the <code class="literal">THREE.EffectComposer</code> object that allows us to add<a id="id1057" class="indexterm"/> postprocessing steps. <code class="literal">MaskPass.js</code>, <code class="literal">ShaderPass.js</code>, and <code class="literal">CopyShader.js</code> are used internally by <code class="literal">THREE.EffectComposer</code>, and <code class="literal">RenderPass.js</code> allows us to add a rendering pass to <code class="literal">THREE.EffectComposer</code>. Without that pass, our scene won't be rendered at all.</p><p>For this example, we add two additional JavaScript files to add a film-like effect to our scene:</p><div class="informalexample"><pre class="programlisting">&lt;script type="text/javascript" src="../libs/postprocessing/FilmPass.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript" src="../libs/shaders/FilmShader.js"&gt;&lt;/script&gt;</pre></div><p>The first thing we need to do is create <code class="literal">THREE.EffectComposer</code>. You can do this by passing in <code class="literal">THREE.WebGLRenderer</code> to its constructor:</p><div class="informalexample"><pre class="programlisting">var webGLRenderer = new THREE.WebGLRenderer();
+var composer = new THREE.EffectComposer(webGLRenderer);</pre></div><p>Next, we add various <span class="emphasis"><em>passes</em></span> to this composer.</p><div class="section" title="Configuring THREE.EffectComposer for postprocessing"><div class="titlepage"><div><div><h3 class="title"><a id="ch11lvl3sec33"/>Configuring THREE.EffectComposer for postprocessing</h3></div></div></div><p>Each pass<a id="id1058" class="indexterm"/> is executed in the sequence it is added to <code class="literal">THREE.EffectComposer</code>. The first pass we add is <code class="literal">THREE.RenderPass</code>. The following pass renders our scene but doesn't output it to the screen yet:</p><div class="informalexample"><pre class="programlisting">var renderPass = new THREE.RenderPass(scene, camera);
+composer.addPass(renderPass);</pre></div><p>To create <code class="literal">THREE.RenderPass</code>, we pass in the scene we want to render and the camera that we want to use. With the <code class="literal">addPass</code> function, we add <code class="literal">THREE.RenderPass</code> to <code class="literal">THREE.EffectComposer</code>. The next step is to add another pass that will output its result to the screen. Not all the available passes allow this—more on that later—but <code class="literal">THREE.FilmPass</code>, which is used in this example, allows us to output the result of its pass to the screen. To add <code class="literal">THREE.FilmPass</code>, we first need to create it and add it to the composer. The resulting code looks like this:</p><div class="informalexample"><pre class="programlisting">var renderPass = new THREE.RenderPass(scene,camera);
+var effectFilm = new THREE.FilmPass(0.8, 0.325, 256, false);
+effectFilm.renderToScreen = true;
+
+var composer = new THREE.EffectComposer(webGLRenderer);
+composer.addPass(renderPass);
+composer.addPass(effectFilm);</pre></div><p>As you can see, we <a id="id1059" class="indexterm"/>created <code class="literal">THREE.FilmPass</code> and set the <code class="literal">renderToScreen</code> property to <code class="literal">true</code>. This pass is added to <code class="literal">THREE.EffectComposer</code> after <code class="literal">renderPass,</code> so when this composer is used, first the scene is rendered, and through <code class="literal">THREE.FilmPass</code>, we can also see the output on screen.</p></div><div class="section" title="Updating the render loop"><div class="titlepage"><div><div><h3 class="title"><a id="ch11lvl3sec34"/>Updating the render loop</h3></div></div></div><p>Now we just<a id="id1060" class="indexterm"/> need to make a small modification to our render loop to use the composer instead of <code class="literal">THREE.WebGLRenderer</code>:</p><div class="informalexample"><pre class="programlisting">var clock = new THREE.Clock();
+function render() {
+  stats.update();
+
+  var delta = clock.getDelta();
+  orbitControls.update(delta);
+
+  sphere.rotation.y += 0.002;
+
+  requestAnimationFrame(render);
+  composer.render(delta);
+}</pre></div><p>The only modification we made is we removed <code class="literal">webGLRenderer.render(scene, camera)</code> and replaced it with <code class="literal">composer.render(delta)</code>. This will call the render function on <code class="literal">EffectComposer</code>, which in turn uses the passed-in <code class="literal">THREE. WebGLRenderer</code>, and since we set <code class="literal">renderToScreen</code> of <code class="literal">FilmPass</code> to <code class="literal">true</code>, the result from <code class="literal">FilmPass</code> is shown on screen.</p><p>With this basic setup, we'll look at the available postprocessing passes in the next couple of sections.</p></div></div></div></div>
+<div class="section" title="Postprocessing passes"><div class="titlepage"><div><div><h1 class="title"><a id="ch11lvl1sec55"/>Postprocessing passes</h1></div></div></div><p>Three.js comes with a <a id="id1061" class="indexterm"/>number of postprocessing passes you can use directly with <code class="literal">THREE.EffectComposer</code>. Note that it's best to play around with the examples in this chapter to see the result of these passes and understand what is happening. The following table gives an overview of the passes that are available:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Pass name</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Description</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.BloomPass</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is <a id="id1062" class="indexterm"/>an effect that makes light areas bleed into darker areas. This simulates an effect where the camera is overwhelmed by extremely bright light.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.DotScreenPass</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1063" class="indexterm"/>applies a layer of black dots representing the original image across the screen. </p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.FilmPass</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1064" class="indexterm"/>simulates a TV screen by applying scanlines and distortions.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.GlitchPass</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1065" class="indexterm"/>shows an electronic glitch on the screen at a random time interval.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.MaskPass</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1066" class="indexterm"/>allows you to apply a mask to the current image. Subsequent passes are only applied to the masked area.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.RenderPass</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1067" class="indexterm"/> renders a scene based on the supplied scene and camera.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.SavePass</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>When<a id="id1068" class="indexterm"/> this pass is executed, it makes a copy of the current rendering step that you can use later. This pass isn't that useful in practice, and we won't use it in any of our examples.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.ShaderPass</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1069" class="indexterm"/> allows you to pass in custom shaders for advanced or custom postprocessing passes.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.TexturePass</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1070" class="indexterm"/>stores the current state of the composer in a texture that you can use as input for other <code class="literal">EffectComposer</code> instance.</p>
+</td></tr></tbody></table></div><p>Let's start with a number of simple passes.</p><div class="section" title="Simple postprocessing passes"><div class="titlepage"><div><div><h2 class="title"><a id="ch11lvl2sec81"/>Simple postprocessing passes</h2></div></div></div><p>For<a id="id1071" class="indexterm"/> simple passes, we'll look at what we can do with <code class="literal">THREE.FilmPass</code>, <code class="literal">THREE.BloomPass</code>, and <code class="literal">THREE.DotScreenPass</code>. For these passes, an example is available, <code class="literal">02-post-processing-simple</code>, that allows you to experiment with these passes and see how they affect the original output differently. The following screenshot shows this example:</p><p> </p><div class="mediaobject"><img src="graphics/2215OS_11_02.jpg" alt="Simple postprocessing passes"/></div><p>
+</p><p>In this example, we show four scenes at the same time, and on each scene, a different postprocessing <a id="id1072" class="indexterm"/>pass is added. The one in the top-left corner shows <code class="literal">THREE.BloomPass</code>, the one in the top-right corner shows <code class="literal">THREE.FilmPass</code>, the one in the bottom-left corner shows <code class="literal">THREE.DotScreenPass</code>, and the one in the bottom-right corner shows the original render.</p><p>In this example, we also use <code class="literal">THREE.ShaderPass</code> and <code class="literal">THREE.TexturePass</code> to reuse the output from the original rendering as input for the other three scenes. So, before we look at the individual passes, let's look at these two passes first:</p><div class="informalexample"><pre class="programlisting">var renderPass = new THREE.RenderPass(scene, camera);
+var effectCopy = new THREE.ShaderPass(THREE.CopyShader);
+effectCopy.renderToScreen = true;
+
+var composer = new THREE.EffectComposer(webGLRenderer);
+composer.addPass(renderPass);
+composer.addPass(effectCopy);
+
+var renderScene = new THREE.TexturePass(composer.renderTarget2);</pre></div><p>In this piece of code, we set up <code class="literal">THREE.EffectComposer</code>, which will output the default scene (the one in the bottom-right corner). This composer has two passes. <code class="literal">THREE.RenderPass</code> renders the scene, and <code class="literal">THREE.ShaderPass</code>, when configured with <code class="literal">THREE.CopyShader</code>, renders the output, without any further postprocessing to the screen if we set the <code class="literal">renderToScreen</code> property to <code class="literal">true</code>. If you look at the example, you can see that we show the same scene four times but with a different effect applied each time. We could render the scene from scratch using <code class="literal">THREE.RenderPass </code>four times, but that would be a bit of a waste since we can just reuse the output from this first composer. To do this, we create <code class="literal">THREE.TexturePass</code> and pass in the <code class="literal">composer.renderTarget2</code> value. We can now use the <code class="literal">renderScene</code> variable as input for our other composers without having to render <a id="id1073" class="indexterm"/>the scene from scratch. Let's revisit <code class="literal">THREE.FilmPass</code> first and see how we can use <code class="literal">THREE.TexturePass</code> as input.</p><div class="section" title="Using THREE.FilmPass to create a TV-like effect"><div class="titlepage"><div><div><h3 class="title"><a id="ch11lvl3sec35"/>Using THREE.FilmPass to create a TV-like effect</h3></div></div></div><p>We already<a id="id1074" class="indexterm"/> looked at how to create <code class="literal">THREE.FilmPass</code><a id="id1075" class="indexterm"/> in the first section of this chapter, so let's see how to use this effect together with <code class="literal">THREE.TexturePass</code> from the previous section:</p><div class="informalexample"><pre class="programlisting">var effectFilm = new THREE.FilmPass(0.8, 0.325, 256, false);
+effectFilm.renderToScreen = true;
+
+var composer4 = new THREE.EffectComposer(webGLRenderer);
+<span class="strong"><strong>composer4.addPass(renderScene);</strong></span>
+composer4.addPass(effectFilm);</pre></div><p>The only step you need to take to use <code class="literal">THREE.TexturePass</code> is to add it as the first pass in your composer. Next, we can just add <code class="literal">THREE.FilmPass</code>, and the effect is applied. <code class="literal">THREE.FilmPass</code> itself takes four parameters:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Property</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Description</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">noiseIntensity</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1076" class="indexterm"/>property allows you to control how grainy the scene looks.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">scanlinesIntensity</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.FilmPass</code> adds <a id="id1077" class="indexterm"/>a number of scanlines to the scene. With this property, you can define how prominently these scanlines are shown.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">scanLinesCount</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>The number <a id="id1078" class="indexterm"/>of scanlines that are shown can be controlled with this property.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">grayscale</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>If this<a id="id1079" class="indexterm"/> is set to <code class="literal">true</code>, the output will be converted to grayscale.</p>
+</td></tr></tbody></table></div><p>There are actually two ways you can pass in these parameters. In this example, we passed them in as arguments to the constructor, but you can also set them directly, as follows:</p><div class="informalexample"><pre class="programlisting">effectFilm.uniforms.grayscale.value = controls.grayscale;
+effectFilm.uniforms.nIntensity.value = controls.noiseIntensity;
+effectFilm.uniforms.sIntensity.value = controls.scanlinesIntensity;
+effectFilm.uniforms.sCount.value = controls.scanlinesCount;</pre></div><p>In this approach, we use the <code class="literal">uniforms</code> property, which is used to communicate directly with WebGL. In the section where we talk about creating a custom shader later in this chapter, we'll go a bit deeper into <code class="literal">uniforms</code>; for now, all you need to know is that this way, you can directly update the configuration of postprocessing passes and shaders and directly see the results.</p></div><div class="section" title="Adding a bloom effect to the scene with THREE.BloomPass"><div class="titlepage"><div><div><h3 class="title"><a id="ch11lvl3sec36"/>Adding a bloom effect to the scene with THREE.BloomPass</h3></div></div></div><p>The <a id="id1080" class="indexterm"/>effect you see in the upper-left corner is called the bloom effect. When you apply the bloom effect, the bright areas <a id="id1081" class="indexterm"/>of a scene will be made more prominent and <span class="emphasis"><em>bleed</em></span> into the darker areas. The code to create <code class="literal">THREE.BloomPass</code> is shown here:</p><div class="informalexample"><pre class="programlisting">var effectCopy = new THREE.ShaderPass(THREE.CopyShader);
+effectCopy.renderToScreen = true;
+...
+var bloomPass = new THREE.BloomPass(3, 25, 5, 256);
+var composer3 = new THREE.EffectComposer(webGLRenderer);
+composer3.addPass(renderScene);
+composer3.addPass(bloomPass);
+composer3.addPass(effectCopy);</pre></div><p>If you compare this with <code class="literal">THREE.EffectComposer</code>, which we used with <code class="literal">THREE.FilmPass</code>, you'll notice that we add an additional pass, <code class="literal">effectCopy</code>. This step, which we also used for the normal output, doesn't add any special effect but just copies the output from the last pass to the screen. We need to add this step since <code class="literal">THREE.BloomPass</code> can't render directly to the screen.</p><p>The following table lists the properties you can set on <code class="literal">THREE.BloomPass</code>:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Property</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Description</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">Strength</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is<a id="id1082" class="indexterm"/> the strength of the bloom effect. The higher this is, the more bright the brighter areas are and the more they "bleed" to the darker areas.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">kernelSize</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1083" class="indexterm"/>property controls the offset of the bloom effect.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">sigma</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>With <a id="id1084" class="indexterm"/>the <code class="literal">sigma</code> property, you can control the sharpness of the bloom effect. The higher the value, the more blurred the bloom effect looks.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">Resolution</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>The<a id="id1085" class="indexterm"/> <code class="literal">Resolution</code> property defines how precisely the bloom effect is created. If you make this too low, the result will look blocky.</p>
+</td></tr></tbody></table></div><p>A better way to understand these properties is to just experiment with them using the previously mentioned example, <code class="literal">02-post-processing-simple</code>. The following screenshot shows the bloom effect with a high kernel and sigma size and low strength:</p><div class="mediaobject"><img src="graphics/2215OS_11_03.jpg" alt="Adding a bloom effect to the scene with THREE.BloomPass"/></div><p>The last of the<a id="id1086" class="indexterm"/> simple effects we'll have a look at is <code class="literal">THREE.DotScreenPass</code>.</p></div><div class="section" title="Output the scene as a set of dots"><div class="titlepage"><div><div><h3 class="title"><a id="ch11lvl3sec37"/>Output the scene as a set of dots</h3></div></div></div><p>Using <code class="literal">THREE.DotScreenPass</code> is <a id="id1087" class="indexterm"/>very<a id="id1088" class="indexterm"/> similar to using <code class="literal">THREE.BloomPass</code>. We just saw <code class="literal">THREE.BloomPass</code> in action. Now let's see the code for <code class="literal">THREE.DotScreenPass</code>:</p><div class="informalexample"><pre class="programlisting">var dotScreenPass = new THREE.DotScreenPass();
+var composer1 = new THREE.EffectComposer(webGLRenderer);
+composer1.addPass(renderScene);
+composer1.addPass(dotScreenPass);
+composer1.addPass(effectCopy);</pre></div><p>With this effect, we once again have to add <code class="literal">effectCopy</code> to output the result to the screen. <code class="literal">THREE.DotScreenPass</code> can also be configured with a number of properties, as follows:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Property</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Description</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">center</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>With<a id="id1089" class="indexterm"/> the <code class="literal">center</code> property, you can fine-tune the way the dots are offset.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">angle</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>The<a id="id1090" class="indexterm"/> dots are aligned in a certain manner. With the <code class="literal">angle</code> properties, you can change this alignment.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">Scale</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>With <a id="id1091" class="indexterm"/>this, we can set the size of the dots to use. The lower the <code class="literal">scale</code>, the larger the dots.</p>
+</td></tr></tbody></table></div><p>What applies to the other shaders also applies to this shader. It's much easier to get the right settings with experimentation.</p><div class="mediaobject"><img src="graphics/2215OS_11_04.jpg" alt="Output the scene as a set of dots"/></div></div><div class="section" title="Showing the output of multiple renderers on the same screen"><div class="titlepage"><div><div><h3 class="title"><a id="ch11lvl3sec38"/>Showing the output of multiple renderers on the same screen</h3></div></div></div><p>This <a id="id1092" class="indexterm"/>section doesn't go into the details of how to use postprocessing effects, but explains how to get the output of all four <code class="literal">THREE.EffectComposer</code> instances on the same screen. First, let's look at the render loop used for this example:</p><div class="informalexample"><pre class="programlisting">function render() {
+  stats.update();
+
+  var delta = clock.getDelta();
+  orbitControls.update(delta);
+
+  sphere.rotation.y += 0.002;
+
+  requestAnimationFrame(render);
+
+  webGLRenderer.autoClear = false;
+  webGLRenderer.clear();
+
+  webGLRenderer.setViewport(0, 0, 2 * halfWidth, 2 * halfHeight);
+  composer.render(delta);
+
+  webGLRenderer.setViewport(0, 0, halfWidth, halfHeight);
+  composer1.render(delta);
+
+  webGLRenderer.setViewport(halfWidth, 0, halfWidth, halfHeight);
+  composer2.render(delta);
+
+  webGLRenderer.setViewport(0, halfHeight, halfWidth, halfHeight);
+  composer3.render(delta);
+
+  webGLRenderer.setViewport(halfWidth, halfHeight, halfWidth, halfHeight);
+  composer4.render(delta);
+}</pre></div><p>The first thing <a id="id1093" class="indexterm"/>to notice here is that we set the <code class="literal">webGLRenderer.autoClear</code> property to <code class="literal">false</code> and then explicitly call the <code class="literal">clear()</code> function. If we don't do this each time we call the <code class="literal">render()</code> function on a composer, the previously rendered scenes will be cleared. With this approach, we only clear everything at the beginning of our render loop.</p><p>To avoid all our composers rendering in the same space, we set the viewport of <code class="literal">webGLRenderer</code>, which is used by our composers, to a different part of the screen. This function takes four arguments: <code class="literal">x</code>, <code class="literal">y</code>, <code class="literal">width</code>, and <code class="literal">height</code>. As you can see in the code sample, we use this function to divide the screen into four areas and make the composers render to their individual area. Note that you can also use this approach with multiple scenes, cameras, and <code class="literal">WebGLRenderer</code> if you want.</p><p>In the table at the beginning of this section, we also mentioned <code class="literal">THREE.GlitchPass</code>. With this render pass, you can add a kind of electronic glitch effect to your scenes. This effect is just as easy to use as the other ones you've seen until now. To use it, first include the following two files in your HTML page:</p><div class="informalexample"><pre class="programlisting">&lt;script type="text/javascript" src="../libs/postprocessing/GlitchPass.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript" src="../libs/postprocessing/DigitalGlitch.js"&gt;&lt;/script&gt;</pre></div><p>Then, create the <code class="literal">THREE.GlitchPass</code> object, as follows:</p><div class="informalexample"><pre class="programlisting">var effectGlitch = new THREE.GlitchPass(64);
+effectGlitch.renderToScreen = true;</pre></div><p>The result is a scene where the result is rendered normally except that at random intervals, a glitch occurs, as shown in the following screenshot:</p><div class="mediaobject"><img src="graphics/2215OS_11_19.jpg" alt="Showing the output of multiple renderers on the same screen"/></div><p>Until now, we've <a id="id1094" class="indexterm"/>only chained a couple of simple passes. In the next example, we'll configure a more complex <code class="literal">THREE.EffectComposer</code> and use masks to apply effects to a part of the screen.</p></div></div><div class="section" title="Advanced EffectComposer flows using masks"><div class="titlepage"><div><div><h2 class="title"><a id="ch11lvl2sec82"/>Advanced EffectComposer flows using masks</h2></div></div></div><p>In the previous examples, we applied the postprocessing pass to the complete screen. Three.js, however, also <a id="id1095" class="indexterm"/>has the ability to only apply passes to a specific area. In this section, we're going to perform the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create a scene to serve as a background image.</li><li class="listitem">Create a scene containing a sphere that looks like Earth.</li><li class="listitem">Create a scene containing a sphere that looks like Mars.</li><li class="listitem">Create <code class="literal">EffectComposer</code>, which renders these three scenes into a single image.</li><li class="listitem">Apply a <span class="emphasis"><em>colorify</em></span> effect to the sphere rendered as Mars.</li><li class="listitem">Apply a sepia effect to the sphere rendered as Earth.</li></ol></div><p>This might sound <a id="id1096" class="indexterm"/>complex, but is actually surprisingly easy to accomplish. First, let's look at the result we're aiming for in the <code class="literal">03-post-processing-masks.html</code> example. The following screenshot shows the result of these steps:</p><p> </p><div class="mediaobject"><img src="graphics/2215OS_11_05.jpg" alt="Advanced EffectComposer flows using masks"/></div><p>
+</p><p>The first thing we need to do is set up the various scenes we'll be rendering, as follows:</p><div class="informalexample"><pre class="programlisting">var sceneEarth = new THREE.Scene();
+var sceneMars = new THREE.Scene();
+var sceneBG = new THREE.Scene();</pre></div><p>To create the Earth and Mars spheres, we just create the spheres with the correct material and textures and add them to their specific scenes, as shown in the following code:</p><div class="informalexample"><pre class="programlisting">var sphere = createEarthMesh(new THREE.SphereGeometry(10, 40, 40));
+sphere.position.x = -10;
+var sphere2 = createMarshMesh(new THREE.SphereGeometry(5, 40, 40));
+sphere2.position.x = 10;
+sceneEarth.add(sphere);
+sceneMars.add(sphere2);</pre></div><p>We also need to add some lights to the scene just as we would for a normal scene, but we won't show that here (see <a class="link" href="ch03.html" title="Chapter 3. Working with the Different Light Sources Available in Three.js">Chapter 3</a>, <span class="emphasis"><em>Working with the Different Light Sources Available in Three.js</em></span>, for more details). The only <a id="id1097" class="indexterm"/>thing to remember is that a light cannot be added to different scenes, so you need to create separate lights for both scenes. That's all the setting up we need to do for these two scenes.</p><p>For the background image, we create <code class="literal">THREE.OrthoGraphicCamera</code>. Remember from <a class="link" href="ch02.html" title="Chapter 2. Basic Components That Make Up a Three.js Scene">Chapter 2</a>, <span class="emphasis"><em>Basic Components That Make Up a Three.js Scene</em></span>, that the size of objects in the orthographic projection doesn't depend on the distance from the camera, so this also provides a good way to create fixed backgrounds. Here's how we create <code class="literal">THREE.OrthoGraphicCamera</code>:</p><div class="informalexample"><pre class="programlisting">var cameraBG = new THREE.OrthographicCamera(-window.innerWidth, window.innerWidth, window.innerHeight, -window.innerHeight, -10000, 10000);
+cameraBG.position.z = 50;
+
+var materialColor = new THREE.MeshBasicMaterial({ map: THREE.ImageUtils.loadTexture("../assets/textures/starry-deep-outer-space-galaxy.jpg"), depthTest: false });
+var bgPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), materialColor);
+bgPlane.position.z = -100;
+bgPlane.scale.set(window.innerWidth * 2, window.innerHeight * 2, 1);
+sceneBG.add(bgPlane);</pre></div><p>We won't go into too much detail for this part, but we have to take a couple of steps to create a background image. First, we create a material from our background image, and we apply this material to a simple plane. Next, we add this plane to the scene and scale it to exactly fill the complete screen. So, when we render this scene with this camera, our background image is shown stretched to the width of the screen.</p><p>We've now got our three scenes, and we can start to set up our passes and <code class="literal">THREE.EffectComposer</code>. Let's start by looking at the complete chain of passes, after which we'll look at the individual passes:</p><div class="informalexample"><pre class="programlisting">var composer = new THREE.EffectComposer(webGLRenderer);
+composer.renderTarget1.stencilBuffer = true;
+composer.renderTarget2.stencilBuffer = true;
+
+composer.addPass(bgPass);
+composer.addPass(renderPass);
+composer.addPass(renderPass2);
+
+composer.addPass(marsMask);
+composer.addPass(effectColorify1);
+composer.addPass(clearMask);
+
+composer.addPass(earthMask);
+composer.addPass(effectSepia);
+composer.addPass(clearMask);
+
+composer.addPass(effectCopy);</pre></div><p>To work with masks, we <a id="id1098" class="indexterm"/>need to create <code class="literal">THREE.EffectComposer</code> in a different manner. In this case, we need to create a new <code class="literal">THREE.WebGLRenderTarget</code> and set the <code class="literal">stencilBuffer</code> property of the internally used render targets to <code class="literal">true</code>. A stencil buffer is a special type of buffer and is used to limit the area of rendering. So, by enabling the stencil buffer, we can use our masks. First, let's look at the first three passes that are added. These three passes render the background, the Earth scene, and the Mars scene, as follows:</p><div class="informalexample"><pre class="programlisting">var bgPass = new THREE.RenderPass(sceneBG, cameraBG);
+var renderPass = new THREE.RenderPass(sceneEarth, camera);
+renderPass.clear = false;
+var renderPass2 = new THREE.RenderPass(sceneMars, camera);
+renderPass2.clear = false;</pre></div><p>There's nothing new here except that we set the <code class="literal">clear</code> property of two of these passes to <code class="literal">false</code>. If we don't do this, we'll only see the output from <code class="literal">renderPass2</code> since it will clear everything before it starts rendering. If you look back at the code for <code class="literal">THREE.EffectComposer</code>, the next three passes are <code class="literal">marsMask</code>, <code class="literal">effectColorify</code>, and <code class="literal">clearMask</code>. First, we'll look at how these three passes are defined:</p><div class="informalexample"><pre class="programlisting">var marsMask = new THREE.MaskPass(sceneMars, camera );
+var clearMask = new THREE.ClearMaskPass();
+var effectColorify = new THREE.ShaderPass(THREE.ColorifyShader );
+effectColorify.uniforms['color'].value.setRGB(0.5, 0.5, 1);</pre></div><p>The first of these three passes is <code class="literal">THREE.MaskPass</code>. When creating <code class="literal">THREE.MaskPass</code>, you pass in a scene and a camera just as you did for <code class="literal">THREE.RenderPass</code>. <code class="literal">THREE.MaskPass</code> will render this scene internally, but instead of showing this on screen, it uses this information to create a mask. When <code class="literal">THREE.MaskPass</code> is added to <code class="literal">THREE.EffectComposer</code>, all the subsequent passes will only be applied to the mask defined by <code class="literal">THREE.MaskPass</code>, until <code class="literal">THREE.ClearMaskPass</code> is encountered. In this example, this means that the <code class="literal">effectColorify</code> pass, which adds a blue glow, is only applied to the objects rendered in <code class="literal">sceneMars</code>.</p><p>We use the same approach to apply a sepia filter on the Earth object. We first create a mask based on the Earth scene and use this mask in <code class="literal">THREE.EffectComposer</code>. After <code class="literal">THREE.MaskPass</code>, we add the effect we want to apply (<code class="literal">effectSepia</code> in this case), and once we're done with that, we add <code class="literal">THREE.ClearMaskPass</code> to remove the mask. The last step for this specific <code class="literal">THREE.EffectComposer</code> is one we've already seen. We need to copy the final result to the screen, and we once again use the <code class="literal">effectCopy</code> pass for that.</p><p>There is one additional <a id="id1099" class="indexterm"/>property that's interesting when working with <code class="literal">THREE.MaskPass,</code> and that's the <code class="literal">inverse</code> property. If this property is set to <code class="literal">true</code>, the mask is inversed. In other words, the effect is applied to everything but the scene passed into <code class="literal">THREE.MaskPass</code>. This is shown in the following screenshot:</p><div class="mediaobject"><img src="graphics/2215OS_11_06.jpg" alt="Advanced EffectComposer flows using masks"/></div><p>Until now, we've used standard passes provided by Three.js for our effects. Three.js also provides <code class="literal">THREE.ShaderPass</code>, which can be used for custom effects and comes with a large number of shaders you can use and experiment with.</p></div><div class="section" title="Using THREE.ShaderPass for custom effects"><div class="titlepage"><div><div><h2 class="title"><a id="ch11lvl2sec83"/>Using THREE.ShaderPass for custom effects</h2></div></div></div><p>With <code class="literal">THREE.ShaderPass</code>, we <a id="id1100" class="indexterm"/>can <a id="id1101" class="indexterm"/>apply a large number of additional effects to our scene by passing in a custom shader. This section is divided into three parts. First, we'll look at the following set of simple shaders:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Name</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Description</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.MirrorShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1102" class="indexterm"/>creates a mirror effect for part of the screen. </p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.HueSaturationShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1103" class="indexterm"/> allows you to change the <span class="emphasis"><em>hue</em></span> and <span class="emphasis"><em>saturation</em></span> of the colors.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.VignetteShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1104" class="indexterm"/> applies a vignette effect. This effect shows dark borders around the center of the image.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.ColorCorrectionShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>With<a id="id1105" class="indexterm"/> this shader, you can change the color distribution.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.RGBShiftShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1106" class="indexterm"/>shader separates the red, green, and blue components of a color.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.BrightnessContrastShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1107" class="indexterm"/> changes the brightness and contrast of an image.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.ColorifyShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1108" class="indexterm"/> applies a color overlay to the screen.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.SepiaShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1109" class="indexterm"/>creates a sepia-like effect on the screen.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.KaleidoShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1110" class="indexterm"/>adds a kaleidoscope effect to the scene that provides radial reflection around the center of the scene.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.LuminosityShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1111" class="indexterm"/>provides a luminosity effect where the luminosity of the scene is shown.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.TechnicolorShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1112" class="indexterm"/> simulates the effect of two-strip technicolor that can be seen in older movies.</p>
+</td></tr></tbody></table></div><p>Next, we'll look at shaders that provide a couple of blur-related effects:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Name</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Description</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.HorizontalBlurShader </code>and <code class="literal">THREE.VerticalBlurShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>These <a id="id1113" class="indexterm"/>apply<a id="id1114" class="indexterm"/> a blur effect to the complete scene.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.HorizontalTiltShiftShader</code> and <code class="literal">THREE.VerticalTiltShiftShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>These<a id="id1115" class="indexterm"/> recreate<a id="id1116" class="indexterm"/> the <span class="emphasis"><em>tilt shift</em></span> effect. With the tilt shift effect, it is possible to create scenes that look like a miniature by making sure only part of the image is sharp.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.TriangleBlurShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1117" class="indexterm"/>applies a blur effect using a triangle-based approach.</p>
+</td></tr></tbody></table></div><p>And finally, we'll look at a few shaders that provide advanced effects:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Name</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Description</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.BleachBypassShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1118" class="indexterm"/>creates a <span class="emphasis"><em>bleach bypass</em></span> effect. With this effect, a silver-like overlay will be applied to the image.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.EdgeShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1119" class="indexterm"/> shader can be used to detect the sharp edges in an image and highlight them.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.FXAAShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1120" class="indexterm"/> shader applies an anti-aliasing effect during the postprocessing phase. Use this if applying anti-aliasing during rendering is too expensive.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">THREE.FocusShader</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1121" class="indexterm"/> is a simple shader that results in a sharply rendered center area and blurring along its borders.</p>
+</td></tr></tbody></table></div><p>We won't go into the details of all the shaders since if you've seen how one works, you pretty much know<a id="id1122" class="indexterm"/> how the others work. In the following sections, we'll highlight a couple of interesting ones. You can experiment with the others using the interactive examples provided for each section.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip22"/>Tip</h3><p>Three.js also provides two advanced postprocessing effects that allow you to apply a <span class="emphasis"><em>bokeh</em></span> effect to your scene. A bokeh effect provides a blur effect to part of the scene while rendering your main subject very sharply. Three.js provides <code class="literal">THREE.BrokerPass</code>, which you can use for this, or <code class="literal">THREE.BokehShader2</code> and <code class="literal">THREE.DOFMipMapShader</code>, which you can use together with <code class="literal">THREE.ShaderPass</code>. An<a id="id1123" class="indexterm"/> example of these shaders in action can be found on the Three.js website at <a class="ulink" href="http://threejs.org/examples/webgl_postprocessing_dof2.html">http://threejs.org/examples/webgl_postprocessing_dof2.html</a> and <a class="ulink" href="http://threejs.org/examples/webgl_postprocessing_dof.html">http://threejs.org/examples/webgl_postprocessing_dof.html</a>.</p></div></div><p>We start with a couple of the simple shaders.</p><div class="section" title="Simple shaders"><div class="titlepage"><div><div><h3 class="title"><a id="ch11lvl3sec39"/>Simple shaders</h3></div></div></div><p>To<a id="id1124" class="indexterm"/> experiment with the basic shaders, we've created an example where <a id="id1125" class="indexterm"/>you can play around with the shaders and see the effect directly in the scene. You can find this example in <code class="literal">04-shaderpass-simple.html</code>. The following screenshot shows this example:</p><div class="mediaobject"><img src="graphics/2215OS_11_07.jpg" alt="Simple shaders"/></div><p>With the menu in the top-right corner, you can select the specific shader you want to apply, and with the various drop-down menus, you can set the properties of the shader you've selected. For instance, the following screenshot shows <code class="literal">RGBShiftShader</code> in action:</p><div class="mediaobject"><img src="graphics/2215OS_11_08.jpg" alt="Simple shaders"/></div><p>When you <a id="id1126" class="indexterm"/>change one of the properties of a shader, the result is updated directly. For this example, we set the changed value directly on the shader. For instance, when values for <code class="literal">RGBShiftShader</code> have changed, we update the shader like this:</p><div class="informalexample"><pre class="programlisting">this.changeRGBShifter = function() {
+  rgbShift.uniforms.amount.value = controls.rgbAmount;
+  rgbShift.uniforms.angle.value = controls.angle;
+}</pre></div><p>Let's look at a couple of other shaders. The following image shows <a id="id1127" class="indexterm"/>the result of <code class="literal">VignetteShader</code>:</p><div class="mediaobject"><img src="graphics/2215OS_11_09.jpg" alt="Simple shaders"/></div><p>
+<code class="literal">MirrorShader</code><a id="id1128" class="indexterm"/> has the following effect:</p><p> </p><div class="mediaobject"><img src="graphics/2215OS_11_10.jpg" alt="Simple shaders"/></div><p>
+</p><p>With postprocessing, we can also apply extreme effects. A good example<a id="id1129" class="indexterm"/> of this is <code class="literal">THREE.KaleidoShader</code>. If you select this shader from the menu in the top-right corner, you'll see the following effect:</p><div class="mediaobject"><img src="graphics/2215OS_11_11.jpg" alt="Simple shaders"/></div><p>That's enough for the simple shaders. As you can see, they are very versatile and can create very interesting-looking effects. In this example, we applied a single shader each time, but you can add as many <code class="literal">THREE.ShaderPass</code> steps to <code class="literal">THREE.EffectComposer</code> as you like.</p></div><div class="section" title="Blurring shaders"><div class="titlepage"><div><div><h3 class="title"><a id="ch11lvl3sec40"/>Blurring shaders</h3></div></div></div><p>In this <a id="id1130" class="indexterm"/>section, we <a id="id1131" class="indexterm"/>won't dive into the code; we'll just show you the results from the various blur shaders. You can experiment with these using the <code class="literal">05-shaderpass-blur.html</code> example. The following scene is blurred with <code class="literal">HorizontalBlurShader</code><a id="id1132" class="indexterm"/> and <a id="id1133" class="indexterm"/>
+<code class="literal">VerticalBlurShader</code>, both of which you will learn about in the following paragraphs:</p><p> </p><div class="mediaobject"><img src="graphics/2215OS_11_12.jpg" alt="Blurring shaders"/></div><p>
+</p><p>The preceding <a id="id1134" class="indexterm"/>image shows <a id="id1135" class="indexterm"/>
+<code class="literal">THREE.HorizontalBlurShader</code> and <code class="literal">THREE.VerticalBlurShader</code>. You can<a id="id1136" class="indexterm"/> see the effect is a blurred scene. Besides these two blur effects, Three.js provides an additional shader that blurs an image, <code class="literal">THREE.TriangleShader</code>, which<a id="id1137" class="indexterm"/> is shown here. For instance, you could use this shader to depict motion blur, as shown in the following screenshot:</p><p> </p><div class="mediaobject"><img src="graphics/2215OS_11_13.jpg" alt="Blurring shaders"/></div><p>
+</p><p>The last blur-like effect is provided by <a id="id1138" class="indexterm"/>
+<code class="literal">THREE.HorizontalTiltShiftShader</code> and <a id="id1139" class="indexterm"/>
+<code class="literal">THREE.VerticalTiltShiftShader</code>. This shader doesn't blur the complete scene, but only a small area. This provides an effect <a id="id1140" class="indexterm"/>called <span class="emphasis"><em>tilt shift</em></span>. This is<a id="id1141" class="indexterm"/> often used to create miniature-like scenes from normal photographs. The following image shows this effect:</p><p> </p><div class="mediaobject"><img src="graphics/2215OS_11_14.jpg" alt="Blurring shaders"/></div><p>
+</p></div><div class="section" title="Advanced shaders"><div class="titlepage"><div><div><h3 class="title"><a id="ch11lvl3sec41"/>Advanced shaders</h3></div></div></div><p>For the <a id="id1142" class="indexterm"/>advanced shaders, we'll do what we did for the <a id="id1143" class="indexterm"/>previous blur-shaders. We'll just show you the output of the shaders. For details on how to configure them, look at the <code class="literal">06-shaderpass-advanced.html</code>
+<span class="strong"><strong> </strong></span>example. The following screenshot shows this example:</p><div class="mediaobject"><img src="graphics/2215OS_11_15.jpg" alt="Advanced shaders"/></div><p>The preceding example shows <a id="id1144" class="indexterm"/>
+<code class="literal">THREE.EdgeShader</code>. With this shader, you can detect the edges of objects in your scene.</p><p>The next shader is <a id="id1145" class="indexterm"/>
+<code class="literal">THREE.FocusShader</code>. This shader only renders the center of the screen in focus, as shown in the following screenshot:</p><div class="mediaobject"><img src="graphics/2215OS_11_16.jpg" alt="Advanced shaders"/></div><p>Until now, we've only used shaders that are provided by Three.js. However, it's also very easy to create shaders yourself.</p></div></div></div>
+<div class="section" title="Creating custom postprocessing shaders"><div class="titlepage"><div><div><h1 class="title"><a id="ch11lvl1sec56"/>Creating custom postprocessing shaders</h1></div></div></div><p>In this section, you'll<a id="id1146" class="indexterm"/> learn how to create a custom shader that you can use in postprocessing. We'll create two different shaders. The first one will convert the current image into a grayscale image, and the second one will convert the image into an 8-bit image by reducing the number of colors that are available. Note that creating vertex and fragment shaders is a very broad subject. In this section, we only touch the surface of what can be done by these shaders and how they work. For more in-depth information, you can find the <a id="id1147" class="indexterm"/>WebGL specification at <a class="ulink" href="http://www.khronos.org/webgl/">http://www.khronos.org/webgl/</a>. An additional good resource full of examples is Shadertoy<a id="id1148" class="indexterm"/> at <a class="ulink" href="https://www.shadertoy.com/">https://www.shadertoy.com/</a>.</p><div class="section" title="Custom grayscale shader"><div class="titlepage"><div><div><h2 class="title"><a id="ch11lvl2sec84"/>Custom grayscale shader</h2></div></div></div><p>To create a <a id="id1149" class="indexterm"/>custom shader for <a id="id1150" class="indexterm"/>Three.js (and also for other WebGL libraries), you need to implement two components: a vertex shader and a fragment shader. The vertex shader can be used to change the position of individual vertices, and the fragment shader is used to determine the color of individual pixels. For a postprocessing shader, we only need to implement a fragment shader, and we can keep the default vertex shader provided by Three.js. An important point to make before looking at the code is that GPUs usually support multiple shader pipelines. This means that in the vertex shaders step, multiple shaders can run in parallel—something that goes for the fragment shaders step as well.</p><p>Let's start by looking at the complete source code for the shader that applies a grayscale effect to our image (<code class="literal">custom-shader.js</code>):</p><div class="informalexample"><pre class="programlisting">THREE.CustomGrayScaleShader = {
+
+  uniforms: {
+
+    "tDiffuse": { type: "t", value: null },
+    "rPower":  { type: "f", value: 0.2126 },
+    "gPower":  { type: "f", value: 0.7152 },
+    "bPower":  { type: "f", value: 0.0722 }
+
+  },
+
+  vertexShader: [
+    "varying vec2 vUv;",
+    "void main() {",
+      "vUv = uv;",
+      "gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
+    "}"
+  ].join("\n"),
+
+  fragmentShader: [
+
+    "uniform float rPower;",
+    "uniform float gPower;",
+    "uniform float bPower;",
+    "uniform sampler2D tDiffuse;",
+
+    "varying vec2 vUv;",
+
+    "void main() {",
+      "vec4 texel = texture2D( tDiffuse, vUv );",
+      "float gray = texel.r*rPower + texel.g*gPower+ texel.b*bPower;",
+      "gl_FragColor = vec4( vec3(gray), texel.w );",
+    "}"
+  ].join("\n")
+};</pre></div><p>As you can <a id="id1151" class="indexterm"/>see from the code, this isn't JavaScript. When you write shaders, you write them in the<a id="id1152" class="indexterm"/> <span class="strong"><strong>OpenGL Shading Language</strong></span> (<span class="strong"><strong>GLSL</strong></span>), which looks a lot like the C programming language. More information on GLSL <a id="id1153" class="indexterm"/>can be found at <a class="ulink" href="http://www.khronos.org/opengles/sdk/docs/manglsl/">http://www.khronos.org/opengles/sdk/docs/manglsl/</a>.</p><p>Let's first look at this vertex shader:</p><div class="informalexample"><pre class="programlisting">"varying vec2 vUv;","void main() {",
+  "vUv = uv;",
+  "gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
+  "}"</pre></div><p>For postprocessing, this shader doesn't really need to do anything. The code you see above is the standard way Three.js implements a vertex shader. It uses <code class="literal">projectionMatrix</code>, which is the projection from the camera, together with <code class="literal">modelViewMatrix</code>, which maps an object's position into the world position, to determine where to render an object on screen.</p><p>For postprocessing, the only interesting thing in this piece of code is that the <code class="literal">uv</code> value, which indicates which texel to read from a texture, is passed on to the fragment shader using the "<code class="literal">varying</code> <code class="literal">vec2</code> <code class="literal">vUv</code>" variable. We will use the <code class="literal">vUV</code> value to get the correct pixel to work on in the fragment shader. Let's look at the fragment shader and see what the code is doing. We start with the following variable declaration:</p><div class="informalexample"><pre class="programlisting">"uniform float rPower;",
+"uniform float gPower;",
+"uniform float bPower;",
+"uniform sampler2D tDiffuse;",
+
+"varying vec2 vUv;",</pre></div><p>Here, we see four instances of the <code class="literal">uniforms</code> property. The instances of the <code class="literal">uniforms</code> property have values that are passed in from JavaScript to the shader and which are the same for each fragment that is processed. In this case, we pass in three floats, identified by type <code class="literal">f</code> (which are used to determine the ratio of a color to include in the final grayscale image), and a texture (<code class="literal">tDiffuse</code>) is passed in, identified by type <code class="literal">t</code>. This texture contains the image from the previous pass from <code class="literal">THREE.EffectComposer</code>. Three.js makes sure it gets passed correctly to this shader, and we can set the other instances of the uniforms property ourselves from JavaScript. Before we can use these uniforms from JavaScript, we have to define which <code class="literal">uniforms</code> property is available for this shader. This is done like this, at the top of the shader file:</p><div class="informalexample"><pre class="programlisting">uniforms: {
+
+  "tDiffuse": { type: "t", value: null },
+  "rPower":  { type: "f", value: 0.2126 },
+  "gPower":  { type: "f", value: 0.7152 },
+  "bPower":  { type: "f", value: 0.0722 }
+
+},</pre></div><p>At this point, we<a id="id1154" class="indexterm"/> can receive configuration parameters from Three.js and have received the image we want to modify. Let's look at the code that will convert each pixel to a gray pixel:</p><div class="informalexample"><pre class="programlisting">"void main() {",
+  "vec4 texel = texture2D( tDiffuse, vUv );",
+  "float gray = texel.r*rPower + texel.g*gPower + texel.b*bPower;",
+  "gl_FragColor = vec4( vec3(gray), texel.w );"</pre></div><p>What happens here is that we get the correct pixel from the passed-in texture. We do this by using the <code class="literal">texture2D</code> function, where we pass in our current image (<code class="literal">tDiffuse</code>) and the location of the pixel (<code class="literal">vUv</code>) we want to analyze. The result is a texel (a pixel from a texture) that contains a color and an opacity (<code class="literal">texel.w</code>).</p><p>Next, we use the <code class="literal">r</code>, <code class="literal">g</code>, and <code class="literal">b</code> properties of this texel to calculate a gray value. This gray value is set to the <code class="literal">gl_FragColor</code> variable, which is eventually shown on screen. And with that, we've got our own custom shader. Using this shader is just like the other shaders. First, we just need to set up <code class="literal">THREE.EffectComposer</code>:</p><div class="informalexample"><pre class="programlisting">var renderPass = new THREE.RenderPass(scene, camera);
+
+var effectCopy = new THREE.ShaderPass(THREE.CopyShader);
+effectCopy.renderToScreen = true;
+
+var shaderPass = new THREE.ShaderPass(THREE.CustomGrayScaleShader);
+
+var composer = new THREE.EffectComposer(webGLRenderer);
+composer.addPass(renderPass);
+composer.addPass(shaderPass);
+composer.addPass(effectCopy);</pre></div><p>Call <code class="literal">composer.render(delta)</code> in the render loop. If we want to change the properties of this shader at runtime, we can just update the <code class="literal">uniforms</code> property we've defined:</p><div class="informalexample"><pre class="programlisting">shaderPass.enabled = controls.grayScale;
+shaderPass.uniforms.rPower.value = controls.rPower;
+shaderPass.uniforms.gPower.value = controls.gPower;
+shaderPass.uniforms.bPower.value = controls.bPower;</pre></div><p>The result <a id="id1155" class="indexterm"/>can be seen in <code class="literal">07-shaderpass-custom.html</code>. The following screenshot shows this example:</p><div class="mediaobject"><img src="graphics/2215OS_11_17.jpg" alt="Custom grayscale shader"/></div><p>Let's create another custom shader. This time, we'll reduce the 24-bit output to a lower bit count.</p></div><div class="section" title="Creating a custom bit shader"><div class="titlepage"><div><div><h2 class="title"><a id="ch11lvl2sec85"/>Creating a custom bit shader</h2></div></div></div><p>Normally, <a id="id1156" class="indexterm"/>colors are represented<a id="id1157" class="indexterm"/> as a 24-bit value, which gives us about 16 million different colors. In the early days of computing, this wasn't possible, and colors where often represented as 8- or 16-bit colors. With this shader, we'll automatically transform our 24-bit output to a color depth of 8 bits (or anything you want).</p><p>Since it hasn't changed with regard to our previous example, we'll skip the vertex shader and directly list the<a id="id1158" class="indexterm"/> instances of the <code class="literal">uniforms</code> property:</p><div class="informalexample"><pre class="programlisting">uniforms: {
+
+  "tDiffuse": { type: "t", value: null },
+  "bitSize":  { type: "i", value: 4 }
+
+}</pre></div><p>Here's the fragment shader itself:</p><div class="informalexample"><pre class="programlisting">fragmentShader: [
+
+  "uniform int bitSize;",
+
+  "uniform sampler2D tDiffuse;",
+
+  "varying vec2 vUv;",
+
+  "void main() {",
+
+    "vec4 texel = texture2D( tDiffuse, vUv );",
+    "float n = pow(float(bitSize),2.0);",
+    "float newR = floor(texel.r*n)/n;",
+    "float newG = floor(texel.g*n)/n;",
+    "float newB = floor(texel.b*n)/n;",
+
+    "gl_FragColor = vec4(newR, newG, newB, texel.w );",
+
+  "}"
+
+].join("\n")</pre></div><p>We define two instances of the <code class="literal">uniforms</code> property that can be used to configure this shader. The first one is the one Three.js uses to pass in the current screen, and the second one is defined by us as an integer (<code class="literal">type:</code> <code class="literal">"i"</code>) and serves as the color depth we want to render the result in. The code itself is very straightforward:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">We first get <code class="literal">texel</code> from the texture and <code class="literal">tDiffuse</code> based on the passed-in <code class="literal">vUv</code> location of the pixel.</li><li class="listitem" style="list-style-type: disc">We calculate the number of colors we can have based on the <code class="literal">bitSize</code> property by calculating 2 to the power of <code class="literal">bitSize</code> (<code class="literal">pow(float(bitSize),2.0))</code>.</li><li class="listitem" style="list-style-type: disc">Next, we calculate the new value of the color of <code class="literal">texel</code> by multiplying the value with <code class="literal">n</code>, rounding it off, <code class="literal">(floor(texel.r*n))</code>, and dividing it again by <code class="literal">n</code>.</li><li class="listitem" style="list-style-type: disc">The result is set to <code class="literal">gl_FragColor</code> (red, green, and blue values and the opacity) and shown on screen.</li></ul></div><p>You can view <a id="id1159" class="indexterm"/>the result for this custom shader in the same example as our previous custom shader, <code class="literal">07-shaderpass-custom.html</code>. The following screenshot shows this example:</p><div class="mediaobject"><img src="graphics/2215OS_11_18.jpg" alt="Creating a custom bit shader"/></div><p>That's it for this chapter on postprocessing.</p></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch11lvl1sec57"/>Summary</h1></div></div></div><p>We talked about a lot of different postprocessing options in this chapter. As you saw, creating <code class="literal">THREE.EffectComposer</code> and chaining passes together is actually very easy. You just have to keep in mind a few things. Not all passes output to the screen. If you want to output to the screen, you can always use <code class="literal">THREE.ShaderPass</code> with <code class="literal">THREE.CopyShader</code>. The sequence in which you add passes to a composer is important. Effects are applied in that sequence. If you want to reuse the result from a specific <code class="literal">THREE.EffectComposer</code> instance, you can do this by using <code class="literal">THREE.TexturePass</code>. When you have more than one <code class="literal">THREE.RenderPass</code> in your <code class="literal">THREE.EffectComposer</code>, make sure to set the <code class="literal">clear</code> property to <code class="literal">false</code>. If not, you'll only see the output from the last <code class="literal">THREE.RenderPass</code> step. If you only want to apply an effect to a specific object, you can use <code class="literal">THREE.MaskPass</code>. When you're done with the mask, clear the mask with <code class="literal">THREE.ClearMaskPass</code>. Besides the standard passes provided by Three.js, there are also a large number of standard shaders available. You can use these together with <code class="literal">THREE.ShaderPass</code>. Creating custom shaders for postprocessing is very easy using the standard approach from Three.js. You only need to create a fragment shader.</p><p>Until now, we pretty much covered everything there is to know about Three.js. For the next chapter, the last one, we'll look at a library called <span class="strong"><strong>Physijs</strong></span> that you can use to extend Three.js with physics and apply collisions, gravity, and constraints.</p></div></body></html>

@@ -1,0 +1,1304 @@
+- en: Deploying to Multiple Regions
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 部署到多个区域
+- en: 'In this chapter, the following recipes will be covered:'
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，将涵盖以下食谱：
+- en: Implementing latency-based routing
+  id: totrans-2
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实现基于延迟的路由
+- en: Creating a regional health check
+  id: totrans-3
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 创建区域健康检查
+- en: Triggering regional failover
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 触发区域故障转移
+- en: Implementing regional replication with DynamoDB
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用DynamoDB实现区域复制
+- en: Implementing round-robin replication
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实现轮询复制
+- en: Introduction
+  id: totrans-7
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 简介
+- en: It is not a matter of if but when will a given cloud provider experience a news-worthy
+    regional disruption. It is inevitable. In my experience, this happens approximately
+    every two years or so. When such an event does occur, many systems have no recourse
+    and become unavailable during the disruption because they are only designed to
+    work across multiple availability zones within a single region. Meanwhile, other
+    systems barely experience a blip in availability because they have been designed
+    to run across multiple regions. The bottom line is that truly cloud-native systems
+    capitalize on regional bulkheads and run in multiple regions. Fortunately, we
+    leverage fully managed, value-added cloud services that already run across availability
+    zones. This empowers teams to refocus that effort on creating an active-active,
+    multi-regional system. The recipes in this chapter cover multi-regional topics
+    from three interrelated perspectives—synchronous requests, database replication,
+    and asynchronous event streams.
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 并不是某个云提供商是否会经历一个值得报道的区域中断的问题，而是何时会发生。这是不可避免的。根据我的经验，这种情况大约每两年发生一次。当这种事件发生时，许多系统没有其他选择，在发生中断期间变得不可用，因为它们只设计为在单个区域内的多个可用区工作。与此同时，其他系统几乎不会在可用性方面出现任何波动，因为它们已经被设计为跨多个区域运行。底线是，真正的云原生系统利用区域隔舱，并在多个区域运行。幸运的是，我们利用了已经跨可用区运行的完全托管、增值云服务。这使团队能够将精力重新集中在创建一个活动-活动、多区域系统上。本章中的食谱从三个相互关联的视角涵盖了多区域主题——同步请求、数据库复制和异步事件流。
+- en: Implementing latency-based routing
+  id: totrans-9
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现基于延迟的路由
+- en: Many systems make the conscious decision not to run across multiple regions
+    because it is simply not worth the additional effort and cost. This is completely
+    understandable when running in an active-passive mode because the additional effort
+    does not produce an easily visible benefit until there is a regional disruption.
+    It is also understandable when running in active-active mode doubles the monthly
+    runtime cost. Conversely, serverless cloud-native systems are easily deployed
+    to multiple regions and the increase in cost is nominal since the cost of a given
+    transaction volume is spread across the regions. This recipe demonstrates how
+    to run an AWS API Gateway and Lambda-based service in multiple regions and leverage
+    Route53 to route traffic across these active-active regions to minimize latency.
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 许多系统会做出有意识的决策，不跨多个区域运行，因为这根本不值得额外的努力和成本。当以活动-被动模式运行时，这一点完全可以理解，因为额外的努力不会产生容易看到的效益，直到发生区域中断。当以活动-活动模式运行时，它将每月运行成本加倍，这也是可以理解的。相反，无服务器云原生系统可以轻松部署到多个区域，并且由于交易量成本在各个区域之间分散，成本的增加是微不足道的。本食谱演示了如何在多个区域运行AWS
+    API Gateway和基于Lambda的服务，并利用Route53在这些活动-活动区域之间路由流量以最小化延迟。
+- en: Getting ready
+  id: totrans-11
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: You will need a registered domain name and a **Route53 Hosted Zone** that you
+    can use in this recipe to create a subdomain for the service that will be deployed,
+    such as we discussed in the *Associating a custom domain name with a CDN* recipe.
+    You will also need a wildcard certificate for your domain name in the `us-east-1`
+    and `us-west-2` regions, such as we discussed in the *Creating an SSL certificate
+    for encryption in transit* recipe.
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您需要一个已注册的域名和一个**Route53托管区域**，您可以在本食谱中使用它来为将要部署的服务创建子域名，例如我们在*将自定义域名与CDN关联*食谱中讨论的那样。您还需要在`us-east-1`和`us-west-2`区域为您的域名获取通配符证书，正如我们在*创建用于传输加密的SSL证书*食谱中讨论的那样。
+- en: How to do it...
+  id: totrans-13
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Create the project from the following template:'
+  id: totrans-14
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从以下模板创建项目：
+- en: '[PRE0]'
+  id: totrans-15
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: Navigate to the `cncb-latency-based-routing` directory with `cd cncb-latency-based-routing`.
+  id: totrans-16
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`cd cncb-latency-based-routing`导航到`cncb-latency-based-routing`目录。
+- en: 'Review the file named `serverless.yml` with the following content:'
+  id: totrans-17
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为`serverless.yml`的文件，其内容如下：
+- en: '[PRE1]'
+  id: totrans-18
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'Update the following fields in the `serverless.yml` file:'
+  id: totrans-19
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 更新`serverless.yml`文件中的以下字段：
+- en: '`custom.dns.hostedZoneId`'
+  id: totrans-20
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`custom.dns.hostedZoneId`'
+- en: '`custom.dns.domainName`'
+  id: totrans-21
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`custom.dns.domainName`'
+- en: '`custom.dns.us-east-1.acmCertificateArn`'
+  id: totrans-22
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`custom.dns.us-east-1.acmCertificateArn`'
+- en: '`custom.dns.us-west-2.acmCertificateArn`'
+  id: totrans-23
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`custom.dns.us-west-2.acmCertificateArn`'
+- en: Review the file named `handler.js`.
+  id: totrans-24
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 审查名为`handler.js`的文件。
+- en: Install the dependencies with `npm install`.
+  id: totrans-25
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`npm install`安装依赖项。
+- en: Run the tests with `npm test`.
+  id: totrans-26
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`npm test`运行测试。
+- en: Review the contents generated in the `.serverless` directory.
+  id: totrans-27
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 审查`.serverless`目录中生成的内容。
+- en: Deploy the stack in the `us-west-2` region with `npm run dp:lcl:**w** -- -s
+    $MY_STAGE`.
+  id: totrans-28
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`npm run dp:lcl:**w** -- -s $MY_STAGE`在`us-west-2`区域部署堆栈。
+- en: Review the stack and resources in the AWS Console for the `us-west-2` region.
+  id: totrans-29
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在AWS控制台中审查`us-west-2`区域的堆栈和资源。
+- en: 'Test the `regional` endpoint of the service and note the region returned in
+    the payload:'
+  id: totrans-30
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 测试服务的`regional`端点并注意负载中返回的区域：
+- en: '[PRE2]'
+  id: totrans-31
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: Deploy the stack in the `us-east-1` region with `npm run dp:lcl:**e** -- -s
+    $MY_STAGE`.
+  id: totrans-32
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`npm run dp:lcl:**e** -- -s $MY_STAGE`在`us-east-1`区域部署堆栈。
+- en: Deploying a CloudFront distribution can take 20 minutes or longer.
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 部署CloudFront分发可能需要20分钟或更长时间。
+- en: Review the stack and resources in the AWS console for the `us-east-1` region.
+  id: totrans-34
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在AWS控制台中审查`us-east-1`区域的堆栈和资源。
+- en: 'Test the `global` endpoint of the service and note the region returned in the
+    payload, which should be different from above if you are not closest to the `us-west-2`
+    region:'
+  id: totrans-35
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 测试服务的`global`端点并注意负载中返回的区域，如果你不是最接近`us-west-2`区域，则应与上述不同：
+- en: '[PRE3]'
+  id: totrans-36
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Remove the stacks once you have finished:'
+  id: totrans-37
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 完成后删除堆栈：
+- en: '[PRE4]'
+  id: totrans-38
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: How it works...
+  id: totrans-39
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: 'In this recipe, we are taking a single service and deploying it to two regions—`us-east-1`
+    and `us-west-2`. From the perspective of the API Gateway and the Lambda function,
+    we are simply just creating two different CloudFormation stacks, one in each region.
+    We have two scripts—`dp:lcl:**e**` and `dp:lcl:**w**`, and the only difference
+    between the two is that they specify different regions. As a result, the effort
+    to deploy to two regions is marginal, and there is no additional cost because
+    we only pay per transaction. One thing of note in the `serverless.yml` file is
+    that we are defining the `endpointType` for the API Gateway as `REGIONAL`, which
+    will allow us to leverage the Route53 regional routing capabilities:'
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个菜谱中，我们正在将单个服务部署到两个区域——`us-east-1`和`us-west-2`。从API网关和Lambda函数的角度来看，我们只是在每个区域创建两个不同的CloudFormation堆栈。我们有两个脚本——`dp:lcl:**e**`和`dp:lcl:**w**`，这两个脚本之间的唯一区别是它们指定了不同的区域。因此，部署到两个区域的努力微乎其微，而且没有额外的成本，因为我们只按交易付费。在`serverless.yml`文件中需要注意的一点是，我们正在为API网关定义`endpointType`为`REGIONAL`，这将使我们能够利用Route53的区域路由功能：
+- en: '![](img/fb2eaaad-8517-4439-8413-3d2ff7999a62.png)'
+  id: totrans-41
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/fb2eaaad-8517-4439-8413-3d2ff7999a62.png)'
+- en: As shown in the preceding diagram, we need to configure Route53 to perform *latency-*based
+    routing between the two regions. This means that Route53 will route requests to
+    the region that is closest to the requester. The `serverless-multi-regional-plugin`
+    encapsulates the majority of these configuration details, so we only need to specify
+    the variables under `custom.dns`. First, we provide the `hostedZoneId` for the
+    zone that hosts the top-level domain name, such as `example.com`. Next, we define
+    the `domainName` that will be used as the `alias` to access the service globally
+    via **CloudFront**. For this, we use the service name (that is, `${self:service}`)
+    as a subdomain of the top-level domain to uniquely identify a service.
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前图所示，我们需要配置Route53在两个区域之间执行基于*延迟*的路由。这意味着Route53将请求路由到请求者最近的位置。`serverless-multi-regional-plugin`封装了这些配置的大部分细节，因此我们只需要在`custom.dns`下指定变量。首先，我们提供托管顶级域名（例如`example.com`）的区域的`hostedZoneId`。接下来，我们定义将用作通过**CloudFront**访问服务的全局`alias`的`domainName`。为此，我们使用服务名称（即`${self:service}`）作为顶级域名的子域名来唯一标识一个服务。
+- en: We also need to define a `regionalDomainName` to provide a common name across
+    all the regions so that CloudFront can rely on Route53 to pick the best region
+    to access. For this, we are using the stage (that is, `${opt:stage}-${self:custom.dns.domainName}`)
+    as a prefix, and note that we are concatenating this with a dash so that it works
+    with a simple wildcard certificate, such as `*.example.com`. The regional `acmCertificateArn`
+    variables point to copies of your wildcard certificate in each region, as mentioned
+    in the *Getting ready* section. API Gateway requires that the certificates live
+    in the same region as the service. CloudFront requires that the certificate lives
+    in the `us-east-1` region. CloudFront is a global service, so we only need to
+    deploy the CloudFront distribution from the `us-east-1` region.
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还需要定义一个 `regionalDomainName`，以便在所有区域提供一个通用名称，这样 CloudFront 就可以依赖 Route53 来选择最佳的访问区域。为此，我们使用阶段（即
+    `${opt:stage}-${self:custom.dns.domainName}`）作为前缀，并请注意，我们将其与破折号连接，以便与简单的通配符证书（如
+    `*.example.com`）一起使用。区域 `acmCertificateArn` 变量指向每个区域中你的通配符证书的副本，如 *准备就绪* 部分所述。API
+    Gateway 要求证书位于与服务相同的区域。CloudFront 要求证书位于 `us-east-1` 区域。CloudFront 是一项全球服务，因此我们只需要从
+    `us-east-1` 区域部署 CloudFront 分发。
+- en: All requests to the global endpoint (`service.example.com`) will be routed to
+    the closest CloudFront edge location. CloudFront then forwards the requests to
+    the regional endpoint (`stage-service.example.com`), and Route53 will route the
+    requests to the closest region. Once a request is in a region, all requests to
+    services, such as Lambda, DynamoDB and Kinesis, will stay within the region to
+    minimize latency. All changes to state will be replicated to the other regions,
+    as we discuss in the *Implementing regional replication with DynamoDB* and *Implementing
+    round-robin replication* recipes.
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所有对全局端点（`service.example.com`）的请求都将路由到最近的 CloudFront 边缘位置。CloudFront 然后将请求转发到区域端点（`stage-service.example.com`），Route53
+    将请求路由到最近的区域。一旦请求进入一个区域，对服务（如 Lambda、DynamoDB 和 Kinesis）的所有请求都将保持在区域内，以最小化延迟。所有状态更改都将复制到其他区域，正如我们在
+    *使用 DynamoDB 实现区域复制* 和 *实现轮询复制* 配方中讨论的那样。
+- en: I highly recommend looking at the generated *CloudFormation* template to see
+    the details of all the resources that are created.
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我强烈建议查看生成的 *CloudFormation* 模板，以了解所有创建的资源细节。
+- en: Creating a regional health check
+  id: totrans-46
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 创建区域健康检查
+- en: Health checks in a cloud-native system have a different focus from traditional
+    health checks. Traditional health checks operate at the instance level to identify
+    when a specific instance in a cluster needs to be replaced. Cloud-native systems,
+    however, use fully managed, value-added cloud services, so there are no instances
+    to manage. These serverless capabilities provide high availability across the
+    availability zones within a specific region. As a result, cloud-native systems
+    can focus on providing high availability across regions. This recipe demonstrates
+    how to assert the health of the value-added cloud services that are used within
+    a given region.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 云原生系统中的健康检查与传统健康检查的关注点不同。传统的健康检查在实例级别运行，以确定集群中何时需要替换特定的实例。然而，云原生系统使用完全托管、增值的云服务，因此没有实例需要管理。这些无服务器功能提供了特定区域内可用区的高可用性。因此，云原生系统可以专注于在区域之间提供高可用性。本配方演示了如何断言给定区域内使用的增值云服务的状态。
+- en: Getting ready
+  id: totrans-48
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备就绪
+- en: To complete this recipe in full, you will need a Pingdom ([https://www.pingdom.com](https://www.pingdom.com))
+    account.
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要完整完成此配方，您需要一个 Pingdom ([https://www.pingdom.com](https://www.pingdom.com))
+    账户。
+- en: How to do it...
+  id: totrans-50
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Create the project from the following template:'
+  id: totrans-51
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从以下模板创建项目：
+- en: '[PRE5]'
+  id: totrans-52
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: Navigate to the `cncb-regional-health-check` directory with `cd cncb-regional-health-check`.
+  id: totrans-53
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `cd cncb-regional-health-check` 命令导航到 `cncb-regional-health-check` 目录。
+- en: 'Review the file named `serverless.yml` with the following content:'
+  id: totrans-54
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为 `serverless.yml` 的文件，其内容如下：
+- en: '[PRE6]'
+  id: totrans-55
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'Review the file named `handler.js` with the following content:'
+  id: totrans-56
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为 `handler.js` 的文件，其内容如下：
+- en: '[PRE7]'
+  id: totrans-57
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: Install the dependencies with `npm install`.
+  id: totrans-58
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm install` 安装依赖项。
+- en: Run the tests with `npm test`.
+  id: totrans-59
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm test` 运行测试。
+- en: Review the contents generated in the `.serverless` directory.
+  id: totrans-60
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看在 `.serverless` 目录中生成的内容。
+- en: 'Deploy the stack in the `us-east-1` and `us-west-2` regions:'
+  id: totrans-61
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在 `us-east-1` 和 `us-west-2` 区域部署堆栈：
+- en: '[PRE8]'
+  id: totrans-62
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: Review the stack and resources in the AWS console for both regions.
+  id: totrans-63
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在 AWS 控制台中查看两个区域的堆栈和资源。
+- en: 'For each region, invoke the endpoint shown in the stack output as shown here:'
+  id: totrans-64
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 对于每个区域，调用堆栈输出中显示的端点，如下所示：
+- en: '[PRE9]'
+  id: totrans-65
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: Create an **Uptime** check in your **Pingdom** account for each regional endpoint
+    with an interval of `1 minute`.
+  id: totrans-66
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在您的 **Pingdom** 账户中为每个区域端点创建一个 **Uptime** 检查，间隔为 `1 分钟`。
+- en: 'Remove the stacks once you have finished:'
+  id: totrans-67
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 完成后，请删除堆栈：
+- en: '[PRE10]'
+  id: totrans-68
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: How it works...
+  id: totrans-69
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: A traditional health check typically asserts that an instance is able to access
+    all the resources that it needs to operate properly. A regional health check does
+    the same thing but from the perspective of the region as a whole. It asserts that
+    all the value-added cloud services (that is, resources) used by the system are
+    operating properly within the given region. If any one resource is unavailable,
+    we will failover the entire region, as discussed in the *Triggering regional failover*
+    recipe.
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 传统的健康检查通常断言实例能够访问它操作所需的全部资源。区域健康检查做的是同样的事情，但是从整个区域的角度来看。它断言系统使用的所有增值云服务（即资源）在给定区域内都运行正常。如果任何一个资源不可用，我们将根据
+    *触发区域故障转移* 菜谱中的讨论，将整个区域故障转移。
+- en: The health check service is implemented as a `REGIONAL` API Gateway based service
+    and deployed to each region. We then need to periodically invoke the health check
+    in each region to check that the region is healthy. We could have Route53 ping
+    these regional endpoints, but it will ping them so frequently that the health
+    check service could easily become the most expensive service in your entire system.
+    Alternatively, we can use an external service, such as **Pingdom**, to invoke
+    the health check in each region once per minute. Once a minute is sufficient for
+    many systems, but extremely high traffic systems may benefit from the higher frequency
+    provided by Route53.
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 健康检查服务被实现为一个基于 `REGIONAL` API 网关的服务，并部署到每个区域。然后我们需要定期在每个区域调用健康检查，以确认该区域是健康的。我们可以让
+    Route53 ping 这些区域端点，但它会频繁地 ping，以至于健康检查服务可能会成为你整个系统中最昂贵的服务。作为替代方案，我们可以使用外部服务，例如
+    **Pingdom**，在每个区域每分钟调用一次健康检查。对于许多系统来说，每分钟一次已经足够，但对于流量极高的系统，可能从 Route53 提供的更高频率中受益。
+- en: The health check needs to assert that the required resources are available.
+    The health check itself implicitly asserts that the API Gateway and Lambda services
+    are available because it is built on those services. For all other resources,
+    it will need to perform some sort of ping operation. In this recipe, we assume
+    that DynamoDB is the required resource. The health check service defines its own
+    DynamoDB table and performs a `readCheck` and a `writeCheck` on each invocation
+    to assert that the service is still available. If either request fails, then the
+    health check service will fail and return a `503` status code. For testing, the
+    service provides an `UNHEALTHY` environment variable that can be used to simulate
+    a failure, which we will use in the next recipe.
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 健康检查需要确认所需资源可用。健康检查本身隐含地确认 API 网关和 Lambda 服务可用，因为它建立在那些服务之上。对于所有其他资源，它将需要执行某种
+    ping 操作。在这个菜谱中，我们假设 DynamoDB 是所需资源。健康检查服务定义了自己的 DynamoDB 表，并在每次调用时执行 `readCheck`
+    和 `writeCheck`，以确认服务仍然可用。如果任一请求失败，则健康检查服务将失败并返回 `503` 状态码。为了测试，该服务提供了一个 `UNHEALTHY`
+    环境变量，可以用来模拟失败，我们将在下一个菜谱中使用它。
+- en: Triggering regional failover
+  id: totrans-73
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 触发区域故障转移
+- en: As we discussed, in the *Creating a regional health check* recipe, our regional
+    health checks assert that the fully managed, value-added cloud services that are
+    used by the system are all up and running properly. When any of these services
+    are down or experiencing a sufficiently high error rate, it is best to fail the
+    entire region over to the next-best active region. This recipe demonstrates how
+    to connect a regional health check to Route53, using **CloudWatch Alarms**, so
+    that Route53 can direct traffic to healthy regions.
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们讨论的，在 *创建区域健康检查* 菜谱中，我们的区域健康检查断言系统使用的所有完全管理、增值云服务都正常运行。当这些服务中的任何一个出现故障或错误率足够高时，最好是整个区域故障转移到下一个最佳活动区域。这个菜谱演示了如何使用
+    **CloudWatch Alarms** 将区域健康检查连接到 Route53，以便 Route53 可以将流量导向健康的区域。
+- en: Getting ready
+  id: totrans-75
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: You will need a registered domain name and a **Route53 Hosted Zone** that you
+    can use in this recipe to create a subdomain for the service that will be deployed,
+    such as we discussed in the *Associating a custom domain name with a CDN* recipe.
+    You will also need a wildcard certificate for your domain name in the `us-east-1`
+    and `us-west-2` regions, such as we discussed in the *Creating an SSL certificate
+    for encryption in transit* recipe.
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您需要一个已注册的域名和一个**Route53托管区域**，您可以使用此配方为要部署的服务创建子域名，例如我们在*将自定义域名与CDN关联*配方中讨论的那样。您还需要在`us-east-1`和`us-west-2`区域为您的域名获取通配符证书，例如我们在*创建用于传输加密的SSL证书*配方中讨论的那样。
+- en: How to do it...
+  id: totrans-77
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做到这一点...
+- en: 'Create the service and check projects from the following templates:'
+  id: totrans-78
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从以下模板创建服务并检查项目：
+- en: '[PRE11]'
+  id: totrans-79
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: Navigate to the `cncb-regional-failover-check` directory with `cd cncb-regional-failover-check`.
+  id: totrans-80
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`cd cncb-regional-failover-check`进入`cncb-regional-failover-check`目录。
+- en: 'Review the file named `serverless.yml` with the following content:'
+  id: totrans-81
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为`serverless.yml`的文件，其内容如下：
+- en: '[PRE12]'
+  id: totrans-82
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: Review the file named `handler.js`.
+  id: totrans-83
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为`handler.js`的文件。
+- en: Install the dependencies with `npm install`.
+  id: totrans-84
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`npm install`安装依赖项。
+- en: Run the tests with `npm test`.
+  id: totrans-85
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`npm test`运行测试。
+- en: Review the contents generated in the `.serverless` directory.
+  id: totrans-86
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看在`.serverless`目录中生成的内容。
+- en: 'Deploy the stack in the `us-east-1` and `us-west-2` regions:'
+  id: totrans-87
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在`us-east-1`和`us-west-2`区域部署堆栈：
+- en: '[PRE13]'
+  id: totrans-88
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: Review the stack and resources in the AWS console for both regions.
+  id: totrans-89
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在AWS控制台中查看两个区域的堆栈和资源。
+- en: Navigate to the `cncb-regional-failover-service` directory with `cd cncb-regional-failover-service`.
+  id: totrans-90
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`cd cncb-regional-failover-service`进入`cncb-regional-failover-service`目录。
+- en: 'Review the file named `serverless.yml` with the following content:'
+  id: totrans-91
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为`serverless.yml`的文件，其内容如下：
+- en: '[PRE14]'
+  id: totrans-92
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: 'Update the following fields in the `serverless.yml` file:'
+  id: totrans-93
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在`serverless.yml`文件中更新以下字段：
+- en: '`custom.dns.hostedZoneId`'
+  id: totrans-94
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`custom.dns.hostedZoneId`'
+- en: '`custom.dns.domainName`'
+  id: totrans-95
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`custom.dns.domainName`'
+- en: '`custom.dns.us-east-1.acmCertificateArn`'
+  id: totrans-96
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`custom.dns.us-east-1.acmCertificateArn`'
+- en: '`custom.dns.us-east-1.healthCheckId` from the output of the `east` health check
+    stack'
+  id: totrans-97
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 从`east`健康检查堆栈的输出中获取`custom.dns.us-east-1.healthCheckId`
+- en: '`custom.dns.us-west-2.acmCertificateArn`'
+  id: totrans-98
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`custom.dns.us-west-2.acmCertificateArn`'
+- en: '`custom.dns.us-west-2.healthCheckId` from the output of the `west` health check
+    stack'
+  id: totrans-99
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 从`west`健康检查堆栈的输出中获取`custom.dns.us-west-2.healthCheckId`
+- en: Install the dependencies with `npm install`.
+  id: totrans-100
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`npm install`安装依赖项。
+- en: Run the tests with `npm test`.
+  id: totrans-101
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`npm test`运行测试。
+- en: Review the contents generated in the `.serverless` directory.
+  id: totrans-102
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看在`.serverless`目录中生成的内容。
+- en: 'Deploy the stack in the `us-west-2` and `us-east-1` regions:'
+  id: totrans-103
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在`us-west-2`和`us-east-1`区域部署堆栈：
+- en: '[PRE15]'
+  id: totrans-104
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: Deploying a CloudFront distribution can take 20 minutes or longer.
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 部署CloudFront分发可能需要20分钟或更长时间。
+- en: Review the stack and resources in the AWS console for both regions.
+  id: totrans-106
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在AWS控制台中查看两个区域的堆栈和资源。
+- en: 'Test the `global` endpoint of the service and note the region returned in the
+    payload:'
+  id: totrans-107
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 测试服务的`global`端点并注意负载中返回的区域：
+- en: '[PRE16]'
+  id: totrans-108
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: Go to the `cncb-regional-failover-check-<stage>-check` Lambda function in the
+    AWS console for the region that your request was routed to and change the `UNHEALTHY`
+    environment variable to `true` and s*ave* the function. For example, the previous
+    output shows `us-east-1`, so update the function in `us-east-1`.
+  id: totrans-109
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 前往AWS控制台中路由到您请求的区域对应的`cncb-regional-failover-check-<stage>-check` Lambda函数，将`UNHEALTHY`环境变量更改为`true`并保存函数。例如，前面的输出显示`us-east-1`，因此更新`us-east-1`中的函数。
+- en: 'Invoke the health check endpoint for that region multiple times over the course
+    of several minutes to trigger a failover:'
+  id: totrans-110
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在几分钟内多次调用该区域的健康检查端点以触发故障转移：
+- en: '[PRE17]'
+  id: totrans-111
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'Test the `global` endpoint of the service and note that the region has changed:'
+  id: totrans-112
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 测试服务的`global`端点并注意区域已更改：
+- en: '[PRE18]'
+  id: totrans-113
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: Review the status of the Route53 health checks in the AWS Console.
+  id: totrans-114
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在AWS控制台中查看Route53健康检查的状态。
+- en: 'Remove the stacks once you are finished:'
+  id: totrans-115
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 完成后删除堆栈：
+- en: '[PRE19]'
+  id: totrans-116
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: How it works...
+  id: totrans-117
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: Our regional health check service is designed to return a `5xx` status code
+    when one or more of the required services returns an error. We add a CloudWatch
+    alarm, named `Api5xxAlarm`, to the health check service that monitors the API
+    Gateway `5xxError` metric in the given region and raises an alarm when there is
+    at least one `5xx` in a minute. You will want to adjust the sensitivity of the
+    alarm to your specific requirements. Next, we add a Route53 health check, named
+    `ApiHealthCheck`, to the service that depends on the `Api5xxAlarm` and outputs
+    the `ApiHealthCheckId` for use by other services. Finally, we associate the `healthCheckId`
+    with the Route53 RecordSet for each service in each region, such as the `cncb-regional-failover-service`.
+    When the alarm status is `Unhealthy`, Route53 will stop routing traffic to the
+    region until the status is `Healthy` again.
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的区域健康检查服务设计为当所需的一个或多个服务返回错误时返回`5xx`状态码。我们在健康检查服务中添加了一个名为`Api5xxAlarm`的CloudWatch警报，该警报监控给定区域的API
+    Gateway `5xxError`指标，并在一分钟内至少有一个`5xx`时发出警报。您可能需要根据具体需求调整警报的灵敏度。接下来，我们向服务中添加了一个名为`ApiHealthCheck`的Route53健康检查，它依赖于`Api5xxAlarm`并输出`ApiHealthCheckId`供其他服务使用。最后，我们将`healthCheckId`与每个区域中每个服务的Route53
+    RecordSet关联起来，例如`cncb-regional-failover-service`。当警报状态为`Unhealthy`时，Route53将停止将流量路由到该区域，直到状态再次变为`Healthy`。
+- en: In this recipe, we used the `UNHEALTHY` environment variable to simulate a regional
+    failure and manually invoked the service to trigger the alarm. As we discussed
+    in the *Creating a regional health check* recipe, the health check will typically
+    be invoked on a regular basis by another service, such as Pingdom, to ensure that
+    there is a constant flow of traffic asserting the health of the region. To increase
+    coverage, we could also expand the alarm to check the `5xx` metric of all services
+    in a region by removing the `ApiName` dimension from the alarm but still rely
+    on pinging the health check service to assert the status when there is no other
+    traffic.
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个配方中，我们使用了`UNHEALTHY`环境变量来模拟区域故障，并手动调用服务以触发警报。正如我们在*创建区域健康检查*配方中讨论的那样，健康检查通常由另一个服务（如Pingdom）定期调用，以确保区域健康状态有持续的流量。为了增加覆盖率，我们还可以通过从警报中删除`ApiName`维度来检查区域中所有服务的`5xx`指标，但仍依赖于ping健康检查服务来断言状态，当没有其他流量时。
+- en: Implementing regional replication with DynamoDB
+  id: totrans-120
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在DynamoDB中实现区域复制
+- en: Timely replication of data across regions is important to facilitate a seamless
+    user experience when a regional failover occurs. During normal execution, regional
+    replication will occur in near real time. During a regional failure, it should
+    be expected that data would replicate more slowly. We can think of this as protracted
+    eventual consistency. Fortunately, our cloud-native systems are designed to be
+    eventually consistent. This means they are tolerant of stale data, regardless
+    of how long it takes to become consistent. This recipe shows how to create global
+    tables to replicate DynamoDB tables across regions and discusses why we do not
+    replicate event streams.
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在区域故障发生时，及时跨区域复制数据对于提供无缝的用户体验非常重要。在正常执行期间，区域复制将在近实时发生。在区域故障期间，应预期数据复制会变慢。我们可以将其视为延期的最终一致性。幸运的是，我们的云原生系统被设计为最终一致性。这意味着它们可以容忍过时的数据，无论数据何时变得一致。本配方展示了如何创建全局表以跨区域复制DynamoDB表，并讨论了为什么我们不复制事件流。
+- en: Getting ready
+  id: totrans-122
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: Before starting this recipe, you will need an AWS Kinesis Stream in the `us-east-1`
+    and `us-west-2` regions, such as the one created in the *Creating an event stream*
+    recipe.
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在开始此配方之前，您需要在`us-east-1`和`us-west-2`区域拥有一个AWS Kinesis Stream，例如在*创建事件流*配方中创建的那个。
+- en: How to do it...
+  id: totrans-124
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Create the project from the following template:'
+  id: totrans-125
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从以下模板创建项目：
+- en: '[PRE20]'
+  id: totrans-126
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: Navigate to the `cncb-dynamodb-global-table` directory with `cd cncb-dynamodb-global-table`.
+  id: totrans-127
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`cd cncb-dynamodb-global-table`命令导航到`cncb-dynamodb-global-table`目录。
+- en: 'Review the file named `serverless.yml` with the following content:'
+  id: totrans-128
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为`serverless.yml`的文件，其内容如下：
+- en: '[PRE21]'
+  id: totrans-129
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'Review the file named `handler.js` with the following content:'
+  id: totrans-130
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为`handler.js`的文件，其内容如下：
+- en: '[PRE22]'
+  id: totrans-131
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: Install the dependencies with `npm install`.
+  id: totrans-132
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`npm install`命令安装依赖项。
+- en: Run the tests with `npm test -- -s $MY_STAGE`.
+  id: totrans-133
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`npm test -- -s $MY_STAGE`命令运行测试。
+- en: Review the contents generated in the `.serverless` directory.
+  id: totrans-134
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看`.serverless`目录中生成的内容。
+- en: 'Deploy the stack in the `us-east-1` and `us-west-2` regions:'
+  id: totrans-135
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在`us-east-1`和`us-west-2`区域部署堆栈：
+- en: '[PRE23]'
+  id: totrans-136
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: Review the stack and resources in the AWS console in both regions.
+  id: totrans-137
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在两个区域的AWS控制台中查看栈和资源。
+- en: 'Invoke the `command` function to save data to the `us-east-1` region:'
+  id: totrans-138
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 调用`command`函数将数据保存到`us-east-1`区域：
+- en: '[PRE24]'
+  id: totrans-139
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: 'Invoke the `query` function to retrieve the data from the `us-west-2` region:'
+  id: totrans-140
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 调用`query`函数从`us-west-2`区域检索数据：
+- en: '[PRE25]'
+  id: totrans-141
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'Take a look at the logs for the `trigger` and `listener` functions in both
+    regions:'
+  id: totrans-142
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看两个区域中`trigger`和`listener`函数的日志：
+- en: '[PRE26]'
+  id: totrans-143
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'Remove both stacks once you are finished:'
+  id: totrans-144
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 完成后，删除两个栈：
+- en: '[PRE27]'
+  id: totrans-145
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: How it works...
+  id: totrans-146
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: A **DynamoDB Global Table** is responsible for replicating data across all the
+    regional tables that have been associated with the global table and keep the data
+    synchronized, all in near real time. The `serverless-dynamodb-global-table-plugin`
+    will create the global tables and is designed to work with the `serverless-dynamodb-autoscaling-plugin`.
+    For each table that has the `global` flag set to true, the plugin will create
+    the global table when the service is deployed to the first region. For each successive
+    regional deployment the plugin will add the regional table to the global table.
+    Each regional table must have the same name, have streams enabled, and have the
+    same autoscaling policies, which is handled by the plugins. One thing that is
+    not handled by the plugins is that the tables must all be empty when the global
+    table is initially deployed.
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**DynamoDB全局表**负责在所有与全局表关联的区域表中复制数据，并保持数据同步，这一切都在近乎实时完成。`serverless-dynamodb-global-table-plugin`将创建全局表，并设计用于与`serverless-dynamodb-autoscaling-plugin`一起工作。对于每个将`global`标志设置为true的表，当服务部署到第一个区域时，插件将创建全局表。对于后续的区域部署，插件将区域表添加到全局表中。每个区域表必须具有相同的名称，启用流，并具有相同的自动扩展策略，这由插件处理。插件不处理的一件事是，当全局表最初部署时，所有表都必须为空。'
+- en: 'We will start with the happy-path scenario, where there is no regional disruption
+    and everything is working smoothly, and walk through the following diagram. When
+    data is written to the table in a region, such as `us-east-1`, then the data is
+    replicated to the `us-west-2` region. The `trigger` in the `us-east-1` region
+    is also executed. The trigger has a `forOrigin` filter that will ignore all events
+    where the `aws:rep:updateregion` field is not equal to the current `AWS_REGION`.
+    Otherwise, the trigger will publish an event to the Kinesis Stream in the current
+    region and all subscribers to the event will execute in the current region and
+    replicate their own data to the other regions. The `listener` for the current
+    service will ignore any events that it produced itself. In the `us-west-2` region
+    the `trigger` will also be invoked after the replication, but the `forOrigin`
+    filter will short-circuit the logic so that a duplicate event is not published
+    to Kinesis and reprocessed by all the subscribers in that region. The inefficiency
+    of duplicate event processing and the potential for infinite replication loops
+    are two reasons why it is best not to replicate event streams and instead reply
+    on replication at the leaf data stores:'
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将从快乐的路径场景开始，其中没有区域中断，一切运行顺利，并逐步通过以下图表。当数据写入某个区域的表，例如`us-east-1`时，数据将被复制到`us-west-2`区域。`us-east-1`区域的`trigger`也会被调用。该触发器有一个`forOrigin`过滤器，它会忽略所有`aws:rep:updateregion`字段不等于当前`AWS_REGION`的事件。否则，触发器将向当前区域的Kinesis
+    Stream发布事件，并且所有订阅者将在当前区域执行并复制自己的数据到其他区域。当前服务的`listener`将忽略它自己产生的任何事件。在`us-west-2`区域，复制完成后，`trigger`也会被调用，但`forOrigin`过滤器将短路逻辑，因此不会向Kinesis发布重复事件，也不会在该区域的所有订阅者中重新处理。重复事件处理的不效率和可能的无穷复制循环是最好不复制事件流，而是依赖于叶数据存储复制的原因：
+- en: '![](img/0942f19e-c3d5-442b-b233-5e9a57539aa1.png)'
+  id: totrans-149
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/0942f19e-c3d5-442b-b233-5e9a57539aa1.png)'
+- en: Note that this recipe builds on the code from the *Implementing bi-directional
+    synchronization* recipe, so you can review that recipe for additional details
+    about the code.
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，这个配方基于*实现双向同步*配方中的代码，因此您可以查看该配方以获取有关代码的更多详细信息。
+- en: During a regional failover, in the best-case scenario, a user's data will have
+    already been replicated and the failover process will be completely seamless.
+    The user's next commands will execute in the new region, the chain of events will
+    process in the new region, and the results will eventually replicate back to the
+    failed region. When there is some replication latency, **session consistency**
+    helps make the failover process appear seamless, as we discussed in the *Leveraging
+    session consistency* recipe. However, during a regional failover, it is likely
+    that some subscribers in the failing region will fall behind on processing the
+    remaining events in the regional stream. Fortunately, a regional disruption typically
+    means that there is lower throughput in the failing region, as opposed to no throughput.
+    This means that there will be a higher latency for replicating the results of
+    event processing to the other regions but they will eventually become consistent.
+    A user experience that is designed for eventual consistency, such as an email
+    app on a mobile device, will handle this protracted eventual consistentcy in its
+    stride.
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在区域故障转移期间，在最佳情况下，用户的数据已经复制，故障转移过程将完全无缝。用户的下一个命令将在新区域执行，事件链将在新区域处理，最终结果将复制回故障区域。当存在一些复制延迟时，**会话一致性**有助于使故障转移过程看起来无缝，正如我们在*利用会话一致性*配方中所讨论的那样。然而，在区域故障转移期间，失败的区域中的一些订阅者可能会落后于处理区域流中剩余的事件。幸运的是，区域中断通常意味着失败区域中的吞吐量较低，而不是没有吞吐量。这意味着将事件处理的结果复制到其他区域会有更高的延迟，但它们最终会变得一致。为最终一致性设计的用户体验，例如移动设备上的电子邮件应用程序，将轻松处理这种拖延的最终一致性。
+- en: The complexity of trying to keep track of which events have processed and which
+    events are stuck in a failing region is another reason why it is best not to replicate
+    event streams. In cases where this protracted eventual consistency cannot be tolerated,
+    then the latest events in the new region can rely on session consistency for more
+    up-to-date information and use the techniques discussed in the *Implementing idempotency
+    with an inverse oplock* and *Implementing idempotency with event sourcing* recipes
+    to handle the older events that are received out of order from the slowly recovering
+    region.
+  id: totrans-152
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尝试跟踪哪些事件已处理以及哪些事件卡在失败区域中的复杂性是最好不复制事件流的另一个原因。在无法容忍这种拖延的最终一致性情况下，新区域中的最新事件可以依赖会话一致性以获取更准确的信息，并使用*使用逆oplock实现幂等性*和*使用事件溯源实现幂等性*配方中讨论的技术来处理从缓慢恢复的区域接收到的顺序错误的旧事件。
+- en: Implementing round-robin replication
+  id: totrans-153
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现轮询复制
+- en: Not all of the databases in our polyglot persistence architecture will support
+    turnkey regional replication as we have with AWS DynamoDB, yet we still need to
+    replicate their data to multiple regions to improve latency and support regional
+    failover. This recipe demonstrates how to use AWS S3 as a surrogate to add regional
+    replication to any database.
+  id: totrans-154
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的多语言持久性架构中，并非所有数据库都支持像AWS DynamoDB那样的即插即用区域复制，但我们仍然需要将它们的数据复制到多个区域以提高延迟并支持区域故障转移。本配方演示了如何使用AWS
+    S3作为代理为任何数据库添加区域复制。
+- en: How to do it...
+  id: totrans-155
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Create the project from the following template:'
+  id: totrans-156
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从以下模板创建项目：
+- en: '[PRE28]'
+  id: totrans-157
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: Navigate to the `cncb-round-robin-replication` directory with `cd cncb-round-robin-replication`.
+  id: totrans-158
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`cd cncb-round-robin-replication`导航到`cncb-round-robin-replication`目录。
+- en: 'Review the file named `serverless.yml` with the following content:'
+  id: totrans-159
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查名为`serverless.yml`的文件，其内容如下：
+- en: '[PRE29]'
+  id: totrans-160
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'Review the file named `replicator.js` with the following content:'
+  id: totrans-161
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查名为`replicator.js`的文件，其内容如下：
+- en: '[PRE30]'
+  id: totrans-162
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: Install the dependencies with `npm install`.
+  id: totrans-163
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`npm install`安装依赖项。
+- en: Run the tests with `npm test -- -s $MY_STAGE`.
+  id: totrans-164
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`npm test -- -s $MY_STAGE`运行测试。
+- en: Review the contents generated in the `.serverless` directory.
+  id: totrans-165
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查`.serverless`目录中生成的内容。
+- en: 'Deploy the stack in the `us-east-1` and `us-west-2` regions:'
+  id: totrans-166
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在`us-east-1`和`us-west-2`区域部署堆栈：
+- en: '[PRE31]'
+  id: totrans-167
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: Update the `replicationBucketName` variables in the `serverless.yml` so that
+    `us-east-1` replicates to `us-west-2` and visa versa, and then redeploy the stacks.
+  id: totrans-168
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在`serverless.yml`中更新`replicationBucketName`变量，以便`us-east-1`复制到`us-west-2`，反之亦然，然后重新部署堆栈。
+- en: Review the stacks and resources in the AWS Console.
+  id: totrans-169
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在AWS控制台中检查堆栈和资源。
+- en: 'Publish an event from a separate Terminal with the following commands:'
+  id: totrans-170
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用以下命令从单独的终端发布事件：
+- en: '[PRE32]'
+  id: totrans-171
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: 'Invoke the following curl command to search the data in the `us-west-2` region:'
+  id: totrans-172
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用以下 curl 命令在 `us-west-2` 区域搜索数据：
+- en: '[PRE33]'
+  id: totrans-173
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: 'Take a look at the logs for the `trigger` and `listener` functions in both
+    regions:'
+  id: totrans-174
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看两个区域中 `trigger` 和 `listener` 函数的日志：
+- en: '[PRE34]'
+  id: totrans-175
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: Empty the bucket in each region before removing the stacks
+  id: totrans-176
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在移除堆叠之前，请先在每个区域清空水桶
+- en: 'Remove both stacks once you have finished:'
+  id: totrans-177
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 完成后，请移除两个堆叠。
+- en: '[PRE35]'
+  id: totrans-178
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: How it works...
+  id: totrans-179
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: 'In this recipe, we are creating a **materialized view** in Elasticsearch, and
+    we want to allow users to search against the data in the region that they are
+    closest to. However, Elasticsearch does not support regional replication. As we
+    discussed in the *Implementing regional replication with DynamoDB* recipe, we
+    do not want to replicate the event stream because that solution is complex and
+    too difficult to reason about. Instead, as shown in the following diagram, we
+    will place an S3 bucket in front of Elasticsearch in each region and leverage
+    S3 triggers to update Elasticsearch and to implement a round-robin replication
+    scheme:'
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个配方中，我们在 Elasticsearch 中创建了一个**物化视图**，并希望允许用户搜索他们最近区域的数据库。然而，Elasticsearch
+    不支持区域复制。正如我们在 *使用 DynamoDB 实现区域复制* 配方中讨论的那样，我们不希望复制事件流，因为该解决方案复杂且难以理解。相反，如图所示，我们将在每个区域将一个
+    S3 桶放在 Elasticsearch 前面，并利用 S3 触发器来更新 Elasticsearch 以及实现循环复制方案：
+- en: '![](img/e50354ed-46ed-4af0-92f6-e13e47b85f06.png)'
+  id: totrans-181
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/e50354ed-46ed-4af0-92f6-e13e47b85f06.png)'
+- en: Note that this recipe builds on the code from the *Implementing a search BFF*
+    recipe, so you can review that recipe for additional details about the code.
+  id: totrans-182
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，这个配方基于 *实现搜索 BFF* 配方中的代码，因此您可以查看该配方以获取有关代码的更多详细信息。
+- en: The service listens to the Kinesis Stream in the current region and writes the
+    data to an S3 bucket in the current region, which generates an S3 trigger that
+    is routed to an SNS topic. A function reacts to the topic and creates the materialized
+    view in Elasticsearch in the current region. Meanwhile, a `replicator` function
+    also reacts to the same topic. The replicator copies the contents of the object
+    from the S3 bucket to the matching bucket in the next region, as specified by
+    the `REPLICATION_BUCKET_NAME` environment variable. This in turn generates a trigger
+    in that region. Once again, a function responds to the topic and creates the materialized
+    view in Elasticsearch in that region as well. The `replicator` in that region
+    also responds and looks to copy the object to the next region. This process of
+    `trigger` and `replicate` will round robin for as many regions as necessary, until
+    the `forOrigin` filter sees that the origin bucket (that is, `uow.object.Metadata.origin`)
+    is equal to the target of the current replicator (that is, `process.env.REPLICATION_BUCKET_NAME`).
+    In this recipe, we have two regions—`us-east-1` and `us-west-2`. The data originates
+    in the east region, so the east replicator copies the data to the west bucket
+    (`1cqxst40pvog4`). The west replicator does not copy the data to the east bucket
+    (`1a3rh4v9tfedw`) because the origin is the east bucket.
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该服务监听当前区域的 Kinesis 流，并将数据写入当前区域的 S3 桶，这会生成一个路由到 SNS 主题的 S3 触发器。一个函数响应该主题并在当前区域创建
+    Elasticsearch 中的物化视图。同时，一个 `replicator` 函数也响应相同的主题。复制器将 S3 桶中对象的全部内容复制到由 `REPLICATION_BUCKET_NAME`
+    环境变量指定的下一个区域的匹配桶。这反过来在该区域生成一个触发器。再次，一个函数响应该主题并在该区域创建 Elasticsearch 中的物化视图。该区域的
+    `replicator` 也响应并试图将对象复制到下一个区域。这个过程将 `trigger` 和 `replicate` 循环进行，直到 `forOrigin`
+    过滤器看到原始桶（即 `uow.object.Metadata.origin`）等于当前复制器的目标（即 `process.env.REPLICATION_BUCKET_NAME`）。在这个配方中，我们有两个区域——`us-east-1`
+    和 `us-west-2`。数据起源于东部区域，因此东部复制器将数据复制到西部桶（`1cqxst40pvog4`）。西部复制器不会将数据复制到东部桶（`1a3rh4v9tfedw`），因为原始桶是东部桶。
+- en: This round robin replication technique is a simple and cost-effective approach
+    that builds on the event architecture that is already in place. Note that we cannot
+    leverage the built-in S3 replication feature for this purpose because it only
+    replicates to a single region and does not create a chain reaction. However, we
+    could add S3 replication to these buckets for backup and disaster recovery, as
+    we discussed in the *Replicating the data lake for disaster recovery* recipe.
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种循环复制技术是一种简单且成本效益高的方法，它建立在现有的事件架构之上。请注意，我们无法利用内置的 S3 复制功能来实现此目的，因为它只复制到单个区域，并且不会产生连锁反应。然而，我们可以像在
+    *为灾难恢复复制数据湖* 配方中讨论的那样，将这些桶添加 S3 复制以进行备份和灾难恢复。

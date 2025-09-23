@@ -1,0 +1,832 @@
+- en: Client Patterns
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 客户端模式
+- en: 'In this chapter, we will cover the following recipes:'
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章将涵盖以下食谱：
+- en: Modeling concurrency with dependent futures
+  id: totrans-2
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用依赖未来建模并发
+- en: Backend For Frontend
+  id: totrans-3
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 后端为前端
+- en: Consistent RPC with HTTP and JSON
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 与HTTP和JSON保持一致的RPC
+- en: Using gRPC
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用gRPC
+- en: Using Thrift
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用Thrift
+- en: Introduction
+  id: totrans-7
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 简介
+- en: When building a service-oriented architecture, it's easy to get stuck thinking
+    about the most general way to represent the domain entities and behaviors that
+    are controlled by a particular service. The truth is, we rarely use services in
+    general ways—we usually combine calls to multiple services and use the responses
+    to create a new, aggregate response body. We often make service calls in ways
+    that resemble how we used to aggregate data from a database, so we have to think
+    about relationships between disparate types in our system and how best to model
+    data dependencies.
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当构建面向服务的架构时，很容易陷入思考如何以最通用的方式表示由特定服务控制的数据实体和行为。事实是，我们很少以通用的方式使用服务——我们通常结合多个服务的调用，并使用响应来创建一个新的、聚合的响应体。我们经常以类似于我们过去从数据库中聚合数据的方式调用服务，因此我们必须考虑我们系统中不同类型之间的关系以及如何最好地建模数据依赖。
+- en: We also want to make client development easy. When designing general-purpose
+    APIs, it's easy to get stuck thinking about the right way to do things (if you've
+    ever heard someone critique an API design as not being RESTful, this might sound
+    familiar) instead of thinking about the easy way to do things. A service isn't
+    much good if a client needs to make dozens of calls to it in order to get the
+    data they need. When designing systems that involve microservices, it's essential
+    to think about data aggregation from the client's perspective.
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还希望使客户端开发变得简单。在设计通用API时，很容易陷入思考正确做事的方式（如果你曾经听到有人批评API设计不是RESTful的，这可能会听起来很熟悉），而不是思考简单做事的方式。如果客户端需要调用数十次才能获取所需的数据，那么服务就没有什么用处。在设计涉及微服务的系统时，从客户端的角度考虑数据聚合是至关重要的。
+- en: Clients have to think about more than just the services they are invoking, but
+    often they have to consider what instance of those services they want to configure
+    themselves to invoke. It's common to have staging or testing environments, and
+    these get much more complicated in the microservices architectures.
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 客户端不仅要考虑他们正在调用的服务，而且通常还必须考虑他们想要配置以调用的那些服务的实例。在微服务架构中，这些通常会有很多更复杂的环境。
+- en: In this chapter, we'll discuss techniques for modeling dependent service calls
+    and aggregating responses from various services to create client-specific APIs.
+    We'll also discuss managing different microservices environments and making RPC
+    consistent with JSON and HTTP, as well as the gRPC and Thrift binary protocols.
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将讨论建模依赖服务调用以及从各种服务中聚合响应以创建特定客户端API的技术。我们还将讨论管理不同的微服务环境以及使RPC与JSON和HTTP保持一致，以及gRPC和Thrift二进制协议。
+- en: Modeling concurrency with dependent futures
+  id: totrans-12
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用依赖未来建模并发
+- en: We saw in a previous recipe that we can use asynchronous methods to make service
+    calls that are handled in separate threads. This is essential because blocking
+    on network I/O would severely limit the number of incoming requests our service
+    would be able to handle. A service that blocks on the network I/O would only be
+    able to handle a relatively small number of requests per process, requiring us
+    to spend more resources on horizontal scaling. In the example we used, the message
+    service needed to call the social graph service for two users, the sender, and
+    the recipient of a message, and make sure that the two users followed each other
+    before allowing a message to be sent. We modified our request methods to return
+    the `CompletableFuture` instances that wrapped the response, and then waited on
+    all of the results to finish before verifying that the sender and recipient of
+    the message had a symmetric following relationship. This model works fine when
+    you're making multiple requests that are not dependent (you do not need the response
+    from one request to make the subsequent request). In this situation, where we
+    have dependent service calls, we need a better way to model that dependency.
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在之前的配方中，我们了解到可以使用异步方法来执行由单独线程处理的服务调用。这是至关重要的，因为如果网络I/O操作阻塞，将严重限制我们的服务能够处理请求数量的多少。如果服务在网络上阻塞，它将只能处理相对较少的请求，这要求我们投入更多资源进行横向扩展。在我们使用的示例中，消息服务需要调用社交图服务以获取两个用户的信息，即消息的发送者和接收者，并在允许发送消息之前确保这两个用户相互关注。我们修改了请求方法，使其返回包装响应的`CompletableFuture`实例，然后在验证消息的发送者和接收者是否具有对称关注关系之前等待所有结果完成。当你在执行多个不依赖的请求（你不需要一个请求的响应来执行后续请求）时，这种模型运行良好。在这种情况下，当我们有依赖的服务调用时，我们需要一种更好的方式来建模这种依赖。
+- en: In our `pichat` application, we need to render a screen that lists information
+    about users we follow. In order to do that, we need to call the social-graph service
+    to get a list of users and then call the users service to get details such as
+    the display name and avatar for each user. This use case involves making dependent
+    service calls. We need an effective way of modeling this kind of service invocation
+    while still scheduling asynchronous operations in ways that allow them to be run
+    in separate threads of execution.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的`pichat`应用程序中，我们需要渲染一个屏幕，列出我们关注的用户的信息。为了做到这一点，我们需要调用社交图服务以获取用户列表，然后调用用户服务以获取每个用户的详细信息，如显示名称和头像。这个用例涉及到执行依赖的服务调用。我们需要一种有效的方式来建模这种服务调用，同时仍然以允许它们在单独的执行线程中运行的方式调度异步操作。
+- en: In this recipe, we'll demonstrate this by using composition of `CompletableFuture` as
+    well as Java 8 streams to model dependent service invocations. We'll create a
+    sample client application that calls a social service to get a list of users that
+    the logged in user follows, and then calls the user service to get details for
+    each user.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本配方中，我们将通过使用`CompletableFuture`的组合以及Java 8流来演示如何建模依赖的服务调用。我们将创建一个示例客户端应用程序，该应用程序调用社交服务以获取当前登录用户关注的用户列表，然后调用用户服务以获取每个用户的详细信息。
+- en: How to do it...
+  id: totrans-16
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何实现...
+- en: In order to model dependent asynchronous service calls, we'll take advantage
+    of two features in Java 8\. Streams are useful for processing data, so we'll use
+    them in our example to extract usernames from a list of followings and map a function
+    to each element. Java 8's `CompletableFuture` can be composed, which allows us
+    to naturally express dependencies between futures.
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了建模依赖的异步服务调用，我们将利用Java 8的两个特性。流对于数据处理很有用，因此我们将在示例中使用它们从关注列表中提取用户名并将函数映射到每个元素。Java
+    8的`CompletableFuture`可以组合，这允许我们自然地表达未来之间的依赖关系。
+- en: In this recipe, we'll create a simple client application that calls the social
+    service for a list of users that the current user follows. For each user returned,
+    the application will get user details from the users service. We'll build this
+    example as a command-line application for easy demonstration purposes, but it
+    could just as well be another microservice, or a web or mobile client.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本配方中，我们将创建一个简单的客户端应用程序，该应用程序调用社交服务以获取当前用户关注的用户列表。对于返回的每个用户，应用程序将从用户服务获取用户详细信息。我们将构建这个示例作为命令行应用程序，以便于演示，但它也可以是另一个微服务、Web或移动客户端。
+- en: In order to build a command-line application that has all of the capabilities
+    of a Spring Boot application, we're going to cheat a little and just implement
+    `CommandLineRunner` and call `System.exit(0);` in the `run()` method.
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了构建一个具有Spring Boot应用程序所有功能的命令行应用程序，我们将稍微作弊一下，只实现`CommandLineRunner`并在`run()`方法中调用`System.exit(0);`。
+- en: 'Before we start building our application, we''ll outline the responses from
+    our hypothetical social service and users service services. We can mimic these
+    services by just hosting the appropriate JSON response on a local web server.
+    We''ll use ports `8000` and `8001` for the social service and users service, respectively.
+    The social service has an endpoint, `/followings/:username`, that returns a JSON
+    object with a list of followings for the specified username. The JSON response
+    will look like the following snippet:'
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们开始构建我们的应用程序之前，我们将概述我们假设的社会服务和用户服务服务的响应。我们可以通过在本地Web服务器上托管适当的JSON响应来模拟这些服务。我们将分别使用端口`8000`和`8001`来表示社会服务和用户服务。社会服务有一个端点`/followings/:username`，它返回一个包含指定用户关注者列表的JSON对象。JSON响应将类似于以下片段：
+- en: '[PRE0]'
+  id: totrans-21
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'The users service has an endpoint called `/users/:username`, which will return
+    a JSON representation of the user''s details, including the username, full name,
+    and avatar URL:'
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 用户服务有一个名为`/users/:username`的端点，它将返回一个包含用户详细信息（包括用户名、全名和头像URL）的JSON表示：
+- en: '[PRE1]'
+  id: totrans-23
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'Now that we have our services and we''ve outlined the responses we expect from
+    each, let''s go ahead and build our client application by performing the following
+    steps:'
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们有了我们的服务和我们已经概述了从每个服务期望的响应，让我们继续构建我们的客户端应用程序，按照以下步骤进行：
+- en: 'Create a new Java/Gradle application called `UserDetailsClient` with the following
+    `build.gradle` file:'
+  id: totrans-25
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个名为`UserDetailsClient`的新Java/Gradle应用程序，并具有以下`build.gradle`文件：
+- en: '[PRE2]'
+  id: totrans-26
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'Create a package called `com.packtpub.microservices.ch04.user.models` and a
+    new class called `UserDetails`. We''ll use this class to model our response from
+    the users service:'
+  id: totrans-27
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在`com.packtpub.microservices.ch04.user.models`包中创建一个名为`UserDetails`的新类。我们将使用这个类来模拟用户服务响应：
+- en: '[PRE3]'
+  id: totrans-28
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Create another class in the `com.packtpub.microservices.ch04.user.models` package
+    called `Followings`. This will be used to model the response from the social service:'
+  id: totrans-29
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在`com.packtpub.microservices.ch04.user.models`包中创建另一个名为`Followings`的类。这将用于模拟社会服务的响应：
+- en: '[PRE4]'
+  id: totrans-30
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'Create a service representation for calling our social service. Predictably
+    enough, we''ll call it `SocialService` and put it in the `com.packtpub.microservices.ch04.user.services`
+    package:'
+  id: totrans-31
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 为调用我们的社会服务创建一个服务表示。不出所料，我们将把它命名为`SocialService`并将其放在`com.packtpub.microservices.ch04.user.services`包中：
+- en: '[PRE5]'
+  id: totrans-32
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'Create a service representation for our users service. Appropriately, we''ll
+    call the class `UserService` in the same package:'
+  id: totrans-33
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 为我们的用户服务创建一个服务表示。相应地，我们将把这个类命名为`UserService`并放在同一个包中：
+- en: '[PRE6]'
+  id: totrans-34
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'We now have classes to model the responses from our services, and service objects
+    to represent the services we''re going to invoke. It''s time to tie it all together
+    by creating our main class, which will call these two services in a dependent
+    manner, using the composability of futures to model the dependency. Create a new
+    class called `UserDetailsClient`, as follows:'
+  id: totrans-35
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们现在有了用于模拟我们服务响应的类，以及表示我们将要调用的服务的服务对象。现在是时候通过创建我们的主类来将这些所有内容结合起来，这个主类将以依赖的方式调用这两个服务，使用未来的组合性来模拟依赖关系。创建一个名为`UserDetailsClient`的新类，如下所示：
+- en: '[PRE7]'
+  id: totrans-36
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'The magic really happens in the following method:'
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 魔法实际上发生在以下方法中：
+- en: '[PRE8]'
+  id: totrans-38
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: Recall that the `getFollowings` method in `SocialService` returns `CompletableFuture<Followings>`.
+    `CompletableFuture` has a method, called `thenApply`, that takes the eventual
+    result of the future (`Followings`) and applies it to be passed in the Lambda.
+    In this case, we're taking `Followings` and using the Java 8 Stream API to call
+    map on the list of usernames returned by the social service. The map applies each
+    username to a function that calls `getUserDetails` on `UserService`. The `CompletableFuture::join` method
+    is used to turn `List<Future<T>>` into `Future<List<T>>`, which is a common operation
+    when performing these kinds of dependent service invocations. Finally, we collect
+    the results and return them as a list.
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 回想一下，`SocialService`中的`getFollowings`方法返回`CompletableFuture<Followings>`。`CompletableFuture`有一个名为`thenApply`的方法，它接受未来的最终结果（`Followings`）并将其应用于Lambda表达式。在这种情况下，我们正在使用`Followings`并通过Java
+    8 Stream API对由社会服务返回的用户名列表调用`map`。`map`将每个用户名应用于一个函数，该函数在`UserService`上调用`getUserDetails`。`CompletableFuture::join`方法用于将`List<Future<T>>`转换为`Future<List<T>>`，这在执行这些类型的依赖服务调用时是一个常见操作。最后，我们收集结果并将它们作为列表返回。
+- en: Backend for frontend
+  id: totrans-40
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 前端后端
+- en: 'When software shifted from desktop and web-based applications to mobile applications,
+    distributed architectures became much more prevalent. It became a focus for many
+    organizations to build a platform instead of just a product. This approach places
+    a much larger emphasis on APIs that a product can expose to clients as well as
+    third-party partners. As APIs became a given for any web-based application, it
+    became popular to try to build client applications (mobile or JavaScript) on the
+    same API used to provide functionality to the third-party partners. The idea is
+    that if you exposed one well-designed, general-purpose API, you would have everything
+    you need to build any kind of application. The general architecture looked like
+    this:'
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当软件从桌面和基于Web的应用程序转向移动应用程序时，分布式架构变得更加普遍。这成为许多组织构建平台而不是仅仅构建产品的焦点。这种方法对API的重视程度更高，这些API可以暴露给客户以及第三方合作伙伴。随着API成为任何基于Web应用程序的既定事实，尝试在用于向第三方合作伙伴提供功能的同一API上构建客户端应用程序（移动或JavaScript）变得流行。这种想法是，如果你公开了一个设计良好、通用目的的API，你将拥有构建任何类型应用程序所需的一切。一般架构看起来是这样的：
+- en: '![](img/35eb08b6-09ec-4a77-ada8-ceaef3f92fea.png)'
+  id: totrans-42
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/35eb08b6-09ec-4a77-ada8-ceaef3f92fea.png)'
+- en: The flaw in this approach is that it assumes that the needs of your first-party
+    (mobile and web) and third-party (partner) applications are always going to be
+    aligned, and this is rarely the case. More often than not, you want to encourage
+    certain kinds of functionality in the third-party integrations and a different
+    set of functionality in first-party clients. Additionally, you want to be much
+    more tolerant (encouraging, even) of changes in first-party clients—your client
+    applications will evolve and constantly be changing their API requirements. Finally,
+    you cannot anticipate all of the possible use cases third-party partners will
+    have for your API, so a general-purpose design is beneficial, but you will be
+    able to anticipate the needs of your mobile and web applications, and being too
+    general in your API design can often hamper your product's needs. A good example
+    of this is a server-side website that is rewritten as a single-page JavaScript
+    application. With a general-purpose API, this kind of project can result in page
+    views that require dozens of `XMLHttpRequests` to render a single page view.
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种方法的缺陷在于它假设你的第一方（移动和Web）和第三方（合作伙伴）应用程序的需求始终会保持一致，而这很少是事实。更常见的情况是，你希望在第三方集成中鼓励某些类型的功能，在第一方客户端中鼓励另一组功能。此外，你希望对第一方客户端的变化更加宽容（甚至鼓励）——你的客户端应用程序将不断发展，并不断改变它们的API需求。最后，你无法预见到第三方合作伙伴将如何使用你的API的所有可能用例，因此通用设计是有益的，但你将能够预见到你的移动和Web应用程序的需求，而在API设计中过于通用可能会经常阻碍你的产品需求。一个很好的例子是将服务器端网站重写为单页JavaScript应用程序。使用通用API，这类项目可能导致需要数十个`XMLHttpRequests`才能渲染单个页面视图。
+- en: '**Backend For Frontend** (**BFF**) is an architectural pattern that involves
+    creating separate, **bespoke APIs** for different classes of client applications.
+    Instead of a single API layer in your architecture, separate BFF layers can be
+    developed depending on how many categories of client applications you want to
+    support. How you categorize clients is completely up to the needs of your business.
+    You may decide to have a single BFF layer for all mobile clients, or you may divide
+    them into an iOS BFF and an Android BFF. Similarly, you may choose to have a separate
+    BFF layer for your web application and your third-party partners (what used to
+    be the primary driver for your single API):'
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**Backend For Frontend**（**BFF**）是一种涉及为不同类别的客户端应用程序创建单独、**定制API**的架构模式。在你的架构中，而不是一个单一的API层，可以根据你想要支持多少类别客户端应用程序来开发单独的BFF层。你如何分类客户端完全取决于你业务的需求。你可能会决定为所有移动客户端使用单个BFF层，或者你可能将它们分为iOS
+    BFF和Android BFF。同样，你可能会选择为你的Web应用程序和第三方合作伙伴（曾经是单一API的主要驱动因素）使用单独的BFF层：'
+- en: '![](img/76cb2cdd-9224-4315-bb96-ef2fd73f4b8c.png)'
+  id: totrans-45
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/76cb2cdd-9224-4315-bb96-ef2fd73f4b8c.png)'
+- en: In this system, each category of client makes requests to its own BFF layer,
+    which can then aggregate calls to downstream services and build a cohesive, bespoke
+    API.
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个系统中，每个客户端类别都会向其自己的BFF层发出请求，然后可以聚合对下游服务的调用并构建一个统一、定制的API。
+- en: How to do it...
+  id: totrans-47
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做到这一点...
+- en: 'In order to design and build a BFF layer, we should first design the API. In
+    fact, we''ve already done this. In the previous recipe, we demonstrated using
+    `CompletableFuture` to asynchronously make a request to our systems, social service
+    and then for each user returned, make asynchronous requests to the user-details-service
+    to fetch certain user profile information. This is a great use case for a BFF
+    layer for our mobile apps. Imagine that our mobile app has a screen that shows
+    a list of users that the user follows, with basic information such as their avatar,
+    username, and display name. Since the social graph information (the list of users
+    the user is following) and the user profile information (avatar, username, and
+    display name) are the responsibility of two separate services, it''s cumbersome
+    to require our mobile clients to aggregate calls to these services to render a
+    following page. Instead, we can create a mobile BFF layer that handles this aggregation
+    and returns a convenient response to the client. Our request endpoint would be
+    as follows:'
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了设计和构建一个bff层，我们首先应该设计API。实际上，我们已经完成了这个步骤。在前面的菜谱中，我们展示了如何使用`CompletableFuture`异步地向我们的系统、社交服务发送请求，然后对于每个返回的用户，异步地向用户详情服务发送请求以获取某些用户配置信息。这对于我们的移动应用来说是一个很好的bff层用例。想象一下，我们的移动应用有一个屏幕，显示用户关注的用户列表，包括他们的头像、用户名和显示名。由于社交图信息（用户关注的用户列表）和用户配置信息（头像、用户名和显示名）是两个独立服务的责任，要求我们的移动客户端聚合对这些服务的调用以渲染关注页面是相当繁琐的。相反，我们可以创建一个移动bff层来处理这种聚合，并向客户端返回方便的响应。我们的请求端点如下：
+- en: '[PRE9]'
+  id: totrans-49
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'And the response body we expect to get back should be as follows:'
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们期望得到的响应体应该如下所示：
+- en: '[PRE10]'
+  id: totrans-51
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'As we can see, the BFF will return a response with all of the information we
+    need to render a following screen in our mobile app:'
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如我们所见，bff将返回一个包含我们渲染移动应用中关注屏幕所需所有信息的响应：
+- en: 'Create a new Gradle/Java project called `bff-mobile` with the following `build.gradle`
+    file:'
+  id: totrans-53
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个名为`bff-mobile`的新Gradle/Java项目，并包含以下`build.gradle`文件：
+- en: '[PRE11]'
+  id: totrans-54
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'Create a new package called `com.packtpub.microservices.mobilebff` and a new
+    class called `Main`:'
+  id: totrans-55
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个名为`com.packtpub.microservices.mobilebff`的新包和一个名为`Main`的新类：
+- en: '[PRE12]'
+  id: totrans-56
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'Create a new package called `com.packtpub.microservices.ch04.mobilebff.models`
+    and a new class called `User`:'
+  id: totrans-57
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个名为`com.packtpub.microservices.ch04.mobilebff.models`的新包和一个名为`User`的新类：
+- en: '[PRE13]'
+  id: totrans-58
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'Create another model, called `Followings`:'
+  id: totrans-59
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建另一个模型，称为`Followings`：
+- en: '[PRE14]'
+  id: totrans-60
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: 'The last model we''ll create is called `HydratedFollowings`. This is similar
+    to the `Followings` model, but instead of storing the list of users as a string,
+    it contains a list of the `User` objects:'
+  id: totrans-61
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们将要创建的最后一个模型称为`HydratedFollowings`。这个模型与`Followings`模型类似，但不同之处在于它不将用户列表存储为字符串，而是包含一个`User`对象的列表：
+- en: '[PRE15]'
+  id: totrans-62
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'Create the service clients. Create a new package called `com.packtpub.microservices.ch04.mobilebff.services`
+    and a new class called `SocialGraphService`:'
+  id: totrans-63
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建服务客户端。创建一个名为`com.packtpub.microservices.ch04.mobilebff.services`的包和一个名为`SocialGraphService`的新类：
+- en: '[PRE16]'
+  id: totrans-64
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'Create a new class, called `UsersService`, that will serve as a client for
+    our users service:'
+  id: totrans-65
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个新的类，称为`UsersService`，它将作为我们的用户服务的客户端：
+- en: '[PRE17]'
+  id: totrans-66
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'Let''s tie it all together by creating our controller that exposes the endpoint.
+    This code will look familiar if you completed the previous recipe, since we''re
+    using exactly the same pattern to model dependent asynchronous service invocations.
+    Create a package called `com.packtpub.microservices.ch04.mobilebff.controllers`
+    and a new class called `UsersController`:'
+  id: totrans-67
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们通过创建我们的控制器来整合所有内容，该控制器公开了端点。如果你完成了前面的菜谱，这段代码看起来会很熟悉，因为我们正在使用完全相同的模式来模拟依赖的异步服务调用。创建一个名为`com.packtpub.microservices.ch04.mobilebff.controllers`的包和一个名为`UsersController`的新类：
+- en: '[PRE18]'
+  id: totrans-68
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: That's it! Run the application and make a `GET` request to `/users/username/followings`.
+    You should get back a fully-hydrated JSON response with the user's username and
+    details for each of the users the user follows.
+  id: totrans-69
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 就这样！运行应用程序，并对`/users/username/followings`执行`GET`请求。你应该会得到一个包含用户用户名和用户关注的每个用户的详细信息的完整填充的JSON响应。
+- en: Consistent RPC with HTTP and JSON
+  id: totrans-70
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 与HTTP和JSON一致的RPC
+- en: When building multiple microservices, consistency and conventions between services
+    start to make a real impact. When problems arise in a microservice architecture,
+    you can end up spending time debugging many services—being able to make certain
+    assumptions about the nature of a particular service interface can save a lot
+    of time and mental energy. Having a consistent way of doing RPC also allows you
+    to codify certain concerns into libraries that can be easily shared between services.
+    Things such as authentication, how headers should be interpreted, what information
+    is included in a response body, and how to request paginated responses can be
+    made simpler by having a consistent approach. Additionally, the way that errors
+    are reported should be made as consistent as possible.
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当构建多个微服务时，服务之间的一致性和约定开始产生实际影响。当微服务架构中出现问题时，你可能会花费大量时间调试许多服务——能够对特定服务接口的性质做出某些假设可以节省大量时间和精力。拥有一致的RPC方式还可以让你将某些关注点编码到库中，这些库可以在服务之间轻松共享。例如，身份验证、如何解释头信息、响应体中包含哪些信息以及如何请求分页响应等问题可以通过一致的方法变得简单。此外，应该尽可能使错误报告的方式保持一致。
+- en: Because the microservice architectures commonly consist of services written
+    in different programming languages by different teams, any efforts toward consistent
+    RPC semantics will have to be implemented, probably as libraries, in as many languages
+    as you have used to build services. This can be cumbersome, but is well worth
+    the effort for the consistency clients can assume when speaking to a variety of
+    services.
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于微服务架构通常由不同团队使用不同的编程语言编写，因此任何旨在实现一致RPC语义的努力都必须在尽可能多的语言中实现，可能作为库。这可能很麻烦，但为了确保客户端在与各种服务交流时可以假设的一致性，这种努力是非常值得的。
+- en: In this recipe, we'll focus on services written in Java using Spring Boot. We'll
+    write a custom serializer to present resources and collections of resources in
+    a consistent manner, including pagination information. We'll then modify our message
+    service to use our new serializer.
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个配方中，我们将专注于使用Spring Boot编写的Java服务。我们将编写一个自定义序列化器，以一致的方式呈现资源和资源集合，包括分页信息。然后，我们将修改我们的消息服务以使用我们新的序列化器。
+- en: How to do it...
+  id: totrans-74
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做到这一点...
+- en: 'In this recipe, we''ll create a wrapper class to represent collections of resources
+    with pagination information. We''ll also use the `JsonRootName` annotation from
+    the `jackson` library to make single-resource representations consistent. The
+    following code should be added to the message service, which was introduced in
+    a previous recipe:'
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个配方中，我们将创建一个包装类来表示带有分页信息的资源集合。我们还将使用`jackson`库中的`JsonRootName`注解来使单个资源表示保持一致。以下代码应添加到之前配方中介绍的消息服务中：
+- en: 'Create a new class called `ResourceCollection`. This class will be a regular
+    POJO with fields to represent the page number, a list of items, and a URL that
+    can be used to access the next page in a collection:'
+  id: totrans-76
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个名为`ResourceCollection`的新类。这个类将是一个普通的POJO，包含表示页码、项目列表和可以用来访问集合中下一页的URL的字段：
+- en: '[PRE19]'
+  id: totrans-77
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'Create or modify the `Message` model. We''re using the `JsonRootName` annotation
+    here to wrap the `Message` representation in a single JSON object with the `item` key.
+    In order to have consistent representations, we should add these to all models
+    that our services expose as a resource:'
+  id: totrans-78
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建或修改`Message`模型。在这里，我们使用`JsonRootName`注解将`Message`表示包装在一个包含`item`键的单个JSON对象中。为了保持一致的表示，我们应该将这些添加到我们服务公开的所有作为资源的模型中：
+- en: '[PRE20]'
+  id: totrans-79
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'The following controller returns a list of messages and a specific message.
+    We wrap the list of messages in the `ResourceCollection` class that we created
+    previously:'
+  id: totrans-80
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 以下控制器返回一条消息列表和一条特定消息。我们使用之前创建的`ResourceCollection`类来包装消息列表：
+- en: '[PRE21]'
+  id: totrans-81
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'If you test requesting a collection of items by making a request to `/messages`,
+    the following JSON should now be returned:'
+  id: totrans-82
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 如果你通过向`/messages`发送请求来测试请求项目集合，现在应该返回以下JSON：
+- en: '[PRE22]'
+  id: totrans-83
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'The following JSON should be returned for a single resource:'
+  id: totrans-84
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 对于单个资源，应返回以下JSON：
+- en: '[PRE23]'
+  id: totrans-85
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: Having some standardization for how resources or lists of resources are represented
+    can greatly simplify working with services in a microservices architecture. Doing
+    this with JSON and HTTP involves a fair amount of manual work however, which can
+    be abstracted away. In the next recipes, we'll explore using Thrift and gRPC,
+    two alternatives to HTTP/JSON for RPC.
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于如何表示资源或资源列表有一定的标准化可以极大地简化在微服务架构中与服务的协作。然而，使用JSON和HTTP进行这一操作涉及相当多的手动工作，这可以被抽象化。在接下来的菜谱中，我们将探讨使用Thrift和gRPC，这两种是HTTP/JSON
+    RPC的替代方案。
+- en: Using Thrift
+  id: totrans-87
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用Thrift
+- en: JSON and HTTP are simple, straightforward solutions for data transportation
+    and definition that should serve the purposes of many microservice architectures.
+    If you want type safety and often better performance, however, it can be worthwhile
+    to look at binary solutions such as Thrift or gRPC.
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JSON和HTTP是简单直接的数据传输和定义解决方案，应该能满足许多微服务架构的需求。然而，如果您需要类型安全和通常更好的性能，那么查看二进制解决方案（如Thrift或gRPC）可能是有价值的。
+- en: '**Apache Thrift** is an **interface definition language** (**IDL**) and binary
+    transport protocol invented at Facebook. It allows you to specify APIs by defining
+    the structs (which are similar to objects in most languages) and exceptions that
+    your service exposes. Thrift interfaces defined in the IDL are used to generate
+    code in a supported language that is then used to manage the RPC calls. Supported
+    languages include C, C++, Python, Ruby, and Java.'
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**Apache Thrift** 是Facebook发明的一种**接口定义语言（IDL**）和二进制传输协议。它允许您通过定义服务公开的结构（在大多数语言中类似于对象）和异常来指定API。在IDL中定义的Thrift接口用于在支持的语言中生成代码，然后用于管理RPC调用。支持的语言包括C、C++、Python、Ruby和Java。'
+- en: The benefits of a binary protocol such as Thrift are primarily improved performance
+    and type safety. Depending on the JSON library used, serializing and deserializing
+    large JSON payloads can be quite expensive and JSON does not have any type system
+    that clients can use when handling responses. Additionally, because Thrift includes
+    an IDL that can be used to generate code in any supported language, it's easy
+    to let Thrift handle the generation of both client and server code, cutting down
+    the amount of manual work needing to be done.
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 二进制协议（如Thrift）的好处主要是性能提升和类型安全。根据所使用的JSON库，序列化和反序列化大型JSON负载可能相当昂贵，而且JSON没有客户端在处理响应时可以使用的任何类型系统。此外，由于Thrift包含一个可以用于在支持的任何语言中生成代码的IDL，因此很容易让Thrift处理客户端和服务器代码的生成，从而减少需要手动完成的工作量。
+- en: Because Apache Thrift doesn't use HTTP as the transport layer, services that
+    export Thrift interfaces start their own Thrift server. In this recipe, we'll
+    define the IDL for our message service and use Thrift to generate the handler
+    code. We'll then create the server boilerplate that handles starting the service,
+    listening on a specified port, and so on.
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于Apache Thrift不使用HTTP作为传输层，因此导出Thrift接口的服务将启动自己的Thrift服务器。在这个菜谱中，我们将定义我们的消息服务的IDL，并使用Thrift生成处理程序代码。然后，我们将创建处理启动服务、监听指定端口等的服务器样板代码。
+- en: How to do it...
+  id: totrans-92
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做到这一点...
+- en: 'Create a new Gradle/Java project with the following `build.gradle` file:'
+  id: totrans-93
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个新的Gradle/Java项目，包含以下`build.gradle`文件：
+- en: '[PRE24]'
+  id: totrans-94
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: 'Create a directory called `src/main/thrift` and a file called `service.thrift`.
+    This is the IDL file for our service. We''ll define a `MessageException` exception,
+    the actual `Message` object, and a `MessageService` interface. For more information
+    on the specific syntax of Thrift IDL files, the Thrift project website has good
+    documentation ([https://thrift.apache.org/docs/idl](https://thrift.apache.org/docs/idl)).
+    To keep things simple, we''ll just define a single method in our service that
+    returns a list of messages for a specific user:'
+  id: totrans-95
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个名为`src/main/thrift`的目录和一个名为`service.thrift`的文件。这是我们服务的IDL文件。我们将定义一个`MessageException`异常、实际的`Message`对象和一个`MessageService`接口。有关Thrift
+    IDL文件的特定语法信息，Thrift项目网站有很好的文档（[https://thrift.apache.org/docs/idl](https://thrift.apache.org/docs/idl)）。为了简化，我们将在我们的服务中定义一个单一的方法，该方法返回特定用户的消息列表：
+- en: '[PRE25]'
+  id: totrans-96
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'Running the assembled Gradle task will generate the code for the preceding
+    IDL. We''ll now create the implementation of our `MessageService` class. This
+    will extend the autogenerated interface from the preceding IDL. For simplicity''s
+    sake, our `MessageService` implementation will not connect to any database but
+    instead will use a static, hardcoded representation of inboxes that will be built
+    in the constructor:'
+  id: totrans-97
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 运行组装的 Gradle 任务将生成前面 IDL 的代码。现在我们将创建 `MessageService` 类的实现。这将扩展前面 IDL 中的自动生成的接口。为了简单起见，我们的
+    `MessageService` 实现将不会连接到任何数据库，而是将使用在构造函数中构建的静态、硬编码的收件箱表示：
+- en: '[PRE26]'
+  id: totrans-98
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'Create the server. Create a new class called `MessageServiceServer`, as follows:'
+  id: totrans-99
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建服务器。创建一个名为 `MessageServiceServer` 的新类，如下所示：
+- en: '[PRE27]'
+  id: totrans-100
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: Your service is now built and uses Apache Thrift for RPC. As a further exercise,
+    you can experiment with using the same IDL to generate client code that can be
+    used to call this service.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您的服务现在已构建并使用 Apache Thrift 进行 RPC。作为一个进一步的练习，您可以尝试使用相同的 IDL 生成客户端代码，该代码可用于调用此服务。
+- en: Using gRPC
+  id: totrans-102
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 gRPC
+- en: '**gRPC** is an RPC framework originally invented at Google. Unlike Thrift,
+    gRPC makes use of existing technologies, specifically **protocol buffers**, for
+    its IDL and HTTP/2 for its transport layer. After having completed the previous
+    recipe, aspects of gRPC will feel similar to aspects of Thrift. Instead of the
+    Thrift IDL, types and services are defined in a `.proto` file. The `.proto` file
+    can then be used to generate code using the protocol buffer''s compiler.'
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**gRPC** 是一个最初由 Google 发明的 RPC 框架。与 Thrift 不同，gRPC 利用现有的技术，特别是 **协议缓冲区** 用于其
+    IDL 和 HTTP/2 用于其传输层。完成上一个配方后，gRPC 的某些方面将与 Thrift 的某些方面相似。而不是使用 Thrift IDL，类型和服务是在一个
+    `.proto` 文件中定义的。然后可以使用协议缓冲区的编译器使用该 `.proto` 文件生成代码。'
+- en: How to do it...
+  id: totrans-104
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做到这一点...
+- en: 'Create a new Gradle/Java project with the following `build.gradle` file. Of
+    note here is that we''re installing and configuring the `protobuf` Gradle plugin,
+    which will allow us to generate code from `protobuf` files using Gradle, and we''re
+    listing the required `protobuf` libraries as dependencies. Finally, we have to
+    tell our IDE where to look for generated classes:'
+  id: totrans-105
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个具有以下 `build.gradle` 文件的新的 Gradle/Java 项目。值得注意的是，我们正在安装和配置 `protobuf` Gradle
+    插件，这将允许我们使用 Gradle 从 `protobuf` 文件生成代码，并且我们正在列出所需的 `protobuf` 库作为依赖项。最后，我们必须告诉我们的
+    IDE 去哪里查找生成的类：
+- en: '[PRE28]'
+  id: totrans-106
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'Create a new directory called `src/main/proto` and a new file called `message_service.proto`.
+    This will be our definition of `protobuf` for our service. Like in the last recipe,
+    we''ll keep it simple by only exposing one method that returns a list of messages
+    for a specified user:'
+  id: totrans-107
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个名为 `src/main/proto` 的新目录和一个名为 `message_service.proto` 的新文件。这将是我们的服务 `protobuf`
+    定义。像上一个配方一样，我们将保持简单，只公开一个返回指定用户消息列表的方法：
+- en: '[PRE29]'
+  id: totrans-108
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'Implement the actual service. In order to do this, we need to create a new
+    class called `MessageServer` with all the necessary boilerplate for starting and
+    stopping our server. We''ll also create an inner class called `MessageService`
+    that extends the generated `MessageServiceGrpc.MessageServiceImplBase` class:'
+  id: totrans-109
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 实现实际的服务。为了做到这一点，我们需要创建一个名为 `MessageServer` 的新类，其中包含启动和停止我们服务器所需的所有必要模板代码。我们还将创建一个名为
+    `MessageService` 的内部类，它扩展了由前一个 IDL 生成的 `MessageServiceGrpc.MessageServiceImplBase`
+    类：
+- en: '[PRE30]'
+  id: totrans-110
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'

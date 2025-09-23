@@ -1,0 +1,451 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;12.&#xA0;Adding Physics and Sounds to Your Scene"><div class="titlepage"><div><div><h1 class="title"><a id="ch12"/>Chapter 12. Adding Physics and Sounds to Your Scene</h1></div></div></div><p>In this final chapter, we'll look at <a id="id1160" class="indexterm"/>Physijs, another library you can use to extend the basic functionality of Three.js. Physijs is a library that allows you to introduce physics into your 3D scene. By physics, we mean that your objects are subject to gravity, they can collide with each other, can be moved by applying impulse, and can be constrained in their movement through hinges and sliders. This library internally makes use of another well-known physics engine called <a id="id1161" class="indexterm"/>
+<span class="strong"><strong>ammo.js</strong></span>. Besides physics, we'll also look at how Three.js can help you with adding spatial sounds to your scene.</p><p>In this chapter, we'll discuss the following topics:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Creating a Physijs scene where your objects are subject to gravity and can collide with each other</li><li class="listitem" style="list-style-type: disc">Showing how to change the friction and restitution (bounciness) of the objects in the scene</li><li class="listitem" style="list-style-type: disc">Explaining the various shapes supported by Physijs and how to use them</li><li class="listitem" style="list-style-type: disc">Showing how to create compound shapes by combining simple shapes together</li><li class="listitem" style="list-style-type: disc">Showing how a height field allows you to simulate a complex shape</li><li class="listitem" style="list-style-type: disc">Limiting the movement of an object by applying a point, hinge, slider, and cone twist, and the 'degree of freedom' constraint</li><li class="listitem" style="list-style-type: disc">Adding sound sources to your scene whose sound volume and direction is based on their distance to the camera.</li></ul></div><p>The first thing we will do is create a Three.js scene that can be used with Physijs. We'll do that in our first example.</p><div class="section" title="Creating a basic Three.js scene"><div class="titlepage"><div><div><h1 class="title"><a id="ch12lvl1sec58"/>Creating a basic Three.js scene</h1></div></div></div><p>Setting up a Three.js scene for Physijs is very <a id="id1162" class="indexterm"/>simple and only takes a couple of steps. The first <a id="id1163" class="indexterm"/>thing we need to do is include the correct <a id="id1164" class="indexterm"/>JavaScript file, which you can get from the GitHub repository at <a class="ulink" href="http://chandlerprall.github.io/Physijs/">http://chandlerprall.github.io/Physijs/</a>. Add the Physijs library to your HTML page like this:</p><div class="informalexample"><pre class="programlisting">&lt;script type="text/javascript" src="../libs/physi.js"&gt;&lt;/script&gt;</pre></div><p>Simulating a scene is rather processor intensive. If we run all the simulation computations on the render thread (since JavaScript is single threaded in nature), it will seriously affect the frame rate of our scene. To compensate for that, Physijs does its calculations in a background thread. This background thread is provided through the "web workers" specification that is implemented by most modern browsers. With this specification, you can run CPU-intensive tasks in a separate thread, thus not affecting the rendering. More information on <a id="id1165" class="indexterm"/>web workers can be found at <a class="ulink" href="http://www.w3.org/TR/workers/">http://www.w3.org/TR/workers/</a>.</p><p>For Physijs, this means we have to configure the JavaScript file that contains this worker task and also tell Physijs where it can find the ammo.js file needed to simulate our scene. The reason we need to include the ammo.js file is that Physijs is a wrapper around ammo.js to make it easy to use. Ammo.js (which you can find at <a class="ulink" href="https://github.com/kripken/ammo.js/">https://github.com/kripken/ammo.js/</a>) is <a id="id1166" class="indexterm"/>the library that implements the physics engine; Physijs just provides an easy-to-use interface to this physics library. Since Physijs is just a wrapper, we can also use other physics engines together with Physijs. On the Physijs repository, you can also find a branch that uses Cannon.js, a different physics engine.</p><p>To <a id="id1167" class="indexterm"/>configure Physijs, we have to set the following two properties:</p><div class="informalexample"><pre class="programlisting">Physijs.scripts.worker = '../libs/physijs_worker.js';
+Physijs.scripts.ammo = '../libs/ammo.js';</pre></div><p>The first property points to the worker tasks we want to execute, and the second property points to the ammo.js library that is used internally. The next step we need to perform is create a scene. Physijs provides a wrapper around the Three.js normal scene, so in your code, you do the following to create a scene:</p><div class="informalexample"><pre class="programlisting">var scene = new Physijs.Scene();
+scene.setGravity(new THREE.Vector3(0, -10, 0));</pre></div><p>This creates a new scene where physics is applied, and we set the gravity. In this case, we set the gravity on the <span class="emphasis"><em>y</em></span> axis to be <code class="literal">-10</code>. In other words, objects fall straight down. You can set, or change at runtime, the gravity for the various axes to any value you see fit, and the scene will respond accordingly.</p><p>Before we can start simulating the physics in the scene, we need to add some objects. For this, we can use the normal way Three.js specifies objects, but we have to wrap them inside a specific Physijs object so that they can be managed by the Physijs library, as you can see in the following code fragment:</p><div class="informalexample"><pre class="programlisting">var stoneGeom = new THREE.BoxGeometry(0.6,6,2);
+var stone = new Physijs.BoxMesh(stoneGeom, new THREE.MeshPhongMaterial({color: 0xff0000}));
+scene.add(stone);</pre></div><p>In this example, we<a id="id1168" class="indexterm"/> create a simple <code class="literal">THREE.BoxGeometry</code> object. Instead of creating <code class="literal">THREE.Mesh</code>, we create <code class="literal">Physijs.BoxMesh</code>, which tells Physijs to treat the shape of the geometry as a box when simulating physics and detecting collisions. Physijs provides a number of meshes you can use for the various shapes. More information on the available shapes can be found later in this chapter.</p><p>Now that <code class="literal">THREE.BoxMesh</code> has been added to the scene, we have all the ingredients for the first Physijs scene. All that is left to do is tell Physijs to simulate the physics and update the position and rotation of the objects in our scene. We can do this by calling the simulate method on the scene we just created. So, for this, we change our basic render loop to the following:</p><div class="informalexample"><pre class="programlisting">render = function() {
+  requestAnimationFrame(render);
+  renderer.render(scene, camera);
+  scene.simulate();
+}</pre></div><p>And with that final step, by calling <code class="literal">scene.simulate()</code>, we have our basic setup for a Physijs scene. If we would run this example, though, we wouldn't see much. We would just see a single cube in the middle of the screen, which starts falling down as soon as the scene renders. So, let's look at a more complex example, where we'll simulate dominos falling down.</p><p>For this example, we're going to create the following scene:</p><div class="mediaobject"><img src="graphics/2215OS_12_01.jpg" alt="Creating a basic Three.js scene"/></div><p>If you open <a id="id1169" class="indexterm"/>the <code class="literal">01-basic-scene.html</code> example in your browser, you'll see a set of domino stones that start falling down as soon as the scene is loaded. The first one will tip over the second one, and so on. The complete physics of this scene is managed by Physijs. The only thing we did to start this animation is tip over the first domino. Creating this scene is actually very easy and only takes a few steps, which are as follows:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Define a Physijs scene.</li><li class="listitem">Define the ground area that holds the stones.</li><li class="listitem">Place the stones.</li><li class="listitem">Tip over the first stone.</li></ol></div><p>Let's skip this first step since we've already seen how to do this and go directly to the second step, where we define the sandbox that contains all the stones. This sandbox is constructed out of a couple of boxes that are grouped together. The following is the code required to accomplish this:</p><div class="informalexample"><pre class="programlisting">function createGround() {
+  var ground_material = Physijs.createMaterial(new THREE.MeshPhongMaterial({ map: THREE.ImageUtils.loadTexture( '../assets/textures/general/wood-2.jpg' )}),0.9,0.3);
+
+  var ground = new Physijs.BoxMesh(new THREE.BoxGeometry(60, 1, 60), ground_material, 0);
+
+  var borderLeft = new Physijs.BoxMesh(new THREE.BoxGeometry (2, 3, 60), ground_material, 0);
+  borderLeft.position.x=-31;
+  borderLeft.position.y=2;
+  ground.add(borderLeft);
+
+  var borderRight = new Physijs.BoxMesh(new THREE. BoxGeometry (2, 3, 60), ground_material, 0);
+  borderRight.position.x=31;
+  borderRight.position.y=2;
+  ground.add(borderRight);
+
+  var borderBottom = new Physijs.BoxMesh(new THREE. BoxGeometry (64, 3, 2), ground_material, 0);
+  borderBottom.position.z=30;
+  borderBottom.position.y=2;
+  ground.add(borderBottom);
+
+  var borderTop = new Physijs.BoxMesh(new THREE.BoxGeometry (64, 3, 2), ground_material, 0);
+  borderTop.position.z=-30;
+  borderTop.position.y=2;
+  ground.add(borderTop);
+
+  scene.add(ground);
+}</pre></div><p>This code isn't very<a id="id1170" class="indexterm"/> complicated. First, we create a simple box that serves as the ground plane, and next we add a couple of borders to prevent objects falling off this ground plane. We add these borders to the ground object to create a compound object. This is an object that is treated by Physijs as a single object. There are a couple of other new things in this code that we'll explain in more depth in the following sections. The first one is <code class="literal">ground_material</code>, which we create. We use the <code class="literal">Physijs.createMaterial</code> function to create this material. This function wraps a standard Three.js material but allows us to set <code class="literal">friction</code> and <code class="literal">restitution</code> (bounciness) of the material. More on this can be found in the next section. Another new aspect is the final parameter we add to the <code class="literal">Physijs.BoxMesh</code> constructor. For all the <code class="literal">BoxMesh</code> objects we create in this section, we add <code class="literal">0</code> as the final parameter. With this parameter, we set the weight of the object. We do this to prevent the ground from being subject to the gravity in the scene so that it doesn't fall down.</p><p>Now that we have the ground, we can place the dominos. For this, we create simple <code class="literal">Three.BoxGeometry</code> instances that we wrap inside <code class="literal">BoxMesh</code> and place them at a specific position on top of the ground mesh, as follows:</p><div class="informalexample"><pre class="programlisting">var stoneGeom = new THREE.BoxGeometry(0.6,6,2);
+var stone = new Physijs.BoxMesh(stoneGeom, Physijs.createMaterial(new THREE.MeshPhongMaterial(color: scale(Math.random()).hex(),transparent:true, opacity:0.8})));
+stone.position.copy(point);
+stone.lookAt(scene.position);
+stone.__dirtyRotation = true;
+stone.position.y=3.5;
+scene.add(stone);</pre></div><p>We don't show the <a id="id1171" class="indexterm"/>code where the position of each domino is calculated (see the <code class="literal">getPoints()</code> function in the source code of the example for this); this code just shows how the dominos are positioned. What you can see here is that we once again create <code class="literal">BoxMesh</code>, which wraps <code class="literal">THREE.BoxGeometry</code>. To make sure the dominos are aligned correctly, we use the <code class="literal">lookAt</code> function to set their correct rotation. If we don't do this, they'll all face the same way and won't fall down. We have to make sure that after we manually update the rotation (or the position) of a Physijs wrapped object, we tell Physijs that something has changed so that Physijs can update it's own internal representation of all the objects in the scene. For the rotation, we can do this with the internal <code class="literal">__dirtyRotation</code> property, and for the position, we set <code class="literal">__dirtyPosition</code> to <code class="literal">true</code>.</p><p>Now all that is left to do is tip the first domino. We do this by just setting the rotation on the <span class="emphasis"><em>x</em></span> axis to 0.2, which tips it slightly. The gravity in the scene will do the rest and completely tip over the first domino. Here's how we tip the first domino:</p><div class="informalexample"><pre class="programlisting">stones[0].rotation.x=0.2;
+stones[0].__dirtyRotation = true;</pre></div><p>This completes the first example, which already shows a lot of features from Physijs. If you want to play around with the gravity, you can change it through the menu in the top-right corner. The change to the gravity is applied when you push the <span class="strong"><strong>resetScene</strong></span> button:</p><div class="mediaobject"><img src="graphics/2215OS_12_02.jpg" alt="Creating a basic Three.js scene"/></div><p>In the next section, we'll have a closer look at how the Physijs material properties affect the objects.</p></div></div>
+<div class="section" title="Material properties"><div class="titlepage"><div><div><h1 class="title"><a id="ch12lvl1sec59"/>Material properties</h1></div></div></div><p>Let's <a id="id1172" class="indexterm"/>begin with an explanation of the example. When you open up the <code class="literal">02-material-properties.html</code> example, you'll see an empty box somewhat similar to<a id="id1173" class="indexterm"/> the previous example. This box is rotating up and down around its <span class="emphasis"><em>x</em></span> axis. In the menu in the top-right corner, you have several sliders that can be used to change some of the material properties of Physijs. These properties apply to the cubes and spheres you can add with the <span class="strong"><strong>addCubes</strong></span> and <span class="strong"><strong>addSpheres</strong></span> buttons. When you press the <span class="strong"><strong>addSpheres</strong></span> button, five spheres will be added to the scene, and when you press the <span class="strong"><strong>addCubes</strong></span> button, five cubes will be added. The following is an example demonstrating friction and restitution:</p><div class="mediaobject"><img src="graphics/2215OS_12_03.jpg" alt="Material properties"/></div><p>This example <a id="id1174" class="indexterm"/>allows you to play around with the<a id="id1175" class="indexterm"/> <code class="literal">restitution</code> (bounciness) and<a id="id1176" class="indexterm"/> <code class="literal">friction</code> properties that you<a id="id1177" class="indexterm"/> can set when you create a Physijs material. If, for example, you set <span class="strong"><strong>cubeFriction</strong></span> all the way to <code class="literal">1</code> and add some cubes, you'll see that, even though the ground is moving, the cubes barely move. If you set <span class="strong"><strong>cubeFriction</strong></span> to <span class="strong"><strong>0</strong></span>, you'll notice the cubes sliding around as soon as the ground stops being level. The following screenshot shows that high friction allows cubes to resist gravity:</p><div class="mediaobject"><img src="graphics/2215OS_12_04.jpg" alt="Material properties"/></div><p>The other property you can set in this example is the <a id="id1178" class="indexterm"/>
+<code class="literal">restitution</code> property. The <code class="literal">restitution</code> property defines <a id="id1179" class="indexterm"/>how much of the energy that an object possesses<a id="id1180" class="indexterm"/> is restituted when it collides. In other words, high restitution creates a bouncy object, and low restitution results in an object that stops immediately when it hits another object.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip23"/>Tip</h3><p>When you use a physics engine, you normally don't have to worry about detecting collisions. The engine will take care of that. It is, however, sometimes very useful to be informed when a collision between two objects occurs. For instance, you might want to create a sound effect, or when creating a game, deduct a life.</p><p>With Physijs, you can add an event listener to a Physijs mesh, as shown in the following code:</p><div class="informalexample"><pre class="programlisting">mesh.addEventListener( 'collision', function( other_object, relative_velocity, relative_rotation, contact_normal ) {
+});</pre></div><p>This way, you'll be informed whenever this mesh collides with another of the meshes handled by Physijs.</p></div></div><p>A good way to<a id="id1181" class="indexterm"/> demonstrate this is using spheres, setting the restitution to <code class="literal">1</code>, and clicking on the <span class="strong"><strong>addSpheres</strong></span> button a couple of times. This will create a number of spheres that bounce everywhere.</p><p>Before we move on to the next section, let's look at a bit of code used in this example:</p><div class="informalexample"><pre class="programlisting">sphere = new Physijs.SphereMesh(new THREE.SphereGeometry( 2, 20 ), Physijs.createMaterial(new THREE.MeshPhongMaterial({color: colorSphere, opacity: 0.8, transparent: true}), controls.sphereFriction, controls.sphereRestitution));
+box.position.set(Math.random() * 50 -25, 20 + Math.random() * 5, Math.random() * 50 -25);
+scene.add( sphere );</pre></div><p>This is the code <a id="id1182" class="indexterm"/>that gets executed when we add spheres to the scene. This time, we use a different Physijs mesh: <code class="literal">Physijs.SphereMesh</code>. We're creating <code class="literal">THREE.SphereGeometry,</code> and the best match from the set of meshes provided is, logically, <code class="literal">Physijs.SphereMesh</code> (more on this in the next section). When we create <code class="literal">Physijs.SphereMesh</code>, we pass in our geometry and use <code class="literal">Physijs.createMaterial</code> to create a Physijs-specific material. We do this so that we can set <code class="literal">friction</code> and <code class="literal">restitution</code> for this object.</p><p>Until now, we've seen <code class="literal">BoxMesh</code> and <code class="literal">SphereMesh</code>. In the next section, we'll explain and show the different types of meshes provided by Physijs that you can use to wrap your geometries.</p></div>
+<div class="section" title="Basic supported shapes"><div class="titlepage"><div><div><h1 class="title"><a id="ch12lvl1sec60"/>Basic supported shapes</h1></div></div></div><p>Physijs <a id="id1183" class="indexterm"/>provides a number of shapes you can use to wrap your geometries. In this section, we'll walk you through all the available Physijs meshes and demonstrate these meshes through an example. Remember that all you have to do to use these meshes is replace the <code class="literal">THREE.Mesh</code> constructor with one of these meshes.</p><p>The following table provides<a id="id1184" class="indexterm"/> an overview of the meshes that are available in Physijs:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Name</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Description</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">Physijs.PlaneMesh</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This mesh<a id="id1185" class="indexterm"/> can be used to create a zero-thickness plane. You could also use <code class="literal">BoxMesh</code> for this together with <code class="literal">THREE.BoxGeometry</code> with low height.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">Physijs.BoxMesh</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>If you<a id="id1186" class="indexterm"/> have geometries that look like cubes, use this mesh. For instance, this is a good match for <code class="literal">THREE.BoxGeometry</code>.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">Physijs.SphereMesh</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>For <a id="id1187" class="indexterm"/>sphere shapes, use this geometry. This geometry is a good match for <code class="literal">THREE.SphereGeometry</code>.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">Physijs.CylinderMesh</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>With<a id="id1188" class="indexterm"/> <code class="literal">THREE.Cylinder</code>, you can create various cylinder-like shapes. Physijs provides multiple meshes depending on the shape of the cylinder. <code class="literal">Physijs.CylinderMesh</code> should be used for a normal cylinder with the same top radius and bottom radius.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">Physijs.ConeMesh</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>If you<a id="id1189" class="indexterm"/> specify the top radius as <code class="literal">0</code> and use a positive value for the bottom radius, you can use <code class="literal">THREE.Cylinder</code> to create a cone. If you want to apply physics to such an object, the best fit from Physijs is <code class="literal">ConeMesh</code>.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">Physijs.CapsuleMesh</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>A <a id="id1190" class="indexterm"/>capsule is just like <code class="literal">THREE.Cylinder</code>, but with a rounded top and a rounded bottom. We'll show you how to create a capsule in Three.js later on in this section.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">Physijs.ConvexMesh</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>
+<code class="literal">hysijs.ConvexMesh</code> is <a id="id1191" class="indexterm"/>a rough shape you can use for more complex objects. It creates a convex (just like <code class="literal">THREE.ConvexGeometry</code>) to approximate the shape of complex objects.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">Physijs.ConcaveMesh</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>While<a id="id1192" class="indexterm"/> <code class="literal">ConvexMesh</code> is a rough shape, <code class="literal">ConcaveMesh</code> is a more detailed representation of your complex geometry. Note that the performance penalty of using <code class="literal">ConcaveMesh</code> is very high. Usually, it is better to either create separate geometries with their own specific Physijs meshes or group them together (as we do with the floors shown in the previous examples).</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">Physijs.HeightfieldMesh</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1193" class="indexterm"/> mesh is a very specialized one. With this mesh, you can create a height field from <code class="literal">THREE.PlaneGeometry</code>. Look at the <code class="literal">03-shapes.html</code> example for this mesh.</p>
+</td></tr></tbody></table></div><p>We'll quickly walk you through these shapes using <code class="literal">03-shapes.html</code> as a reference. We won't explain <code class="literal">Physijs.ConcaveMesh</code> any further since its usage is very limited.</p><p>Before we look at the example, we'll first have a quick look at <code class="literal">Physijs.PlaneMesh</code>. This mesh creates a simple plane based on <code class="literal">THREE.PlaneGeometry</code>, as follows:</p><div class="informalexample"><pre class="programlisting">var plane = new Physijs.PlaneMesh(new THREE.PlaneGeometry(5,5,10,10), material);
+
+scene.add( plane );</pre></div><p>In this function, you<a id="id1194" class="indexterm"/> can see that we just pass in a simple <code class="literal">THREE.PlaneGeometry</code> to create this mesh. If you add this to the scene, you'll notice something strange. The mesh you just created doesn't respond to gravity. The reason is that <code class="literal">Physijs.PlaneMesh</code> has a fixed weight of <code class="literal">0</code>, so it won't respond to gravity or be moved by collisions with other objects. Besides this mesh, all the other meshes respond to gravity and collisions, as you'd expect. The following screenshot shows a height field on which the various supported shapes can be dropped:</p><div class="mediaobject"><img src="graphics/2215OS_12_05.jpg" alt="Basic supported shapes"/></div><p>The previous image shows the <code class="literal">03-shapes.html</code> example. In this example, we've created a random height field (more on that later) and have a menu in the top-right corner that you can use to drop objects of various shapes. If you play around with this example, you'll see how different shapes respond differently to the height map and in collisions with other objects.</p><p>Let's look at the construction of some of these shapes:</p><div class="informalexample"><pre class="programlisting">new Physijs.SphereMesh(new THREE.SphereGeometry(3,20),mat);
+new Physijs.BoxMesh(new THREE.BoxGeometry(4,2,6),mat);
+new Physijs.CylinderMesh(new THREE.CylinderGeometry(2,2,6),mat);
+new Physijs.ConeMesh(new THREE.CylinderGeometry(0,3,7,20,10),mat);</pre></div><p>There's nothing <a id="id1195" class="indexterm"/>special here; we create a geometry and use the best matching mesh from Physijs to create the object we add to the scene. However, what if we want to use <code class="literal">Physijs.CapsuleMesh</code>? Three.js doesn't contain a capsule-like geometry, so we have to create one ourselves. Here's the code for this purpose:</p><div class="informalexample"><pre class="programlisting">var merged = new THREE.Geometry();
+var cyl = new THREE.CylinderGeometry(2, 2, 6);
+var top = new THREE.SphereGeometry(2);
+var bot = new THREE.SphereGeometry(2);
+
+var matrix = new THREE.Matrix4();
+matrix.makeTranslation(0, 3, 0);
+top.applyMatrix(matrix);
+
+var matrix = new THREE.Matrix4();
+matrix.makeTranslation(0, -3, 0);
+bot.applyMatrix(matrix);
+
+// merge to create a capsule
+merged.merge(top);
+merged.merge(bot);
+merged.merge(cyl);
+
+// create a physijs capsule mesh
+var capsule = new Physijs.CapsuleMesh(merged, getMaterial());</pre></div><p>
+<code class="literal">Physijs.CapsuleMesh</code> looks like a cylinder but has a rounded top and bottom. We can easily recreate this in Three.js by creating a cylinder (<code class="literal">cyl</code>) and two spheres (<code class="literal">top</code> and <code class="literal">bot</code>) and merging them together using the <code class="literal">merge()</code> function. The following screenshot shows a number of capsules rolling down the height map:</p><div class="mediaobject"><img src="graphics/2215OS_12_06.jpg" alt="Basic supported shapes"/></div><p>Before we look <a id="id1196" class="indexterm"/>at the height map, let's look at the last of the shapes you can add to this example, <code class="literal">Physijs.ConvexMesh</code>. A convex is the minimal shape that wraps all the vertices of a geometry. The resulting shape will only have angles smaller than 180 degrees. You would use this mesh for complex shapes such as torus knots, as shown in the following code:</p><div class="informalexample"><pre class="programlisting">var convex = new Physijs.ConvexMesh(new THREE.TorusKnotGeometry(0.5,0.3,64,8,2,3,10), material);</pre></div><p>In this case, for physics simulation and collisions, the convex of the torus knot will be used. This is a very good way to apply physics and detect collisions for complex objects, while still minimizing the performance impact.</p><p>The last mesh from Physijs to discuss is <code class="literal">Physijs.HeightMap</code>. The following screenshot shows a height map created with Physijs:</p><div class="mediaobject"><img src="graphics/2215OS_12_07.jpg" alt="Basic supported shapes"/></div><p>With a height map, you<a id="id1197" class="indexterm"/> can very easily create a terrain that contains bumps and shallows. Using <code class="literal">Physijs.Heightmap</code>, we make sure all the objects respond correctly to the height differences of this terrain. Let's look at the code required to accomplish this:</p><div class="informalexample"><pre class="programlisting">var date = new Date();
+var pn = new Perlin('rnd' + date.getTime());
+
+function createHeightMap(pn) {
+
+  var ground_material = Physijs.createMaterial(
+    new THREE.MeshLambertMaterial({
+      map: THREE.ImageUtils.loadTexture('../assets/textures/ground/grasslight-big.jpg')
+    }),
+    0.3, // high friction
+    0.8 // low restitution
+  );
+
+  var ground_geometry = new THREE.PlaneGeometry(120, 100, 100, 100);
+  for (var i = 0; i &lt; ground_geometry.vertices.length; i++) {
+    var vertex = ground_geometry.vertices[i];
+    var value = pn.noise(vertex.x / 10, vertex.y / 10, 0);
+    vertex.z = value * 10;
+  }
+  ground_geometry.computeFaceNormals();
+  ground_geometry.computeVertexNormals();
+
+  var ground = new Physijs.HeightfieldMesh(
+    ground_geometry,
+    ground_material,
+    0, // mass
+    100,
+    100
+  );
+  ground.rotation.x = Math.PI / -2;
+  ground.rotation.y = 0.4;
+  ground.receiveShadow = true;
+
+  return ground;
+}</pre></div><p>In this code fragment, we<a id="id1198" class="indexterm"/> take a couple of steps to create the height map you can see in the example. First off, we create the Physijs material and a simple <code class="literal">PlaneGeometry</code> object. To create a bumpy terrain from <code class="literal">PlaneGeometry</code>, we walk through each of the vertices of this geometry and randomly set the <code class="literal">z</code> property. For this, we use a Perlin noise generator to create a bump map just as we used in the <span class="emphasis"><em>Using the canvas as a bump map</em></span> section of <a class="link" href="ch10.html" title="Chapter 10. Loading and Working with Textures">Chapter 10</a>, <span class="emphasis"><em>Loading and Working with Textures</em></span>. We need to call <code class="literal">computeFaceNormals</code> and <code class="literal">computeVertexNormals</code> to make sure the texture, lighting, and shadows are rendered correctly. At this point, we have <code class="literal">PlaneGeometry</code>, which contains the correct height information. With <code class="literal">PlaneGeometry</code>, we can create <code class="literal">Physijs.HeightFieldMesh</code>. The last two parameters for the constructor take the number of horizontal and vertical segments of <code class="literal">PlaneGeometry</code> and should match the last two properties used to construct <code class="literal">PlaneGeometry</code>. Finally, we rotate <code class="literal">HeightFieldMesh</code> to the position we want and add it to the scene. All other Physijs objects will now interact correctly with this height map.</p></div>
+<div class="section" title="Using constraints to limit movement of objects"><div class="titlepage"><div><div><h1 class="title"><a id="ch12lvl1sec61"/>Using constraints to limit movement of objects</h1></div></div></div><p>Until now, we've <a id="id1199" class="indexterm"/>seen some basic physics in action. We've seen how<a id="id1200" class="indexterm"/> the various shapes respond to gravity, friction, and restitution and how they affect collisions. Physijs also provides advanced constructs that allow you to limit the movement of your objects. In Physijs, these objects are called constraints. The following table gives an overview of the constraints that are available in Physijs:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Constraint</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Description</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">PointConstraint</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1201" class="indexterm"/>allows you to fix the position<a id="id1202" class="indexterm"/> of one object to the position of another object. If one object moves, the other will move with it, keeping the distance and orientation between them the same.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">HingeConstraint</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>
+<code class="literal">HingeConstraint</code> <a id="id1203" class="indexterm"/>allows you<a id="id1204" class="indexterm"/> to limit the movement of an object as if it were on a hinge, such as a door.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">SliderConstraint</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1205" class="indexterm"/>constraint, as the name<a id="id1206" class="indexterm"/> implies, allows you to limit the movement of an object to a single axis, for instance, a sliding door.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">ConeTwistConstraint</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>With <a id="id1207" class="indexterm"/>this constraint, you<a id="id1208" class="indexterm"/> can limit the rotation and the movement of one object to another. This constraint functions like a ball-and-socket joint, for instance, the way your arm moves in your shoulder socket.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">DOFConstraint</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>
+<code class="literal">DOFConstraint</code> <a id="id1209" class="indexterm"/>allows <a id="id1210" class="indexterm"/>you to specify the limit of movement around any of the three axes, and it allows you to set the minimum and maximum angle that is allowed. This is the most versatile of the constraints available.</p>
+</td></tr></tbody></table></div><p>The easiest way to understand these constraints is to see them in action and play around with them. For this, we've provided an example where all these constraints are used together, <code class="literal">04-physijs-constraints.js</code>. The following screenshot shows this example:</p><div class="mediaobject"><img src="graphics/2215OS_12_08.jpg" alt="Using constraints to limit movement of objects"/></div><p>Based on this example, we'll walk you through four of these five constraints. For <code class="literal">DOFConstraint</code>, we've created a separate example. The first one we look at is <code class="literal">PointConstraint</code>.</p><div class="section" title="Using PointConstraint to limit movement between two points"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec86"/>Using PointConstraint to limit movement between two points</h2></div></div></div><p>If you open the<a id="id1211" class="indexterm"/> example, you'll see two red spheres. These two spheres are connected to each other using <code class="literal">PointConstraint</code>. With the menu in the top-left corner, you can move the green sliders around. As soon as one of the sliders hits one of the red spheres, you'll see that both of them move in the same manner, and they keep the distance between them the same, while still complying with weight, gravity, friction, and other aspects of physics.</p><p>
+<code class="literal">PointConstraint</code> in this example was created as follows:</p><div class="informalexample"><pre class="programlisting">function createPointToPoint() {
+  var obj1 = new THREE.SphereGeometry(2);
+  var obj2 = new THREE.SphereGeometry(2);
+
+  var objectOne = new Physijs.SphereMesh(obj1, Physijs.createMaterial(new THREE.MeshPhongMaterial({color: 0xff4444, transparent: true, opacity:0.7}),0,0));
+
+  objectOne.position.x = -10;
+  objectOne.position.y = 2;
+  objectOne.position.z = -18;
+
+  scene.add(objectOne);
+
+  var objectTwo = new Physijs.SphereMesh(obj2,Physijs.createMaterial(new THREE.MeshPhongMaterial({color: 0xff4444, transparent: true, opacity:0.7}),0,0));
+
+  objectTwo.position.x = -20;
+  objectTwo.position.y = 2;
+  objectTwo.position.z = -5;
+
+  scene.add(objectTwo);
+
+  var constraint = new Physijs.PointConstraint(objectOne, objectTwo, objectTwo.position);
+  scene.addConstraint(constraint);
+}</pre></div><p>Here, you <a id="id1212" class="indexterm"/>can see that we create objects using a Physijs-specific mesh (<code class="literal">SphereMesh</code> in this case) and add them to the scene. We use the <code class="literal">Physijs.PointConstraint</code> constructor to create the constraint. This constraint takes three parameters:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The first two arguments define which objects you want to connect to each other. In this case, we connect the two spheres to one another.</li><li class="listitem" style="list-style-type: disc">The third argument defines to what position the constraint is bound. For instance, if you bind the first object to a very large object, you can set this position, for instance, to the right-hand side of that object. Usually, if you just want to connect two objects together, a good choice is to just set it to the position of the second object.</li></ul></div><p>If you don't want to fix an object to another one, but to a static position in the scene, you can omit the second parameter. In that case, the first object keeps the same distance to the position you specified, while complying with gravity and other aspects of physics, of course.</p><p>Once the constraint is created, we can enable it by adding it to the scene with the <code class="literal">addConstraint</code> function. As you start experimenting with constraints, you'll likely run into some strange issues. To make debugging easier, you can pass in <code class="literal">true</code> to the <code class="literal">addConstraint</code> function. If you do this, the constraint point and orientation is shown in the scene. This can help you get the rotation and position of your constraint correctly.</p></div><div class="section" title="Creating door-like constraints with HingeConstraint"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec87"/>Creating door-like constraints with HingeConstraint</h2></div></div></div><p>
+<code class="literal">HingeConstraint</code>, as<a id="id1213" class="indexterm"/> the name implies, allows you to create an object that behaves like a hinge. It rotates around a specific axis, limiting the movement to a specified angle. In our example, <code class="literal">HingeConstraint</code> is shown with two white flippers at the center of the scene. These<a id="id1214" class="indexterm"/> flippers are constrained to the small, brown cubes and can rotate around them. If you want to play around with these hinges, you can enable them by checking the <code class="literal">enableMotor</code> box in the <span class="strong"><strong>hinge</strong></span> menu. This will accelerate the flippers to the velocity specified in the <span class="strong"><strong>general</strong></span> menu. A negative velocity will move the hinges down, and a positive velocity will move them up. The following screenshot shows the hinges in the up position and in the down position:</p><div class="mediaobject"><img src="graphics/2215OS_12_09.jpg" alt="Creating door-like constraints with HingeConstraint"/></div><p>Let's take a closer look at how we created one of these flippers:</p><div class="informalexample"><pre class="programlisting">var constraint = new Physijs.HingeConstraint(flipperLeft, flipperLeftPivot, flipperLeftPivot.position, new THREE.Vector3(0,1,0));
+scene.addConstraint(constraint);
+constraint.setLimits(-2.2, -0.6, 0.1, 0);</pre></div><p>This constraint takes four parameters. Let's look at each one in a bit more detail:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Parameter</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Description</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">mesh_a</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>The<a id="id1215" class="indexterm"/> first object passed into the function is the object that is to be constrained. In this example, the first object is the white cube that serves as the flipper. This is the object that is constrained in its movements.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">mesh_b</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>The<a id="id1216" class="indexterm"/> second object defines to which object <code class="literal">mesh_a</code> is constrained. In this example, <code class="literal">mesh_a</code> is constrained to the small, brown cube. If we move this mesh around, <code class="literal">mesh_a</code> would follow it around, still keeping <code class="literal">HingeConstraint</code> in place. You'll see that all constraints have this option. You could, for instance, use this if you've created a car that moves around and want to create a constraint for opening a door. If this second parameter is omitted, the hinge will be constrained to the scene (and never be able to move around).</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">position</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is<a id="id1217" class="indexterm"/> the point where the constraint is applied. In this case, it's the hinge point around which <code class="literal">mesh_a</code> rotates. If you've specified <code class="literal">mesh_b</code>, this hinge point will move around with the position and rotation of <code class="literal">mesh_b</code>.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">axis</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1218" class="indexterm"/> is the axis around which the hinge should rotate. In this example, we've set the hinge horizontally (0,1,0).</p>
+</td></tr></tbody></table></div><p>Adding <code class="literal">HingeConstraint</code> to the scene works in the same way as we've seen with <code class="literal">PointConstraint</code>. You use <a id="id1219" class="indexterm"/>the <code class="literal">addConstraint</code> method, specify the constraint to add, and optionally add <code class="literal">true</code> to show the exact location and orientation of the constraint for debugging purposes. For <code class="literal">HingeConstraint</code>, however, we also need to define the range of movement that is allowed. We do this with<a id="id1220" class="indexterm"/> the <code class="literal">setLimits</code> function.</p><p>This function takes the following four parameters:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Parameter</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Description</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">low</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1221" class="indexterm"/> is the minimum angle, in radians, of motion.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">high</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1222" class="indexterm"/> is the maximum angle, in radians, of motion.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">bias_factor</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1223" class="indexterm"/>property defines the rate with which the constraint corrects itself after an error in position. For instance, when the hinge is pushed out of its constraints by a different object, it will move itself to its correct position. The higher this value, the faster it will correct its position. It is best to keep it below <code class="literal">0.5</code>.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">relaxation_factor</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1224" class="indexterm"/> defines the rate at which the velocity is changed by the constraint. If this is set to a high value, the object will bounce when it reaches its minimum or maximum angle of motion.</p>
+</td></tr></tbody></table></div><p>You can change these properties at runtime if you want. If you add <code class="literal">HingeConstraint</code> with these properties, you won't see much movement. The mesh will only move when hit by another object or based on gravity. This constraint, as with many others, however, can also be moved by an internal motor. This is what you see when you check the <code class="literal">enableMotor</code> box in the <span class="strong"><strong>hinge</strong></span> submenu from our example. The following code is used to enable this motor:</p><div class="informalexample"><pre class="programlisting">constraint.enableAngularMotor( controls.velocity, controls.acceleration );</pre></div><p>This will speed up the mesh (in our case, the flipper) to the specified velocity using the acceleration provided. If <a id="id1225" class="indexterm"/>we want to move the flipper the other way, we just specify a negative velocity. If we didn't have any limits, this would cause our flipper to rotate as long as our motor kept running. To disable a motor, we can just call the following code:</p><div class="informalexample"><pre class="programlisting">flipperLeftConstraint.disableMotor();</pre></div><p>Now the mesh will slow down based on friction, collisions, gravity, and other aspects of physics.</p></div><div class="section" title="Limiting movement to a single axis with SliderConstraint"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec88"/>Limiting movement to a single axis with SliderConstraint</h2></div></div></div><p>The next <a id="id1226" class="indexterm"/>constraint is <code class="literal">SliderConstraint</code>. With this constraint, you can limit the movement of an object to any one of its axes. The green sliders in the <code class="literal">04-constraints.html</code> example can be controlled from the <span class="strong"><strong>sliders</strong></span> submenu. The following screenshot shows this example:</p><div class="mediaobject"><img src="graphics/2215OS_12_10.jpg" alt="Limiting movement to a single axis with SliderConstraint"/></div><p>With the <span class="strong"><strong>SlidersLeft</strong></span> button, the sliders will move to the left-hand side (their lower limit), and with the <span class="strong"><strong>SlidersRight</strong></span> button, they will move to the right-hand side (their upper limit). Creating these constraints from code is very easy:</p><div class="informalexample"><pre class="programlisting">var constraint = new Physijs.SliderConstraint(sliderMesh, new THREE.Vector3(0, 2, 0), new THREE.Vector3(0, 1, 0));
+
+scene.addConstraint(constraint);
+constraint.setLimits(-10, 10, 0, 0);
+constraint.setRestitution(0.1, 0.1);</pre></div><p>As you can see <a id="id1227" class="indexterm"/>from the code, this constraint takes three arguments (or four if you want to constrain an object to another object). The following table explains the arguments for this constraint:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Parameter</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Description</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">mesh_a</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>The<a id="id1228" class="indexterm"/> first object passed into the function is the object that is to be constrained. In this example, the first object is the green cube that serves as the slider. This is the object that will be constrained in its movements.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">mesh_b</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This <a id="id1229" class="indexterm"/>is the second object, which defines to which object <code class="literal">mesh_a</code> is constrained. This is an optional argument and omitted in this example. If omitted, the mesh will be constrained to the scene. If it is specified, the slider will move around when this mesh moves around or when its orientation changes. </p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">position</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is <a id="id1230" class="indexterm"/>the point where the constraint is applied. This is especially important when you constrain <code class="literal">mesh_a</code> to <code class="literal">mesh_b</code>.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">axis</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is the<a id="id1231" class="indexterm"/> axis on which <code class="literal">mesh_a</code> will slide. Note that this is relative to the orientation of <code class="literal">mesh_b</code> if it is specified. In the current version of Physijs, there seems to be a strange offset to this axis when using a linear motor with linear limits. The following works for this version if you want to slide along:</p>
+<div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>x</em></span> axis: <code class="literal">new</code> <code class="literal">THREE.Vector3(0,1,0)</code></li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>y</em></span> axis: <code class="literal">new</code> <code class="literal">THREE.Vector3(0,0,Math.PI/2)</code></li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>z</em></span> axis: <code class="literal">new</code> <code class="literal">THREE.Vector3(Math.PI/2,0,0)</code></li></ul></div>
+</td></tr></tbody></table></div><p>After you've created the constraint and added it to the scene using <code class="literal">scene.addConstraint</code>, you can set the <code class="literal">constraint.setLimits(-10,</code> <code class="literal">10,</code> <code class="literal">0,</code> <code class="literal">0)</code> limits for this constraint to specify how far the slider may slide. You can set the following limits on <code class="literal">SliderConstraint</code>:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Parameter</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Description</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">linear_lower</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1232" class="indexterm"/> is the lower linear limit of the object</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">linear_upper</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1233" class="indexterm"/> is the upper linear limit of the object</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">angular_lower</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This<a id="id1234" class="indexterm"/> is the lower angular limit of the object</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">angular_higher</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is <a id="id1235" class="indexterm"/>the upper angular limit of the object</p>
+</td></tr></tbody></table></div><p>Finally, you can set the restitution (the bounce) that'll occur when you hit one of these limits. You do this with <code class="literal">constraint.setRestitution(res_linear,</code> <code class="literal">res_angular)</code>, where the first parameter sets the amount of bounce when you hit the linear limit and the second one sets the amount of bounce when you hit the angular limit.</p><p>Now, the<a id="id1236" class="indexterm"/> complete constraint has been configured, and we can wait until collisions occur that slide the object around or use a motor. For <code class="literal">SlideConstraint</code>, we have two options: we can use an angular motor to accelerate along the axis we specified, complying with the angular limits we set, or use a linear motor to accelerate along the axis we specified, complying with the linear limits. In this example, we used a linear motor. For using an angular motor, take a look at <code class="literal">DOFConstraint</code>, which is explained later on in this chapter.</p></div><div class="section" title="Creating a ball-and-socket-joint-like constraint with ConeTwistConstraint"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec89"/>Creating a ball-and-socket-joint-like constraint with ConeTwistConstraint</h2></div></div></div><p>With <a id="id1237" class="indexterm"/>
+<code class="literal">ConeTwistConstraint</code>, it is possible to create a constraint where the movement is limited to a set of angles. We can specify what the minimum and maximum angle is from one object to the other for the <span class="emphasis"><em>x</em></span>, <span class="emphasis"><em>y</em></span>, and <span class="emphasis"><em>z</em></span> axes. The following screenshot shows that <code class="literal">ConeTwistConstraint</code> allows you to move an object around a reference at certain angles:</p><div class="mediaobject"><img src="graphics/2215OS_12_11.jpg" alt="Creating a ball-and-socket-joint-like constraint with ConeTwistConstraint"/></div><p>The easiest way<a id="id1238" class="indexterm"/> to understand <code class="literal">ConeTwistConstraint</code> is by looking at the code required to create one. The code required to accomplish this is as follows:</p><div class="informalexample"><pre class="programlisting">var baseMesh = new THREE.SphereGeometry(1);
+var armMesh = new THREE.BoxGeometry(2, 12, 3);
+
+var objectOne = new Physijs.BoxMesh(baseMesh,Physijs.createMaterial(new THREE.MeshPhongMaterial({color: 0x4444ff, transparent: true, opacity:0.7}), 0, 0), 0);
+objectOne.position.z = 0;
+objectOne.position.x = 20;
+objectOne.position.y = 15.5;
+objectOne.castShadow = true;
+scene.add(objectOne);
+
+var objectTwo = new Physijs.SphereMesh(armMesh,Physijs.createMaterial(new THREE.MeshPhongMaterial({color: 0x4444ff, transparent: true, opacity:0.7}), 0, 0), 10);
+objectTwo.position.z = 0;
+objectTwo.position.x = 20;
+objectTwo.position.y = 7.5;
+scene.add(objectTwo);
+objectTwo.castShadow = true;
+
+var constraint = new Physijs.ConeTwistConstraint(objectOne, objectTwo, objectOne.position);
+
+scene.addConstraint(constraint);
+
+constraint.setLimit(0.5*Math.PI, 0.5*Math.PI, 0.5*Math.PI);
+constraint.setMaxMotorImpulse(1);
+constraint.setMotorTarget(new THREE.Vector3(0, 0, 0));</pre></div><p>In this piece <a id="id1239" class="indexterm"/>of JavaScript, you'll probably already recognize a number of concepts we discussed earlier. We start with creating the objects that we connect to each other with the constraint: <code class="literal">objectOne</code> (a sphere) and <code class="literal">objectTwo</code> (a box). We position these objects so that <code class="literal">objectTwo</code> hangs below <code class="literal">objectOne</code>. Now we can create <code class="literal">ConeTwistConstraint</code>. The arguments this constraint takes aren't anything new if you've already looked at the other constraints. The first parameter is the object to constrain, the second parameter is the object to which the first object is constrained, and the last parameter is the location where the constraint is constructed (in this case, it's the point around which <code class="literal">objectOne</code> rotates). After adding the constraint to the scene, we can set its limits with the <code class="literal">setLimit</code> function. This function takes three radian values that specify the maximum angle for each of the axes.</p><p>Just as with most of the other constraints, we can move <code class="literal">objectOne</code> using the motor provided by the constraint. For <code class="literal">ConeTwistConstraint</code>, we set <code class="literal">MaxMotorImpulse</code> (how much force the motor can apply), and we set the target angles the motor should move <code class="literal">objectOne</code> to. In this example, we move it to its resting position directly below the sphere. You can play around with this example, as shown in the following screenshot, by setting this target value:</p><div class="mediaobject"><img src="graphics/2215OS_12_12.jpg" alt="Creating a ball-and-socket-joint-like constraint with ConeTwistConstraint"/></div><p>The last <a id="id1240" class="indexterm"/>constraint we'll look at is also the most versatile—<code class="literal">DOFConstraint</code>.</p></div><div class="section" title="Creating detailed control with DOFConstraint"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec90"/>Creating detailed control with DOFConstraint</h2></div></div></div><p>
+<code class="literal">DOFConstraint</code>, also<a id="id1241" class="indexterm"/> called the degree of freedom constraint, allows you to exactly control an object's linear and angular movement. We'll show how to use this constraint by creating an example where you can drive around a simple, car-like shape. This shape consists of a single rectangle that serves as the body and four spheres that serve as the wheels. Let's start by creating the wheels:</p><div class="informalexample"><pre class="programlisting">function createWheel(position) {
+  var wheel_material = Physijs.createMaterial(
+   new THREE.MeshLambertMaterial({
+     color: 0x444444,
+     opacity: 0.9,
+     transparent: true
+    }),
+    1.0, // high friction
+    0.5 // medium restitution
+  );
+
+  var wheel_geometry = new THREE.CylinderGeometry(4, 4, 2, 10);
+  var wheel = new Physijs.CylinderMesh(
+    wheel_geometry,
+    wheel_material,
+    100
+  );
+
+  wheel.rotation.x = Math.PI / 2;
+  wheel.castShadow = true;
+  wheel.position = position;
+  return wheel;
+}</pre></div><p>In this piece<a id="id1242" class="indexterm"/> of code, we just created a simple <code class="literal">CylinderGeometry</code> and <code class="literal">CylinderMesh</code> object, which can be used as the wheels for our car. The following screenshot depicts the result of the preceding code:</p><div class="mediaobject"><img src="graphics/2215OS_12_13.jpg" alt="Creating detailed control with DOFConstraint"/></div><p>Next, we need to create the body of the car and add everything to the scene:</p><div class="informalexample"><pre class="programlisting">var car = {};
+var car_material = Physijs.createMaterial(new THREE.MeshLambertMaterial({
+    color: 0xff4444,
+    opacity: 0.9,  transparent: true
+  }),   0.5, 0.5 
+);
+
+var geom = new THREE.BoxGeometry(15, 4, 4);
+var body = new Physijs.BoxMesh(geom, car_material, 500);
+body.position.set(5, 5, 5);
+body.castShadow = true;
+scene.add(body);
+
+var fr = createWheel(new THREE.Vector3(0, 4, 10));
+var fl = createWheel(new THREE.Vector3(0, 4, 0));
+var rr = createWheel(new THREE.Vector3(10, 4, 10));
+var rl = createWheel(new THREE.Vector3(10, 4, 0));
+
+scene.add(fr);
+scene.add(fl);
+scene.add(rr);
+scene.add(rl);</pre></div><p>Until now, we<a id="id1243" class="indexterm"/> just created the separate components that will have to make up our car. To tie everything together, we're going to create constraints. Each wheel will be constrained to <code class="literal">body</code>. The constraints are created as follows:</p><div class="informalexample"><pre class="programlisting">var frConstraint = new Physijs.DOFConstraint(fr,body, new THREE.Vector3(0,4,8));
+scene.addConstraint(frConstraint);
+var flConstraint = new Physijs.DOFConstraint (fl,body, new THREE.Vector3(0,4,2));
+scene.addConstraint(flConstraint);
+var rrConstraint = new Physijs.DOFConstraint (rr,body, new THREE.Vector3(10,4,8));
+scene.addConstraint(rrConstraint);
+var rlConstraint = new Physijs.DOFConstraint (rl,body, new THREE.Vector3(10,4,2));
+scene.addConstraint(rlConstraint);</pre></div><p>Each wheel (the first argument) has it's own constraint, and the position where it is attached to the car (the second argument) is specified with the last argument. If we ran with this configuration, we'd see that the four wheels hold up the body of the car. We need to do two more things to get the car moving: we need to set up the constraints for the wheels (along which axis they can move), and we need to configure the correct motors. First, we set up the constraints for the two front wheels; what we want for these front wheels is just to be able to rotate along the <span class="emphasis"><em>z</em></span> axis so that they can power the car, and they shouldn't be allowed to move along the other axes.</p><p>The code required to accomplish this is as follows:</p><div class="informalexample"><pre class="programlisting">frConstraint.setAngularLowerLimit({ x: 0, y: 0, z: 0 });
+frConstraint.setAngularUpperLimit({ x: 0, y: 0, z: 0 });
+flConstraint.setAngularLowerLimit({ x: 0, y: 0, z: 0 });
+flConstraint.setAngularUpperLimit({ x: 0, y: 0, z: 0 });</pre></div><p>At first glance, this <a id="id1244" class="indexterm"/>might seem weird. By setting the lower and upper limits to the same value, we make sure that no rotation is possible in the specified direction. This would also mean that the wheels can't rotate around their <span class="emphasis"><em>z</em></span> axis. The reason we specify it like this is that when you enable a motor for a specific axis, these limits are ignored. So setting limits on the <span class="emphasis"><em>z</em></span> axis at this point doesn't have any effect on our front wheels.</p><p>We're going to steer with our rear wheels, and to make sure they don't fall over, we need to fix the <span class="emphasis"><em>x</em></span> axis. With the following code, we fix the <span class="emphasis"><em>x</em></span> axis (set upper and lower limits to <code class="literal">0</code>), fix the <span class="emphasis"><em>y</em></span> axis so that these wheels are already initially turned, and disable any limit on the <span class="emphasis"><em>z</em></span> axis:</p><div class="informalexample"><pre class="programlisting">rrConstraint.setAngularLowerLimit({ x: 0, y: 0.5, z: 0.1 });
+rrConstraint.setAngularUpperLimit({ x: 0, y: 0.5, z: 0 });
+rlConstraint.setAngularLowerLimit({ x: 0, y: 0.5, z: 0.1 });
+rlConstraint.setAngularUpperLimit({ x: 0, y: 0.5, z: 0 });</pre></div><p>As you can see, to disable the limits, we have to set the lower limit of that specific axis higher than the upper limit. This will allow free rotation around that axis. If we don't set this for the <span class="emphasis"><em>z</em></span> axis, these two wheels will just be dragged along. In this case, they'll turn together with the other wheels because of the friction with the ground.</p><p>All that is left to do is set up the motors for the front wheels, which can be done as follows:</p><div class="informalexample"><pre class="programlisting">flConstraint.configureAngularMotor(2, 0.1, 0, -2, 1500);
+frConstraint.conAngularMotor(2, 0.1, 0, -2, 1500);</pre></div><p>Since there are three axes we can create a motor for, we need to specify the axis the motor works on: 0 is the <span class="emphasis"><em>x</em></span> axis, 1 is the <span class="emphasis"><em>y</em></span> axis, and 2 is the <span class="emphasis"><em>z</em></span> axis. The second and third arguments define the angular limits for the motor. Here, we once again set the lower limit (<code class="literal">0.1</code>) higher than the upper limit (<code class="literal">0</code>) to allow free rotation. The third argument specifies the velocity we want to reach, and the last argument specifies the force this motor can apply. If this last one is too little, the car won't move; if it's too high, the rear wheels will lift off from the ground.</p><p>Enable them with the following code:</p><div class="informalexample"><pre class="programlisting">flConstraint.enableAngularMotor(2);
+frConstraint.enableAngularMotor(2);</pre></div><p>If you open up<a id="id1245" class="indexterm"/> the <code class="literal">05-dof-constraint.html</code> example, you can play around with the various constraints and motors and drive the car around. The following screenshot shows this example:</p><div class="mediaobject"><img src="graphics/2215OS_12_14.jpg" alt="Creating detailed control with DOFConstraint"/></div><p>In the next section, we'll look at the last subject we'll discuss in this book, and that is how to add sounds to your Three.js scene.</p></div><div class="section" title="Add sound sources to your scene"><div class="titlepage"><div><div><h2 class="title"><a id="ch12lvl2sec91"/>Add sound sources to your scene</h2></div></div></div><p>With the<a id="id1246" class="indexterm"/> subjects discussed until now, we have a lot<a id="id1247" class="indexterm"/> of the ingredients in place to create beautiful scenes, games, and other 3D visualizations. What we haven't shown, however, is how to add sounds to your Three.js scene. In this section, we'll look at two Three.js objects that allow you to add sources of sound to your scene. This is especially interesting since these sound sources respond to the position of the camera:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The distance between the sound source and the camera determines the volume of the sound source.</li><li class="listitem" style="list-style-type: disc">The positions to the left-hand side and the right-hand side of the camera determine the sound volume of the left-hand side speaker and the right-hand side speaker, respectively.</li></ul></div><p>The best way to explain this is to see this in action. Open up the <code class="literal">06-audio.html</code> example in your<a id="id1248" class="indexterm"/> browser, and you'll see three cubes with pictures of animals. The following screenshot shows this example:</p><div class="mediaobject"><img src="graphics/2215OS_12_15.jpg" alt="Add sound sources to your scene"/></div><p>This example uses <a id="id1249" class="indexterm"/>the first-person controls we saw in <a class="link" href="ch09.html" title="Chapter 9. Animations and Moving the Camera">Chapter 9</a>, <span class="emphasis"><em>Animations and Moving the Camera</em></span>, so you can use the arrow keys in combination with the mouse to move around the scene. What you'll see is that the closer you move to a specific cube, the louder that specific animal will sound. If you position the camera between the dog and the cow, you'll hear the cow from the right-hand side and the dog from the left-hand side.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip25"/>Tip</h3><p>In this example, we used a specific helper, <code class="literal">THREE.GridHelper</code>, from Three.js to create the grid beneath the cubes:</p><div class="informalexample"><pre class="programlisting">var helper = new THREE.GridHelper( 500, 10 );
+helper.color1.setHex( 0x444444 );
+helper.color2.setHex( 0x444444 );
+scene.add( helper );</pre></div><p>To create a grid, you need to specify the size of the grid (500 in this case) and the size of the individual grid elements (we used 10 here). If you want, you can also set the colors of the horizontal lines by specifying the <code class="literal">color1</code> and <code class="literal">color2</code> properties.</p></div></div><p>Accomplishing <a id="id1250" class="indexterm"/>this only takes a small amount <a id="id1251" class="indexterm"/>of code. The first thing we need to do is define <code class="literal">THREE.AudioListener</code> and add it to <code class="literal">THREE.PerspectiveCamera</code>, as follows:</p><div class="informalexample"><pre class="programlisting">var listener1 = new THREE.AudioListener();
+camera.add( listener1 );</pre></div><p>Next, we need to create <code class="literal">THREE.Mesh </code>and add a <code class="literal">THREE.Audio </code>object to that mesh, as follows:</p><div class="informalexample"><pre class="programlisting">var cube = new THREE.BoxGeometry(40, 40, 40);
+
+var material_1 = new THREE.MeshBasicMaterial({
+  color: 0xffffff,
+  map: THREE.ImageUtils.loadTexture("../assets/textures/animals/cow.png")
+});
+
+var mesh1 = new THREE.Mesh(cube, material_1);
+mesh1.position.set(0, 20, 100);
+
+var sound1 = new THREE.Audio(listener1);
+sound1.load('../assets/audio/cow.ogg');
+sound1.setRefDistance(20);
+sound1.setLoop(true);
+sound1.setRolloffFactor(2);
+
+mesh1.add(sound1);</pre></div><p>As you can see from this code snippet, we first create a standard <code class="literal">THREE.Mesh</code> instance. Next, we create a <code class="literal">THREE.Audio </code>object, which we connect to the <code class="literal">THREE.AudioListener</code> object we created earlier. Finally, we add the <code class="literal">THREE.Audio </code>object to the mesh we created and we're done.</p><p>There are a couple of properties we can set on the <code class="literal">THREE.Audio </code>object to configure its behavior:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><code class="literal">load</code>: This<a id="id1252" class="indexterm"/> allows us to load an audio file to be played.</li><li class="listitem" style="list-style-type: disc"><code class="literal">setRefDistance</code>: This<a id="id1253" class="indexterm"/> determines the distance from the object from where the sound will be reduced in volume.</li><li class="listitem" style="list-style-type: disc"><code class="literal">setLoop</code>: By <a id="id1254" class="indexterm"/>default, a sound is played once. By setting this property to <code class="literal">true</code>, the sound is looped.</li><li class="listitem" style="list-style-type: disc"><code class="literal">setRolloffFactor</code>: This <a id="id1255" class="indexterm"/>determines how quickly the volume decreases as you move away from the sound source.</li></ul></div><p>Internally, Three.js<a id="id1256" class="indexterm"/> uses the <a id="id1257" class="indexterm"/>Web Audio API (<a class="ulink" href="http://webaudio.github.io/web-audio-api/">http://webaudio.github.io/web-audio-api/</a>) to play the sound and determine the correct volume. Not <a id="id1258" class="indexterm"/>all browsers support this specification. The best support currently is from Chrome and Firefox.</p></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch12lvl1sec62"/>Summary</h1></div></div></div><p>In this last chapter, we explored how you can extend the basic 3D functionality from Three.js by adding physics. For this, we used the Physijs library, which allows you to add gravity, collisions, constraints, and much more. We also showed how you can add positional sound to your scene using the <code class="literal">THREE.Audio </code>and <code class="literal">THREE.AudioListener </code>objects. With those subjects, we've reached the end of this book on Three.js. In these chapters, we covered a lot of different subjects and explored pretty much everything Three.js has to offer. In the first couple of chapters, we explained the core concepts and ideas behind Three.js; after that, we looked at the available lights and how materials affect how an object is rendered. After the basics, we explored the various geometries Three.js has to offer and how you can combine geometries to create new ones.</p><p>In the second part of the book, we looked at a few more advanced subjects. You learned how to create particle systems, how to load models from external sources, and how to create animations. Finally, in these last couple of chapters, we looked at the advanced textures you can use in skinning and the postprocessing effects that can be applied after the scene is rendered. We end the book with this chapter on physics, which, besides explaining how you can add physics to your Three.js scene, also shows the active community of projects surrounding Three.js that you can use to add even more functionality to an already great library.</p><p>I hope you've enjoyed reading this book and playing around with the examples as much as I have writing it!</p></div></body></html>

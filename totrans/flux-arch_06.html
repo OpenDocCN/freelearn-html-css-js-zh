@@ -1,0 +1,440 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;6.&#xA0;Changing Flux Store State"><div class="titlepage"><div><div><h1 class="title"><a id="ch06"/>Chapter 6. Changing Flux Store State</h1></div></div></div><p>This chapter is about the continuing evolution of our Flux stores, as the application features we implement drive architectural improvements. In fact, this is something Flux architectures excel at—adapting to changes influenced by the application as they happen. This chapter dives into changing the design of stores and hammers home the idea that stores will change often. Higher-level changes to our stores might be necessary, such as introducing generic stores that are shared by several other stores that target specific features. As stores evolve, so do the dependencies between them; we'll look at how to manage inter-store dependencies using the dispatcher. We'll close the chapter with a discussion on keeping store complexity at bay.</p><div class="section" title="Adapting to changing information"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec39"/>Adapting to changing information</h1></div></div></div><p>Earlier in the book, I mentioned that stores aren't models from MV* architectures. They're different from a number of perspectives, including their ability to cope with changing schemas in <a id="id191" class="indexterm"/>other architectural areas, such as the API and changing feature requirements. In this section, we'll look at the Flux store's ability to adapt to changing APIs. We'll also address the opposite direction of change, when views that consume store data have changing requirements. Finally, we'll talk about other components that might change as the direct result of a store's ongoing evolution.</p><div class="section" title="Changing API data"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec72"/>Changing API data</h2></div></div></div><p>API data changes, especially <a id="id192" class="indexterm"/>during the early stages of development. Even though we tell ourselves that a given API is going to stabilize over time, this rarely works out in practice. Or if an API does become stable and unchanging, we end up having to use a different API. The safe assumption is that this data is going to change, and our stores will need to adapt to such changes.</p><p>The beautiful part of Flux stores is the fact that they're feature driven more than they're API driven. This means that changes in API data have less of an impact on stores because their job is to transform the API data into information required by the feature. Here is a visualization of this idea:</p><div class="mediaobject"><img src="graphics/B05419_06_01.jpg" alt="Changing API data"/></div><p>Unlike models, we're not trying to represent the API data in stores as is. Stores hold on to state that serves as information consumed by the features our customers use. This means that when changes<a id="id193" class="indexterm"/> happen in the API data that a given store depends on, we just have to revisit the transformation functions that create the feature information. On the other hand, models that are used by many different views in many different features of the application have a much harder time coping with API data changes such as these. It's because these components have dependencies with the schema of the API data, and not with the actual state that's relevant for the UI elements we need to render.</p><p>Can we always recreate the feature information that is used in our architecture after an API change has taken place? Not always. And this requires that we revisit how our views interact with the store. For example, if properties are removed entirely from a given API schema, this will likely require more than a simple transform update in our store. But this is a rare case; the most common case is that Flux stores can easily adapt to changing API data.</p></div><div class="section" title="Changing feature functionality"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec73"/>Changing feature functionality</h2></div></div></div><p>Stores change and evolve through changing API data. This can impact the information that's available to the<a id="id194" class="indexterm"/> features that rely on the store. As our application grows, stores can feel pressure in the opposite direction—changing feature functionality often requires new information. This concept is illustrated in the following diagram:</p><div class="mediaobject"><img src="graphics/B05419_06_02.jpg" alt="Changing feature functionality"/></div><p>Instead of the API data alone dictating what happens in the <code class="literal">transform()</code> function, it's the other way around. The feature and the information that drives it serve as input to the design of the store transformation. This can actually be more difficult than adapting to changing API data. There are two main reasons for this.</p><p>First, there's the<a id="id195" class="indexterm"/> information itself. The store can transform resources into whatever the feature needs. But stores aren't magical—the API data needs to provide at least the basic necessities in terms of data; otherwise, we're at a dead end. Second, there are the UI elements themselves, some of which have state that needs to be captured by the store. Combining these two factors can make for a challenge.</p><p>It's good to get these difficult feature-related questions about information answered sooner rather than later. Being able to work in this direction means that we're letting the information that users care about drive the design, rather than letting the available API dictate what's possible.</p></div><div class="section" title="Impacted components"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec74"/>Impacted components</h2></div></div></div><p>As we saw earlier in this <a id="id196" class="indexterm"/>section, stores transform their data sources into information that's consumable by user features. This is a great architectural characteristic of Flux, because it means that the views that listen to these stores aren't constantly having to change as a result of changes made to the API. We do, however, need to stay conscious of the impact to other components when stores evolve.</p><p>Let's think about actions for a <a id="id197" class="indexterm"/>moment. When the API data changes, is this likely to result in new actions that we need to dispatch? No, because we're likely dealing with existing entry points into the system—these actions already exist. What about feature functionality—does this result in new actions? This is likely, because we could see new user interactivity introduced into a feature or new data and APIs. Existing action payloads can evolve as well, in response to changing UI elements, for example.</p><p>Something else to consider is the effect a changing store has on other stores that depend on it. Will it still be able to get the information it needs after the change? Views aren't the only Flux components that have<a id="id198" class="indexterm"/> store dependencies. We'll look at inter-store dependencies in more depth later in the chapter.</p></div></div></div>
+<div class="section" title="Reducing duplicate store data"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec40"/>Reducing duplicate store data</h1></div></div></div><p>Stores help us separate the state<a id="id199" class="indexterm"/> found in our architectures into features. This works out well because we can have drastically different data structures from one feature to the next. Alternatively, we could find that, as new features are introduced, a lot of the same data starts to appear in different stores. Nobody wants to repeat themselves—it's inefficient, and we can do better.</p><p>In this section, we'll introduce the notion of <a id="id200" class="indexterm"/>
+<span class="strong"><strong>generic stores</strong></span>. These types of stores aren't necessarily used by views, but by other stores as a sort of repository for common data. We'll then walk through the<a id="id201" class="indexterm"/> basic setup of a generic store and how we can put generic stores to use in our more specialized stores.</p><div class="section" title="Generic store data"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec75"/>Generic store data</h2></div></div></div><p>Generic stores are<a id="id202" class="indexterm"/> similar to parent classes in a class hierarchy. A parent class has the common behavior and properties found in several children. However, unlike class hierarchies, we don't have several levels of structure. The aim of generic stores in Flux architectures is pretty simple—remove duplication where possible. Here is an illustration of a generic store:</p><div class="mediaobject"><img src="graphics/B05419_06_03.jpg" alt="Generic store data"/></div><p>This allows for the state and transformations that are common to stores that serve specific features to share state that's also common. Otherwise, every update round will have to perform the same update on a different store. It's better to keep the update in one place to let stores query the generic store to compute their own state.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note18"/>Note</h3><p>It's important to point out that specific stores don't actually inherit anything from generic stores in the way that a child class would inherit properties from its parent. Think of generic stores as instances, just like any other store. Also just like any other store, generic stores receive actions from the dispatcher to compute state changes.</p></div></div></div><div class="section" title="Registering generic stores"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec76"/>Registering generic stores</h2></div></div></div><p>With data <a id="id203" class="indexterm"/>dependencies, such as those we'll eventually find with the stores in our Flux architectures, order matters. For example, if a specific store is processed before a store that it depends on in an update round, we could end up with unexpected results. The generic store always needs to process actions first so that it has an opportunity to perform any transformations and set its state before any dependent stores access it.</p><p>Let's look at an example. First, we'll implement a generic<a id="id204" class="indexterm"/> store that takes a collection of document objects and maps it to a collection of document names:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import dispatcher from '../dispatcher';
+import { LOAD_DOC } from '../actions/load-doc';
+
+// The generic "Docs" store keeps an index
+// of document names, since they're used
+// by many other stores.
+class Docs extends EventEmitter {
+  constructor() {
+    super();
+
+    this.state = [];
+
+    dispatcher.register((e) =&gt; {
+      switch(e.type) {
+        case LOAD_DOC:
+
+          // When a "LOAD_DOC" action is dispatched,
+          // we take the "payload.docs" data and
+          // transform it into the generic state that's
+          // required by many other stores.
+          for (let doc of e.payload.docs) {
+            this.state[doc.id] = doc.name;
+          }
+
+          this.emit('change', this.state);
+          break;
+      }
+    });
+  }
+}
+
+export default new Docs();</pre></div><p>Next, we'll implement a specific store that depends on this generic <code class="literal">Docs</code> store. It will be a specific document, which is used by a page that displays the name of the document. This store will have to locate the name based on the <code class="literal">id</code> property, in the generic store:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import dispatcher from '../dispatcher';
+import docs from './docs';
+import { LOAD_DOC } from '../actions/load-doc';
+
+// The specific store that depends on the generic
+// "docs" store.
+class Doc extends EventEmitter {
+  constructor() {
+    super();
+
+    this.state = {
+      name: ''
+    };
+
+    dispatcher.register((e) =&gt; {
+      switch(e.type) {
+        case LOAD_DOC:
+
+          // The "id" of the document...
+          let { id } = e.payload;
+
+          // Here's where the generic store data
+          // comes in handy - we only care about
+          // the document name. We can use the "id"
+          // to look this up from the generic store.
+          this.state.name = docs.state[id];
+
+          this.emit('change', this.state);
+          break;
+      }
+    });
+  }
+}
+
+export default new Doc();</pre></div><p>Let's stop for a moment and think about what we've done here and why we're doing it. This generic <code class="literal">Docs</code> store<a id="id205" class="indexterm"/> implements a transformation that maps a collection of document data to an array of names. We're doing this because we have several other stores that need to look up a document name by <code class="literal">id</code>. If it were just the <code class="literal">Doc</code> store that needed this data, this would hardly be worth implementing. The idea is to reduce duplication, not to introduce indirection.</p><p>With that said, let's take a look at an action creator function that both of these stores will listen to:</p><div class="informalexample"><pre class="programlisting">import dispatcher from '../dispatcher';
+
+// The action identifier...
+export constLOAD_DOC = 'LOAD_DOC';
+
+// Loads the name of a specific document.
+export function loadDoc(id) {
+
+  // The API data resolves raw document data...
+  new Promise((resolve, reject) =&gt; {
+    resolve([
+      { id: 1, name: 'Doc 1' },
+      { id: 2, name: 'Doc 2' },
+      { id: 3, name: 'Doc 3' }
+    ]);
+  }).then((docs) =&gt; {
+
+    // The payload contains both the raw document
+    // collection and the specific document "id".
+    // The generic "docs" store uses the raw
+    // "docs" data while the specific store depends
+    // on this generic collection.
+    dispatcher.dispatch({
+      type: LOAD_DOC,
+      payload: {
+        id: id,
+        docs: docs
+      }
+    });
+  });
+}</pre></div><p>As you can see, this function takes a document <code class="literal">id</code> as a parameter and makes an asynchronous call to load all the<a id="id206" class="indexterm"/> documents. Once they're loaded, the <code class="literal">LOAD_DOC</code> action is dispatched and the two stores can set their state. The challenge then becomes—how do we ensure that the generic store is updated before any stores that depend on it? Let's take a look at the <code class="literal">main.js</code> module and see this action creator, along with the two stores, put to work:</p><div class="informalexample"><pre class="programlisting">// We have to import the generic "docsStore", even though
+// we're not using it here, so that it can register with
+// the dispatcher and respond to "LOAD_DOC" actions.
+import docsStore from './stores/docs';
+import docStore from './stores/doc';
+import { loadDoc } from './actions/load-doc';
+
+// Logs the data our specific store gets from
+// the generic store.
+docStore.on('change', (state) =&gt; {
+  console.log('name', `"${state.name}"`);
+});
+
+// Load the document with an id of 2.
+loadDoc(2);
+// → name "Doc 2"</pre></div><p>When <code class="literal">loadDoc(2)</code> is called, the specific store gets its state set as we expect. This only works because of the order in<a id="id207" class="indexterm"/> which we're importing the two stores into <code class="literal">main.js</code>. In fact, if we were to swap the order, and import <code class="literal">docStore</code> before <code class="literal">docsStore</code>, then we wouldn't see the results we expect. The reason is simple—the order in which the stores are registered with the dispatcher determines the order in which they process actions. Later in the chapter, we'll look at a less cumbersome approach to handling store dependencies.</p></div><div class="section" title="Combining generic and specific data"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec77"/>Combining generic and specific data</h2></div></div></div><p>What's nice about <a id="id208" class="indexterm"/>generic stores is that they can be used directly by views. That is, they're not some abstract concept. These same stores can also be used by more specific stores to extend their data and transform their state into something that's required by other views. Let's look at an example where a specific store combines the state of a more general store with its own state. We'll start by looking at a generic group's store:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import dispatcher from '../dispatcher';
+import { LOAD_GROUPS } from '../actions/load-groups';
+
+// A generic store for user groups...
+class Groups extends EventEmitter {
+  constructor() {
+    super();
+
+    this.state = [];
+
+    dispatcher.register((e) =&gt; {
+      switch(e.type) {
+
+        // Stores the payload of a group array "as-is".
+        case LOAD_GROUPS:
+          this.state = e.payload;
+          this.emit('change', this.state);
+          break;
+      }
+    });
+  }
+}
+
+export default new Groups();</pre></div><p>There isn't much going on<a id="id209" class="indexterm"/> here in the way of state transformation—the store just sets the payload as its state. Now, we'll look at the more specific users store, which depends on the groups store:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import dispatcher from '../dispatcher';
+import groups from './groups';
+import { LOAD_USERS } from '../actions/load-users';
+
+// A users store that depends on the generic
+// groups store so that it can perform the necessary
+// state transformations.
+class Users extends EventEmitter {
+  constructor() {
+    super();
+
+    this.state = [];
+
+    dispatcher.register((e) =&gt; {
+      switch(e.type) {
+        case LOAD_USERS:
+
+          // We only want to keep enabled users.
+          let users = e.payload.filter(
+            x =&gt; x.enabled);
+
+          // Maps to a new users array, each user object
+          // containing a new "groupName" property. This
+          // comes from the generic group store, and is
+          // looked up by id.
+          this.state = users.map(
+            x =&gt;Object.assign({
+              groupName: groups.state.find(
+                y =&gt;y.id === x.group
+              ).name
+            }, x));
+
+          this.emit('change', this.state);
+          break;
+      }
+    });
+  }
+}
+
+export default new Users();</pre></div><p>The state transformation that happens in this store is a little more involved. The <code class="literal">LOAD_USERS</code> payload is an array of user objects, each with a <code class="literal">group</code> property. However, the views that observe this<a id="id210" class="indexterm"/> store have a specific need for the name of the group, not the <code class="literal">id</code>. So, it is here that we perform the mapping that creates a new array of user objects, this one with the <code class="literal">groupName</code> property required by our views. Here's a look at the <code class="literal">loadUsers()</code> action creator function:</p><div class="informalexample"><pre class="programlisting">import dispatcher from '../dispatcher';
+
+// The action identifier...
+export constLOAD_USERS = 'LOAD_USERS';
+
+// Dispatches a "LOAD_USERS" action once the
+// asynchronous data has resolved.
+export function loadUsers() {
+  new Promise((resolve, reject) =&gt; {
+    resolve([
+      { group: 1, enabled: true, name: 'User 1' },
+      { group: 2, enabled: false, name: 'User 2' },
+      { group: 2, enabled: true, name: 'User 3' }
+    ]);
+  }).then((users) =&gt; {
+    dispatcher.dispatch({
+      type: LOAD_USERS,
+      payload: users
+    });
+  });
+}</pre></div><p>And here's how we load the generic group's data, followed by the users data which depends on it:</p><div class="informalexample"><pre class="programlisting">import groupsStore from './stores/groups';
+import usersStore from './stores/users';
+import { loadGroups } from './actions/load-groups';
+import { loadUsers } from './actions/load-users';
+
+// Log the state of the "usersStore" to make
+// sure that includes data from the generic
+// "groupsStore"
+usersStore.on('change', (state) =&gt; {
+  state.forEach(({ name, groupName }) =&gt; {
+    console.log(`${name} (${groupName})`);
+  });
+});
+
+// We always load the generic data first. Especially
+// if it doesn't change often.
+loadGroups();
+loadUsers();
+// →
+// User 1 (Group 1)
+// User 3 (Group 2)</pre></div><p>Generic store data like this<a id="id211" class="indexterm"/> is especially useful if it's used by plenty of other specific stores, and if its state doesn't change often. For example, loading this generic store data could be part of the application initialization activities, and it doesn't need to be touched after that.</p></div></div>
+<div class="section" title="Handling store dependencies"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec41"/>Handling store dependencies</h1></div></div></div><p>So far in this book, we've treated our Flux store dependencies implicitly. The order in which we imported the<a id="id212" class="indexterm"/> store modules determined the order in which actions were handled, which has implications if something we depend on hasn't been updated yet. It's time to start treating our store dependencies with a little more rigor.</p><p>In this section, we'll introduce the <code class="literal">waitFor()</code> mechanism of the Flux dispatcher to manage store dependencies. Then, we'll talk about two types of store dependencies we might have. The first type of dependency is strictly related to application data. The second type of dependency is related to UI elements.</p><div class="section" title="Waiting for stores"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec78"/>Waiting for stores</h2></div></div></div><p>The dispatcher has a built-in mechanism that allows us to explicitly resolve store dependencies. What's more, dependencies are declared right in the callback function, where the dependency<a id="id213" class="indexterm"/> is actually used. Let's look at an example that highlights the improved code for dealing with store dependencies. First, we have a basic store that doesn't do much:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import dispatcher from '../dispatcher';
+import { MY_ACTION } from '../actions/my-action';
+
+class Second extends EventEmitter {
+  constructor() {
+    super();
+
+    // Registering a callback with the dispatcher
+    // returns an identifier...
+    this.id = dispatcher.register((e) =&gt; {
+      switch(e.type) {
+        case MY_ACTION:
+          this.emit('change');
+          break;
+      }
+    });
+  }
+}
+
+export default new Second();</pre></div><p>You'll notice something about this store looks slightly different. We're assigning the return value of <code class="literal">dispatcher.register()</code> to the <code class="literal">id</code> property of the store. This value is used to identify the callback function that we've just registered within the dispatcher. Now, let's define a store that depends on this one so that we can see why this <code class="literal">id</code> property is relevant:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import dispatcher from '../dispatcher';
+import { MY_ACTION } from '../actions/my-action';
+import second from './second';
+
+class First extends EventEmitter {
+  constructor() {
+    super();
+
+    // Registering a callback with the dispatcher
+    // returns an identifier...
+    this.id = dispatcher.register((e) =&gt; {
+      switch(e.type) {
+        case MY_ACTION:
+
+          // This tells the dispatcher to process any
+          // callback functions that were registered
+          // to "second.id" before continuing here.
+          dispatcher.waitFor([ second.id ]);
+          this.emit('change');
+          break;
+      }
+    });
+  }
+}
+
+export default new First();</pre></div><p>The <code class="literal">id</code> property is used by the call to <code class="literal">dispatcher.waitFor()</code>. This method of the dispatcher forces actions to be dispatched to the stores that we depend on before we continue with making state<a id="id214" class="indexterm"/> transformations. This ensures that we're always working with the most up-to-date data in the stores that we depend on. Let's see the <code class="literal">myAction()</code> function in use, and whether the dependency management between our two stores is working as expected:</p><div class="informalexample"><pre class="programlisting">// The order of store imports no longer matters,
+// since the stores use the dispatcher to
+// explicitly handle dependency resolution.
+import first from './stores/first';
+import second from './stores/second';
+import { myAction } from './actions/my-action';
+
+// The first store changed...
+first.on('change', () =&gt; {
+  console.log('first store changed');
+});
+
+// The second store changed...
+second.on('change', () =&gt; {
+  console.log('second store changed');
+});
+
+// Dispatches "MY_ACTION"...
+myAction();</pre></div><p>It no longer matters which order things happen in <code class="literal">main.js</code>, or anywhere else in the architecture for that matter. The dependency is declared where it matters, close to the code that's using the dependent data. This is enforced by the dispatcher component.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note19"/>Note</h3><p>Note that the <code class="literal">waitFor()</code> method accepts an array of IDs. This means that in more complex scenarios where we depend on the state of more than one store, we can pass in each <a id="id215" class="indexterm"/>store ID that we depend on. However, the more common case is to depend on the state of one store. If there are multi-store dependencies all over the architecture, it's a sign of too much complexity.</p></div></div></div><div class="section" title="Data dependencies"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec79"/>Data dependencies</h2></div></div></div><p>There are two types of <a id="id216" class="indexterm"/>dependencies worth thinking about in Flux stores. The most common are data dependencies. This is the type of dependency in place when a specific store depends on a generic store—it has some generic data that several stores need to access. This application data usually comes from an API and is ultimately rendered by a view. However, we're not restricted to generic stores when we're talking about data dependencies.</p><p>For example, let's say that we have a user interface and the main layout is separated by tabs. The stores in our Flux architecture are, unsurprisingly, aligned with these tabs. If one of these stores makes an API call, then performs some data transformations to set its state, can another store depend on this store to use this data? It would make sense to share data like this, otherwise, we'd have to repeat the same API request, data transforms, and so on—this gets repetitive and we'd like to avoid it.</p><p>However, when stores that explicitly model top-level features such as tabs, we start to notice other dependencies that aren't strictly data-related. These are UI dependencies, and it's perfectly feasible to have these. For example, what the user sees in one tab could depend on the state of a checkbox in another tab. Here's an illustration of the two types of store dependencies:</p><div class="mediaobject"><img src="graphics/B05419_06_04.jpg" alt="Data dependencies"/></div></div><div class="section" title="UI dependencies"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec80"/>UI dependencies</h2></div></div></div><p>In typical frontend <a id="id217" class="indexterm"/>architectures, the state of UI elements is probably the single most error-prone aspect of state modeling. The main problem with UI elements is that when we don't explicitly model their states, we have a hard time grasping cause and effect when those states change. This gets particularly troublesome when the state of one UI element depends on the state of another UI element. We end up with code that implicitly ties these items together.</p><p>Flux stores are better at dealing with this type of dependency because in a store, a UI dependency is the same as a data dependency—it's all just state. It's a good thing that we're easily able to do this in Flux architectures, because these types of dependencies tend to grow complex rather quickly. To illustrate how Flux deals with UI dependencies, let's look at an example. We'll create two stores for different sections of the UI: one for checkboxes and one for labels. The idea is that the labels depend on the state of the checkboxes, because their style changes as the checkboxes change.</p><p>First, we have the store representing the checkbox elements:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import dispatcher from '../dispatcher';
+import { FIRST } from '../actions/first';
+import { SECOND } from '../actions/second';
+
+class Checkboxes extends EventEmitter {
+  constructor() {
+    super();
+
+    this.state = {
+      first: true,
+      second: true
+    };
+
+    // Sets the dispatch id of this store
+    // so that other stores can depend on it.
+    // Depending on the action, this handler
+    // changes the boolean UI state of a given
+    // checkbox.
+    this.id = dispatcher.register((e) =&gt; {
+      switch(e.type) {
+        case FIRST:
+          this.state.first = e.payload;
+          this.emit('change', this.state);
+          break;
+        case SECOND:
+          this.state.second = e.payload;
+          this.emit('change', this.state);
+          break;
+      }
+    });
+  }
+}
+
+export default new Checkboxes();</pre></div><p>There are two checkbox elements modeled by this store—<code class="literal">first</code> and <code class="literal">second</code>. The state is Boolean, <code class="literal">true</code> when checked, <code class="literal">false</code> when unchecked. By default, both checkboxes are checked, and when either the<a id="id218" class="indexterm"/> <code class="literal">FIRST</code> or the <code class="literal">SECOND</code> actions are dispatched, the state of the respective checkbox is updated to reflect the payload. Now let's look at the <code class="literal">Labels</code> store, which depends on the state of the <code class="literal">Checkboxes</code> store:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import dispatcher from '../dispatcher';
+import { FIRST } from '../actions/first';
+import { SECOND } from '../actions/second';
+import checkboxes from './checkboxes';
+
+class Labels extends EventEmitter {
+  constructor() {
+    super();
+
+    // The initial state of this store depends
+    // on the initial state of the "checkboxes"
+    // store.
+    this.state = {
+      first: checkboxes.state.first ?
+        'line-through' : 'none',
+      second: checkboxes.state.second ?
+        'line-through' : 'none'
+    };
+
+    this.id = dispatcher.register((e) =&gt; {
+      switch(e.type) {
+
+        // The "FIRST" action was dispatched, so wait
+        // for the "checkboxes" UI state, then update
+        // the UI state of the "first" label.
+        case FIRST:
+          dispatcher.waitFor([ checkboxes.id ]);
+
+          this.state.first = checkboxes.state.first ?
+            'line-through' : 'none';
+
+          this.emit('change', this.state);
+          break;
+
+        // The "SECOND" action was dispatched, so wait
+        // for the "checkboxes" UI state, then update
+        // the UI state of the "second" label.
+        case SECOND:
+          dispatcher.waitFor([ checkboxes.id ]);
+
+          this.state.second = checkboxes.state.second ?
+            'line-through' : 'none';
+
+          this.emit('change', this.state);
+          break;
+      }
+    });
+  }
+}
+
+export default new Labels();</pre></div><p>You can see here that <a id="id219" class="indexterm"/>even the initial state of this store is dependent on the state of the <code class="literal">Checkboxes</code> store. The value of the <code class="literal">first</code> or <code class="literal">second</code> state properties in this store are actually CSS values. It's important that we model these values here, because this is state, after all—all state goes into a store. This means that later on something else can depend on these values. When everything is explicit, we know why the way things are the way they are, which translates to stable software.</p><p>Now, let's look at the views<a id="id220" class="indexterm"/> that use these stores to render the UI elements and to respond to user input. First, the <code class="literal">Checkboxes</code> view:</p><div class="informalexample"><pre class="programlisting">import checkboxes from '../stores/checkboxes';
+import { first } from '../actions/first';
+import { second } from '../actions/second';
+
+class Checkboxes {
+  constructor() {
+
+    // The DOM elements our view manipulates (these
+    // are checkboxes).
+    this.first = document.getElementById('first');
+    this.second = document.getElementById('second');
+
+    // Dispatch the appropriate action when either
+    // of the checkboxes change. The action payload
+    // is the "checked" property of the UI element.
+    this.first.addEventListener('change', (e) =&gt; {
+      first(e.target.checked);
+    });
+
+    this.second.addEventListener('change', (e) =&gt; {
+      second(e.target.checked);
+    });
+
+    // When the "checkboxes" store changes state,
+    // render the view using the new state.
+    checkboxes.on('change', (state) =&gt; {
+      this.render(state);
+    });
+
+  }
+
+  // Sets the "checked" properties of the checkbox
+  // UI elements. By default, we use the initial
+  // state of the "checkboxes" store. Otherwise,
+  // we use whatever state is passed.
+  render(state=checkboxes.state) {
+    this.first.checked = state.first;
+    this.second.checked = state.second;
+  }
+}
+
+export default new Checkboxes();</pre></div><p>There are two checkbox elements used here, and the first thing that's done in the view's constructor is to set up the <code class="literal">change</code> event handlers for the checkboxes. These handlers will dispatch the appropriate <a id="id221" class="indexterm"/>action—<code class="literal">FIRST</code> or <code class="literal">SECOND</code>—depending on the checkbox and its checked state. The <code class="literal">render()</code> function actually updates the DOM based on the state. Now. let's look at the <code class="literal">Labels</code> view:</p><div class="informalexample"><pre class="programlisting">import labels from '../stores/labels';
+
+class Labels {
+  constructor() {
+
+    // The DOM elements this view manipulates (these
+    // are labels).
+    this.first = document.querySelector('[for="first"]');
+    this.second = document.querySelector('[for="second"]');
+
+    // When the "labels" store changes, render
+    // the view using the new state.
+    labels.on('change', (state) =&gt; {
+      this.render(state);
+    });
+  }
+
+  // Updates the "textDecoration" style of our
+  // label UI elements, using the "labels" store
+  // state as the default. Otherwise, we use whatever
+  // state is passed in.
+  render(state=labels.state) {
+    this.first.style.textDecoration = state.first;
+    this.second.style.textDecoration = state.second;
+  }
+}
+
+export default new Labels();</pre></div><p>This view works similarly to the <code class="literal">Checkboxes</code> view. The main differences are that there's no user interactivity here, and that the changes made to the UI elements are style property values that were set in the <code class="literal">Labels</code> store. These ultimately depend on the state of the <code class="literal">Checkboxes</code> store, so as the user changes the state of checkbox, they'll see the corresponding label change its style.</p><p>If this feels like a lot of code to accomplish something simple, that's because it is. Remember, we've actually accomplished a lot more here than a simple checkbox toggle and label style update. We've established explicit UI state dependencies between two different sections of the UI. This is a victory for our architecture, because the first moment a given architecture <a id="id222" class="indexterm"/>struggles to scale is when we can't figure out why something happens. Throughout the lifetime of a Flux architecture, we actively take steps to make sure this doesn't happen, as we've just demonstrated here.</p></div></div>
+<div class="section" title="View update order"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec42"/>View update order</h1></div></div></div><p>While it's nice to be able to<a id="id223" class="indexterm"/> explicitly control the dependencies of our stores using <code class="literal">waitFor()</code>, views don't have such luxuries. In this section, we'll look at the order in which our views render UI elements. First, we'll look at the role stores have to play in the order of view updates. Then, we'll go over the cases where view order actually affects the user experience versus those where the ordering doesn't matter.</p><div class="section" title="Store registration order"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec81"/>Store registration order</h2></div></div></div><p>The order in which actions are<a id="id224" class="indexterm"/> dispatched to stores matters. When a store transforms its state, it also notifies any views listening to the store. This means that if one view is listening to a store that was registered with the dispatcher first, this view will be rendered before any other views. The idea is illustrated here:</p><div class="mediaobject"><img src="graphics/B05419_06_05.jpg" alt="Store registration order"/></div><p>As you can see, the order of the store callback functions within the dispatcher clearly impacts the rendering order<a id="id225" class="indexterm"/> of views. Store dependencies can also impact the order of view rendering. For example, if store A depends on store B, then any views listening to store B will be rendered first. It could be that none of this matters or there could be some interesting side effects. We'll look at both outcomes next.</p></div><div class="section" title="Prioritizing view rendering"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec82"/>Prioritizing view rendering</h2></div></div></div><p>Given that the stores that form<a id="id226" class="indexterm"/> the core of our Flux architecture can also determine the render order of our views, we have to take care to prioritize according to user experience. For example, we could have a store that represents the top header area of the page and another store that's for the main content area. Now, if the main content area renders first, leaving a noticeable gap near the top of the page, we'll want to fix that.</p><p>Seeing as how users will start at the top of the page and work their way down, we would have to make sure that the store for the header content is registered first. How do we do this? Once again, we're back to where we were when dealing with store dependencies. We have to take care to import our views in the correct order—an order that reflects the rendering order. As we saw with stores, this isn't an ideal situation to be in.</p><p>One answer is to introduce a store dependency. Even though the content store doesn't actually use any data from the header store, it could still depend on it for render ordering purposes. By using the <code class="literal">waitFor()</code> method, we'd know that any views that listen to the header store will be<a id="id227" class="indexterm"/> rendered first, eliminating the possibility of usability issues related to render order. The risk here, of course, is the same as any store dependency—complexity. When we reach the point where there are too many store dependencies to easily comprehend, it's time to rethink our store design.</p></div></div>
+<div class="section" title="Dealing with store complexity"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec43"/>Dealing with store complexity</h1></div></div></div><p>The leading culprit of Flux <a id="id228" class="indexterm"/>store complexity is dependency management. Despite having the dispatcher as a tool to manage these dependencies, something is lost when there's too many of them. In this final section of the chapter, we'll discuss the consequences of having too many stores in our architecture and what can be done to remedy the situation.</p><div class="section" title="Too many stores"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec83"/>Too many stores</h2></div></div></div><p>The top-level features of our <a id="id229" class="indexterm"/>application do a decent job of providing a boundary for our stores and the state that they encapsulate. The challenge with stores is when there are too many of them. For example, as our applications grow over time, more features will be built which translates to more stores being tossed into the architecture. Additionally, the stores that already exist are apt to grow more complex as well, as they have to find ways to get along with all the other changing features of the application.</p><p>This makes for a complex scenario—growing complexity in stores and more stores overall. This almost certainly will lead to an explosion in dependencies, as we tease out all the edge cases of our user interface. Generic stores that are shared by many other specific stores can also be a source of trouble. For example, we could end up with way too many generic stores, eventually getting to the point where all our state data is indirect.</p><p>When we've reached the point where the sheer number of stores in our architecture is untenable, it's time to start rethinking what constitutes a feature.</p></div><div class="section" title="Rethinking feature domains"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec84"/>Rethinking feature domains</h2></div></div></div><p>Having top-level features map to<a id="id230" class="indexterm"/> our stores generally works well enough, until we have a lot of top-level features. At this point, it's time to re-evaluate the policy that a feature maps to a store. For example, if we have a lot of top-level features, odds are that there's a lot of similar data that could be folded into a single store that drives many features. Another potential effect of reducing the number of stores that power our features is the removal of generic stores. Generic stores are only good if we have too <a id="id231" class="indexterm"/>much duplicate data, which tends to be less of a problem when the number of stores shrinks. Here is a diagram that shows how a store could be the driver of more than one feature:</p><div class="mediaobject"><img src="graphics/B05419_06_06.jpg" alt="Rethinking feature domains"/></div><p>We might find ourselves in the opposite situation as well, whereby a store's complexity is simply too great, and we need to reduce its responsibilities by refactoring it into multiple stores. To fix this, we have to think about how one large feature can be turned into two smaller features. If we can't think of a good way to divide the feature, then maybe the complexity of the store is the best we can do, and it should be left alone.</p></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec44"/>Summary</h1></div></div></div><p>In this chapter, we took a detailed look at stores in Flux architectures, starting with the aspects that are most likely to change once we've moved on from the skeleton architecture phase. We then introduced the notion of generic stores, the idea being to reduce the amount of state that individual stores have to keep. The awkward part of generic stores are the dependencies that they introduce, and to deal with them, you learned how to use the dispatcher's <code class="literal">waitFor()</code> mechanism.</p><p>Dependencies between stores come in two varieties, data dependencies and UI dependencies, and you learned that UI dependencies are a critical part of any Flux architecture. Finally, we discussed some of the ways that stores can grow out of hand in terms of complexity, and what can be done about it. In the following chapter, we'll look at view components in Flux architectures.</p></div></body></html>

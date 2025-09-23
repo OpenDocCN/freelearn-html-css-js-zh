@@ -1,0 +1,1317 @@
+- en: Reliability Patterns
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 可靠性模式
+- en: 'In this chapter, we will cover the following recipes:'
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将介绍以下食谱：
+- en: Using circuit breakers to implement backpressure
+  id: totrans-2
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用断路器实现背压
+- en: Retrying requests with exponential backoff
+  id: totrans-3
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用指数退避重试请求
+- en: Improving performance with caching
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 通过缓存提高性能
+- en: Fronting your services with a CDN
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用CDN作为服务的前端
+- en: Gracefully degrading the user experience
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 优雅地降低用户体验
+- en: Testing your failure scenarios with controlled game days
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用控制游戏日测试你的故障场景
+- en: Introducing automated chaos
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 引入自动化混沌
+- en: Introduction
+  id: totrans-9
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 简介
+- en: Reliability is becoming an increasingly popular topic in the world of distributed
+    systems. Job postings for **Site Reliability Engineers** (**SRE**) or **chaos
+    engineers** are becoming common, and as more and more organizations move toward
+    cloud-native technologies, it's becoming impossible to ignore that system failure
+    is always a reality. Networks will experience congestion, switches, other hardware
+    components will fail, and a whole host of potential failure modes in systems will
+    surprise us in production. It is impossible to completely prevent failures, so
+    we should try to design our systems to be as tolerant of failure as possible.
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可靠性正在成为分布式系统领域越来越受欢迎的话题。**站点可靠性工程师**（**SRE**）或**混沌工程师**的职位广告变得越来越常见，随着越来越多的组织转向云原生技术，系统故障总是现实，这一点变得越来越不容忽视。网络将经历拥塞，交换机、其他硬件组件将失败，系统中的各种潜在故障模式将在生产中让我们感到惊讶。完全防止故障是不可能的，因此我们应该尝试设计我们的系统，使其尽可能能够容忍故障。
+- en: Microservices provide interesting and useful opportunities to design for reliability.
+    Because microservices encourage us to break our systems into services encapsulating
+    single responsibilities, we can use a number of useful reliability patterns to
+    isolate failures when they do occur. Microservice architectures also present a
+    number of challenges when planning for reliability. Increased reliance on network
+    requests, heterogeneous configurations, multiple data stores and connection pools,
+    and different technical stacks all contribute to an inherently more complex environment
+    where different styles of failure modes can surface.
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 微服务为设计可靠性提供了有趣和有用的机会。因为微服务鼓励我们将系统分解为封装单一职责的服务，我们可以使用许多有用的可靠性模式来隔离故障，当故障发生时。微服务架构在规划可靠性时也提出了许多挑战。对网络请求的依赖增加、异构配置、多个数据存储和连接池以及不同的技术栈都导致了一个本质上更复杂的环境，其中可能出现不同的故障模式。
+- en: 'Whether dealing with a microservice architecture or a monolith code base, we
+    all find ourselves fundamentally surprised [1] (you can check this link for more
+    information: [https://www.youtube.com/watch?v=tZ2wj2pxO6Q](https://www.youtube.com/watch?v=tZ2wj2pxO6Q))
+    by the behavior of a system under some kind of failure state at one point or another.
+    Building resiliency into our systems from the start allows us to optimize how
+    we react in these situations. In this chapter, we''ll discuss a number of useful
+    reliability patterns that can be used when designing and building microservices
+    to prepare for and reduce the impact of system failures, both expected and unexpected.'
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 无论是在处理微服务架构还是单体代码库，我们都发现自己从根本上对系统在某种故障状态下的行为感到惊讶[1]（你可以点击此链接获取更多信息：[https://www.youtube.com/watch?v=tZ2wj2pxO6Q](https://www.youtube.com/watch?v=tZ2wj2pxO6Q)）。从一开始就在我们的系统中构建弹性，使我们能够优化在这些情况下的反应。在本章中，我们将讨论在设计构建微服务时可以使用的许多有用的可靠性模式，以准备和减少预期和意外的系统故障的影响。
+- en: Using circuit breakers
+  id: totrans-13
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用断路器
+- en: Failures in distributed systems can be difficult to debug. A symptom (spikes
+    in latency or a high error rate) can appear far away from the underlying cause
+    (slow database query, garbage collection cycles causing a service to slow down
+    the processing of requests). Sometimes a complete outage can be the result of
+    a failure in a small part of the system, especially when components of the system
+    are having difficulty handling increases in load.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 分布式系统中的故障可能难以调试。一个症状（延迟激增或高错误率）可能出现在根本原因（慢速数据库查询、垃圾回收周期导致服务减慢请求处理）很远的地方。有时，整个系统完全中断可能是系统一小部分故障的结果，尤其是在系统组件难以处理负载增加时。
+- en: Whenever possible, we want to prevent failures in one part of a system from
+    cascading to other parts, causing widespread and hard-to-debug production issues.
+    Furthermore, if a failure is temporary, we'd like our system to be able to self-repair
+    when the failure is over. If a specific service is experiencing problems because
+    of a temporary spike in load, we should design our system in such a way that it
+    prevents requests to the unhealthy service, allowing it time to recover before
+    beginning to send it traffic again.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在可能的情况下，我们希望防止系统一部分的故障级联到其他部分，导致广泛且难以调试的生产问题。此外，如果故障是暂时的，我们希望系统在故障结束后能够自我修复。如果特定服务因为负载的暂时激增而出现问题，我们应该设计我们的系统，使其防止对不健康服务的请求，在再次开始发送流量之前，给服务恢复的时间。
+- en: Circuit breakers are used in houses to prevent the overuse of electricity from
+    heating up the internal wiring and burning the house down. A circuit is tripped
+    if the breaker detects that it is being overused and cannot handle the amount
+    of current being drawn from it. After some time passes, the circuit can be closed
+    again, allowing the system to function normally.
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 断路器在房屋中用于防止过度使用电力加热内部电线并烧毁房屋。如果断路器检测到过度使用且无法处理从其吸取的电流量，则电路会被跳闸。经过一段时间后，电路可以再次关闭，使系统正常工作。
+- en: 'This same approach can be translated to software and applied to microservice
+    architectures. When a service invokes another service, we should wrap the RPC
+    call in a circuit breaker. If the request fails repeatedly, indicating that the
+    service is unhealthy, the circuit breaker is opened, preventing any further requests
+    from being attempted. The invoking service can then "fail fast" and decide how
+    to handle the failure mode. After a configurable period of time, we can allow
+    another request through, and if it succeeds, close the circuit again, allowing
+    the system to resume normal operation. You can a look at the following related
+    flowchart:'
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种相同的方法可以转化为软件，并应用于微服务架构。当一个服务调用另一个服务时，我们应该将 RPC 调用封装在断路器中。如果请求连续失败，表明服务不健康，断路器将被打开，防止进一步的请求尝试。调用服务可以“快速失败”并决定如何处理故障模式。在可配置的时间段后，我们可以允许另一个请求通过，如果它成功，则再次关闭断路器，使系统恢复正常操作。您可以查看以下相关的流程图：
+- en: '![](img/e1b37656-3fa1-43e4-9872-321809e991ed.png)'
+  id: totrans-18
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/e1b37656-3fa1-43e4-9872-321809e991ed.png)'
+- en: Libraries that implement circuit breakers are available for most popular programming
+    languages. The Hystrix fault-tolerance library, built by Netflix and used in previous
+    recipes is one such library. Some frameworks, such as Twitter's Finagle, automatically
+    wrap RPCs in circuit breakers, keeping track of failures and automatically managing
+    the state of the breaker. Open source service-mesh software, such as **Conduit**
+    and **Linkerd**, automatically add circuit breakers to RPCs as well. In this recipe,
+    we'll introduce a library called `resilience4j` and use its circuit breaker implementation
+    to allow calls from one service to another to fail fast in the event of a failure
+    threshold being reached. To make the example more concrete, we'll modify a message
+    service, which calls a socialgraph service to determine whether two users follow
+    each other, and wrap RPC calls in a circuit breaker.
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 大多数流行编程语言都有实现断路器的库。Netflix 开发的 Hystrix 容错库，在之前的菜谱中使用，就是这样的库之一。一些框架，如 Twitter
+    的 Finagle，会自动将 RPC 封装在断路器中，跟踪故障并自动管理断路器的状态。开源服务网格软件，如 **Conduit** 和 **Linkerd**，也会自动将断路器添加到
+    RPC 中。在本菜谱中，我们将介绍一个名为 `resilience4j` 的库，并使用其断路器实现来允许在达到故障阈值时，一个服务到另一个服务的调用快速失败。为了使示例更具体，我们将修改一个消息服务，该服务调用社交图谱服务以确定两个用户是否相互关注，并将
+    RPC 调用封装在断路器中。
+- en: How to do it...
+  id: totrans-20
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'To demonstrate wrapping service invocations in circuit breakers, we''re going
+    to create a version of the `pichat` message service that exposes endpoints for
+    sending and retrieving messages. To send a message from a sender to a recipient,
+    those two users must have a friendship. Friendships are handled by a social-graph-service.
+    For the sake of simplicity, we''ll code up a simple mock social-graph-service
+    in Ruby, as we have done in previous recipes. The mock service will expose a single
+    endpoint that lists friendships for a specified user. Here is the source code
+    for the mock social-graph-service in Ruby:'
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了演示在断路器中包装服务调用，我们将创建一个版本的`pichat`消息服务，该服务公开发送和检索消息的端点。要从发送者向接收者发送消息，这两个用户必须存在好友关系。好友关系由社交图服务处理。为了简单起见，我们将使用Ruby编写一个简单的模拟社交图服务，就像我们在之前的食谱中所做的那样。模拟服务将公开一个端点，列出指定用户的友谊。以下是Ruby中模拟社交图服务的源代码：
+- en: '[PRE0]'
+  id: totrans-22
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: In our mock service, we're using strings in the `pichat:users:username` format
+    to identify users in our system. These are pseudo-URIs, which uniquely identify
+    users in our system. For now, just know that these are unique strings used to
+    identify users in our system.
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的模拟服务中，我们使用`pichat:users:username`格式的字符串来识别系统中的用户。这些是伪URI，它们唯一地标识了系统中的用户。现在，只需知道这些是用于识别系统中用户的唯一字符串。
+- en: 'Our mock social-graph-service exposes the following single endpoint:'
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的模拟社交图服务公开以下单个端点：
+- en: '[PRE1]'
+  id: totrans-25
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'The preceding endpoint returns a JSON response body representing the friendships
+    that the requested user has:'
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前一个端点返回一个JSON响应体，表示请求用户拥有的好友关系：
+- en: '[PRE2]'
+  id: totrans-27
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'With our mock social-graph-service running on the localhost, port `4567` (the
+    default port for Ruby Sinatra applications), we''re ready to start writing our
+    message service. As in previous recipes, we''ll use Java and the Spring Boot framework.
+    We''ll also use the `resilience4j` circuit-breaker library to wrap calls from
+    the message service to the social-graph-service. First, we''ll develop our message-service
+    code, then we''ll add in the `resilience4j` circuit-breaker library to add a level
+    of resilience to our service, as shown in the following steps:'
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们的模拟社交图服务在本地主机上运行，端口`4567`（Ruby Sinatra应用程序的默认端口）时，我们就可以开始编写我们的消息服务了。与之前的食谱一样，我们将使用Java和Spring
+    Boot框架。我们还将使用`resilience4j`断路器库来包装从消息服务到社交图服务的调用。首先，我们将开发我们的消息服务代码，然后我们将添加`resilience4j`断路器库来为我们的服务添加一层弹性，如下面的步骤所示：
+- en: 'Create a new Gradle Java project and add the following code to `build.gradle`:'
+  id: totrans-29
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个新的Gradle Java项目，并将以下代码添加到`build.gradle`文件中：
+- en: '[PRE3]'
+  id: totrans-30
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Our message-service code will have two beans that get autowired into our controller.
+    The first is an in-memory message repository (in a real-world example, this would
+    be replaced with a more durable persistence layer), and the second is a client
+    for the social-graph-service. Before we create those, let''s create some supporting
+    objects. Create a new package called `com.packtpub.microservices.ch05.message.exceptions`
+    and a new class called `MessageNotFoundException`. This will be used to indicate
+    that a message cannot be found, which will result in a `404` response from our
+    service, as shown here:'
+  id: totrans-31
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们的消息服务代码将有两个bean被自动注入到我们的控制器中。第一个是一个内存中的消息存储库（在现实世界的例子中，这将被替换为一个更持久的持久层），第二个是用于社交图服务的客户端。在我们创建这些之前，让我们创建一些支持对象。创建一个新的包名为`com.packtpub.microservices.ch05.message.exceptions`，并创建一个新的类名为`MessageNotFoundException`。这将用于表示消息无法找到，这将导致我们的服务返回`404`响应，如下所示：
+- en: '[PRE4]'
+  id: totrans-32
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'Create another class in the exceptions package called `MessageSendForbiddenException`.
+    This will be used to indicate that a message cannot be sent because the sender
+    and the recipient are not friends. The response code from our service will be `403`
+    forbidden, as shown here:'
+  id: totrans-33
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在异常包中创建另一个类名为`MessageSendForbiddenException`。这将用于表示由于发送者和接收者不是朋友，无法发送消息。我们的服务将返回`403`禁止响应，如下所示：
+- en: '[PRE5]'
+  id: totrans-34
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'Create the `SocialGraphClient` class. Create a new package called `com.packtpub.microservices.ch05.message.clients`
+    and a new class called `SocialGraphClient`, as shown here:'
+  id: totrans-35
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建`SocialGraphClient`类。创建一个新的包名为`com.packtpub.microservices.ch05.message.clients`，并创建一个新的类名为`SocialGraphClient`，如下所示：
+- en: '[PRE6]'
+  id: totrans-36
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'Let''s create our models. We''ll need a model to represent `UserFriendships`
+    that a specific user has as well as a model to represent `Messages`. Create a
+    new package called `com.packtpub.microservices.ch05.models` and a new class called
+    `Friendships` as shown here:'
+  id: totrans-37
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们创建我们的模型。我们需要一个模型来表示特定用户拥有的`UserFriendships`，以及一个模型来表示`Messages`。创建一个新的包`com.packtpub.microservices.ch05.models`和一个名为`Friendships`的新类，如下所示：
+- en: '[PRE7]'
+  id: totrans-38
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'Create a new class, in the same package, called `Message` as shown here:'
+  id: totrans-39
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在同一包中创建一个新的类，名为`Message`，如下所示：
+- en: '[PRE8]'
+  id: totrans-40
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'With our models created, we can now move on to our in-memory message repository.
+    This class simply uses `HashMap` to store messages keyed by `UUID`. These messages
+    are not durable and will not survive a restart of the service, so this is not
+    a recommended technique for a production service. The class has two methods: `saved`,
+    which generates UUID and stores a message in the map, and `get`, which attempts
+    to retrieve a message from the map. If no message is found, an exception is thrown,
+    as shown here:'
+  id: totrans-41
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在创建了我们的模型之后，我们现在可以继续我们的内存消息存储库。这个类简单地使用`HashMap`通过`UUID`键存储消息。这些消息是不可持久的，并且不会在服务重启后存活，因此这不是生产服务推荐的技术。该类有两个方法：`saved`，它生成UUID并将消息存储在映射中，以及`get`，它尝试从映射中检索消息。如果没有找到消息，将抛出异常，如下所示：
+- en: '[PRE9]'
+  id: totrans-42
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'Our service has a single controller for messages. The controller has two endpoints,
+    one that allows a caller to retrieve a message by ID (or a `404` response if the
+    message is not found) and another that attempts to send a message (or a `403` response
+    if the sender and recipient of the message are not friends):'
+  id: totrans-43
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们的服务有一个用于消息的单个控制器。该控制器有两个端点，一个允许调用者通过ID检索消息（如果消息未找到，则返回`404`响应），另一个尝试发送消息（如果消息的发送者和接收者不是好友，则返回`403`响应）：
+- en: '[PRE10]'
+  id: totrans-44
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'Create a `Application` class that simply runs our application and creates the
+    necessary beans that get wired into our controller, as shown here:'
+  id: totrans-45
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个`Application`类，它简单地运行我们的应用程序并创建必要的bean，这些bean将被连接到我们的控制器，如下所示：
+- en: '[PRE11]'
+  id: totrans-46
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: '[PRE12]'
+  id: totrans-47
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'This service works, and meets our primary requirement that a message cannot
+    be sent if the sender and recipient are not friends, but it is susceptible to
+    all the problems we described. If the social-graph-service is experiencing problems,
+    the message service will be dependent on timeouts in the `RestTemplate` client,
+    which will impact the number of requests the message service is able to serve.
+    Furthermore, if the social-graph-service is overwhelmed and starts returning `503` (an
+    HTTP status code meant to indicate that a service is temporarily unavailable)
+    the message service has no mechanism to allow the social-graph-service to recover.
+    Let''s now introduce the `resilience4j` circuit-breaker library and wrap calls
+    to the social-graph-service:'
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此服务运行正常，并满足我们的主要要求：如果发送者和接收者不是好友，则无法发送消息，但它容易受到我们描述的所有问题的困扰。如果社交图服务出现问题，消息服务将依赖于`RestTemplate`客户端的超时，这将影响消息服务能够处理请求数量。此外，如果社交图服务过载并开始返回`503`（一个表示服务暂时不可用的HTTP状态码），消息服务没有机制允许社交图服务恢复。现在让我们介绍`resilience4j`断路器库，并将对社交图服务的调用封装起来：
+- en: 'Open `build.gradle` and add the `resilience4j` circuit-breaker library to the
+    list of dependencies, as shown here:'
+  id: totrans-49
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 打开`build.gradle`并添加`resilience4j`断路器库到依赖项列表，如下所示：
+- en: '[PRE13]'
+  id: totrans-50
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'Modify `SocialGraphClient` to use `CircuitBreaker` when invoking the social-graph-client.
+    In the event that the `SocialGraphClient` returns a failure, we''ll return an
+    empty `Friendships` instance, which will cause our service to respond to the user
+    request with a `403` forbidden (default closed). We''ll use the default configuration
+    for circuit breakers here, but you should consult the documentation for `resilience4j`,
+    which contains plenty of information about configuring circuit breakers to suit
+    the specific needs of your service. Take a look at this code:'
+  id: totrans-51
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 修改`SocialGraphClient`以在调用社交图客户端时使用`CircuitBreaker`。如果`SocialGraphClient`返回失败，我们将返回一个空的`Friendships`实例，这将导致我们的服务对用户请求以`403`禁止（默认关闭）的方式响应。在这里我们将使用默认的断路器配置，但你应该查阅`resilience4j`的文档，其中包含大量关于配置断路器以满足你服务特定需求的信息。看看以下代码：
+- en: '[PRE14]'
+  id: totrans-52
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: Now our service wraps dangerous network calls in a circuit breaker, preventing
+    failures in the social-graph-service from cascading to the message service. In
+    the event of a temporary failure in the social-graph-service, the message service
+    will eventually fail fast and allow the social-graph-service time to recover.
+    You can test this by forcing the mock-social-graph service to return an error
+    code—that's left as a fun exercise for the reader!
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们将服务中的危险网络调用包装在断路器中，防止社交图服务中的故障级联到消息服务。在社交图服务出现暂时性故障的情况下，消息服务最终会快速失败，并给社交图服务恢复的时间。你可以通过强制模拟社交图服务返回错误代码来测试这一点——这是一个留给读者作为有趣练习的任务！
+- en: Retrying requests with exponential backoff
+  id: totrans-54
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用指数退避重试请求
+- en: Failure in distributed systems is inevitable. Instead of trying to prevent failure
+    entirely, we want to design systems that are capable of self-repair. To accomplish
+    this, it is essential to have a good strategy for clients to follow when initiating
+    retries. A service may become temporarily unavailable or experience a problem
+    that requires manual response from an on-call engineer. In either scenario, clients
+    should be able to queue and then retry requests to be given the best chance of
+    success.
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 分布式系统中的故障是不可避免的。我们不想完全防止故障，而是要设计能够自我修复的系统。为了实现这一点，当客户端启动重试时，必须有一个良好的策略。服务可能会暂时不可用或遇到需要值班工程师手动响应的问题。在任何一种情况下，客户端都应该能够排队并重试请求，以获得最佳的成功机会。
+- en: 'Retrying endlessly in the event of an error is not an effective tactic. Imagine
+    a service starts to experience a higher-than-normal failure rate, perhaps even
+    failing 100% of requests. If clients all continuously enqueue retries without
+    ever giving up, you''ll end up with a thundering-herd problem—clients continuously
+    retrying requests without limit. As the timeline of the failure progresses, more
+    clients will experience failures, resulting in more retries. You''ll end up with
+    a traffic pattern, illustrated by the following diagram, which is a similar graph
+    to the one you''ll see during a denial-of-service attack. The end result will
+    be the same—cascading failures due to overwhelmed services and a shedding of legitimate
+    traffic. Your application will become unusable and the failing service will be
+    harder to isolate and repair:'
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在出现错误时无限重试不是一个有效的策略。想象一下，一个服务开始经历高于正常水平的失败率，甚至可能高达100%的请求失败。如果客户端持续不断地排队重试而不放弃，你最终会遇到暴风群问题——客户端无限期地重试请求。随着失败时间的推移，更多的客户端将遇到故障，导致更多的重试。你将遇到以下图表所示的交通模式，这与你在拒绝服务攻击期间看到的图表相似。最终结果将是相同的——由于服务过载而导致的级联故障，以及合法流量的流失。你的应用程序将变得不可用，而失败的服务将更难隔离和修复：
+- en: '![](img/9ab2b33d-c4c1-4421-bd88-deaecaf2d6c1.png)'
+  id: totrans-57
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/9ab2b33d-c4c1-4421-bd88-deaecaf2d6c1.png)'
+- en: 'The solution to prevent thundering herds is to add a backoff algorithm that
+    exponentially increases the wait period between retries and gives up after a certain
+    number of failures. This approach is referred to as capped exponential backoff.
+    Adding an exponentially-increasing sleep function between retries accomplishes
+    half of what we''re after—clients will slow down their retry attempts, distributing
+    load over time. Unfortunately, client retries will still be clustered, resulting
+    in periods of time where your service is being hammered by many concurrent requests.
+    The second half of our strategy addresses this problem by adding a randomized
+    value or jitter to our sleep function to distribute the retries over time. To
+    summarize, our retry strategy has the following three requirements:'
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 防止暴风群（thundering herds）的解决方案是添加一个指数增加重试间隔的退避算法，并在一定数量的失败后放弃。这种方法被称为有界指数退避。在重试之间添加一个指数增加的睡眠函数实现了我们目标的一半——客户端将减缓他们的重试尝试，分散负载。不幸的是，客户端的重试仍然会聚集，导致你的服务在一段时间内被许多并发请求猛烈打击。我们策略的第二部分通过向我们的睡眠函数添加随机值或抖动来解决这个问题，以分散重试。总结来说，我们的重试策略有以下三个要求：
+- en: Retries must be spaced out using an exponential backoff
+  id: totrans-59
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 重试必须使用指数退避来间隔
+- en: Retries must be randomized by adding jitter
+  id: totrans-60
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 重试必须通过添加抖动进行随机化
+- en: Retries must terminate after a specific amount of time
+  id: totrans-61
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 重试必须在特定时间后终止
+- en: Most HTTP libraries will have support for a retry strategy that meets these
+    requirements. In this recipe, we'll look at the HTTP `client` library for Java
+    written by Google.
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 大多数HTTP库都将支持满足这些要求的重试策略。在本食谱中，我们将查看由Google编写的Java HTTP `client`库。
+- en: How to do it...
+  id: totrans-63
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做到这一点...
+- en: 'To demonstrate using exponential backoff and jitter, we''re going to create
+    a sample service in Ruby that has one simple job: to return an HTTP status that
+    indicates a failure. In previous recipes, we''ve used the `sinatra` Ruby library
+    to do this, so we''ll continue with this, a service that simply returns a `503`
+    HTTP status code for every request, as shown here:'
+  id: totrans-64
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 为了演示使用指数退避和抖动，我们将创建一个简单的 Ruby 服务示例，它只有一个简单的任务：返回一个表示失败的 HTTP 状态码。在之前的菜谱中，我们使用了
+    `sinatra` Ruby 库来完成这个任务，所以我们将继续使用这个，一个简单地返回每个请求的 `503` HTTP 状态码的服务，如下所示：
+- en: '[PRE15]'
+  id: totrans-65
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'Create an HTTP client using the Google HTTP `client` Library. First, create
+    a new Gradle Java project with the following `build.gradle` file that imports
+    the necessary libraries and plugins, as shown here:'
+  id: totrans-66
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 Google HTTP `client` 库创建一个 HTTP 客户端。首先，创建一个新的 Gradle Java 项目，包含以下 `build.gradle`
+    文件，该文件导入必要的库和插件，如下所示：
+- en: '[PRE16]'
+  id: totrans-67
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'Create a new package called `com.packtpub.microservices.ch05.retryclient`.
+    Create a new class called `Main`. In the `Main` class, we''re just going to create
+    an HTTP request and execute it. If the request was successful, we''ll just print
+    its status code with a nice message. If the success fails, we''ll still print
+    its status code, but with a message indicating that something went wrong. The
+    first version of our HTTP client will not attempt any retries. The purpose of
+    this code is to write the simplest client possible, not to show off the features
+    of the Google HTTP `client` library, but I encourage you to consult the documentation
+    for the project to learn more about it. Let''s take a look at the following code:'
+  id: totrans-68
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个名为 `com.packtpub.microservices.ch05.retryclient` 的新包。创建一个名为 `Main` 的新类。在
+    `Main` 类中，我们只是创建一个 HTTP 请求并执行它。如果请求成功，我们将打印其状态码和一条友好的消息。如果成功失败，我们仍然会打印其状态码，但会附带一条表示出错的短信。我们
+    HTTP 客户端的第一个版本将不会尝试任何重试。此代码的目的是编写尽可能简单的客户端，而不是展示 Google HTTP `client` 库的功能，但我鼓励你查阅项目的文档以了解更多信息。让我们看一下以下代码：
+- en: '[PRE17]'
+  id: totrans-69
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'If you run the preceding code either with your IDE or by running `./gradlew
+    run` from your command line, you''ll see that the code tries to make a single
+    HTTP request, receives `503` from our Ruby service, and then gives up. Let''s
+    now instrument it with a configurable backoff that has a randomization factor
+    for adding jitter, as shown here:'
+  id: totrans-70
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 如果你使用你的 IDE 运行前面的代码，或者从命令行运行 `./gradlew run`，你会看到代码尝试进行单个 HTTP 请求，从我们的 Ruby
+    服务中收到 `503`，然后放弃。现在让我们使用一个可配置的退避策略，它具有随机化因子以添加抖动，如下所示：
+- en: '[PRE18]'
+  id: totrans-71
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: If you run the program now and watch the logs of your Ruby service, you'll see
+    that the code makes multiple attempts to make the request, increasing the amount
+    of time it sleeps between retries, before eventually giving up after about 10
+    seconds. In a real-world setting, this could give the service enough time to possibly
+    recover while not creating a thundering herd that would eliminate any possibility
+    of repair.
+  id: totrans-72
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 如果你现在运行程序并查看你的 Ruby 服务的日志，你会看到代码会尝试多次进行请求，在重试之间增加睡眠时间，最终在约10秒后放弃。在现实世界的设置中，这可能会给服务足够的时间可能恢复，同时不会产生一群暴风雨般的用户，从而消除任何修复的可能性。
+- en: Improving performance with caching
+  id: totrans-73
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 通过缓存提高性能
+- en: Microservices should be designed in such a way that a single service is usually
+    the only thing that reads or writes to a particular data store. In this model,
+    services have full ownership over the domain models involved in the business capability
+    they provide. Having clean boundaries makes it easier to think about the life
+    cycle of data in a system. Some models in our system will change frequently, but
+    many will be read much more often than they are written. In these cases, we can
+    use a cache to store infrequently changed data, saving us from having to make
+    a request to the database every time the object is requested. Database queries
+    are typically more expensive than cache lookups, so it's ideal to use a cache
+    whenever possible.
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 微服务应该设计成这样，即单个服务通常是唯一读取或写入特定数据存储的东西。在这个模型中，服务对其提供的业务能力中涉及的领域模型拥有完全的所有权。清晰的边界使得考虑系统中数据的生命周期变得更加容易。我们系统中的某些模型会频繁更改，但许多模型会被读取得比写入得多。在这些情况下，我们可以使用缓存来存储不经常更改的数据，从而在每次请求对象时节省我们向数据库发送请求。数据库查询通常比缓存查找更昂贵，因此尽可能使用缓存是理想的。
+- en: In addition to help improve performance, having an effective caching layer can
+    help improve the reliability of a service. It's impossible to guarantee 100% availability
+    for a database, so in the event of a database failure, a service can revert to
+    serving cached data. In most cases, it's preferable for a user to receive some
+    data, even if it's old and potentially out of date, than to receive no data at
+    all. Having a cache layer allows you to configure your service to use it as another
+    source of available data to serve to users of your service.
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除了帮助提高性能外，一个有效的缓存层还可以帮助提高服务的可靠性。无法保证数据库的 100% 可用性，因此，在数据库故障的情况下，服务可以回退到提供缓存数据。在大多数情况下，对于用户来说，即使数据是旧的并且可能过时，也比完全收不到数据要好。拥有一个缓存层允许您配置您的服务，使其作为另一个可用数据源来为您的服务用户提供服务。
+- en: In this recipe, we'll create a simple example service that serves information
+    about users of your application. It will have two endpoints, the first will accept
+    POST requests and will persist a properly formed user to a database. The second
+    will retrieve a user representation by the ID specified. IDs are stored as UUIDs,
+    which is preferable to autoincrementing IDs for many reasons, which we'll go into
+    in later chapters. We'll start with the basic service, then add caching so we
+    can see specifically what steps are required. In this recipe, we'll use Redis,
+    a popular open source in-memory data-structure store that is particular useful
+    for storing key-value pairs.
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个菜谱中，我们将创建一个简单的示例服务，该服务提供有关应用程序用户的信息。它将有两个端点，第一个端点将接受 POST 请求并将正确格式化的用户持久化到数据库中。第二个端点将通过指定的
+    ID 获取用户表示。ID 存储为 UUID，这比自增 ID 更好，原因很多，我们将在后面的章节中详细说明。我们将从基本服务开始，然后添加缓存，以便我们可以看到具体需要哪些步骤。在这个菜谱中，我们将使用
+    Redis，这是一个流行的开源内存数据结构存储库，特别适用于存储键值对。
+- en: How to do it...
+  id: totrans-77
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做到这一点...
+- en: 'Create a Gradle Java project called caching-user-service with the following
+    `build.gradle` file. Note that we''re adding dependencies for **Java Persistence
+    API** (**JPA**) and a Java MySQL `client` library:'
+  id: totrans-78
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个名为 caching-user-service 的 Gradle Java 项目，并使用以下 `build.gradle` 文件。请注意，我们正在添加对
+    **Java Persistence API** （**JPA**）和 Java MySQL `client` 库的依赖项：
+- en: '[PRE19]'
+  id: totrans-79
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: '[PRE20]'
+  id: totrans-80
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'Create the `Main` class. As usual, this is the main entry point to our application
+    and is pretty simple:'
+  id: totrans-81
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建 `Main` 类。像往常一样，这是我们的应用程序的主要入口点，相当简单：
+- en: '[PRE21]'
+  id: totrans-82
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'Create a `User` class in the `com.packtpub.microservices.ch05.userservice.models` package.
+    This will serve as our entity representation and contains the fields that will
+    be stored in the database and eventually in our Redis cache:'
+  id: totrans-83
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在 `com.packtpub.microservices.ch05.userservice.models` 包中创建一个 `User` 类。这将成为我们的实体表示，并包含将存储在数据库中并最终存储在我们的
+    Redis 缓存中的字段：
+- en: '[PRE22]'
+  id: totrans-84
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'To wire up our `User` entity to our MySQL database, create a `UserRepository`
+    interface that extends the `CrudRepository` interface defined by the `springframework`
+    data package, as shown here:'
+  id: totrans-85
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 要将我们的 `User` 实体连接到 MySQL 数据库，创建一个 `UserRepository` 接口，该接口扩展了由 `springframework`
+    数据包定义的 `CrudRepository` 接口，如下所示：
+- en: '[PRE23]'
+  id: totrans-86
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'Create the `UserController` class. This is `RestController`, which maps certain
+    endpoints to the functionality discussed previously, namely creating and retrieving
+    user records. Everything here should look familiar. Of note is that the `findById`
+    method returns `Optional<T>`, so we use `map` and `orElseGet` to return either
+    a `200 OK HTTP` response with the user in the response body or a `404` status,
+    as shown in the following code:'
+  id: totrans-87
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建 `UserController` 类。这是一个 `RestController`，它将某些端点映射到之前讨论的功能，即创建和检索用户记录。这里的一切都应该很熟悉。值得注意的是，`findById`
+    方法返回 `Optional<T>`，因此我们使用 `map` 和 `orElseGet` 来返回一个包含用户响应体的 `200 OK HTTP` 响应或一个
+    `404` 状态，如下面的代码所示：
+- en: '[PRE24]'
+  id: totrans-88
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: 'Add the following `application.properties` file to the `src/main/resources`
+    directory. It contains the necessary configuration to connect to a local MySQL
+    instance. It''s assumed that you have installed MySQL and have it running locally.
+    You should have also created a database called `users`, a user with the username
+    `userservice`, and a password: `password`. Note that we''re setting `ddl-auto`
+    to `create`, which is a good practice for development, but should not be used
+    for production:'
+  id: totrans-89
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将以下 `application.properties` 文件添加到 `src/main/resources` 目录。它包含连接到本地 MySQL 实例所需的必要配置。假设您已经安装了
+    MySQL 并在本地运行它。您还应该创建一个名为 `users` 的数据库，一个名为 `userservice` 的用户，密码为 `password`。请注意，我们将
+    `ddl-auto` 设置为 `create`，这对于开发来说是一个好习惯，但不应该用于生产：
+- en: '[PRE25]'
+  id: totrans-90
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'Let''s add some caching! The first thing we''ll do is open the `application.properties`
+    file again and add some configuration for a `redis` instance running locally on
+    port `6379` (the default), as shown here:'
+  id: totrans-91
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们添加一些缓存！我们首先需要再次打开`application.properties`文件，并为在端口`6379`（默认端口）上本地运行的`redis`实例添加一些配置，如下所示：
+- en: '[PRE26]'
+  id: totrans-92
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'With our application configured to use MySQL as a primary datasource and Redis
+    as a cache, we can now override methods in the `CrudRepository<T, ID>` interface
+    and add annotations instructing it to cache. We want to write to our cache every
+    time we call the `save` method with a `User` object, and read from the cache every
+    time we call `findById` with a valid user ID string:'
+  id: totrans-93
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在我们的应用程序配置为使用MySQL作为主数据源和Redis作为缓存后，我们现在可以覆盖`CrudRepository<T, ID>`接口中的方法，并添加注释来指示它进行缓存。我们希望在每次使用`User`对象调用`save`方法时都写入缓存，并在每次使用有效的用户ID字符串调用`findById`时都从缓存中读取：
+- en: '[PRE27]'
+  id: totrans-94
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: That's it! You can test this by running the service, creating a user, verifying
+    that the user is in both the MySQL database and Redis cache, and then deleting
+    the user from the database. Requests to the `users/ID` endpoint will still return
+    the user record. Before finishing this service, you'll want to make sure that
+    the cache is invalidated if a user is ever deleted. Any other endpoints that mutate
+    users should invalidate and/or rewrite the cache. This is left as an exercise
+    for the reader!
+  id: totrans-95
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 就这样！您可以通过运行服务、创建用户、验证用户是否同时在MySQL数据库和Redis缓存中，然后从数据库中删除用户来测试这一点。对`users/ID`端点的请求仍然会返回用户记录。在完成此服务之前，您需要确保如果用户被删除，缓存将被无效化。任何修改用户的其他端点都应该使缓存无效化或重写缓存。这留给读者作为练习！
+- en: Fronting your services with a CDN
+  id: totrans-96
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用CDN作为服务的前端
+- en: The **Content Delivery Network** (**CDN**) improves performance and availability
+    by delivering content through a globally distributed network of proxy servers.
+    When a user (usually through their mobile device) makes a request to your API
+    through a CDN, they will create a network connection with one of many **points
+    of presence** (**PoPs**), based on their geographic location. Instead of having
+    to make roundtrips to the origin data center for every single request, content
+    can be cached at the edge of a CDN, greatly reducing the response time for the
+    user and reducing unnecessary, costly traffic to the origin.
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**内容分发网络**（**CDN**）通过全球分布的代理服务器网络交付内容，从而提高性能和可用性。当用户（通常通过他们的移动设备）通过CDN对您的API进行请求时，他们将根据他们的地理位置与许多**存在点**（**PoPs**）之一建立网络连接。无需为每个请求往返到源数据中心，内容可以在CDN的边缘进行缓存，这大大减少了用户的响应时间，并减少了不必要的、昂贵的流量到源。'
+- en: CDNs are a requirement if you plan to have a global user base. If every request
+    to your application's API has to perform a full roundtrip to a single origin,
+    you'll create a subpar experience for users in parts of the world physically distant
+    from the data center that you host your applications in. Even if you host your
+    applications in multiple data centers, you'll never be able to create as high-performing
+    an experience for as many users as you can using a CDN.
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果您计划拥有全球用户基础，CDN（内容分发网络）是必需的。如果您的应用程序API的每个请求都必须完整往返到单个源，那么您将为那些物理上远离您托管应用程序数据中心的世界各地的用户创造一个次优体验。即使您在多个数据中心托管您的应用程序，您也永远无法使用CDN为尽可能多的用户提供与不使用CDN时一样高性能的体验。
+- en: In addition to performance, CDNs can improve the availability of your application.
+    As we discussed in the previous recipe, many entities in your system are read
+    much more frequently than they are written. In these cases, you can configure
+    your CDN to cache payloads from a service for a specific amount of time (commonly
+    specified by a TTL or time-to-live). Caching responses from your service reduces
+    the amount of traffic to your origin, making it harder to run out of capacity
+    (compute, storage, or network). Additionally, if your service starts to experience
+    high latency, or total or partial failure, the CDN can be configured to serve
+    cached responses instead of continuing to send traffic to a failing service. This
+    allows you to at least be able to serve content to users in the event of service
+    downtime.
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除了性能之外，CDN还可以提高您应用程序的可用性。正如我们在前面的菜谱中讨论的那样，您系统中的许多实体被读取的频率远高于它们被写入的频率。在这些情况下，您可以配置您的CDN将服务的数据包缓存一定的时间（通常由TTL或生存时间指定）。从您的服务缓存响应可以减少发送到源头的流量，使其更难耗尽容量（计算、存储或网络）。此外，如果您的服务开始出现高延迟，或完全或部分故障，您可以配置CDN在服务故障时提供缓存响应而不是继续向故障服务发送流量。这至少允许您在服务中断的情况下向用户提供内容。
+- en: Some CDN providers have APIs that allow you to automatically invalidate a resource.
+    In these cases, you can instrument your microservice to invalidate a resource
+    just as you would using a Redis- or Memcached-based cache, as discussed in the
+    previous recipe.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一些CDN提供商具有API，允许您自动使资源无效。在这些情况下，您可以配置您的微服务以使资源无效，就像您使用基于Redis或Memcached的缓存那样，如前一个菜谱中所述。
+- en: There are many different CDN providers out there. Some of the large ones include
+    **Akamai** and **Edgecast**. Amazon Web Services provides a CDN offering, called
+    CloudFront, that can be configured to serve requests to origin servers in AWS
+    or static resources hosted in S3 buckets. One of the more developer-friendly offerings
+    in the CDN market is from a company called **Fastly**. Fastly is built using **Varnish**,
+    an open source web-application accelerator.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 市面上有许多不同的CDN提供商。其中一些大型提供商包括**Akamai**和**Edgecast**。亚马逊网络服务提供了一种称为CloudFront的CDN服务，可以配置为向AWS中的源服务器或S3存储桶中托管的静态资源发送请求。CDN市场中更受开发者欢迎的提供之一来自一家名为**Fastly**的公司。Fastly是使用开源的Web应用程序加速器**Varnish**构建的。
+- en: As a provider, Fastly allows you to upload your own **Varnish Configuration
+    Language** (**VCL**) files, effectively allowing you to create caching rules based
+    on any aspect of the request (incoming headers, path segments, query string parameters,
+    and so on). Additionally, Fastly provide a **Fast Purge API** that allows you
+    to invalidate resources based on a URI.
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 作为提供商，Fastly允许您上传自己的**Varnish配置语言**（**VCL**）文件，从而有效地允许您根据请求的任何方面（传入的标题、路径段、查询字符串参数等）创建缓存规则。此外，Fastly提供了一种**快速清除API**，允许您根据URI使资源无效。
+- en: In this recipe, we'll go through the basic steps required to create an account
+    with a CDN provider and start serving traffic through a CDN. We'll do this with
+    a hypothetical service made accessible to the public internet with the hostname
+    `api.pichat.me`. The service authenticates requests by inspecting the value of
+    the Authorization header of the incoming request for a valid OAuth2 bearer token.
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本菜谱中，我们将介绍创建CDN提供商账户并开始通过CDN提供服务的基本步骤。我们将使用一个假设的服务，该服务通过主机名`api.pichat.me`对公众互联网开放。该服务通过检查传入请求的Authorization头中的有效OAuth2令牌值来验证请求。
+- en: How to do it...
+  id: totrans-104
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做到这一点...
+- en: Create an account with Fastly, the CDN provider we'll be using in this example.
+    As of this writing, the signup URL is `https://www.fastly.com/signup`.
+  id: totrans-105
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在本例中，我们将使用Fastly作为CDN提供商创建一个账户。截至本文撰写时，注册URL为`https://www.fastly.com/signup`。
+- en: Fastly will ask you to create a service. Enter a name for your service, along
+    with the domain (`api.pichat.me`) and the hostname of the origin server the application
+    is running on.
+  id: totrans-106
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: Fastly会要求您创建一个服务。为您的服务输入一个名称，以及应用程序运行的源服务器的域名（`api.pichat.me`）和主机名。
+- en: Using your DNS provider for the domain, create a CNAME for `api.pichat.me`,
+    pointing your domain to Fastly's servers. Read the updated documentation to find
+    out what hostnames to use.
+  id: totrans-107
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用您的域名DNS提供商，为`api.pichat.me`创建一个CNAME，将您的域名指向Fastly的服务器。阅读更新的文档以了解要使用的主机名。
+- en: Once that is set up and your service is created, requests to your hostname will
+    now go through the Fastly CDN. Read the Fastly documentation ([https://docs.fastly.com/guides/basic-setup/](https://docs.fastly.com/guides/basic-setup/))
+    to discover how to customize VCLs and other settings for your service.
+  id: totrans-108
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 一旦设置好并创建了你的服务，对你的主机名的请求现在将通过Fastly CDN进行。阅读Fastly文档 ([https://docs.fastly.com/guides/basic-setup/](https://docs.fastly.com/guides/basic-setup/))
+    以了解如何为你的服务自定义VCL和其他设置。
+- en: Gracefully degrading the user experience
+  id: totrans-109
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 优雅地降级用户体验
+- en: We understand by now that a certain amount of failure is inevitable. In a sufficiently
+    complex system, some amount of failure will occur some of the time. By using the
+    techniques in this chapter, we can try and reduce the likelihood that one of these
+    failures will impact customers. Regardless of how much we try to prevent it from
+    happening, some kind of failure will probably impact the customer experience at
+    some point in your applications lifespan. Users, however, can be surprisingly
+    compassionate in the face of system outages, provided the user experience degrades
+    gracefully.
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们现在已经明白，一定程度的失败是不可避免的。在一个足够复杂的系统中，有时总会发生一些故障。通过使用本章中的技术，我们可以尝试减少这些故障中任何一个影响客户的可能性。尽管我们尽力防止其发生，但在应用程序的生命周期中，某种类型的故障可能会在某个时刻影响客户体验。然而，面对系统故障，用户可能会表现出令人惊讶的同情心，只要用户体验能够优雅地降级。
+- en: 'Consider this scenario: you are using an application that allows you to browse
+    a catalog of products and look for local stores that carry that product, along
+    with important information such as its address, phone number, and store hours.
+    Let''s say the service that provides information about local stores becomes unavailable.
+    This clearly impacts the user experience in a less-than-ideal way, but the application
+    can handle the failure in more than one way. The worst way, which would probably
+    result in the worst user experience, would be to allow the failure to cascade
+    and take down the product catalog. A slightly better way would be to allow the
+    user to continue searching for products, but when they go to find a local store
+    that carries the product, they''re informed via some kind of information box that
+    the local store information is currently unavailable. This is frustrating, but
+    at least they can still look at product information, such as price, models, and
+    colors. It would be better still to recognize that the service was not operating
+    and have some kind of informational banner informing the user that local store
+    information is temporarily unavailable. With this information, we can inform the
+    user of the situation, allowing them to decide whether they''d still like to go
+    ahead and search for products. The experience is suboptimal, but we would avoid
+    unnecessarily frustrating the user.'
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 考虑以下场景：你正在使用一个允许你浏览产品目录并查找销售该产品的本地商店的应用程序，同时提供诸如地址、电话号码和营业时间等重要信息。假设提供本地商店信息的那个服务变得不可用。这显然以一种不太理想的方式影响了用户体验，但应用程序可以以多种方式处理这种故障。最糟糕的方式可能是允许故障级联并使产品目录崩溃。稍微好一点的方式可能是允许用户继续搜索产品，但当用户去查找销售该产品的本地商店时，他们通过某种信息框被告知本地商店信息目前不可用。这很令人沮丧，但至少他们还可以查看产品信息，如价格、型号和颜色。更好的方式是认识到该服务未运行，并有一些信息横幅通知用户本地商店信息暂时不可用。有了这些信息，我们可以通知用户情况，让他们决定是否仍然想继续搜索产品。这种体验不是最优的，但我们避免了不必要的用户沮丧。
+- en: Verifying fault tolerance with Gameday exercises
+  id: totrans-112
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 通过Gameday练习验证容错性
+- en: This chapter contains recipes that should help you create more reliable, resilient
+    microservice architectures. Each recipe documents a pattern or technique for anticipating
+    and dealing with some kind of failure scenario. Our aim when building resilient
+    systems is to tolerate failure with as little impact to our users as possible.
+    Anticipating and designing for failure is essential when building distributed
+    systems, but without verifying that our systems handle failure in the ways we
+    expect, we aren't doing much more than hoping, and hope is definitely not a strategy!
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章包含了一些食谱，可以帮助你创建更可靠、更具弹性的微服务架构。每个食谱都记录了一种预测和应对某种故障场景的模式或技术。我们构建弹性系统时的目标是尽可能减少对用户的影响来容忍故障。在构建分布式系统时，预测和为故障设计是至关重要的，但如果没有验证我们的系统是否以我们预期的方式处理故障，我们做的就不仅仅是希望，而希望绝对不是一种策略！
+- en: When building systems, unit and functional tests are necessary parts of our
+    confidence-building toolkit. However, these tools alone are not enough. Unit and
+    functional tests work by isolating dependencies, good unit tests, for instance,
+    don't rely on network conditions, and functional tests don't involve testing under
+    production-level traffic conditions, instead focusing on various software components
+    working together properly under ideal conditions. To gain more confidence in the
+    fault tolerance of a system, it's necessary to observe it responding to failure
+    in production.
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在构建系统时，单元测试和功能测试是我们信心构建工具包的必要部分。然而，这些工具本身并不足够。单元测试和功能测试通过隔离依赖项来工作，例如，好的单元测试不依赖于网络条件，而功能测试不涉及在生产级流量条件下进行测试，而是专注于在各种理想条件下软件组件协同工作。为了对系统的容错性有更大的信心，有必要观察它在生产环境中对失败的响应。
+- en: Gameday exercises are another useful tool for building confidence in the resiliency
+    of a system. These exercises involve forcing certain failure scenarios in production
+    to verify that our assumptions about fault tolerance match reality. John Allspaw
+    describes this practice in detail in his paper, *Fault Injection in Production*.
+    If we accept that failure is impossible to avoid completely, it becomes sensible
+    to force failure and observe how our system responds to it as a planned exercise.
+    It’s better to have a system fail for the first time while an entire team is watching
+    and ready to take action, than at 3 a.m. when a system alert wakes up an on-call
+    engineer.
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Gameday 练习是构建系统弹性信心的另一种有用工具。这些练习涉及在生产环境中强制某些故障场景，以验证我们对容错性的假设是否符合现实。约翰·奥尔斯帕在论文《生产中的故障注入》中详细描述了这种做法。如果我们接受完全避免失败是不可能的，那么强制失败并观察我们的系统如何响应它作为计划内的练习是有意义的。当整个团队都在现场并准备采取行动时，让系统首次失败比在凌晨3点系统警报唤醒值班工程师时更好。
+- en: Planning a Gameday exercise provides a large amount of value. Engineers should
+    get together and brainstorm the various failure scenarios their service is likely
+    to experience. Work should then be scheduled to try to reduce or eliminate the
+    impact of those scenarios (that is, in the event of database failure, revert to
+    a cache). Each Gameday exercise should have a planning document that describes
+    the system being tested, the various failure scenarios, including steps that will
+    be taken to simulate the failures, expectations surrounding how the system should
+    respond to the failures, and the expected impact on users (if any). As the Gameday
+    exercise proceeds, the team should work through each of the scenarios, documenting
+    observations—it’s important to ensure that metrics we expect to see emitted are
+    being emitted, alerts that we expect to fire do indeed fire, and the failure is
+    handled in the way we expect. As observations are made, document any differences
+    between expectations and reality. These observations should become planned work
+    to bridge the gap between our ideal world and the real world.
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 计划 Gameday 练习提供了大量价值。工程师们应该聚在一起，头脑风暴他们服务可能遇到的各类故障场景。然后应安排工作以尝试减少或消除这些场景的影响（即，在数据库故障的情况下，回滚到缓存）。每个
+    Gameday 练习都应该有一个规划文档，描述正在测试的系统、各种故障场景，包括将采取的步骤来模拟故障、围绕系统应该如何响应故障的期望，以及预期对用户（如果有）的影响。随着
+    Gameday 练习的进行，团队应逐一处理每个场景，记录观察结果——重要的是要确保我们期望看到的指标正在发出，我们期望触发的警报确实触发了，并且故障以我们期望的方式得到处理。在观察到差异时，记录任何期望与现实之间的差异。这些观察结果应成为计划中的工作，以弥合理想世界与现实世界之间的差距。
+- en: Instead of walking through code, this recipe will demonstrate a process and
+    template that can be used to run Gameday exercises. The following is not the only
+    way to conduct Gameday exercises, but one that should serve as a good starting
+    point for your organization.
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与逐步审查代码不同，这个配方将演示一个过程和模板，可以用来运行 Gameday 练习。以下不是进行 Gameday 练习的唯一方法，但应该作为您组织的一个良好起点。
+- en: Prerequisites
+  id: totrans-118
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 前置条件
+- en: As always, there are some prerequisites you should ensure you meet before attempting
+    to run a Gameday exercise. Specifically, your teams should be used to instrumenting
+    code with the necessary metrics and alerts to provide a good degree of observability
+    into your production environment. Your teams should have experience working within
+    a well-understood and practiced incident-response process that includes having
+    regular retrospectives to continuously improve in light of production incidents.
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 总是有些先决条件你应该在尝试运行游戏日练习之前确保满足。具体来说，你的团队应该习惯于使用必要的指标和警报来对代码进行仪表化，以便在生产环境中提供一定程度的可观察性。你的团队应该有在理解良好且经过实践的事故响应流程中工作的经验，这包括定期进行回顾，以便在生产事件中不断改进。
+- en: Finally, your organization should be accustomed to talking openly about failure
+    and unexpected production incidents, and be committed to processes that encourage
+    continuous improvement. These prerequisites should suggest that your teams have
+    the necessary organizational support and psychological safety to conduct these
+    kinds of resiliency exercises.
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，你的组织应该习惯于公开讨论故障和意外的生产事件，并致力于鼓励持续改进的过程。这些先决条件应该表明，你的团队有必要的组织支持和心理安全感来执行这些类型的弹性练习。
+- en: How to do it...
+  id: totrans-121
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做...
+- en: The first step in a Gameday exercise is selecting a system that will be tested.
+    When you're just getting started with Gamedays, it's wise to select a system that
+    is well understood, has failed before, and has a limited blast radius in terms
+    of the impact on users.
+  id: totrans-122
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 游戏日练习的第一步是选择一个将要测试的系统。当你刚开始进行游戏日时，选择一个理解良好、之前已经失败并且对用户影响有限的系统是明智的。
+- en: Once the service is selected, gather the team responsible for its development
+    and operation, and start brainstorming different failure scenarios. If there is
+    a data store, consider what could happen if it were suddenly unavailable due to
+    a hardware failure. Perhaps the database could be shut down manually. What happens
+    if the database is terminated in an unsafe way? The service runs in some kind
+    of clustered configuration, so what happens if one node is removed from the load
+    balancer? What happens when all nodes fail and are removed from the load-balancing
+    pool? Another area to test is unexpected latency. In a distributed system, sufficiently
+    high latency is impossible to distinguish from lack of service availability, so
+    there are a number of interesting bugs that can lurk here. Getting the team together
+    to discuss all of these scenarios (as well as others) can be a great way to learn
+    more about a system. Document all of the scenarios that you plan to test.
+  id: totrans-123
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 一旦选择了服务，召集负责其开发和运营的团队，并开始头脑风暴不同的故障场景。如果有一个数据存储，考虑如果由于硬件故障突然不可用会发生什么。也许数据库可以被手动关闭。如果数据库以不安全的方式终止会发生什么？服务运行在某种集群配置中，那么如果从负载均衡器中移除一个节点会发生什么？当所有节点都失败并被从负载均衡池中移除时会发生什么？另一个需要测试的领域是意外的延迟。在分布式系统中，足够高的延迟与服务不可用难以区分，因此这里可能存在许多有趣的错误。召集团队讨论所有这些场景（以及其他场景）可以是一种了解系统的极好方式。记录下你计划测试的所有场景。
+- en: Schedule a time and a room for the Gameday experiment (if you're a remote team,
+    arrange for everyone to be on a video call together). Invite the team responsible
+    for the service being tested, a representative from your customer support team,
+    and any other stakeholders who are interested in seeing the experiment.
+  id: totrans-124
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 安排一个时间和房间进行游戏日实验（如果你是远程团队，安排所有人一起进行视频通话）。邀请负责被测试服务的团队、客户支持团队的代表以及任何对实验感兴趣的利益相关者。
+- en: Using a template, such as the one included here, plan out in detail how the
+    experiment is going to be conducted. On the day at the scheduled time, start with
+    an overview of the system being tested. This is a good opportunity to ensure that
+    everyone has a consistent view of how the system works. Then go through each scenario,
+    assigning the actual action to someone on the team.
+  id: totrans-125
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用模板，例如这里包含的模板，详细规划实验的进行方式。在预定时间当天，首先概述正在测试的系统。这是一个确保每个人都对系统工作方式有统一看法的好机会。然后逐个场景进行，将实际操作分配给团队中的某个人。
+- en: Document observations during the experiment, detailing how the system reacted
+    to the failure injection.
+  id: totrans-126
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 记录实验期间的观察结果，详细说明系统对故障注入的反应。
+- en: In the event that observations made during the experiment are different than
+    expectations, schedule follow-up tasks, in the form of tickets, for the team to
+    correct the discrepancy.
+  id: totrans-127
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 如果实验中观察到的结果与预期不同，安排后续任务，以工单的形式让团队纠正差异。
+- en: A template for Gameday exercises
+  id: totrans-128
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Gameday练习的模板
+- en: The following template can be used for planning and executing a Gameday exercise.
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下模板可用于计划和执行Gameday练习。
+- en: '**System: **Message Service'
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**系统:** 消息服务'
+- en: '****System Overview: ****'
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '****系统概述:****'
+- en: A detailed description (possibly including diagrams) of the system under test.
+    It’s a good idea to document how requests are routed to the system, some of the
+    major systems that interact with it, data stores it uses and their general configuration,
+    and any downstream services it depends on.
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对待测试系统的详细描述（可能包括图表）。记录请求如何路由到系统、与之交互的一些主要系统、它使用的数据存储及其一般配置，以及它依赖的任何下游服务是个好主意。
+- en: '**Dashboards:**'
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**仪表板:**'
+- en: Links to important dashboards to watch while the Gameday exercise is underway.
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在Gameday练习进行期间，查看重要仪表板的链接。
+- en: '**Test Scenarios:**'
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**测试场景:**'
+- en: '**Scenario:** Database becomes unavailable due to nodes being terminated.'
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**场景:** 由于节点被终止，数据库变得不可用。'
+- en: '**Method:**'
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**方法:**'
+- en: Shut down database EC2 nodes manually using AWS CLI tools (include actual command).
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用AWS CLI工具手动关闭数据库EC2节点（包括实际命令）。
+- en: '**Expectations:**'
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**预期:**'
+- en: List how you expect the service to react. Include details about expected changes
+    in metrics, alerts that should be fired, system behavior, and user impact.
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 列出你期望服务如何反应。包括关于预期指标变化、应触发的警报、系统行为和用户影响等详细信息。
+- en: '**Observations:**'
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**观察:**'
+- en: Document observations during the actual test.
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 记录实际测试过程中的观察结果。
+- en: '**Follow-up Action Items:**'
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**后续行动项目:**'
+- en: Create tickets for any follow-up work that should be done as a result of the
+    experiment.
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为实验结果导致的任何后续工作创建工单。
+- en: Introducing automated chaos
+  id: totrans-145
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 引入自动化混沌
+- en: Running manual Gameday exercises is a great way to introduce the practice of
+    failure injection. Forcing failures in production helps build confidence in the
+    resilience of systems and identifies opportunities for improvement. Gameday helps
+    teams gain a better overall understanding of how their systems behave when confronted
+    with a number of failure scenarios. As a team conducts more exercises, it will
+    start to accumulate tools for performing common tasks, such as introducing latency
+    in the network or spiking CPU usage. Tooling helps automate mundane tasks, improving
+    the efficiency of Gameday exercises. There are a variety of open source and commercial
+    tools designed to automate chaos engineering that teams can take advantage of
+    right away.
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 运行手动Gameday练习是引入故障注入实践的好方法。在生产环境中强制故障有助于增强对系统弹性的信心，并识别改进的机会。Gameday帮助团队更好地理解他们的系统在面对多种故障场景时的行为。随着团队进行更多练习，它将开始积累执行常见任务（如在网络中引入延迟或增加CPU使用率）的工具。工具有助于自动化日常任务，提高Gameday练习的效率。有各种开源和商业工具旨在自动化混沌工程，团队可以立即利用这些工具。
+- en: Gameday exercises are planned and scheduled. Some organizations go one step
+    further and introduce continuous failure injection as a way of ensuring that systems
+    are handling common failure scenarios smoothly. In early 2011, Netflix announced
+    the creation of the Simian Army—a suite of tools designed to inject common failures
+    into a production environment. Arguably the most famous member of the Simian Army,
+    Chaos Monkey, randomly shuts down nodes in a production environment. The Simian
+    Army tools have been open sourced and are available to use in your own organization.
+    They can be scheduled to run as part of a Gameday exercise, or set up to run on
+    specific schedules (that is, Monday to Friday, 9 a.m. to 5 p.m., when on-call
+    engineers are usually in the office).
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Gameday练习是计划并安排的。一些组织更进一步，引入持续故障注入作为确保系统能够顺利处理常见故障场景的一种方式。2011年初，Netflix宣布创建了Simian
+    Army——一套旨在将常见故障注入生产环境的工具集。Simian Army中最著名的成员之一，Chaos Monkey，会随机关闭生产环境中的节点。Simian
+    Army工具已经开源，可供您的组织使用。它们可以计划作为Gameday练习的一部分运行，或者设置为特定的时间表（即周一至周五，上午9点至下午5点，当值工程师通常在办公室时）。
+- en: Pioneers in this space, PagerDuty, have conducted "failure Fridays" since 2013\.
+    Every Friday, engineers get together to attack a specific service. Over time,
+    engineers started building commands into their Chat Bot to perform common functions
+    such as isolating a node from other network traffic, even adding a "roulette"
+    command that would randomly select hosts for rebooting.
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个领域的先驱者，PagerDuty，自2013年以来一直在进行“故障周五”。每周五，工程师们聚在一起攻击特定的服务。随着时间的推移，工程师们开始在他们的聊天机器人中构建命令以执行常见功能，例如将节点从其他网络流量中隔离出来，甚至添加了一个“轮盘”命令，该命令可以随机选择主机进行重启。
+- en: Hosted commercial services have been developed to help automate chaos engineering.
+    Gremlin is a hosted product designed to help teams run Gameday exercises by providing
+    access to a library of "attacks" executed through agents installed on nodes in
+    your environment. Gremlin provides an API and a web interface that allows users
+    to configure attacks designed to spike resource usage (CPU, memory, disk), simulate
+    random failures by killing processes or rebooting hosts, and simulate common network
+    conditions, such as latency and **Network Time Protocol** (**NTP**) drift. Having
+    a product like Gremlin lowers the amount of upfront effort needed to start doing
+    failure injection.
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 已开发托管商业服务以帮助自动化混沌工程。Gremlin是一个托管产品，旨在通过提供对安装在您环境中节点上的代理执行的“攻击”库来帮助团队运行Gameday练习。Gremlin提供了一个API和一个Web界面，允许用户配置旨在激增资源使用（CPU、内存、磁盘）的攻击，通过终止进程或重启主机来模拟随机故障，并模拟常见的网络条件，如延迟和**网络时间协议**（**NTP**）漂移。拥有像Gremlin这样的产品可以降低开始进行故障注入所需的前期工作量。
+- en: Another open source tool is the Chaos toolkit, a CLI tool designed to make it
+    easier to design and run experiments. In this recipe, we'll install the Chaos
+    toolkit and use it to execute a simple experiment against a hypothetical user
+    service. The user service will be the same one we wrote in the *Improving performance
+    with caching* recipe earlier in this chapter.
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个开源工具是混沌工具包，这是一个CLI工具，旨在使设计和运行实验更容易。在本配方中，我们将安装混沌工具包，并使用它来对一个假设的用户服务执行简单实验。用户服务将是我们在本章早期“通过缓存提高性能”配方中编写的同一个服务。
+- en: How to do it...
+  id: totrans-151
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'The Chaos toolkit is written in Python and can be installed using `pip`. We''ll
+    need a working Python3 environment. This recipe will assume you are installing
+    it on macOS X using Homebrew. First, install `pyen`—a utility that supports managing
+    multiple Python development environments, as shown here:'
+  id: totrans-152
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 混沌工具包是用Python编写的，可以使用`pip`进行安装。我们需要一个有效的Python3环境。本配方将假设您正在使用Homebrew在macOS
+    X上安装它。首先，安装`pyenv`——一个支持管理多个Python开发环境的实用工具，如下所示：
+- en: '[PRE28]'
+  id: totrans-153
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'Install Python3 by executing the following command line:'
+  id: totrans-154
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过执行以下命令行来安装Python3：
+- en: '[PRE29]'
+  id: totrans-155
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'With a newly-installed Python3 environment, go ahead and install the Chaos
+    toolkit by executing the following command line:'
+  id: totrans-156
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用新安装的Python3环境，执行以下命令行来安装混沌工具包：
+- en: '[PRE30]'
+  id: totrans-157
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: 'The Chaos toolkit uses the JSON files to describe experiments. Each experiment
+    should have a title, description, and optionally some tags used to categorize
+    experiments. The `steady-state-hypothesis` section describes how the service is
+    expected to behave under normal conditions. In our situation, we assume that the
+    service will return either `200` in the event that a user is found, or `404` in
+    the event that a user has not been found:'
+  id: totrans-158
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 混沌工具包使用JSON文件来描述实验。每个实验都应该有一个标题、描述，以及可选的一些用于对实验进行分类的标签。`steady-state-hypothesis`部分描述了服务在正常条件下的预期行为。在我们的情况下，我们假设如果找到用户，服务将返回`200`，如果没有找到用户，则返回`404`：
+- en: '[PRE31]'
+  id: totrans-159
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: 'Run this experiment:'
+  id: totrans-160
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 运行以下实验：
+- en: '[PRE32]'
+  id: totrans-161
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: If successful, the output should indicate that the service responds well when
+    MySQL is unavailable. However, in its current state, the experiment will leave
+    MySQL stopped, which isn't ideal. Now you have something to fix, which is left
+    as an exercise to the reader, and you can rerun your experiment. Congratulations!
+    You just ran your first automated chaos experiment.
+  id: totrans-162
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 如果成功，输出应表明当MySQL不可用时，服务响应良好。然而，在其当前状态下，实验将使MySQL停止，这并不理想。现在你有一些东西要修复，这留给读者作为练习，并且你可以重新运行你的实验。恭喜！你刚刚运行了你的第一个自动化混沌实验。

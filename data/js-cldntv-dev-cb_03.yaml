@@ -1,0 +1,1487 @@
+- en: Implementing Autonomous Services
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现自治服务
+- en: 'In this chapter, the following recipes will be covered:'
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，将涵盖以下食谱：
+- en: Implementing a GraphQL CRUD BFF
+  id: totrans-2
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实现GraphQL CRUD BFF
+- en: Implementing a search BFF
+  id: totrans-3
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实现搜索bff
+- en: Implementing an analytics BFF
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实现分析bff
+- en: Implementing an inbound External Service Gateway
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实现入站外部服务网关
+- en: Implementing an outbound External Service Gateway
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实现出站外部服务网关
+- en: Orchestrating collaboration between services
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 协调服务之间的协作
+- en: Implementing a Saga
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实现一个 Saga
+- en: Introduction
+  id: totrans-9
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 简介
+- en: In [Chapter 1](a3041ef8-acc9-4585-8b31-11fe972d59da.xhtml), *Getting Started
+    with Cloud-Native*, we began our journey to understand why cloud-native is lean
+    and autonomous. We focused on recipes that demonstrate how leveraging fully managed
+    cloud services empower self-sufficient, full-stack teams to rapidly and continuously
+    deliver innovation with confidence. In [Chapter 2](129afdee-aa82-4ba6-9d80-5ec70c4a766e.xhtml),
+    *Applying the Event Sourcing and CQRS Patterns*, we worked through recipes that
+    showcase how these patterns establish the bulkheads that enable the creation of
+    autonomous services.
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在[第1章](a3041ef8-acc9-4585-8b31-11fe972d59da.xhtml)，*云原生入门*中，我们开始了了解为什么云原生是精简和自治的旅程。我们专注于展示如何利用完全管理的云服务赋予自给自足的全栈团队能够自信地快速和持续地交付创新的食谱。在[第2章](129afdee-aa82-4ba6-9d80-5ec70c4a766e.xhtml)，*应用事件源和CQRS模式*中，我们通过食谱展示了这些模式如何建立防波堤，从而能够创建自治服务。
+- en: In this chapter, we bring all these foundational pieces together with recipes
+    for implementing autonomous service patterns. In my book, [Cloud Native Development
+    Patterns and Best Practices](https://www.packtpub.com/application-development/cloud-native-development-patterns-and-best-practices),
+    I discuss various approaches for decomposing a cloud-native system into bound,
+    isolated, and autonomous services.
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将所有这些基础组件通过实现自治服务模式的食谱汇集在一起。在我的书中，[云原生开发模式和最佳实践](https://www.packtpub.com/application-development/cloud-native-development-patterns-and-best-practices)，我讨论了将云原生系统分解为有界、隔离和自治服务的各种方法。
+- en: Every service should certainly have a bounded context and a single responsibility,
+    but we can decompose services along additional dimensions as well. The life cycle
+    of data is an important consideration for defining services, because the users,
+    requirements, and persistence mechanisms will likely change as data ages. We also
+    decompose services based on boundary and control patterns. Boundary services,
+    such as a **Backend for Frontend** (**BFF**) or an **External Service Gateway**
+    (**ESG**), interact with things that are external to the system, such as humans
+    and other systems. Control services orchestrate the interactions between these
+    decoupled boundary services. The recipes in this chapter demonstrate common permutations
+    of these decomposition strategies.
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 每个服务当然应该有一个边界上下文和单一职责，但我们也可以根据其他维度分解服务。数据生命周期是定义服务时的重要考虑因素，因为随着数据变老，用户、需求和持久化机制可能会发生变化。我们还可以根据边界和控制模式分解服务。边界服务，如**前端后端**（**BFF**）或**外部服务网关**（**ESG**），与系统外的事物交互，如人类和其他系统。控制服务协调这些解耦边界服务之间的交互。本章中的食谱展示了这些分解策略的常见排列组合。
+- en: Implementing a GraphQL CRUD BFF
+  id: totrans-13
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现GraphQL CRUD BFF
+- en: The BFF pattern accelerates innovation because the team that implements the
+    frontend also owns and implements the backend service that supports the frontend.
+    This enables teams to be self-sufficient and unencumbered by competing demands
+    for a shared backend service. In this recipe, we will create a CRUD BFF service
+    that supports data at the beginning of its life cycle. The single responsibility
+    of this service is authoring data for a specific bounded context. It leverages
+    *database-first* Event Sourcing to publish domain events to downstream services.
+    The service exposes a GraphQL-based API.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: BFF模式加速了创新，因为实现前端服务的团队也拥有并实现了支持前端的后端服务。这使得团队能够自给自足，不受对共享后端服务的竞争需求的束缚。在本食谱中，我们将创建一个支持其生命周期初期的数据的CRUD
+    BFF服务。该服务的单一职责是为特定边界上下文编写数据。它利用*数据库优先*的事件源将领域事件发布到下游服务。该服务公开了一个基于GraphQL的API。
+- en: Getting ready
+  id: totrans-15
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: Before starting this recipe, you will need an AWS Kinesis Stream, such as the
+    one created in the *Creating an event stream* recipe.
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在开始此食谱之前，您需要一个AWS Kinesis流，例如在*创建事件流*食谱中创建的流。
+- en: How to do it...
+  id: totrans-17
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做...
+- en: 'Create the project from the following template:'
+  id: totrans-18
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从以下模板创建项目：
+- en: '[PRE0]'
+  id: totrans-19
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: Navigate to the `cncb-bff-graphql-crud` directory with `cd cncb-bff-graphql-crud`.
+  id: totrans-20
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `cd cncb-bff-graphql-crud` 命令导航到 `cncb-bff-graphql-crud` 目录。
+- en: 'Review the file named `serverless.yml` with the following content:'
+  id: totrans-21
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查名为 `serverless.yml` 的文件，其内容如下：
+- en: '[PRE1]'
+  id: totrans-22
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'Review the file named `./schema/thing/typedefs.js` with the following content:'
+  id: totrans-23
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查名为 `./schema/thing/typedefs.js` 的文件，其内容如下：
+- en: '[PRE2]'
+  id: totrans-24
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'Review the file named `./schema/thing/resolvers.js` with the following content:'
+  id: totrans-25
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查名为 `./schema/thing/resolvers.js` 的文件，其内容如下：
+- en: '[PRE3]'
+  id: totrans-26
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Review the file named `handler.js` with the following content:'
+  id: totrans-27
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查名为 `handler.js` 的文件，其内容如下：
+- en: '[PRE4]'
+  id: totrans-28
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: Install the dependencies with `npm install`.
+  id: totrans-29
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm install` 安装依赖项。
+- en: Run the tests with `npm test -- -s $MY_STAGE`.
+  id: totrans-30
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm test -- -s $MY_STAGE` 运行测试。
+- en: Review the contents generated in the `.serverless` directory.
+  id: totrans-31
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查 `.serverless` 目录中生成的内容。
+- en: 'Deploy the stack:'
+  id: totrans-32
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 部署堆栈：
+- en: '[PRE5]'
+  id: totrans-33
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: Review the stack in the AWS Console.
+  id: totrans-34
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在 AWS 控制台中检查堆栈。
+- en: 'Invoke the function with the following `curl` commands:'
+  id: totrans-35
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用以下 `curl` 命令调用函数：
+- en: Make sure to replace the API Gateway ID (that is, `ac0n4oyzm6`) in the endpoints
+    with the value output during deployment.
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 确保将端点中的 API 网关 ID（即 `ac0n4oyzm6`）替换为部署期间输出的值。
+- en: '[PRE6]'
+  id: totrans-37
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'Perform the same mutations and queries using GraphiQL by using the endpoint
+    output during deployment:'
+  id: totrans-38
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用部署期间输出的端点通过 GraphiQL 执行相同的突变和查询。
+- en: '![](img/e8117ea3-faa6-45bd-98fb-35c1a5e0e7a2.png)'
+  id: totrans-39
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/e8117ea3-faa6-45bd-98fb-35c1a5e0e7a2.png)'
+- en: 'Take a look at the `trigger` function logs:'
+  id: totrans-40
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看触发函数的日志：
+- en: '[PRE7]'
+  id: totrans-41
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: Review the events collected in the data lake bucket.
+  id: totrans-42
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查数据湖存储桶中收集的事件。
+- en: Remove the stack once you are finished with `npm run rm:lcl -- -s $MY_STAGE`.
+  id: totrans-43
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 完成后，使用 `npm run rm:lcl -- -s $MY_STAGE` 删除堆栈。
+- en: How it works...
+  id: totrans-44
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: This recipe builds on the *Applying the database-first variant of the Event
+    Sourcing pattern with DynamoDB* recipe in [Chapter 2](129afdee-aa82-4ba6-9d80-5ec70c4a766e.xhtml), *Applying
+    the Event Sourcing and CQRS Patterns* by exposing the ability to author data in
+    a bounded context through a GraphQL API. *GraphQL* is becoming increasingly popular
+    because of the flexibility of the resulting API and the power of client libraries,
+    such as the Apollo Client. We implement a single `graphql` function to support
+    our API and then add the necessary functionality through the `schema`, `resolvers`,
+    `models`, and `connectors`.
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此配方基于第 2 章“应用 DynamoDB 的数据库优先事件源模式”配方，在 [第 2 章](129afdee-aa82-4ba6-9d80-5ec70c4a766e.xhtml)
+    中，*应用事件源和 CQRS 模式*，通过暴露通过 GraphQL API 在有界上下文中编写数据的能力。*GraphQL* 由于结果 API 的灵活性和客户端库（如
+    Apollo 客户端）的强大功能而越来越受欢迎。我们实现了一个单一的 `graphql` 函数来支持我们的 API，然后通过 `schema`、`resolvers`、`models`
+    和 `connectors` 添加必要的功能。
+- en: The GraphQL schema is where we define our `types`, `queries`, and `mutations`.
+    In this recipe, we can query `thing` types by ID and by name, and `save` and `delete`.
+    The `resolvers` map the GraphQL requests to `model` objects that encapsulate the
+    business logic. The `models`, in turn, talk to `connectors` that encapsulate the
+    details of the database API. The `models` and `connectors` are registered with
+    the `schema` in the `handler` function with a very simple but effective form of
+    constructor-based dependency injection. We don't use dependency injection very
+    often in cloud-native, because functions are so small and focused that it is overkill
+    and can impede performance. With GraphQL, this simple form is very effective for
+    facilitating testing. The `Graphiql` tool is very useful for exposing the self-documenting
+    nature of APIs.
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: GraphQL 模式是我们定义 `types`、`queries` 和 `mutations` 的地方。在这个配方中，我们可以通过 ID 和名称查询 `thing`
+    类型，以及 `save` 和 `delete`。`resolvers` 将 GraphQL 请求映射到封装业务逻辑的 `model` 对象。`models`
+    然后与封装数据库 API 的 `connectors` 通信。`models` 和 `connectors` 在 `handler` 函数中使用基于构造函数的依赖注入的非常简单但有效的方式注册到
+    `schema` 中。在云原生中，我们并不经常使用依赖注入，因为函数非常小且专注，这可能是过度设计且可能影响性能。使用 GraphQL，这种简单形式对于促进测试非常有效。`Graphiql`
+    工具对于暴露 API 的自文档特性非常有用。
+- en: The single responsibility of this service is authoring data and publishing the
+    events, using database-first Event Sourcing, for a specific bounded context. The
+    code within the service follows a very repeatable coding convention of `types`,
+    `resolvers`, `models`, `connectors`, and `triggers`. As such, it is very easy
+    to reason about the correctness of the code, even as the number of business domains
+    in the service increases. Therefore, it is reasonable to have a larger number
+    of domains in a single authoring BFF services, so long as the domains are cohesive,
+    part of the same bounded context, and authored by a consistent group of users.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此服务的单一职责是编写数据并发布事件，使用数据库优先的事件溯源，针对特定的有界上下文。服务内部的代码遵循非常可重复的编码约定，包括 `types`、`resolvers`、`models`、`connectors`
+    和 `triggers`。因此，即使服务中的业务域数量增加，也很容易推断代码的正确性。因此，在单个编写 BFF 服务中拥有更多的域是合理的，只要这些域是内聚的，属于同一个有界上下文，并且由一组一致的用户编写。
+- en: Implementing a search BFF
+  id: totrans-48
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现搜索 BFF
+- en: In the *Implementing a GraphQL CRUD BFF* recipe, we discussed how the *BFF*
+    pattern accelerates innovation. We have also discussed how different user groups
+    interact with data at different stages in the data life cycle, and how different
+    persistent mechanisms are more appropriate at the different stages. In this recipe,
+    we will create a BFF service that supports the read-only consumption of data.
+    The single responsibility of this service is *indexing* and retrieving data for
+    a specific bounded context. It applies the *CQRS* pattern to create two *materialized
+    views* that work in tandem, one in Elasticsearch and another in S3\. The service
+    exposes a RESTful API.
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 *实现 GraphQL CRUD BFF* 的配方中，我们讨论了 *BFF* 模式如何加速创新。我们还讨论了不同用户群体在不同数据生命周期阶段如何与数据交互，以及在不同阶段哪些持久机制更合适。在这个配方中，我们将创建一个支持数据只读消费的
+    BFF 服务。此服务的单一职责是针对特定的有界上下文进行 *索引* 和检索数据。它应用了 *CQRS* 模式来创建两个协同工作的 *物化视图*，一个在 Elasticsearch
+    中，另一个在 S3 中。该服务公开了一个 RESTful API。
+- en: How to do it...
+  id: totrans-50
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Create the project from the following template:'
+  id: totrans-51
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从以下模板创建项目：
+- en: '[PRE8]'
+  id: totrans-52
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: Navigate to the `cncb-bff-rest-search` directory with `cd cncb-bff-rest-search`.
+  id: totrans-53
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `cd cncb-bff-rest-search` 切换到 `cncb-bff-rest-search` 目录。
+- en: 'Review the file named `serverless.yml` with the following content:'
+  id: totrans-54
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为 `serverless.yml` 的文件，其内容如下：
+- en: '[PRE9]'
+  id: totrans-55
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'Review the file named `handler.js` with the following content:'
+  id: totrans-56
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为 `handler.js` 的文件，其内容如下：
+- en: '[PRE10]'
+  id: totrans-57
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: Install the dependencies with `npm install`.
+  id: totrans-58
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm install` 安装依赖项。
+- en: Run the tests with `npm test -- -s $MY_STAGE`.
+  id: totrans-59
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm test -- -s $MY_STAGE` 运行测试。
+- en: Review the contents generated in the `.serverless` directory.
+  id: totrans-60
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看在 `.serverless` 目录中生成的内容。
+- en: 'Deploy the stack:'
+  id: totrans-61
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 部署堆栈：
+- en: '[PRE11]'
+  id: totrans-62
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: Review the stack and resources in the AWS Console.
+  id: totrans-63
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在 AWS 控制台中查看堆栈和资源。
+- en: 'Publish an event from a separate Terminal with the following commands:'
+  id: totrans-64
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从单独的终端使用以下命令发布事件：
+- en: '[PRE12]'
+  id: totrans-65
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'Invoke the following `curl` commands, after updating the `API-ID` and  `BUCKET-SUFFIX`,
+    to search the data and retrieve the detailed data from `S3`:'
+  id: totrans-66
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在更新 `API-ID` 和 `BUCKET-SUFFIX` 后，调用以下 `curl` 命令以搜索数据和从 `S3` 获取详细数据：
+- en: '[PRE13]'
+  id: totrans-67
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'Take a look at the trigger function logs:'
+  id: totrans-68
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看触发函数的日志：
+- en: '[PRE14]'
+  id: totrans-69
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: Remove the stack once you are finished with `npm run rm:lcl -- -s $MY_STAGE`.
+  id: totrans-70
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 完成后使用 `npm run rm:lcl -- -s $MY_STAGE` 删除堆栈。
+- en: How it works...
+  id: totrans-71
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: This recipe combines and builds on the *Creating a materialized view in S3*
+    and the *Creating a materialized view in Elasticsearch* recipes to create a highly
+    scalable, efficient, and cost-effective read-only view of the data in a bounded
+    context. First, the `listener` function atomically creates the materialized view
+    in *S3*. The S3 `Bucket` is configured to send events to a **Simple Notification
+    Service** (**SNS**) topic called `BucketTopic`. We use SNS to deliver the S3 events
+    because only a single observer can consume S3 events, while SNS, in turn, can
+    deliver to any number of observers. Next, the `trigger` function atomically indexes
+    the data in the *Elasticsearch* `Domain` and includes the `url` to the materialized
+    view in S3.
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此配方结合并建立在 *在 S3 中创建物化视图* 和 *在 Elasticsearch 中创建物化视图* 的配方之上，以创建一个高度可扩展、高效且成本效益高的有界上下文数据只读视图。首先，`listener`
+    函数原子性地在 *S3* 中创建物化视图。S3 的 `Bucket` 配置为向名为 `BucketTopic` 的 **简单通知服务**（**SNS**）主题发送事件。我们使用
+    SNS 传递 S3 事件，因为只有一个观察者可以消费 S3 事件，而 SNS 则可以传递给任何数量的观察者。接下来，`trigger` 函数原子性地索引 Elasticsearch
+    `域` 中的数据，并在 S3 中的物化视图中包含 `url`。
+- en: The RESTful search service exposed by the API Gateway can explicitly scale to
+    meet demand and efficiently search a large amount of indexed data. The detailed
+    data can then be cost-effectively retrieved from S3, based on the returned URL,
+    without the need to go through the API Gateway, a function, and the database.
+    We create the data in S3 first and then index the data in Elasticsearch to ensure
+    that the search results do not include data that has not been successfully stored
+    in S3.
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: API网关公开的RESTful搜索服务可以明确地扩展以满足需求，并有效地搜索大量索引数据。然后，可以根据返回的URL以成本效益地从S3检索详细数据，无需通过API网关、函数和数据库。我们首先在S3中创建数据，然后在Elasticsearch中索引数据，以确保搜索结果不包含尚未成功存储在S3中的数据。
+- en: Implementing an analytics BFF
+  id: totrans-74
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现分析BFF
+- en: In the *Implementing a GraphQL CRUD BFF* recipe, we discussed how the *BFF*
+    pattern accelerates innovation. We have also discussed how different user groups
+    interact with data at different stages in the data life cycle, and how different
+    persistent mechanisms are more appropriate at the different stages. In this recipe,
+    we will create a BFF service that provides statistics about the life cycle of
+    data. The single responsibility of this service is accumulating and aggregating
+    metrics about data in a specific bounded context. It applies the Event Sourcing
+    pattern to create a *micro event store* that is used to continuously calculate
+    a *materialized view* of the metrics. The service exposes a RESTful API.
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*实现GraphQL CRUD BFF*配方中，我们讨论了*BFF*模式如何加速创新。我们还讨论了不同用户群体如何在数据生命周期的不同阶段与数据交互，以及在不同阶段哪些持久机制更合适。在这个配方中，我们将创建一个BFF服务，该服务提供有关数据生命周期的统计信息。该服务的单一职责是累积和聚合特定边界上下文中数据的指标。它应用事件溯源模式创建一个*微事件存储库*，用于持续计算指标的*物化视图*。该服务公开RESTful
+    API。
+- en: How to do it...
+  id: totrans-76
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做到这一点...
+- en: 'Create the project from the following template:'
+  id: totrans-77
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从以下模板创建项目：
+- en: '[PRE15]'
+  id: totrans-78
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: Navigate to the `cncb-bff-rest-analytics` directory with `cd cncb-bff-rest-analytics`.
+  id: totrans-79
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`cd cncb-bff-rest-analytics`导航到`cncb-bff-rest-analytics`目录。
+- en: 'Review the file named `serverless.yml` with the following content:'
+  id: totrans-80
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查名为`serverless.yml`的文件，其内容如下：
+- en: '[PRE16]'
+  id: totrans-81
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'Review the file named `handler.js` with the following content:'
+  id: totrans-82
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查名为`handler.js`的文件，其内容如下：
+- en: '[PRE17]'
+  id: totrans-83
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: Install the dependencies with `npm install`.
+  id: totrans-84
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`npm install`安装依赖项。
+- en: Run the tests with `npm test -- -s $MY_STAGE`.
+  id: totrans-85
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`npm test -- -s $MY_STAGE`运行测试。
+- en: Review the contents generated in the `.serverless` directory.
+  id: totrans-86
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查`.serverless`目录中生成的内容。
+- en: 'Deploy the stack:'
+  id: totrans-87
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 部署堆栈：
+- en: '[PRE18]'
+  id: totrans-88
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: Review the stack and resources in the AWS Console.
+  id: totrans-89
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在AWS控制台中检查堆栈和资源。
+- en: 'Publish several events from a separate Terminal with the following commands:'
+  id: totrans-90
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从单独的终端使用以下命令从单独的终端发布几个事件：
+- en: '[PRE19]'
+  id: totrans-91
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'Invoke the following `curl` command, after updating the `<API-ID>`, to query
+    the analytics:'
+  id: totrans-92
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 更新`<API-ID>`后，调用以下`curl`命令来查询分析：
+- en: '[PRE20]'
+  id: totrans-93
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'Take a look at the `trigger` function logs:'
+  id: totrans-94
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看触发函数日志：
+- en: '[PRE21]'
+  id: totrans-95
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: Remove the stack once you are finished with `npm run rm:lcl -- -s $MY_STAGE`.
+  id: totrans-96
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 完成后，使用`npm run rm:lcl -- -s $MY_STAGE`删除堆栈。
+- en: How it works...
+  id: totrans-97
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: This recipe combines and builds on the *Creating a micro event store* and the
+    *Creating a materialized view in DynamoDB* recipes in [Chapter 2](129afdee-aa82-4ba6-9d80-5ec70c4a766e.xhtml), *Applying
+    the Event Sourcing and CQRS Patterns* to create an advanced materialized view
+    that counts events by `type`, `user`, `month`, and `year`. The service employs
+    two DynamoDB tables, the micro event store, and the materialized view. The `HASH`
+    key for the event store is the `partitionKey`, which contains the `userId` so
+    that we can correlate events by the user. The range key is the `timestamp` so
+    that we can collate the events and query by month. The hash key for the view table
+    is also `userId`, and the range key is `monthyear`, so that we can retrieve the
+    statistics by user, month, and year. In this example, we are counting all events,
+    but in a typical solution, you would be filtering `byType` for a specific set
+    of event types.
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个配方结合并建立在[第2章](129afdee-aa82-4ba6-9d80-5ec70c4a766e.xhtml)中*创建微事件存储库*和*在DynamoDB中创建物化视图*配方的基础上，*应用事件溯源和CQRS模式*以创建一个高级物化视图，该视图按`type`、`user`、`month`和`year`计数事件。该服务使用两个DynamoDB表、微事件存储库和物化视图。事件存储库的`HASH`键是`partitionKey`，其中包含`userId`，这样我们就可以根据用户关联事件。范围键是`timestamp`，这样我们就可以整理事件并按月份查询。视图表的哈希键也是`userId`，范围键是`monthyear`，这样我们就可以按用户、月份和年份检索统计数据。在这个示例中，我们正在计数所有事件，但在典型解决方案中，您将根据特定的事件类型集过滤`byType`。
+- en: The `listener` function performs the crucial job of *filtering*, *correlating,*
+    and *collating* the events into the micro event store, but the real interesting
+    logic in this recipe is in the `trigger` function. The logic is based on the concepts
+    of the *ACID 2.0* transaction model. **ACID** 2.0 stands for **Associative, Commutative,
+    Idempotent, and Distributed**. In essence, this model allows us to arrive at the
+    same, correct answer, regardless of whether or not the events arrive in the correct
+    order or even if we receive the same events multiple times. Our hash and range
+    key in the micro event store handles the idempotency. For each new key, we recalculate
+    the materialized view by querying the event store based on the context of the
+    new event, and performing the calculation based on the latest known data. If an
+    event arrives out of order, it simply triggers a recalculation. In this specific
+    example, the end user would expect the statistics to eventually become consistent
+    by the end of the month or shortly thereafter.
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`listener` 函数执行了将事件过滤、关联和整理到微事件存储库中的关键任务，但在这个配方中真正有趣的逻辑在于 `trigger` 函数。该逻辑基于
+    *ACID 2.0* 事务模型的概念。**ACID** 2.0 代表 **关联性、交换性、幂等性和分布式**。本质上，这个模型允许我们无论事件是否按正确顺序到达，甚至是否多次接收到相同的事件，都能得到相同、正确的答案。微事件存储库中的哈希键和范围键处理幂等性。对于每个新的键，我们根据新事件的上下文查询事件存储库，并基于最新的已知数据进行计算，从而重新计算物化视图。如果事件顺序错误到达，它将简单地触发重新计算。在这个特定示例中，最终用户期望统计信息最终会在月底或之后不久变得一致。'
+- en: The calculations can be arbitrarily complex. The calculation is performed in
+    memory and the results of the micro event store query can be sliced and diced
+    in many different ways. For this recipe, the `reduce` method on the stream is
+    perfect for counting. It is important to note that the `sub-stream` ensures that
+    the count is performed by `userId`, because that was the hash key of the results
+    returned from the event store. The results are stored in the materialized view
+    as a JSON document so that they can be retrieved efficiently.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 计算可以是任意复杂的。计算是在内存中进行的，微事件存储库查询的结果可以以许多不同的方式切片和切块。对于这个配方，流上的 `reduce` 方法非常适合计数。需要注意的是，`sub-stream`
+    确保计数是通过 `userId` 进行的，因为这是事件存储库返回的结果的哈希键。结果以 JSON 文档的形式存储在物化视图中，以便可以有效地检索。
+- en: The **TimeToLive** (**TTL**) feature is set up on the events table. This feature
+    can be used to keep the event store from growing unbounded, but it can also be
+    used to trigger periodic rollup calculations. I set TTL to one hour so that you
+    can see it execute if you wait long enough, but you would typically set this to
+    a value suitable for your calculations, on the order of a month, quarter, or year.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**TimeToLive** (**TTL**) 功能已设置在事件表上。此功能可以用来防止事件存储库无限制地增长，但也可以用来触发周期性的汇总计算。我将
+    TTL 设置为一小时，这样如果你等待足够长的时间，就可以看到它执行，但通常你会将此设置为适合你计算值的值，大约为一个月、一个季度或一年。'
+- en: Implementing an inbound External Service Gateway
+  id: totrans-102
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现入站外部服务网关
+- en: The **External Service Gateway** (**ESG**) pattern provides an anti-corruption
+    layer between a cloud-native system and any external services that it interacts
+    with. Each gateway acts as a bridge to exchange events between the system and
+    a specific external system. In this recipe, we will create an ESG service that
+    allows events to flow inbound from an external service. The single responsibility
+    of this service is to encapsulate the details of the external system. The service
+    exposes a RESTful webhook to the external system. The external events are transformed
+    into an internal format and published using *event-first* Event Sourcing.
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**外部服务网关** (**ESG**) 模式在云原生系统和它所交互的任何外部服务之间提供了一个反腐败层。每个网关充当系统与特定外部系统之间交换事件的桥梁。在这个配方中，我们将创建一个允许事件从外部服务流入的
+    ESG 服务。这个服务的单一职责是封装外部系统的细节。该服务向外部系统公开了一个 RESTful webhook。外部事件被转换成内部格式，并使用 *事件优先*
+    事件溯源进行发布。'
+- en: How to do it...
+  id: totrans-104
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做到这一点...
+- en: 'Create the project from the following template:'
+  id: totrans-105
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从以下模板创建项目：
+- en: '[PRE22]'
+  id: totrans-106
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: Navigate to the `cncb-esg-inbound` directory with `cd cncb-esg-inbound`.
+  id: totrans-107
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `cd cncb-esg-inbound` 命令导航到 `cncb-esg-inbound` 目录。
+- en: 'Review the file named `serverless.yml` with the following content:'
+  id: totrans-108
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为 `serverless.yml` 的文件，其内容如下：
+- en: '[PRE23]'
+  id: totrans-109
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'Review the file named `handler.js` with the following content:'
+  id: totrans-110
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为 `handler.js` 的文件，其内容如下：
+- en: '[PRE24]'
+  id: totrans-111
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: Install the dependencies with `npm install`.
+  id: totrans-112
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm install` 安装依赖项。
+- en: Run the tests with `npm test -- -s $MY_STAGE`.
+  id: totrans-113
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm test -- -s $MY_STAGE` 运行测试
+- en: Review the contents generated in the `.serverless` directory.
+  id: totrans-114
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看在 `.serverless` 目录中生成的内容。
+- en: 'Deploy the stack:'
+  id: totrans-115
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 部署堆栈：
+- en: '[PRE25]'
+  id: totrans-116
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: Review the stack and resources in the AWS Console.
+  id: totrans-117
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在 AWS 控制台中查看堆栈和资源。
+- en: 'Set up a webhook in your GitHub project:'
+  id: totrans-118
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在你的 GitHub 项目中设置 webhook：
+- en: Set the Payload URL to the endpoint of your webhook
+  id: totrans-119
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将有效载荷 URL 设置为 webhook 的端点
+- en: Set the content type to `application/json`
+  id: totrans-120
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将内容类型设置为 `application/json`
+- en: Set the secret to a random value
+  id: totrans-121
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将密钥设置为随机值
+- en: Select just the `Issues` events checkbox
+  id: totrans-122
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 仅选择 `Issues` 事件复选框
+- en: For detailed instructions on creating a GitHub webhook, see [https://developer.github.com/webhooks/creating.](https://developer.github.com/webhooks/creating)
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有关创建 GitHub webhook 的详细说明，请参阅 [https://developer.github.com/webhooks/creating.](https://developer.github.com/webhooks/creating)
+- en: '![](img/5e9442a6-eee5-4020-aaaa-19afb2cccd7f.png)'
+  id: totrans-124
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/5e9442a6-eee5-4020-aaaa-19afb2cccd7f.png)'
+- en: Create and/or update one or more issues in your GitHub project to trigger the
+    webhook.
+  id: totrans-125
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在你的 GitHub 项目中创建和/或更新一个或多个问题以触发 webhook。
+- en: 'Take a look at the `webhook` function logs:'
+  id: totrans-126
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看 `webhook` 函数日志：
+- en: '[PRE26]'
+  id: totrans-127
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: Review the events in the data lake.
+  id: totrans-128
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看数据湖中的事件。
+- en: Remove the stack once you are finished with `npm run rm:lcl -- -s $MY_STAGE`.
+  id: totrans-129
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm run rm:lcl -- -s $MY_STAGE` 完成后删除堆栈
+- en: How it works...
+  id: totrans-130
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: I chose to use GitHub as the external system in this recipe because it is freely
+    available to everyone and representative of typical requirements. In this recipe,
+    our inbound ESG service needs to provide an API that will be invoked by the external
+    system and conforms to the signature of the external system's webhook. We implement
+    this webhook using the API Gateway and a `webhook` function. The single responsibility
+    of this function is to transform the external event to an internal event and atomically
+    publish it using event-first Event Sourcing.
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我选择在这个食谱中使用 GitHub 作为外部系统，因为它对每个人都是免费可用的，并且代表了典型的需求。在这个食谱中，我们的入站 ESG 服务需要提供一个外部系统将调用的
+    API，并符合外部系统 webhook 的签名。我们使用 API Gateway 和 `webhook` 函数来实现这个 webhook。该函数的单一职责是将外部事件转换为内部事件，并使用事件优先的事件溯源原子性地发布它。
+- en: Note that the external event ID is used as the internal event ID to provide
+    for idempotency. The external event data is included in the internal event in
+    its raw format so that it can be recorded as an audit in the data lake. The external
+    format is also transformed in an internal canonical format to support the pluggability
+    of different external systems. The logic in an inbound ESG service is intentionally
+    kept simple to minimize the chance of errors and help ensure the atomic exchange
+    of the events between the systems.
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，外部事件 ID 被用作内部事件 ID 以提供幂等性。外部事件数据以原始格式包含在内部事件中，以便它可以作为数据湖中的审计记录。外部格式也转换为内部规范格式以支持不同外部系统的可插拔性。入站
+    ESG 服务中的逻辑故意保持简单，以最大限度地减少错误的可能性并帮助确保系统之间事件交换的原子性。
+- en: Implementing an outbound External Service Gateway
+  id: totrans-133
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现出站外部服务网关
+- en: In the *Implementing an inbound External Service Gateway* recipe, we discussed
+    how the ESG pattern provides an anti-corruption layer between the cloud-native
+    system and its external dependencies. In this recipe, we will create an ESG service
+    that allows events to flow outbound to an external service. The single responsibility
+    of this service is to encapsulate the details of the external system. The service
+    applies the CQRS pattern. The internal events are transformed to the external
+    format and forwarded to the external system via its API.
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 *实现入站外部服务网关* 食谱中，我们讨论了 ESG 模式如何在云原生系统和其外部依赖之间提供反腐败层。在这个食谱中，我们将创建一个 ESG 服务，允许事件流出到外部服务。这个服务的单一职责是封装外部系统的细节。该服务应用了
+    CQRS 模式。内部事件被转换为外部格式并通过其 API 发送到外部系统。
+- en: Getting ready
+  id: totrans-135
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: Before starting this recipe, you will need an AWS Kinesis Stream, such as the
+    one created in the *Creating an event stream* recipe.
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在开始这个食谱之前，你需要一个 AWS Kinesis Stream，例如在 *创建事件流* 食谱中创建的那个。
+- en: 'You will need a GitHub account and a repository. I recommend creating a repository
+    named `sandbox`. Use the following command to create a GitHub personal access
+    token, or follow the instructions in the GitHub UI:'
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你需要一个 GitHub 账户和一个存储库。我建议创建一个名为 `sandbox` 的存储库。使用以下命令创建 GitHub 个人访问令牌，或遵循 GitHub
+    UI 中的说明：
+- en: '[PRE27]'
+  id: totrans-138
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: How to do it...
+  id: totrans-139
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Create the project from the following template:'
+  id: totrans-140
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从以下模板创建项目：
+- en: '[PRE28]'
+  id: totrans-141
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: Navigate to the `cncb-esg-outbound` directory with `cd cncb-esg-outbound`.
+  id: totrans-142
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `cd cncb-esg-outbound` 命令进入 `cncb-esg-outbound` 目录。
+- en: 'Review the file named `serverless.yml` with the following content:'
+  id: totrans-143
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看以下内容的 `serverless.yml` 文件：
+- en: '[PRE29]'
+  id: totrans-144
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: Update the `REPO`, `OWNER`, and `TOKEN` environment variables in the `serverless.yml`
+    file.
+  id: totrans-145
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在 `serverless.yml` 文件中更新 `REPO`、`OWNER` 和 `TOKEN` 环境变量。
+- en: 'Review the file named `handler.js` with the following content:'
+  id: totrans-146
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为 `handler.js` 的文件，其内容如下：
+- en: '[PRE30]'
+  id: totrans-147
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: Install the dependencies with `npm install`.
+  id: totrans-148
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm install` 安装依赖。
+- en: Run the tests with `npm test -- -s $MY_STAGE`.
+  id: totrans-149
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm test -- -s $MY_STAGE` 运行测试。
+- en: Review the contents generated in the `.serverless` directory.
+  id: totrans-150
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看在 `.serverless` 目录中生成的内容。
+- en: 'Deploy the stack:'
+  id: totrans-151
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 部署堆栈：
+- en: '[PRE31]'
+  id: totrans-152
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: Review the stack and resources in the AWS Console.
+  id: totrans-153
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在 AWS 控制台中查看堆栈和资源。
+- en: 'Publish an event from a separate Terminal with the following commands:'
+  id: totrans-154
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从单独的终端使用以下命令发布事件：
+- en: '[PRE32]'
+  id: totrans-155
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: Confirm that the issue was created in your GitHub project.
+  id: totrans-156
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 确认问题已在您的 GitHub 项目中创建。
+- en: 'Take a look at the `listener` function logs:'
+  id: totrans-157
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看 `listener` 函数日志：
+- en: '[PRE33]'
+  id: totrans-158
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: Remove the stack once you are finished with `npm run rm:lcl -- -s $MY_STAGE`.
+  id: totrans-159
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm run rm:lcl -- -s $MY_STAGE` 完成后删除堆栈。
+- en: How it works...
+  id: totrans-160
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: I chose to use GitHub as the external system in this recipe because it is freely
+    available to everyone and its API is representative of typical requirements. One
+    of the major details that are encapsulated by an ESG service is the security credentials
+    needed to access the external API. In this recipe, we must create and secure a
+    long-lived *personal access token* and include it as an authorization header in
+    every API request. The details of how to secure a token are out of scope for this
+    recipe, however, a service such as AWS Secret Manager is typically employed. For
+    this recipe, the token is stored as an environment variable.
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我选择在这个菜谱中使用 GitHub 作为外部系统，因为它对每个人都是免费可用的，并且它的 API 代表了典型需求。ESG 服务封装的一个主要细节是访问外部
+    API 所需的安全凭证。在这个菜谱中，我们必须创建并保护一个长期有效的 *个人访问令牌*，并将其作为授权头包含在每个 API 请求中。然而，如何保护令牌的细节超出了这个菜谱的范围，但是通常使用像
+    AWS Secret Manager 这样的服务。对于这个菜谱，令牌被存储为环境变量。
+- en: The `listener` function consumes the desired events, transforms them into the
+    external format, and atomically invokes the external API. That is the limit of
+    the responsibility of an ESG service. These services effectively make external
+    services look like any other service in the system, while also encapsulating the
+    details so that these external dependencies can be easily switched in the future.
+    The transformation logic can become complex. The latching technique, discussed
+    in the *Implementing bi-directional synchronization* recipe, may come into play,
+    as well as the need to cross-reference external IDs to internal IDs. In many cases,
+    the external data can be thought of as a materialized view, in which case the
+    *micro event store* techniques may be useful. In a system that is offered as a
+    service, an ESG service would provide your own outbound webhook feature.
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`listener` 函数消费所需的事件，将它们转换为外部格式，并原子性地调用外部 API。这就是 ESG 服务的责任极限。这些服务有效地使外部服务看起来像系统中的任何其他服务，同时封装细节，以便将来可以轻松切换这些外部依赖。转换逻辑可能变得复杂。在
+    *实现双向同步* 菜谱中讨论的锁定技术可能会发挥作用，以及需要交叉引用外部 ID 到内部 ID。在许多情况下，外部数据可以被视为物化视图，在这种情况下，*微事件存储*技术可能很有用。在一个作为服务提供的系统中，ESG
+    服务将提供您的自己的出站 webhook 功能。'
+- en: Orchestrating collaboration between services
+  id: totrans-163
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 协调服务之间的协作。
+- en: Autonomous cloud-native services perform all inter-service communication asynchronously
+    via streams to decouple upstream services from downstream services. Although the
+    upstream and downstream services are not directly coupled to each other, they
+    are coupled to the event types that they produce and consume. The *Event Orchestration*
+    control pattern acts as a *mediator* to completely decouple event producers from
+    event consumers by translating between event types.
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 自主云原生服务通过流异步执行所有服务间通信，以解耦上游服务与下游服务。尽管上游和下游服务之间没有直接耦合，但它们与它们产生和消费的事件类型耦合。*事件编排*控制模式充当*调解者*，通过在事件类型之间进行转换，完全解耦事件生产者与事件消费者。
+- en: In this recipe, we will create a control service that orchestrates the interaction
+    between two boundary services. The single responsibility of this service is to
+    encapsulate the details of the collaboration. The upstream events are transformed
+    to the event types' expected downstream, and published using *event-first* Event
+    Sourcing.
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本菜谱中，我们将创建一个控制服务，该服务协调两个边界服务之间的交互。该服务的单一职责是封装协作的细节。上游事件被转换为下游期望的事件类型，并使用 *event-first*
+    事件源进行发布。
+- en: How to do it...
+  id: totrans-166
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Create the project from the following template:'
+  id: totrans-167
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从以下模板创建项目：
+- en: '[PRE34]'
+  id: totrans-168
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: Navigate to the `cncb-event-orchestration` directory with `cd cncb-event-orchestration`.
+  id: totrans-169
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `cd cncb-event-orchestration` 命令进入 `cncb-event-orchestration` 目录。
+- en: 'Review the file named `serverless.yml` with the following content:'
+  id: totrans-170
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为 `serverless.yml` 的文件，其内容如下：
+- en: '[PRE35]'
+  id: totrans-171
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: 'Review the file named `handler.js` with the following content:'
+  id: totrans-172
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为 `handler.js` 的文件，其内容如下：
+- en: '[PRE36]'
+  id: totrans-173
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: Install the dependencies with `npm install`.
+  id: totrans-174
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm install` 命令安装依赖项。
+- en: Run the tests with `npm test -- -s $MY_STAGE`.
+  id: totrans-175
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm test -- -s $MY_STAGE` 命令运行测试。
+- en: Review the contents generated in the `.serverless` directory.
+  id: totrans-176
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看在 `.serverless` 目录中生成的内容。
+- en: 'Deploy the stack:'
+  id: totrans-177
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 部署堆栈：
+- en: '[PRE37]'
+  id: totrans-178
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: Review the stack and resources in the AWS Console.
+  id: totrans-179
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在 AWS 控制台中查看堆栈和资源。
+- en: 'Publish these events from a separate Terminal with the following commands:'
+  id: totrans-180
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用以下命令从单独的终端发布这些事件：
+- en: '[PRE38]'
+  id: totrans-181
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: 'Take a look at the `listener` function logs:'
+  id: totrans-182
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看以下 `listener` 函数日志：
+- en: '[PRE39]'
+  id: totrans-183
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: Review the events in the data lake.
+  id: totrans-184
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看数据湖中的事件。
+- en: Remove the stack once you are finished with `npm run rm:lcl -- -s $MY_STAGE`.
+  id: totrans-185
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 完成后，使用 `npm run rm:lcl -- -s $MY_STAGE` 命令删除堆栈。
+- en: How it works...
+  id: totrans-186
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: This *control* service has a single *stream processor* function that listens
+    for specific events and reacts by emitting more events using event-first Event
+    Sourcing. The events it listens for are described in the `transitions` metadata,
+    which essentially defines the state machine of a long-lived business process.
+    Each business process is implemented as an autonomous control service that orchestrates
+    the collaboration between a set of completely decoupled boundary services. Each
+    *boundary* service involved in the collaboration defines the set of events it
+    produces and consumes independently of the other services. The control service
+    provides the glue that brings these services together to deliver a higher value
+    outcome.
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此 *控制* 服务有一个单一的 *流处理器* 函数，该函数监听特定事件，并通过使用事件-first 事件源发出更多事件来做出反应。它监听的事件在 `transitions`
+    元数据中描述，这实际上定义了长期业务流程的状态机。每个业务流程都作为实现为自主控制服务的独立实例来实施，该服务协调一组完全解耦的边界服务之间的协作。每个参与协作的
+    *边界* 服务独立定义其产生和消费的事件集。控制服务提供粘合剂，将这些服务聚集在一起，以提供更高的价值结果。
+- en: The *downstream* services that are triggered by the emitted events do have one
+    requirement that they must support when defining their incoming and outgoing event
+    types. The incoming event types must accept the `context` element as an opaque
+    set of data and pass the context data along in the outgoing event. A downstream
+    service can leverage the context data, but should not explicitly change the context
+    data. The context data allows the control service to correlate the events in a
+    specific collaboration instance without needing to explicitly store and retrieve
+    data. However, a control service could maintain its own *micro event store* to
+    facilitate complex transition logic, such as joining multiple parallel flows back
+    together before advancing.
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由发出的事件触发的 *下游* 服务确实有一个要求，即它们在定义其传入和传出事件类型时必须支持。传入的事件类型必须接受 `context` 元素作为不透明的数据集，并在传出事件中传递上下文数据。下游服务可以利用上下文数据，但不应显式更改上下文数据。上下文数据允许控制服务在不显式存储和检索数据的情况下关联特定协作实例中的事件。然而，控制服务可以维护自己的
+    *微事件存储* 以便于复杂的转换逻辑，例如在前进之前将多个并行流程合并在一起。
+- en: Implementing a Saga
+  id: totrans-189
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实施一个 Saga
+- en: The Saga pattern is a solution to long-lived transactions that is based on eventual
+    consistency and compensating transactions. It was first discussed in a paper by
+    Hector Garcia-Molina and Kenneth Salem ([https://www.cs.cornell.edu/andru/cs711/2002fa/reading/sagas.pdf](https://www.cs.cornell.edu/andru/cs711/2002fa/reading/sagas.pdf)).
+    Each step in a long-lived transaction is atomic. When a downstream step fails,
+    it produces a violation event. The upstream services react to the violation event
+    by performing a compensating action. In this recipe, we will create a service
+    that submits data for downstream processing. The service also listens for a violation
+    event and takes corrective action.
+  id: totrans-190
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Saga 模式是基于最终一致性和补偿事务的长期事务解决方案。它首次在 Hector Garcia-Molina 和 Kenneth Salem 的论文中讨论（[https://www.cs.cornell.edu/andru/cs711/2002fa/reading/sagas.pdf](https://www.cs.cornell.edu/andru/cs711/2002fa/reading/sagas.pdf)）。长期事务中的每一步都是原子的。当下游步骤失败时，会产生一个违规事件。上游服务通过执行补偿操作来响应违规事件。在这个菜谱中，我们将创建一个提交数据以供下游处理的服务。该服务还监听违规事件并采取纠正措施。
+- en: How to do it...
+  id: totrans-191
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Create the project from the following template:'
+  id: totrans-192
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从以下模板创建项目：
+- en: '[PRE40]'
+  id: totrans-193
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: Navigate to the `cncb-saga` directory with `cd cncb-sage`.
+  id: totrans-194
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `cd cncb-sage` 命令导航到 `cncb-saga` 目录。
+- en: 'Review the file named `serverless.yml` with the following content:'
+  id: totrans-195
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为 `serverless.yml` 的文件，其内容如下：
+- en: '[PRE41]'
+  id: totrans-196
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: 'Review the file named `handler.js` with the following content:'
+  id: totrans-197
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看名为 `handler.js` 的文件，其内容如下：
+- en: '[PRE42]'
+  id: totrans-198
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: Install the dependencies with `npm install`.
+  id: totrans-199
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm install` 安装依赖。
+- en: Run the tests with `npm test -- -s $MY_STAGE`.
+  id: totrans-200
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `npm test -- -s $MY_STAGE` 运行测试。
+- en: Review the contents generated in the `.serverless` directory.
+  id: totrans-201
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看在 `.serverless` 目录中生成的内容。
+- en: 'Deploy the stack:'
+  id: totrans-202
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 部署堆栈：
+- en: '[PRE43]'
+  id: totrans-203
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: Review the stack and resources in the AWS Console.
+  id: totrans-204
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在 AWS 控制台中查看堆栈和资源。
+- en: 'Invoke the `submit` and `query` functions with the following commands:'
+  id: totrans-205
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用以下命令调用 `submit` 和 `query` 函数：
+- en: '[PRE44]'
+  id: totrans-206
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: 'Publish a violation event from a separate Terminal with the following commands:'
+  id: totrans-207
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从单独的终端使用以下命令发布违规事件：
+- en: '[PRE45]'
+  id: totrans-208
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: 'Invoke the `query` function again with the following command, and note the
+    updated `status`:'
+  id: totrans-209
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 再次使用以下命令调用 `query` 函数，并注意更新的 `状态`：
+- en: '[PRE46]'
+  id: totrans-210
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: 'Take a look at the `trigger` function logs:'
+  id: totrans-211
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看以下 `trigger` 函数日志：
+- en: '[PRE47]'
+  id: totrans-212
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: 'Take a look at the `listener` function logs:'
+  id: totrans-213
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看以下 `listener` 函数日志：
+- en: '[PRE48]'
+  id: totrans-214
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: Remove the stack once you are finished with `npm run rm:lcl -- -s $MY_STAGE`.
+  id: totrans-215
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 完成后使用 `npm run rm:lcl -- -s $MY_STAGE` 删除堆栈。
+- en: How it works...
+  id: totrans-216
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: This recipe builds on recipes that we have already covered. We submit an order
+    domain object using *database-first* Event Sourcing, and we have a `query` function
+    to retrieve the current status of the order. The `listener` function is the most
+    interesting part of this recipe. It listens for the `reservation-violation` events
+    and performs a compensating action. In this case, the `compensation` is simply
+    to change the `status` to `cancelled`. Compensating actions can be arbitrarily
+    complex and are specific to a given service. For example, a service may need to
+    reverse a complex calculation, while accounting for intermediate changes and triggering
+    cascading changes as well. The audit trail provided by Event Sourcing and a *micro
+    event store* may be useful for recalculating the new state.
+  id: totrans-217
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此菜谱基于我们已覆盖的菜谱。我们使用 *数据库优先* 事件源提交订单域对象，并且有一个 `query` 函数来检索订单的当前状态。`listener`
+    函数是这个菜谱中最有趣的部分。它监听 `reservation-violation` 事件并执行补偿操作。在这种情况下，`补偿` 简单地是将 `状态` 改为
+    `已取消`。补偿操作可以是任意复杂的，并且特定于给定的服务。例如，一个服务可能需要反转一个复杂的计算，同时考虑到中间变化并触发级联变化。事件源和 *微事件存储*
+    提供的审计跟踪可能有助于重新计算新状态。
+- en: Another thing to note in this example is that the collaboration is implemented
+    using *event* *choreography* instead of *Event Orchestration*. In other words,
+    this service is explicitly coupled to the `reservation-violation` event type.
+    Event choreography is typically used in smaller and/or younger systems, or between
+    highly related services. As a system matures and grows, the flexibility of *Event
+    Orchestration* becomes more valuable. We employed Event Orchestration in the *Orchestrating
+    collaboration between services* recipe.
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个例子中，需要注意的是，协作是通过 *事件* *编排* 而不是 *事件编排* 实现的。换句话说，此服务明确耦合到 `reservation-violation`
+    事件类型。事件编排通常用于较小和/或较新的系统，或者在高相关服务之间使用。随着系统的成熟和增长，*事件编排* 的灵活性变得更加有价值。我们在 *编排服务之间的协作*
+    菜谱中使用了事件编排。

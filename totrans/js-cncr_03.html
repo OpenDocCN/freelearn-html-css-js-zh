@@ -1,0 +1,641 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;3.&#xA0;Synchronizing with Promises"><div class="titlepage"><div><div><h1 class="title"><a id="ch03"/>Chapter 3. Synchronizing with Promises</h1></div></div></div><p>Implementations of promises have existed for many years inside JavaScript libraries. It all started with the Promises/A+ specification. Libraries implemented their own variations of this specification, and it wasn't until recently (ES6 to be exact) that the Promise specification made it into the JavaScript language. They do what the chapter title suggests—help us apply the synchronization principle.</p><p>In this chapter, we'll start of with a gentle introduction to the various terms used in promise-speak so that the remainder of the chapter will be a little easier to follow. Then, well go through the various ways that promises are used to resolve future values and make our lives easier when we deal with concurrency. Ready?</p><div class="section" title="Promise terminology"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec19"/>Promise terminology</h1></div></div></div><p>Before we dive right into the code <a id="id87" class="indexterm"/>examples, let's take a minute to make sure we have a firm grasp on the terminology surrounding promises. There are promise instances, but then there are also various states and actions to consider. The sections that follow will make much more sense if we can nail down the promise lexicon. These explanations are short and sweet, so if you've already used promises, you can quickly gloss over these definitions to sanity check your knowledge.</p><div class="section" title="Promise"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec28"/>Promise</h2></div></div></div><p>As the name<a id="id88" class="indexterm"/> suggests, a promise is, well, a<a id="id89" class="indexterm"/> promise. Think of a promise as a proxy for a value that doesn't exist yet. The promise let's us write better concurrent code because we know that the value will be there at some point, and we don't have to write lots of state-checking boilerplate code.</p></div><div class="section" title="State"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec29"/>State</h2></div></div></div><p>Promises are always in one of three states:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Pending</strong></span>: This is <a id="id90" class="indexterm"/>the first state of a promise after it's been created. It remains in a pending state until it's fulfilled or rejected.</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Fulfilled</strong></span>: The promise <a id="id91" class="indexterm"/>value has been resolved and is available to the <code class="literal">then()</code> callback function.</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Rejected</strong></span>: Something <a id="id92" class="indexterm"/>went wrong trying to resolve the promised value. There will be no data today.</li></ul></div><p>An interesting property of<a id="id93" class="indexterm"/> promise states is that they only transition once. They either go from pending to fulfilled or from pending to rejected. And once they make this state transition, they're stuck in this state for the rest of their existence.</p></div><div class="section" title="Executor"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec30"/>Executor</h2></div></div></div><p>The executor<a id="id94" class="indexterm"/> function is responsible for somehow resolving the value that the caller is waiting for. This <a id="id95" class="indexterm"/>function is called immediately after the promise is created. It takes two arguments: a <code class="literal">resolver</code> function and a <code class="literal">rejector</code> function.</p></div><div class="section" title="Resolver"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec31"/>Resolver</h2></div></div></div><p>The resolver <a id="id96" class="indexterm"/>is a function that's passed to the executor function as an argument. Actually, this is <a id="id97" class="indexterm"/>quite handy because we can then pass the resolver function to another function, and so on. It doesn't matter where the resolver function is called from, but when it's called, the promise moves into a fulfilled state. This change in state will trigger any <code class="literal">then()</code> callbacks—we'll see what these are shortly.</p></div><div class="section" title="Rejector"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec32"/>Rejector</h2></div></div></div><p>The rejector<a id="id98" class="indexterm"/> is similar to the resolver. It's the second argument passed to the <code class="literal">executor</code> function, which<a id="id99" class="indexterm"/> can be called from anywhere. When it's called, it changes the state of the promise from pending to rejected. This state change will call the <code class="literal">error</code> callback function, if any, passed to <code class="literal">then()</code> or <code class="literal">catch()</code>.</p></div><div class="section" title="Thenable"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec33"/>Thenable</h2></div></div></div><p>An object is thenable<a id="id100" class="indexterm"/> if it <a id="id101" class="indexterm"/>has a <code class="literal">then()</code> method that accepts a fulfillment callback and a rejection callback as arguments. In other words, a promise is thenable. But there are cases where we might want to implement specialized resolution semantics.</p></div></div></div>
+<div class="section" title="Resolving and rejecting promises"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec20"/>Resolving and rejecting promises</h1></div></div></div><p>If the preceding <a id="id102" class="indexterm"/>section just introduced several new terms that sounded confusing, then don't worry. We'll see what all these promise terms look like in practice, starting with this section. Here, we'll perform some straightforward promise resolving and rejecting.</p><div class="section" title="Resolving promises"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec34"/>Resolving promises</h2></div></div></div><p>The resolver is a<a id="id103" class="indexterm"/> function that, as the name implies, resolves a promise for us. It's not the only way to resolve a promise—we'll explore more advanced techniques later on in the chapter. But this method is, by far, the most common. It's passed into the executor function as the first argument. This means that the executor can resolve the promise directly by simply calling the resolver. But this wouldn't provide us with much utility, would it?</p><p>The common case to a greater extent is for the promise <code class="literal">executor</code> function to set up the asynchronous actions that are about to take place—things such as making network calls. Then, in the callback functions for these asynchronous actions, we can resolve the promise. It's a little counterintuitive at first, passing a resolve function around in our code, but it'll make more sense once we start using them.</p><p>A resolver function is an opaque function that's bound to a promise. It can only resolve a promise once. We can call the resolver as many times as we please, but only the first call will change the state of the promise. Here's a diagram that depicts the possible states of a promise; it also shows how they're changed:</p><div class="mediaobject"><img src="graphics/B05133_03_01.jpg" alt="Resolving promises"/></div><p>Now, let's take a<a id="id104" class="indexterm"/> look at some promise code. Here, we'll resolve a promise, which causes the <code class="literal">then()</code> fulfillment callback function to be called:</p><div class="informalexample"><pre class="programlisting">// The executor function used by our promise.
+// The first argument is the resolver function,
+// which is called in 1 second to resolve the promise.
+function executor(resolve) {
+    setTimeout(resolve, 1000);
+}
+
+// The fulfillment callback for our promise. This
+// simply stopsthe fullfillment timer that was
+// started after our executor function was run.
+function fulfilled() {
+    console.timeEnd('fulfillment');
+}
+
+// Creates the promise, which will run the executor
+// function immediately. Then we start a timer to see
+// how long it takes for our fulfillment function to
+// be called.
+var promise = new Promise(executor);
+promise.then(fulfilled);
+console.time('fulfillment');</pre></div><p>As we can see, the <code class="literal">fulfilled()</code> function is called when the resolver function is called. The executor doesn't<a id="id105" class="indexterm"/> actually call the resolver. Rather, it passes the resolver function to another asynchronous function—<code class="literal">setTimeout()</code>. The executor function itself isn't the asynchronous code that we're trying to wrangle. The executor can be thought of as a sort of coordinator, orchestrating asynchronous actions to determine when to resolve the promise.</p><p>The preceding example didn't resolve any values. This is a valid use cases when the caller of some action needs acknowledgement that it either succeeded or failed. Instead, let's try resolving a value this time, as follows:</p><div class="informalexample"><pre class="programlisting">// The executor function used by our promise.
+// Sets a timeout that calls "resolve()" one second
+// after the promise is created. It's resolving
+// a string value - "done!".
+function executor(resolve) {
+    setTimeout(() =&gt; {
+        resolve('done!');
+    }, 1000);
+}
+
+// The fulfillment callback for our promise accepts
+// a value argument. This is the value that's passed
+// to the resolver.
+function fulfilled(value) {
+    console.log('resolved', value);
+}
+
+// Create our promise, providing the executor and
+// fulfillment function callbacks.
+var promise = new Promise(executor);
+promise.then(fulfilled);</pre></div><p>We can see that this code is very similar to the preceding example. The difference is that our resolver function is actually called within the closure of the callback function that's passed to <code class="literal">setTimeout()</code>. This is because we're resolving a string value. There's also an argument that's <a id="id106" class="indexterm"/>passed to our <code class="literal">fulfilled()</code> function, which is the resolved value.</p></div><div class="section" title="Rejecting promises"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec35"/>Rejecting promises</h2></div></div></div><p>The promise <code class="literal">executor</code> function<a id="id107" class="indexterm"/> doesn't always go as planned, and when this happens, we need to reject the promise. This is the other possible state transition from pending. Instead of moving into a fulfilled state, the promise moves into a rejected state. This causes a different callback to execute, separate from the fulfillment callback. Thankfully, the mechanics of rejecting promises is very similar to resolving them. Let's take a look at how this is done:</p><div class="informalexample"><pre class="programlisting">// This executor function rejects the promise after
+// a timeout of one second. It uses the rejector function
+// to change the state, and to provide the rejected
+// callbacks with a value.
+function executor(resolve, reject) {
+    setTimeout(() =&gt; {
+        reject('Failed');
+    }, 1000);
+}
+
+// The function used as a rejected callback function. It
+// expects a reason for the rejection to be provided.
+function rejected(reason) {
+    console.error(reason);
+}
+
+// Creates the promise, and runs the executor. Uses the
+// "catch()" method to assing the rejector callback function.
+var promise = new Promise(executor);
+promise.catch(rejected);</pre></div><p>This code looks very familiar to the resolution code that we looked at in the preceding section. We set a timeout, and instead of resolving the function, we rejected it. This is done using the <code class="literal">rejector</code> function and is passed into the executor as the second argument.</p><p>We use the <code class="literal">catch()</code> method instead of the <code class="literal">then()</code> method to setup our rejection callback function. We'll look at how the <code class="literal">then()</code> method can be used to handle both fulfillment and rejection callbacks later on in the chapter. The rejection callback in this example simply logs the reason for the failure as an error. It's always important to provide this value. When we resolve promises, a value is common, although not strictly necessary. With rejections, on the other hand, there isn't a viable case for not providing the reason for the rejection even if the callback is only logging the error.</p><p>Let's look at another example, one that catches exceptions in the executor, and provides the rejected<a id="id108" class="indexterm"/> callbacks with a more meaningful interpretation of the failure:</p><div class="informalexample"><pre class="programlisting">// This promise executor throws an error, and the rejected
+// callback function is called as a result.
+new Promise(() =&gt; {
+    throw new Error('Problem executing promise');
+}).catch((reason) =&gt; {
+    console.error(reason);
+});
+
+// This promise executor catches an error, and rejects
+// the promise with a more useful message.
+new Promise((resolve, reject) =&gt; {
+    try {
+        var size = this.name.length;
+    } catch(error) {
+        reject(error instanceof TypeError ?
+            'Missing "name" property' : error);
+    }
+}).catch((reason) =&gt; {
+    console.error(reason);
+});</pre></div><p>What's interesting about the first promise in the previous example is that it does change state, even though we're not explicitly changing the state of the promise using <code class="literal">resolve()</code> or <code class="literal">reject()</code>. However, it's important for the promise to eventually change state; we'll <a id="id109" class="indexterm"/>explore this topic in the next section.</p></div><div class="section" title="Empty promises"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec36"/>Empty promises</h2></div></div></div><p>Despite the fact that the <code class="literal">executor</code> function passes a <code class="literal">resolver</code> function and a <code class="literal">rejector</code> function, there's<a id="id110" class="indexterm"/> never any guarantee that the promise will change state. In this scenario, the promise simply hangs, and neither the resolved callback nor the rejected callback is triggered. This may not seem like a problem, and in fact, with simple promises, it's easy to diagnose and fix these unresponsive promises. However, as we get into more elaborate scenarios later in the chapter, a promise can be resolved as a result of several other promises resolving. If one of these promises doesn't resolve or reject, then the whole flow falls apart. This scenario is very time-consuming to debug; the following diagram is a visualization of the problem:</p><div class="mediaobject"><img src="graphics/B05133_03_02.jpg" alt="Empty promises"/></div><p>Visually, we can see which promise causes the dependent promise to hang, but sifting through the code to figure this out isn't ideal. Let's now look at an <code class="literal">executor</code> function that causes a promise to hang:</p><div class="informalexample"><pre class="programlisting">// This promise is able to run the executor
+// function without issue. The "then()" callback
+// is never executed.
+new Promise(() =&gt; {
+    console.log('executing promise');
+}).then(() =&gt; {
+    console.log('never called');
+});
+
+// At this point, we have no idea what's
+// wrong with the promise.
+console.log('finished executing, promise hangs');</pre></div><p>But what if there was a safer way to deal with this uncertainty? An <code class="literal">executor</code> function with the potential to hang indefinitely without resolving or rejecting is hardly something we want in our code. Let's look at implementing an executor wrapper function that acts as a safety net by rejecting promises that take too long to resolve. This would take the mystery out of<a id="id111" class="indexterm"/> diagnosing complex promise scenarios:</p><div class="informalexample"><pre class="programlisting">// A wrapper for promise executor functions, that
+// throws an error after the given timeout.
+function executorWrapper(func, timeout) {
+
+    // This is the function that's actually called by the
+    // promise. It takes the resolver and rejector functions
+    // as arguments.
+    return function executor(resolve, reject) {
+        // Setup our timer. When time runs out, we can
+        // reject the promise with a timeout message.
+        var timer = setTimeout(() =&gt; {
+            reject(`Promise timed out after ${timeout}MS`);
+        }, timeout);
+
+        // Call the original executor function that we're
+        // wrapping. We're actually wrapping the resolver
+        // and rejector functions as well, so that when the
+        // executor calls them, the timer is cleared.
+        func((value) =&gt; {
+            clearTimeout(timer);
+            resolve(value);
+        }, (value) =&gt; {
+            clearTimeout(timer);
+            reject(value);
+        });
+    };
+}
+
+// This promise executor times out, and a timeout
+// error message is passed to the rejected callback.
+new Promise(executorWrapper((resolve, reject) =&gt; {
+    setTimeout(() =&gt; {
+        resolve('done');
+    }, 2000);
+}, 1000)).catch((reason) =&gt; {
+    console.error(reason);
+});
+
+// This promise resolves as expected, since the executor
+// calls "resolve()" before time's up.
+new Promise(executorWrapper((resolve, reject) =&gt; {
+    setTimeout(() =&gt; {
+        resolve(true);
+    }, 500);
+}, 1000)).then((value) =&gt; {
+    console.log('resolved', value);
+});</pre></div></div></div>
+<div class="section" title="Reacting to promises"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec21"/>Reacting to promises</h1></div></div></div><p>Now that we have a better <a id="id112" class="indexterm"/>understanding of the mechanics of executing promises, this section will take a closer look at using promises to solve particular problems. Typically, this means reacting with some purpose in mind when the promise is fulfilled or rejected.</p><p>We'll start off by looking at the job queues inside the JavaScript interpreter, and what these mean for our resolution callback functions. We'll then look at making use of the promised data, dealing with errors, creating better abstractions for reacting to promises, and thenables. Let's get going.</p><div class="section" title="Resolution job queues"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec37"/>Resolution job queues</h2></div></div></div><p>The concept of the JavaScript job<a id="id113" class="indexterm"/> queue was introduced in <a class="link" href="ch02.html" title="Chapter 2. The JavaScript Execution Model">Chapter 2</a>, <span class="emphasis"><em>The JavaScript Execution Model</em></span>. Its main responsibility is to initiate new execution context stacks. This is the main job queue. However, there's another queue, which is dedicated to the callbacks executed by promises. This means that the algorithm responsible for selecting the next job to run can select from either of the queues if they're both populated.</p><p>Promises have concurrency semantics built into them, and with good reason. If a promise is used to ensure that a value is eventually resolved, it makes sense to give high priority to the code that reacts to it. Otherwise, when the value arrives, the code that processes it might have to wait in a longer line behind other jobs. Let's write some code that demonstrates these<a id="id114" class="indexterm"/> concurrency semantics:</p><div class="informalexample"><pre class="programlisting">// Creates 5 promises that log when they're
+// executing, and when they're reacting to a
+// resolved value.
+for (let i = 0; i &lt; 5; i++) {
+    new Promise((resolve) =&gt; {
+        console.log('executing promise');
+        resolve(i);
+    }).then((value) =&gt; {
+        console.log('resolved', i);
+    });
+}
+
+// This is called before any of the fulfilled
+// callbacks, because this call stack job needs
+// to complete before the interpreter reaches into
+// the promise resolution callback queue, where
+// the 5 "then()" callbacks are currently sitting.
+console.log('done executing');
+
+// →
+// executing promise
+// executing promise
+// ...
+// done executing
+// resolved 1
+// resolved 2
+// ...</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note05"/>Note</h3><p>The same semantics are followed with rejected callbacks too.</p></div></div></div><div class="section" title="Using promised data"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec38"/>Using promised data</h2></div></div></div><p>So far, we've seen <a id="id115" class="indexterm"/>a few examples in this chapter where a resolver function resolves a promise with a value. The value that's passed to this function is the value that's ultimately passed to the fulfilled callback function. The idea is for the executor to set up any asynchronous action, such as <code class="literal">setTimeout()</code>, which would later call the resolver with the value. But in these examples, the caller isn't actually waiting on any values; we merely use <code class="literal">setTImeout()</code> as an example asynchronous action. Let's look at a case where we don't actually have a value, and an asynchronous network request needs to go get it:</p><div class="informalexample"><pre class="programlisting">// A generic function used to fetch resources
+// from the server, returns a promise.
+function get(path) {
+    return new Promise((resolve, reject) =&gt; {
+        var request = new XMLHttpRequest();
+
+        // The promise is resolved with the parsed
+        // JSON data when the data is loaded.
+        request.addEventListener('load', (e) =&gt; {
+            resolve(JSON.parse(e.target.responseText));
+        });
+
+        // When there's an error with the request, the
+        // promise is rejected with the appropriate reason.
+        request.addEventListener('error', (e) =&gt; {
+            reject(e.target.statusText || 'unknown error');
+        });
+
+        // If the request is aborted, we simply resolve the
+        // request.
+        request.addEventListener('abort', resolve);
+
+        request.open('get', path);
+        request.send();
+    });
+}
+
+// We can attach our "then()" handler directly
+// to "get()" since it returns a promise. The
+// value used here was a true asynchronous operation
+// that had to go fetch a remote value, and parse it,
+// before resolving it here.
+get('api.json').then((value) =&gt; {
+    console.log('hello', value.hello);
+});</pre></div><p>With functions like <code class="literal">get()</code>, not only do they consistently return a synchronization primitive like a <a id="id116" class="indexterm"/>promise, but they also encapsulate some nasty asynchronous details. Dealing with <code class="literal">XMLHttpRequest</code> objects all over the place in our code isn't pleasant. We've also simplified various modes with which the response may come back. Instead of always having to create handlers for the <code class="literal">load</code>, <code class="literal">error</code>, and <code class="literal">abort</code> events, we only have one interface to worry about—the promise. This is what the synchronize concurrency principle is all about.</p></div><div class="section" title="Error callbacks"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec39"/>Error callbacks</h2></div></div></div><p>There are two ways to react to<a id="id117" class="indexterm"/> rejected promises. Put differently, supplying error callbacks. The first approach is to use the <code class="literal">catch()</code> method, which takes a single callback function. The alternative is to pass in the rejected callback function as the second argument to <code class="literal">then()</code>.</p><p>The <code class="literal">then()</code> approach that is used to supply rejected callback functions is superior in a couple of scenarios, and it should probably be used instead of <code class="literal">catch()</code>. The first scenario is writing our code so that promises and thenable objects are interchangeable. The <code class="literal">catch()</code> method isn't necessarily part of a thenable. The second scenario is when we build callback chains, which we will explore later on in this chapter.</p><p>Let's look at some code that compares the two approaches for providing rejected callback functions to promises:</p><div class="informalexample"><pre class="programlisting">// This promise executor will randomly resolve
+// or reject the promise.
+function executor(resolve, reject) {
+    cnt++;
+    Math.round(Math.random()) ?
+        resolve(`fulfilled promise ${cnt}`) :
+        reject(`rejected promise ${cnt}`);
+}
+
+// Make "log()" and "error()" functions for easy
+// callback functions.
+var log = console.log.bind(console),
+    error = console.error.bind(console),
+    cnt = 0;
+
+// Creates a promise, then assigns the error
+// callback via the "catch()" method.
+new Promise(executor).then(log).catch(error);
+
+// Creates a promise, then assigns the error
+// callback via the "then()" method.
+new Promise(executor).then(log, error);</pre></div><p>We can see here that<a id="id118" class="indexterm"/> both approaches are actually very similar. There's no real advantage to one over the other in terms of code aesthetics. However, there's an advantage to the <code class="literal">then()</code> approach when it comes to using thenables, which we'll see shortly. But, since we're not actually using the promise instance in any way, other than to add the callbacks, there's really no need to worry about <code class="literal">catch()</code> versus <code class="literal">then()</code> for registering error callbacks.</p></div><div class="section" title="Always reacting"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec40"/>Always reacting</h2></div></div></div><p>Promises always end up<a id="id119" class="indexterm"/> in either a fulfilled state or a rejected state. We generally have distinct callback functions for each of these states. However, there's a strong possibility that we'll want to perform some of the same actions for both states. For example, if a component that uses a promise changes state while the promise is pending, we'll want to make sure that the state is cleaned up once the promise is resolved or rejected.</p><p>We could write our code in such a way that the callbacks for fulfilled and rejected states each perform these actions themselves, or that they can each call some common function that does the cleanup. Here's a visualization of the problem:</p><div class="mediaobject"><img src="graphics/B05133_03_03.jpg" alt="Always reacting"/></div><p>Wouldn't it make more<a id="id120" class="indexterm"/> sense to assign the cleanup responsibility to the promise, instead of assigning it to the individual outcomes? This way, the callback function that runs when the promise is resolved is focused on what it needs to do with the value, and the rejection callback is focused on dealing with the error. Let's see if we can write some code that extends promises with an <code class="literal">always()</code> method:</p><div class="informalexample"><pre class="programlisting">// Extends the promise prototype with an "always()"
+// method. The given function will always be called,
+// whether the promise is fulfilled or rejected.
+Promise.prototype.always = function(func) {
+    return this.then(func, func);
+};
+
+// Creates a promise that's randomly resolved or
+// rejected.
+var promise = new Promise((resolve, reject) =&gt; {
+    Math.round(Math.random()) ?
+        resolve('fulfilled') : reject('rejected');
+});
+
+// Give the promise fulfillment and rejection callbacks.
+promise.then((value) =&gt; {
+    console.log(value);
+}, (reason) =&gt; {
+    console.error(reason);
+});
+
+// This callback is always called after the one of
+// the callbacks above.
+promise.always((value) =&gt; {
+    console.log('cleaning up...');
+});</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note06"/>Note</h3><p>Note that the order is<a id="id121" class="indexterm"/> important here. If we called <code class="literal">always()</code> before <code class="literal">then()</code>, then the function would still always run, but it would run before the callbacks provided to <code class="literal">then()</code>. We could actually call <code class="literal">always()</code> before and after <code class="literal">then()</code> to always run code before the fulfilled or rejected callbacks, and after.</p></div></div></div><div class="section" title="Resolving other promises"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec41"/>Resolving other promises</h2></div></div></div><p>Most of the promises that we've<a id="id122" class="indexterm"/> seen so far in this chapter have either been resolved directly by the executor function or as the result of calling the resolver from an asynchronous action, when the value was ready to resolve. Passing the resolver function around like this is actually quite flexible. For example, the executor doesn't even have to perform any work except for storing the resolver function somewhere for it to be called later on to resolve the promise.</p><p>This can be especially useful when we find ourselves in more complex synchronization scenarios that require multiple values, which have been promised to callers. If we have the resolver function, we can resolve the promise. Let's take a look at code that stores the <code class="literal">resolver</code> function of several promises so that each promise can be resolved later on:</p><div class="informalexample"><pre class="programlisting">// Keeps a list of resolver functions.
+var resolvers = [];
+
+// Creates 5 new promises, and in each executor
+// function, the resolver is pushed onto the
+// "resolvers" array. We also give each promise
+// a fulfillment callback.
+for (let i = 0; i &lt; 5; i++) {
+    new Promise((resolve) =&gt; {
+        resolvers.push(resolve);
+    }).then((value) =&gt; {
+        console.log(`resolved ${i + 1}`, value);
+    });
+}
+
+// Sets a timeout that runs the function after 2
+// seconds. When it runs, we iterate over every
+// resolver function in the "resolvers" array,
+// and we call it with a value.
+setTimeout(() =&gt; {
+    for (let resolver of resolvers) {
+        resolver(true);
+    }
+}, 2000);</pre></div><p>As this example makes<a id="id123" class="indexterm"/> clear, we don't have to resolve anything within the <code class="literal">executor</code> function itself. In fact, we don't even need to explicitly reference promise instances after they've been created and set up with executors and fulfillment functions. The resolver function has been stored somewhere, and it holds a reference to the promise.</p></div><div class="section" title="Promise–like objects"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec42"/>Promise–like objects</h2></div></div></div><p>The Promise class is a primitive JavaScript type. However, we don't always need to create new promise instances to implement the same behavior for synchronizing actions. There's a static <code class="literal">Promise.resolve()</code> method that<a id="id124" class="indexterm"/> we can use to resolve such objects. Let's see how this method is used:</p><div class="informalexample"><pre class="programlisting">// The "Promise.resolve()" method can resolve thenable
+// objects. This is an object with a "then()" method
+// which serves as the executor. This executor will
+// randomly resolve or reject the promise.
+Promise.resolve({ then: (resolve, reject) =&gt; {
+    Math.round(Math.random()) ?
+        resolve('fulfilled') : reject('rejected');
+
+// This method returns a promise, so we're able
+// to setup our fulfilled and rejected callbacks as
+// usual.
+}}).then((value) =&gt; {
+    console.log('resolved', value);
+}, (reason) =&gt; {
+    console.error('reason', reason);
+});</pre></div><p>We'll <a id="id125" class="indexterm"/>revisit the <code class="literal">Promise.resolve()</code> method in the final section of the chapter to take a look at more use cases.</p></div></div>
+<div class="section" title="Building callback chains"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec22"/>Building callback chains</h1></div></div></div><p>Each promise method that we <a id="id126" class="indexterm"/>examined so far in this chapter returns promises. This allows us to call these methods again on the return value, resulting in a chain of <code class="literal">then().then()</code> calls, and so forth. One challenging aspect of chaining promise calls together is that the instances returned by promise methods are new instances. That is, there's a degree of immutability to the promises that we'll explore in this section.</p><p>As our application gets larger, the concurrency challenges grow with it. This means that we need to think of better ways to leverage synchronization primitives, such as promises. Just as any other primitive value in JavaScript, we can pass them around from function to function. We have to treat promises in the same way—passing them around, and building upon the chain of callback functions.</p><div class="section" title="Promises only change state once"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec43"/>Promises only change state once</h2></div></div></div><p>Promises are born into a <a id="id127" class="indexterm"/>pending state, and they die in either a resolved or rejected state. Once a promise has transitioned into one of these states, they're stuck in this state. This has two interesting side-effects.</p><p>First, multiple attempts to resolve or reject a promise are ignored. In other words, resolvers and rejectors are idempotent—only the first call has any effect on the promise. Let's see how this looks code-wise:</p><div class="informalexample"><pre class="programlisting">// This executor function attempts to resolve the
+// promise twice, but the fulfilled callback is
+// only called once.
+new Promise((resolve, reject) =&gt; {
+    resolve('fulfilled');
+    resolve('fulfilled');
+}).then((value) =&gt; {
+    console.log('then', value);
+});
+
+// This executor function attempts to reject the
+// promise twice, but the rejected callback is
+// only called once.
+new Promise((resolve, reject) =&gt; {
+    reject('rejected');
+    reject('rejected');
+}).catch((reason) =&gt; {
+    console.error('reason');
+});</pre></div><p>The other implication of<a id="id128" class="indexterm"/> promises changing state only once is that the promise could actually resolve before a fulfillment or rejection callback is added. Race conditions, such as this one, are the harsh reality of concurrent programming. Typically, the callback function is added to the promise at the time of creation. Since JavaScript is run-to-completion, the job queue that processes promise resolution callbacks isn't serviced until the callback is added. But, what if the promise resolves immediately in the executor? What if the callback is added to the promise in another JavaScript execution context? Let's see if we can better illustrate these ideas with some code:</p><div class="informalexample"><pre class="programlisting">// This executor function resolves the promise immediately.
+// By the time the "then()" callback is added, the promise
+// is already resolved. But the callback is still called
+// with the resolved value.
+new Promise((resolve, reject) =&gt; {
+    resolve('done');
+    console.log('executor', 'resolved');
+}).then((value) =&gt; {
+    console.log('then', value);
+});
+
+// Creates a new promise that's resolved immediately by
+// the executor function.
+var promise = new Promise((resolve, reject) =&gt; {
+    resolve('done');
+    console.log('executor', 'resolved');
+});
+
+// This callback is run immediately, since the promise
+// has already been resolved.
+promise.then((value) =&gt; {
+    console.log('then 1', value);
+});
+
+// This callback isn't added to the promise for another
+// second after it's been resolved. It's still called
+// right away with the resolved value.
+setTimeout(() =&gt; {
+    promise.then((value) =&gt; {
+        console.log('then 2', value);
+    });
+}, 1000);</pre></div><p>This code illustrates a very important property of promises. It doesn't matter when our fulfillment callbacks are added to the promise, whether it's in a pending state, or a fulfilled state, the code that uses the promise doesn't change. On the face of it, this may not seem like a big deal. But this type of race condition checking would require more concurrency code<a id="id129" class="indexterm"/> for us to maintain ourselves. Instead, the Promise primitive handles this for us, and we can start treating asynchronous values as primitive types.</p></div><div class="section" title="Immutable promises"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec44"/>Immutable promises</h2></div></div></div><p>Promises aren't truly <a id="id130" class="indexterm"/>immutable. They change state, and the <code class="literal">then()</code> method adds callback functions to the promise. However, there are some immutable traits of promises that are worth discussing here, as they impact our promise code in certain situations.</p><p>Technically speaking, the <code class="literal">then()</code> method doesn't actually mutate the promise object. It creates what's called a promise capability, which is an internal JavaScript record that references the promise, and the functions that we add. So, it's not a real reference in the JavaScript sense of the term.</p><p>Here's a visualization that <a id="id131" class="indexterm"/>illustrates what happens when we chain two or more <code class="literal">then()</code> calls together:</p><div class="mediaobject"><img src="graphics/B05133_03_04.jpg" alt="Immutable promises"/></div><p>As we can see, the <code class="literal">then()</code> method does not return the same instance it was called with as the context. Instead, <code class="literal">then()</code> creates<a id="id132" class="indexterm"/> a new promise instance and returns that. Let's take a look at some code to examine more closely what happens when we chain together promises using <code class="literal">then()</code>:</p><div class="informalexample"><pre class="programlisting">// Creates a promise that's resolved immediately, and
+// is stored in "promise1".
+var promise1 = new Promise((resolve, reject) =&gt; {
+    resolve('fulfilled');
+});
+
+// Use the "then()" method of "promise1" to create a
+// new promise instance, which is stored in "promise2".
+var promise2 = promise1.then((value) =&gt; {
+    console.log('then 1', value);
+    // → then 1 fulfilled
+});
+
+// Create a "then()" callback for "promise2". This actually
+// creates a third promise instance, but we don't do anything
+// with it.
+promise2.then((value) =&gt; {
+    console.log('then 2', value);
+    // → then 2 undefined
+});
+
+// Make sure that "promise1" and "promise2" are in fact
+// different objects.
+console.log('equal', promise1 === promise2);
+// → equal false</pre></div><p>We can clearly see that the two<a id="id133" class="indexterm"/> promise instances created in this example are separate promise objects. Something else that's worth pointing out is that the second promise is bound to the first one—it resolves when the first promise resolves. However, we can see that the value isn't passed to the second promise. We'll address this problem in the following section.</p></div><div class="section" title="Many then callbacks, many promises"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec45"/>Many then callbacks, many promises</h2></div></div></div><p>As we saw in the preceding section, promises created with <code class="literal">then()</code> are bound to their creator. That is, when the first promise is resolved, the promise that's bound it it also resolves, and so on. However, we noticed a slight problem as well. The resolved value doesn't make it past the first callback function. The reason for this is that each callback that's run in response to a promise resolution, is that the return value of the first callback is fed into the second callback, and so on. The reason our first callback gets the value as an argument is because this happens transparently within the promise mechanism.</p><p>Let's take a look at another <a id="id134" class="indexterm"/>promise chain example. This time, we'll explicitly return the values from our callback functions:</p><div class="informalexample"><pre class="programlisting">// Creates a new promise that's randomly resolved or
+// rejected.
+new Promise((resolve, reject) =&gt; {
+    Math.round(Math.random()) ?
+        resolve('fulfilled') : reject('rejected');
+}).then((value) =&gt; {
+    // Called when the original promise is resolved,
+    // returns the value in case there's another
+    // promise chained to this one.
+    console.log('then 1', value);
+    return value;
+}).catch((reason) =&gt; {
+    // Chained to the second promise, called
+    // when it's rejected.
+    console.error('catch 1', reason);
+}).then((value) =&gt; {
+    // Chained to the third promise, gets the
+    // value as expected, and returns it for any
+    // downstream promise callbacks to consume.
+    console.log('then 2', value);
+    return value;
+}).catch((reason) =&gt; {
+    // This is never called - rejections do not
+    // proliferate through promise chains.
+    console.error('catch 2', reason)
+});</pre></div><p>This looks promising. Now we can see that the resolved value makes its way through the promise chain. There's a <a id="id135" class="indexterm"/>catch—the rejection isn't cumulative. Instead, only the first promise in the chain is actually rejected. The remaining promises are simply resolved, not rejected. This means that the last <code class="literal">catch()</code> callback will never run.</p><p>When we chain together promises in this fashion, our fulfillment callback functions need to be able to handle error conditions. For example, the value that's resolved could have an error property, which could be checked for specifics.</p></div><div class="section" title="Passing promises around"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec46"/>Passing promises around</h2></div></div></div><p>In this section, we'll<a id="id136" class="indexterm"/> extend the idea of treating promises as primitive values. Something we often do with primitive values is pass them to functions as arguments, and return them from functions. The key difference between a promise and other primitives is how we use them. Other values exist now, whereas promised values will exist eventually. Therefore, we need to define some course of action via a callback function to take place when the value does arrive.</p><p>What's nice about promises is that the interface used to supply these callback functions is small and consistent. We don't need to invent synchronization mechanisms on the fly when we can couple the value<a id="id137" class="indexterm"/> with the code that will act upon it. These units can move around our application just like any other value, and the concurrency semantics are unobtrusive. Here's an example of what several functions that pass promises around look like:</p><div class="mediaobject"><img src="graphics/B05133_03_05.jpg" alt="Passing promises around"/></div><p>By the end of this function<a id="id138" class="indexterm"/> call stack, we have a promise object that's reflective of several promises resolving. The whole resolution chain is kicked off by the first promise resolving. What's more important than the mechanics of how the value traverses the chain of promises is the idea that all of these functions are free to use this promised value without affecting other functions.</p><p>There are two concurrency principles at play here. First, we will conserve by performing an asynchronous action to get the value only once; each of the callback functions are free to use this resolved value. Second, we're doing a good job of abstracting our synchronization mechanisms. In other words, the code doesn't feel like it's burdened with boilerplate concurrency code. Let's see what code that passes promises around actually looks like:</p><div class="informalexample"><pre class="programlisting">// Simple utilty to compose a larger function, out
+// of smaller functions.
+function compose(...funcs) {
+    return function(value) {
+        var result = value;
+
+        for (let func of funcs) {
+            result = func(value);
+        }
+
+        return result;
+    };
+}
+
+// Accepts a promise or a resolved value. If it's a promise,
+// it adds a "then()" callback and returns a new promise.
+// Otherwise, it performs the "update" and returns the
+// value.
+function updateFirstName(value) {
+    if (value instanceof Promise) {
+        return value.then(updateFirstName);
+    }
+
+    console.log('first name', value.first);
+    return value;
+}
+
+// Works the same way as the above function, except it
+// performs a different UI "update".
+function updateLastName(value) {
+    if (value instanceof Promise) {
+        return value.then(updateLastName);
+    }
+
+    console.log('last name', value.last);
+    return value;
+}
+
+// Works the same way as the above function, except it
+// performs a different UI "update".
+function updateAge(value) {
+    if (value instanceof Promise) {
+        return value.then(updateAge);
+    }
+
+    console.log('age', value.age);
+    return value;
+}
+
+// A promise object that's resolved with a data object
+// after one second.
+var promise = new Promise((resolve, reject) =&gt; {
+    setTimeout(() =&gt; {
+        resolve({
+            first: 'John',
+            last: 'Smith',
+            age: 37
+        });
+    }, 1000);
+});
+
+// We compose an "update()" function that updates the
+// various UI components.
+var update = compose(
+    updateFirstName,
+    updateLastName,
+    updateAge
+);
+
+// Call our update function with a promise.
+update(promise);</pre></div><p>The key functions here <a id="id139" class="indexterm"/>are our update functions—<code class="literal">updateFirstName()</code>, <code class="literal">updateLastName()</code>, and <code class="literal">updateAge()</code>. They're very flexible and accept a promise or value resolved by a promise. If any of these functions get a promise as an argument, they return a new promise by adding a <code class="literal">then()</code> callback function. Note that it's adding the same function. <code class="literal">updateFirstName()</code> will add <code class="literal">updateFirstName()</code> as the callback. When the callback fires, it'll be with the plain object that's used to update the UI this time. So the promise check fails, and we can proceed to update the UI.</p><p>The promise checking takes all of three lines per function, which is not not exactly obtrusive. The end result is the flexible code that's easy to read. Ordering doesn't matter; we could have composed our <code class="literal">update()</code> function in a different order, and the UI components would all be<a id="id140" class="indexterm"/> updated in the same way. We can pass the plain object directly to <code class="literal">update()</code> and everything will work the same. Concurrent code that doesn't look like concurrent code is our big win here.</p></div></div>
+<div class="section" title="Synchronizing several promises"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec23"/>Synchronizing several promises</h1></div></div></div><p>Until this point in the chapter, we've<a id="id141" class="indexterm"/> looked at single promise instances that resolve a value, trigger callbacks, and possibly cause other promises to resolve. In this section, we'll look at a couple of static Promise methods that help us in scenarios where we need to synchronize the resolution of several promise values.</p><p>First, we'll address the common case where a component that we develop requires synchronous access to several asynchronous resources. Then, we'll look at the less common scenario where asynchronous actions become irrelevant before they're resolved due to events that have taken place in the UI.</p><div class="section" title="Waiting on promises"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec47"/>Waiting on promises</h2></div></div></div><p>In the case where we <a id="id142" class="indexterm"/>are waiting for several promises to resolve, perhaps to transform multiple data sources into something consumable by a UI component, we can use the <code class="literal">Promise.all()</code> method. It takes a collection of promise instances as input, and returns a new promise instance. This new instance is resolved only when all of the input promises are resolved.</p><p>The <code class="literal">then()</code> callback that we provide to the new promise, created by <code class="literal">Promise.then(),</code> is given an array of resolved values as input. These values correspond to the input promises in terms of index position. This is a very powerful synchronization mechanism, one that helps us fulfill the synchronize concurrency principle because it hides all the bookkeeping. </p><p>Instead of several callbacks that each need to coordinate the state of the promises that they're bound to, we have one callback, which has all the resolved <a id="id143" class="indexterm"/>data that we need. Here's an example that shows how to synchronize multiple promises:</p><div class="informalexample"><pre class="programlisting">// Utility to send a "GET" HTTP request, and return
+// a promise that's resolved with the parsed response.
+function get(path) {
+    return new Promise((resolve, reject) =&gt; {
+        var request = new XMLHttpRequest();
+
+        // The promise is resolved with the parsed
+        // JSON data when the data is loaded.
+        request.addEventListener('load', (e) =&gt; {
+            resolve(JSON.parse(e.target.responseText));
+        });
+
+        // When there's an error with the request, the
+        // promise is rejected with the appropriate reason.
+        request.addEventListener('error', (e) =&gt; {
+            reject(e.target.statusText || 'unknown error');
+        });
+
+        // If the request is aborted, we simply resolve the
+        // request.
+        request.addEventListener('abort', resolve);
+
+        request.open('get', path);
+        request.send();
+    });
+}
+
+// For our request promises.
+var requests = [];
+
+// Issues 5 API requests, and places the 5 corresponding
+// promises in the "requests" array.
+for (let i = 0; i &lt; 5; i++) {
+    requests.push(get('api.json'));
+}
+
+// Using "Promise.all()" let's us pass in an array of
+// promises, returning a new promise that's resolved
+// when all promises resolve. Our callback gets an array
+// of resolved values that correspond to the promises.
+Promise.all(requests).then((values) =&gt; {
+    console.log('first', values.map(x =&gt; x[0]));
+    console.log('second', values.map(x =&gt; x[1]));
+});</pre></div></div><div class="section" title="Cancelling promises"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec48"/>Cancelling promises</h2></div></div></div><p>The XHR requests that we've<a id="id144" class="indexterm"/> seen so far in this book have handlers for aborted requests. This is because we can manually abort the request and prevent any <code class="literal">load</code> callbacks from running. A typical scenario that requires this functionality is for the user to click a cancel button, or navigate to a different part of the application, rendering the request redundant.</p><p>If we were to move up a level on the abstraction ladder to promises, the same principle applies. Something could happen while the concurrent action is executing that renders the promise pointless. The difference between promises and XHR requests, of course, is that the former has no <code class="literal">abort()</code> method. The last thing we want to do is start introducing unnecessary cancellation logic in our promise callbacks.</p><p>This is where the <code class="literal">Promise.race()</code> method can help us. As the name suggests, the method returns a new promise that's resolved by the first of the input promises to resolve. This may not sound like much, but implementing the logic of <code class="literal">Promise.race()</code> isn't easy. It's the synchronize principle in action, hiding concurrency complexities from the application code. Let's take a look at how this method can help us deal with cancelled promises due to user interactions:</p><div class="informalexample"><pre class="programlisting">// The resolver function used to cancel data requests.
+var cancelResolver;
+
+// A simple "constant" value, used to resolved cancel
+// promises.
+var CANCELLED = {};
+
+// Our UI components.
+var buttonLoad = document.querySelector('button.load'),
+    buttonCancel = document.querySelector('button.cancel');
+
+// Requests data, returns a promise.
+function getDataPromise() {
+
+    // Creates the cancel promise. The executor assigns
+    // the "resolve" function to "cancelResolver", so
+    // it can be called later.
+    var cancelPromise = new Promise((resolve) =&gt; {
+        cancelResolver = resolve;
+    });
+
+    // The actual data we want. This would normally be
+    // an HTTP request, but we're simulating one here
+    // for brevity using setTimeout().
+    var dataPromise = new Promise((resolve) =&gt; {
+        setTimeout(() =&gt; {
+            resolve({ hello: 'world' });
+        }, 3000);
+    });
+
+    // The "Promise.race()" method returns a new promise,
+    // and it's resolved with whichever input promise is
+    // resolved first.
+    return Promise.race([
+        cancelPromise,
+        dataPromise
+    ]);
+}
+
+// When the cancel button is clicked, we use the
+// "cancelResolver()" function to resolve the
+// cancel promise.
+buttonCancel.addEventListener('click', () =&gt; {
+    cancelResolver(CANCELLED);
+});
+
+// When the load button is clicked, we make a request
+// for data using "getDataPromise()".
+buttonLoad.addEventListener('click', () =&gt; {
+    buttonLoad.disabled = true;
+
+    getDataPromise().then((value) =&gt; {
+        buttonLoad.disabled = false;
+
+        // The promise was resolved, but it was because
+        // the user cancelled the request. So we exit
+        // here by returning the CANCELLED "constant".
+        // Otherwise, we have data to work with.
+        if (Object.is(value, CANCELLED)) {
+            return value;
+        }
+
+        console.log('loaded data', value);
+    });
+});</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note07"/>Note</h3><p>As an exercise, try to imagine a more complex scenario where <code class="literal">dataPromise</code> is a promise created by <code class="literal">Promise.all()</code>. Our <code class="literal">cancelResolver()</code> function would be able<a id="id145" class="indexterm"/> to seamlessly cancel many complex asynchronous actions at once.</p></div></div></div></div>
+<div class="section" title="Promises without executors"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec24"/>Promises without executors</h1></div></div></div><p>In this final section, we'll look at the <code class="literal">Promise.resolve()</code> and <code class="literal">Promise.reject()</code> methods. We've already <a id="id146" class="indexterm"/>seen how <code class="literal">Promise.resolve()</code> can resolve thenable objects earlier in the chapter. It can also directly resolve values or other promises. These methods come in handy when we implement a function that has the potential to be both synchronous and asynchronous. This isn't a situation we want to find ourselves in using a function with ambiguous concurrency semantics.</p><p>For example, here's a function that's both, synchronous and asynchronous, leading to confusion, and almost certainly to bugs later on:</p><div class="informalexample"><pre class="programlisting">// Example function that returns "value" from
+// a cache, or "fetchs" it asynchronously.
+function getData(value) {
+
+    // If it exists in the cache, we return
+    // this value.
+    var index = getData.cache.indexOf(value);
+
+    if (index &gt; -1) {
+        return getData.cache[index];
+    }
+
+    // Otherwise, we have to go "fetch" it. This
+    // "resolve()" call would typically be found in
+    // a network request callback function.
+    return new Promise((resolve) =&gt; {
+        getData.cache.push(value);
+        resolve(value);
+    });
+}
+
+// Creates the cache.
+getData.cache = [];
+
+console.log('getting foo', getData('foo'));
+// → getting foo Promise 
+console.log('getting bar', getData('bar'));
+// → getting bar Promise
+console.log('getting foo', getData('foo'));
+// → getting foo foo</pre></div><p>We can see that the last call <a id="id147" class="indexterm"/>returns a cached value, instead of a promise. This makes intuitive sense because we're not promising an eventual value, we already have it! The problem is that we're exposing an inconsistency to any code that uses our <code class="literal">getData()</code> function. That is, the code that calls <code class="literal">getData()</code> needs to handle concurrency semantics. This code is not concurrent. Let's change this by introducing <code class="literal">Promise.resolve()</code>:</p><div class="informalexample"><pre class="programlisting">// Example function that returns "value" from
+// a cache, or "fetchs" it asynchronously.
+function getData(value) {
+    var cache = getData.cache;
+
+    // If there's no cache for this function, let's
+    // reject the promise. Gotta have cache.
+    if (!Array.isArray(cache)) {
+        return Promise.reject('missing cache');
+    }
+
+    // If it exists in the cache, we return
+    // a promise that's resolved using the
+    // cached value.
+    var index = getData.cache.indexOf(value);
+
+    if (index &gt; -1) {
+        return Promise.resolve(getData.cache[index]);
+    }
+
+    // Otherwise, we have to go "fetch" it. This
+    // "resolve()" call would typically be found in
+    // a network request callback function.
+    return new Promise((resolve) =&gt; {
+        getData.cache.push(value);
+        resolve(value);
+    });
+}
+
+// Creates the cache.
+getData.cache = [];
+
+// Each call to "getData()" is consistent. Even
+// when synchronous values are used, they still
+// get resolved as promises.
+getData('foo').then((value) =&gt; {
+    console.log('getting foo', `"${value}"`);
+}, (reason) =&gt; {
+    console.error(reason);
+});
+
+getData('bar').then((value) =&gt; {
+    console.log('getting bar', `"${value}"`);
+}, (reason) =&gt; {
+    console.error(reason);
+});
+
+getData('foo').then((value) =&gt; {
+    console.log('getting foo', `"${value}"`);
+}, (reason) =&gt; {
+    console.error(reason);
+});</pre></div><p>This is better. Using <code class="literal">Promise.resolve()</code> and <code class="literal">Promise.reject()</code>, any code that uses <code class="literal">getData()</code> will get<a id="id148" class="indexterm"/> concurrency by default, even when the data fetching action is synchronous.</p></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec25"/>Summary</h1></div></div></div><p>This chapter covered a lot of details about the <code class="literal">Promise</code> object introduced in ES6 to help JavaScript programmers deal with synchronization issues that have plagued the language for years. With asynchronicity comes callbacks—lots of callbacks. This creates a callback hell that we want to avoid at all costs.</p><p>Promises help us deal with synchronization issues by implementing a simple interface that's generic enough to resolve any value. Promises are always in one of three states—pending, fulfilled, or rejected, and they only change their state once. When these state changes happen, callbacks are triggered. Promises have an executor function, whose job is to set up the asynchronous actions that use a promise <code class="literal">resolver</code> or <code class="literal">rejector</code> function to change the state of the promise.</p><p>Much of the value that promises bring to the table is about how they help us simplify complex scenarios. Because, if we only had to deal with a single asynchronous action that runs a callback with a resolved value, promises would hardly be worthwhile. This is not a common case. The common case is several asynchronous actions that each resolve values; and these values need to be synchronized and transformed. Promises have methods that allow us to do this, and as a result, we're able to better apply the synchronization concurrency principle to our code.</p><p>In the next chapter, we'll look at another newly-introduced language primitive—the generator. Similar to promises, generators are mechanisms that help us apply a concurrency principle—conserve.</p></div></body></html>

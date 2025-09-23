@@ -1,0 +1,2326 @@
+- en: Multiuser Authentication the Microservice Way
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 多用户身份验证的微服务方式
+- en: Now that our Notes application can save its data in a database, we can think
+    about the next phase of making this a real application, namely authenticating
+    our users.
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在既然我们的笔记应用可以将其数据保存在数据库中，我们可以考虑将此应用真正化的下一阶段，即验证我们的用户。
+- en: It's so natural to log in to a website to use its services. We do it every day,
+    and we even trust banking and investment organizations to secure our financial
+    information through login procedures on a website. HTTP is a stateless protocol,
+    and a web application cannot tell much about one HTTP request versus another.
+    Because HTTP is stateless, HTTP requests do not natively know whether the user
+    driving the web browser is logged in, the user's identity, or even whether the
+    HTTP request was initiated by a human being.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 登录网站以使用其服务是如此自然。我们每天都在做这件事，甚至信任银行和投资机构通过网站上的登录程序来保护我们的财务信息。HTTP是一个无状态协议，Web应用无法区分一个HTTP请求与另一个HTTP请求之间的差异。因为HTTP是无状态的，HTTP请求本身并不知道驱动Web浏览器的用户是否已登录，用户的身份，甚至HTTP请求是否由人类发起。
+- en: The typical method for user authentication is to send a cookie to the browser
+    containing a token to carry user identity. The cookie needs to contain data identifying
+    the browser and whether that browser is logged in. The cookie will then be sent
+    with every request, letting the application track which user account is associated
+    with the browser.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 用户身份验证的典型方法是向浏览器发送一个包含用于携带用户身份的令牌的cookie。cookie需要包含标识浏览器和该浏览器是否已登录的数据。然后，cookie将与每个请求一起发送，让应用跟踪与浏览器关联的用户账户。
+- en: With Express, the best way to do this is with the `express-session` middleware.
+    It stores data as a cookie and looks for that data on every browser request. It
+    is easy to configure, but is not a complete solution for user authentication.
+    There are several add-on modules that handle user authentication, and some even
+    support authenticating users against third-party websites, such as Facebook or
+    Twitter.
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用Express，最佳做法是使用`express-session`中间件。它将数据存储为cookie，并在每个浏览器请求中查找该数据。它易于配置，但不是用户身份验证的完整解决方案。有几个附加模块处理用户身份验证，其中一些甚至支持对第三方网站（如Facebook或Twitter）进行用户身份验证。
+- en: One package appears to be leading the pack in user authentication – Passport
+    ([http://passportjs.org/](http://passportjs.org/)). It supports a long list of
+    services against which to authenticate, making it easy to develop a website that
+    lets users sign up with credentials from another website, for example, Twitter.
+    Another, express-authentication ([https://www.npmjs.com/package/express-authentication](https://www.npmjs.com/package/express-authentication)),
+    bills itself as the opinionated alternative to Passport.
+  id: totrans-5
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个包似乎在用户身份验证方面处于领先地位——Passport ([http://passportjs.org/](http://passportjs.org/))。它支持一系列服务，可以用来进行身份验证，这使得开发允许用户使用来自另一个网站（例如Twitter）的凭证注册的网站变得容易。另一个是express-authentication
+    ([https://www.npmjs.com/package/express-authentication](https://www.npmjs.com/package/express-authentication))，它将自己定位为Passport的有见地的替代方案。
+- en: We will use Passport to authenticate users against both a locally stored user
+    credentials database and using OAuth2 to authenticate against a Twitter account.
+    We'll also take this as an opportunity to explore REST-based microservice implementation
+    with Node.js.
+  id: totrans-6
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用Passport来验证用户，既包括本地存储的用户凭证数据库，也包括使用OAuth2验证Twitter账户。我们还将借此机会探索基于Node.js的REST微服务实现。
+- en: 'In this chapter, we''ll discuss the following three aspects of this phase:'
+  id: totrans-7
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将讨论这一阶段以下三个方面：
+- en: Creating a microservice to store user profile/authentication data.
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 创建一个微服务来存储用户配置文件/身份验证数据。
+- en: User authentication with a locally stored password.
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用本地存储的密码进行用户身份验证。
+- en: Using OAuth2 to support authentication via third-party services. Specifically,
+    we'll use Twitter as a third-party authentication service.
+  id: totrans-10
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用OAuth2支持通过第三方服务进行身份验证。具体来说，我们将使用Twitter作为第三方身份验证服务。
+- en: Let's get started!
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们开始吧！
+- en: The first thing to do is duplicate the code used for the previous chapter. For
+    example, if you kept that code in `chap07/notes`, create a new directory, `chap08/notes`.
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先要做的是复制前一章使用的代码。例如，如果你将那段代码保存在`chap07/notes`中，创建一个新的目录，`chap08/notes`。
+- en: Creating a user information microservice
+  id: totrans-13
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 创建用户信息微服务
+- en: We could implement user authentication and accounts by simply adding a user
+    model, and a few routes and views to the existing *Notes* application. While it
+    would be accomplishable, is this what we would do in a real-world production application?
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以通过简单地添加用户模型、一些路由和视图到现有的*Notes*应用程序来实现用户身份验证和账户管理。虽然这是可行的，但在现实世界的生产应用程序中我们会这样做吗？
+- en: Consider the high value of user identity information, and the super-strong need
+    for robust and reliable user authentication. Website intrusions happen regularly,
+    and it seems the item most frequently stolen is user identities.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 考虑到用户身份信息的高价值，以及对于强大且可靠的用户身份验证的超级强烈需求。网站入侵事件经常发生，似乎最常被盗取的是用户身份。
+- en: Can you design and build a user authentication system with the required level
+    of security?  One that is probably safe against all kinds of intruders?
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您能否设计和构建一个具有所需安全级别的用户身份验证系统？一个可能对所有类型的入侵者都安全的系统？
+- en: As with so many other software development problems, it's best to use a pre-existing
+    authentication library, preferably one with a long track record, where significant
+    bugs have been fixed already.
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就像许多其他软件开发问题一样，最好使用现有的身份验证库，最好是那些有着长期记录、重大漏洞已经得到修复的库。
+- en: Another issue is architectural choices to promote security. Bugs will occur
+    and the talented miscreants will break in. Walling off the user information database
+    is an excellent idea to limit the risk.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个问题是如何在架构选择上促进安全性。漏洞总会出现，而那些有才能的恶意分子会趁机入侵。将用户信息数据库隔离起来是一个很好的想法，以限制风险。
+- en: Keeping a user information database enables you to authenticate your users,
+    present user profiles, help users connect with each other, and so forth. Those
+    are useful services to offer to website users, but how can you limit the risk
+    that data will fall into the wrong hands?
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 维护一个用户信息数据库可以使您验证您的用户，展示用户资料，帮助用户相互连接等等。这些都是提供给网站用户的有用服务，但您如何限制数据落入错误之手的风险？
+- en: In this chapter, we'll develop a user authentication microservice. The plan
+    is to eventually segregate that service into a well-protected barricaded area.
+    This mimics an architectural choice made by some sites, to strictly control API
+    and even physical access to the user information database, implementing as many
+    technological barriers as possible against unapproved access.
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将开发一个用户身份验证微服务。计划是最终将该服务隔离到一个受到良好保护的封闭区域。这模仿了一些网站所做的架构选择，即严格控制API甚至对用户信息数据库的物理访问，尽可能实施技术障碍以防止未经授权的访问。
+- en: Microservices are, of course, not a panacea, meaning we shouldn't try to force-fit
+    every application into the microservice box. By analogy, microservices are like
+    the Unix philosophy of small tools each doing one thing well, which we mix/match/combine
+    into larger tools. Another word for this is composability. While we can build
+    a lot of useful software tools with that philosophy, does it work for applications
+    such as Photoshop or LibreOffice?  While composing a system out of single-purpose
+    tools is highly flexible, one loses the advantages gained by tight integration
+    of components.
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 微服务当然不是万能的，这意味着我们不应该试图将每个应用程序都强行塞入微服务的框架中。通过类比，微服务就像Unix哲学中的小型工具，每个工具都擅长做一件事，我们将它们混合、匹配、组合成更大的工具。这个词的另一个说法是可组合性。虽然我们可以用这种哲学构建许多有用的软件工具，但这适用于像Photoshop或LibreOffice这样的应用程序吗？虽然从单一用途的工具中构建系统非常灵活，但会失去组件紧密集成所带来的优势。
+- en: The first question is whether to use a REST-service oriented framework, code
+    the REST application on bare Node.js, or what? You could implement REST services
+    on the built-in `http` module. The advantage of using an application framework
+    is the framework authors will have already baked-in a lot of best practices and
+    bug fixing and security measures. Express, for example, is widely used, very popular,
+    and can easily be used for REST services. There are other frameworks more aligned
+    with developing REST services, and we'll use one of them – Restify ([http://restify.com/](http://restify.com/)).
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第一个问题是要不要使用面向REST服务的框架，在裸Node.js上编写REST应用程序，还是什么？您可以在内置的`http`模块上实现REST服务。使用应用程序框架的优势是框架作者已经内置了许多最佳实践、错误修复和安全措施。例如，Express被广泛使用，非常受欢迎，可以轻松用于REST服务。还有其他更符合开发REST服务的框架，我们将使用其中之一——Restify
+    ([http://restify.com/](http://restify.com/))。
+- en: 'The user authentication server will require two modules:'
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 用户身份验证服务器将需要两个模块：
+- en: Using Restify, implementing the REST interface
+  id: totrans-24
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用Restify，实现REST接口
+- en: A data model using Sequelize to store user data objects in an SQL database
+  id: totrans-25
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用 Sequelize 在 SQL 数据库中存储用户数据对象的模型
+- en: To test the service, we'll write a couple of simple scripts for administering
+    user information in the database. We won't be implementing an administrative user
+    interface in the *Notes* application, and will rely on the scripts to administer
+    the users. As a side effect, we'll have a tool to run a couple of simple tests
+    against the user service.
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了测试服务，我们将编写几个简单的脚本，用于在数据库中管理用户信息。我们不会在 *Notes* 应用程序中实现一个管理用户界面，并将依赖于这些脚本来管理用户。作为副作用，我们将有一个工具来对用户服务运行几个简单的测试。
+- en: After this service is functioning correctly, we'll set about modifying the Notes
+    application to access user information from the service, while using Passport
+    to handle authentication.
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在此服务正常运行后，我们将着手修改笔记应用程序，以便从服务中访问用户信息，同时使用 Passport 来处理身份验证。
+- en: The first step is creating a new directory to hold the User Information microservice.
+    This should be a sibling directory to the Notes application. If you created a
+    directory named `chap08/notes` to hold the Notes application, then create a directory
+    named `chap08/users` to hold the microservice.
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第一步是创建一个新的目录来存放用户信息微服务。这应该是笔记应用程序的兄弟目录。如果你创建了一个名为 `chap08/notes` 的目录来存放笔记应用程序，那么创建一个名为
+    `chap08/users` 的目录来存放微服务。
+- en: 'Then run the following commands:'
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后运行以下命令：
+- en: '[PRE0]'
+  id: totrans-30
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: This gets us ready to start coding. We'll use the `debug` module for logging
+    messages, `js-yaml` to read the Sequelize configuration file, `restify` for its
+    REST framework, and `sequelize/mysql/sqlite3` for database access.
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这使我们准备好开始编码。我们将使用 `debug` 模块来记录消息，使用 `js-yaml` 来读取 Sequelize 配置文件，使用 `restify`
+    来提供其 REST 框架，以及使用 `sequelize/mysql/sqlite3` 来进行数据库访问。
+- en: User information model
+  id: totrans-32
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 用户信息模型
+- en: 'We''ll be storing the user information using a Sequelize-based model in an
+    SQL database. As we go through this, ponder a question: should we integrate the
+    database code directly into the REST API implementation? Doing so would reduce
+    the user information microservice to one module, with database queries mingled
+    with REST handlers. By separating the REST service from the data storage model,
+    we have the freedom to adopt other data storage systems besides Sequelize/SQL.
+    Further, the data storage model could conceivably be used in ways other than the
+    REST service.'
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用基于 Sequelize 的模型在 SQL 数据库中存储用户信息。在这个过程中，思考一个问题：我们应该直接将数据库代码集成到 REST API
+    实现中吗？这样做会将用户信息微服务简化为一个模块，其中数据库查询与 REST 处理器混合。通过将 REST 服务与数据存储模型分离，我们有自由选择除了 Sequelize/SQL
+    之外的其他数据存储系统。此外，数据存储模型可能以其他方式被使用，而不仅仅是 REST 服务。
+- en: 'Create a new file named `users-sequelize.mjs` in `users`, containing the following:'
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 `users` 目录中创建一个名为 `users-sequelize.mjs` 的新文件，包含以下内容：
+- en: '[PRE1]'
+  id: totrans-35
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: As with our Sequelize-based model for Notes, we use a YAML file to store connection
+    configuration. We're even using the same environment variable, `SEQUELIZE_CONNECT`.
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与我们基于 Sequelize 的笔记模型一样，我们使用 YAML 文件来存储连接配置。我们甚至使用了相同的环境变量，`SEQUELIZE_CONNECT`。
+- en: What is the best storage service for user authentication data? By using Sequelize, we
+    have our pick of SQL databases to choose from. While NoSQL databases are all the
+    rage, is there any advantage to using one to store user authentication data? 
+    Nope. An SQL server will do the job just fine, and Sequelize allows us the freedom
+    of choice.
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最好的用户身份验证数据存储服务是什么？通过使用 Sequelize，我们可以从 SQL 数据库中选择。虽然 NoSQL 数据库很流行，但使用一个来存储用户身份验证数据有什么优势？没有。一个
+    SQL 服务器就能很好地完成这项工作，而 Sequelize 允许我们有选择的自由。
+- en: It's tempting to simplify the overall system by using the same database instance to
+    store notes and user information, and to use Sequelize for both. But we've chosen
+    to simulate a secured server for user data. That calls for the data to be in separate
+    database instances, preferably on separate servers. A highly secure application
+    deployment might put the user information service on completely separate servers,
+    perhaps in a physically isolated data center, with carefully configured firewalls,
+    and there might even be armed guards at the door.
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用相同的数据库实例来存储笔记和用户信息，并使用 Sequelize 来处理两者，这样做可能会简化整个系统。但我们选择模拟一个用于用户数据的受保护服务器。这意味着数据应该存储在独立的数据库实例中，最好是不同的服务器上。一个高度安全的应用程序部署可能会将用户信息服务放在完全独立的服务器上，可能是在一个物理上隔离的数据中心，配备精心配置的防火墙，甚至可能在大门处有武装警卫。
+- en: 'The user profile schema shown here is derived from the normalized profile provided
+    by Passport; refer to [http://www.passportjs.org/docs/profile](http://www.passportjs.org/docs/profile)
+    for more information. Passport will harmonize information given by third-party
+    services into a single object definition. To simplify our code, we''re simply
+    using the schema defined by Passport:'
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里显示的用户配置文件模式是从 Passport 提供的规范化配置文件中派生出来的；有关更多信息，请参阅 [http://www.passportjs.org/docs/profile](http://www.passportjs.org/docs/profile)。Passport
+    将第三方服务提供的信息统一到一个对象定义中。为了简化我们的代码，我们只是使用 Passport 定义的架构：
+- en: '[PRE2]'
+  id: totrans-40
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'Our `create` and `update` functions take user information and either add a
+    new record or update an existing record:'
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的 `create` 和 `update` 函数接受用户信息，要么添加新记录，要么更新现有记录：
+- en: '[PRE3]'
+  id: totrans-42
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: This lets us look up a user information record, and we return a sanitized version
+    of that data.
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这使我们能够查找用户信息记录，并返回该数据的清理版本。
+- en: Remember that Sequelize returns a `Promise` object. Because this is executed
+    inside an `async` function, the `await` keyword will resolve the Promise, causing any error
+    to be thrown or results to be provided as the return value. In turn, async functions
+    return a `Promise` to the caller.
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 记住 Sequelize 返回一个 `Promise` 对象。因为这是在 `async` 函数内部执行的，所以 `await` 关键字将解析 Promise，导致任何错误被抛出或结果作为返回值提供。反过来，异步函数返回一个
+    `Promise` 给调用者。
+- en: 'Because we''re segregating the user data from the rest of the Notes application,
+    we want to return a sanitized object rather than the actual `SQUser` object. What
+    if there was some information leakage because we simply sent the `SQUser` object
+    back to the caller? The `sanitizedUser` function, shown later, creates an anonymous
+    object with exactly the fields we want exposed to the other modules:'
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于我们将用户数据从 Notes 应用程序的其他部分分离出来，我们希望返回一个清理过的对象，而不是实际的 `SQUser` 对象。如果我们只是将 `SQUser`
+    对象发送回调用者，可能会发生信息泄露。稍后展示的 `sanitizedUser` 函数创建了一个匿名对象，其中包含我们希望暴露给其他模块的确切字段：
+- en: '[PRE4]'
+  id: totrans-46
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'This lets us support deleting user information. We do this as we did for the
+    Notes Sequelize model, by first finding the user object and then calling its `destroy`
+    method:'
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这使我们能够支持删除用户信息。我们像处理 Notes Sequelize 模型一样执行此操作，首先找到用户对象，然后调用其 `destroy` 方法：
+- en: '[PRE5]'
+  id: totrans-48
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'This lets us support the checking of user passwords. The three conditions to
+    handle are as follows:'
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这使我们能够支持用户密码的检查。要处理的三种条件如下：
+- en: Whether there's no such user
+  id: totrans-50
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 是否没有这样的用户
+- en: Whether the passwords matched
+  id: totrans-51
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 是否密码匹配
+- en: Whether they did not match
+  id: totrans-52
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 是否它们不匹配
+- en: 'The object we return lets the caller distinguish between those cases. The `check`
+    field indicates whether to allow this user to be logged in. If `check` is false,
+    there''s some reason to deny their request to log in, and the `message` is what
+    should be displayed to the user:'
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们返回的对象让调用者能够区分这些情况。`check` 字段指示是否允许此用户登录。如果 `check` 为假，则存在某些原因拒绝他们的登录请求，并且
+    `message` 是应该显示给用户的信息：
+- en: '[PRE6]'
+  id: totrans-54
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'This combines two actions in one function: first, to verify whether the named
+    user exists and, if not, to create that user. Primarily, this will be used while
+    authenticating against third-party services:'
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将两个操作合并到一个函数中：首先，验证指定的用户是否存在，如果不存在，则创建该用户。主要用途是在对第三方服务进行身份验证时：
+- en: '[PRE7]'
+  id: totrans-56
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'List the existing users. The first step is using `findAll` to give us the list
+    of the users as an array of `SQUser` objects. Then we sanitize that list so we
+    don''t expose any data that we don''t want exposed:'
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 列出现有用户。第一步是使用 `findAll` 获取用户列表，作为 `SQUser` 对象的数组。然后我们清理这个列表，以便我们不暴露任何我们不希望暴露的数据：
+- en: '[PRE8]'
+  id: totrans-58
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: This is our utility function to ensure we expose a carefully controlled set
+    of information to the caller. With this service, we're emulating a secured user
+    information service that's walled off from other applications. As we said earlier,
+    this function returns an anonymous sanitized object where we know exactly what's
+    in the object.
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是我们的实用函数，以确保我们向调用者暴露一组精心控制的信息。通过这个服务，我们模拟了一个受保护的用户信息服务，该服务与其他应用程序隔离开来。正如我们之前所说的，这个函数返回一个匿名清理过的对象，其中我们确切知道对象中有什么。
+- en: It's very important to decode the JSON string we put into the database. Remember
+    that we stored the `emails` and `photos` data using `JSON.stringify` in the database.
+    Using `JSON.parse`, we decode those values, just like adding hot water to instant
+    coffee produces a drinkable beverage.
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 解码我们放入数据库的 JSON 字符串非常重要。记住我们使用 `JSON.stringify` 在数据库中存储了 `emails` 和 `photos`
+    数据。使用 `JSON.parse` 解码这些值，就像向速溶咖啡中加入热水会产生可饮用的饮料一样。
+- en: A REST server for user information
+  id: totrans-61
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 用户信息的 REST 服务器
+- en: We are building our way towards integrating user information and authentication
+    into the Notes application. The next step is to wrap the user data model we just
+    created into a REST server. After that, we'll create a couple of scripts so that
+    we can add some users, perform other administrative tasks, and generally verify
+    that the service works. Finally, we'll extend the Notes application with login
+    and logout support.
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们正在逐步将用户信息和认证集成到Notes应用中。下一步是将我们刚刚创建的用户数据模型包装成一个REST服务器。之后，我们将创建一些脚本，以便我们可以添加一些用户，执行其他管理任务，并通常验证该服务是否正常工作。最后，我们将扩展Notes应用以支持登录和注销。
+- en: 'In the `package.json` file, change the `main` tag to the following line of
+    code:'
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在`package.json`文件中，将`main`标签更改为以下代码行：
+- en: '[PRE9]'
+  id: totrans-64
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'Then create a file named `user-server.mjs`, containing the following code:'
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后创建一个名为`user-server.mjs`的文件，包含以下代码：
+- en: '[PRE10]'
+  id: totrans-66
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: The `createServer` method can take a long list of configuration options. These
+    two may be useful for identifying information.
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`createServer`方法可以接受一个很长的配置选项列表。这两个选项可能对识别信息很有用。'
+- en: As with Express applications, the `server.use` calls initialize what Express
+    would call middleware functions, but which Restify calls handler functions. These
+    are callback functions whose API is `function (req, res, next)`. As with Express,
+    these are the request and response objects, and `next` is a function which, when
+    called, carries execution to the next handler function.
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与Express应用一样，`server.use`调用初始化Express会调用的中间件函数，但Restify调用的是处理函数。这些是API为`function
+    (req, res, next)`的回调函数。与Express一样，这些是请求和响应对象，而`next`是一个函数，当它被调用时，会将执行权传递给下一个处理函数。
+- en: Unlike Express, every handler function must call the `next` function. In order
+    to tell Restify to stop processing through handlers, the `next` function must
+    be called as `next(false)`. Calling `next` with an `error` object also causes
+    the execution to end, and the error is sent back to the requestor.
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与Express不同，每个处理函数都必须调用`next`函数。为了告诉Restify停止通过处理函数处理，必须以`next(false)`的形式调用`next`函数。使用`error`对象调用`next`也会导致执行结束，并将错误发送回请求者。
+- en: 'The handler functions listed here do two things: authorize requests and handle
+    parsing parameters from both the URL and the `post` request body. The `authorizationParser`
+    function looks for HTTP basic auth headers. The `check` function is shown later
+    and emulates the idea of an API token to control access.'
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 列出的处理函数执行两项任务：授权请求和处理从URL和`post`请求体中解析参数。`authorizationParser`函数查找HTTP基本认证头。`check`函数稍后展示，并模拟API令牌的概念来控制访问。
+- en: Refer to [http://restify.com/docs/plugins-api/](http://restify.com/docs/plugins-api/) for
+    more information on the built-in handlers available in Restify.
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 更多关于Restify内置处理函数的信息，请参阅[http://restify.com/docs/plugins-api/](http://restify.com/docs/plugins-api/)。
+- en: 'Add this to `user-server.mjs`:'
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将以下内容添加到`user-server.mjs`：
+- en: '[PRE11]'
+  id: totrans-73
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: As for Express, the `server.VERB` functions let us define the handlers for specific
+    HTTP actions. This route handles a POST on `/create-user`, and, as the name implies,
+    this will create a user by calling the `usersModel.create` function.
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于Express，`server.VERB`函数让我们可以定义特定HTTP动作的处理程序。此路由处理对`/create-user`的POST请求，正如其名，这将通过调用`usersModel.create`函数创建用户。
+- en: As a `POST` request, the parameters arrive in the body of the request rather
+    than as URL parameters. Because of the `mapParams` flag on the `bodyParams` handler, the
+    arguments passed in the HTTP body are added to `req.params`.
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 作为`POST`请求，参数出现在请求体中，而不是作为URL参数。由于`bodyParams`处理器的`mapParams`标志，HTTP体中传递的参数被添加到`req.params`中。
+- en: 'We simply call `usersModel.create` with the parameters sent to us. When completed,
+    the `result` object should be a `user` object, which we send back to the requestor
+    using `res.send`:'
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们只需用发送给我们的参数调用`usersModel.create`。完成后，`result`对象应该是一个`user`对象，我们通过`res.send`将其发送回请求者：
+- en: '[PRE12]'
+  id: totrans-77
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: The `/update-user` route is handled in a similar way. However, we have put the
+    `username` parameter on the URL. Like Express, Restify lets you put named parameters
+    in the URL like as follows. Such named parameters are also added to `req.params`.
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`/update-user`路由以类似的方式处理。然而，我们将`username`参数放在了URL上。像Express一样，Restify允许你将命名参数放入URL，如下所示。这样的命名参数也会添加到`req.params`中。'
+- en: 'We simply call `usersModel.update` with the parameters sent to us. That, too,
+    returns an object we send back to the caller with `res.send`:'
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们只需用发送给我们的参数调用`usersModel.update`。这同样会返回一个对象，我们通过`res.send`将其发送回调用者：
+- en: '[PRE13]'
+  id: totrans-80
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: This handles our `findOrCreate` operation. We simply delegate this to the model
+    code, as done previously.
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这处理了我们的 `findOrCreate` 操作。我们只是将此委托给模型代码，就像之前所做的那样。
+- en: 'As the name implies, we''ll look to see whether the named user already exists
+    and, if so, simply return that user, otherwise it will be created:'
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如其名所示，我们将检查指定的用户是否已经存在，如果存在，则直接返回该用户，否则将创建新用户：
+- en: '[PRE14]'
+  id: totrans-83
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: Here, we support looking up the user object for the provided `username`.
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们支持根据提供的 `username` 查找用户对象。
+- en: 'If the user was not found, then we return a 404 status code because it indicates
+    a resource that does not exist. Otherwise, we send the object that was retrieved:'
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果未找到用户，则返回 404 状态码，因为这表示不存在资源。否则，我们发送检索到的对象：
+- en: '[PRE15]'
+  id: totrans-86
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'This is how we delete a user from the Notes application. The `DEL` HTTP verb
+    is meant to be used to delete things on a server, making it the natural choice
+    for this functionality:'
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是我们在笔记应用中删除用户的方法。`DEL` HTTP 动词旨在用于在服务器上删除事物，因此对于此功能来说是一个自然的选择：
+- en: '[PRE16]'
+  id: totrans-88
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'This is another aspect of keeping the password solely within this server. The
+    password check is performed by this server, rather than in the Notes application.
+    We simply call the `usersModel.userPasswordCheck` function shown earlier and send
+    back the object it returns:'
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是将密码仅保留在本服务器上的另一个方面。密码检查由这个服务器执行，而不是在笔记应用中执行。我们只是调用前面显示的 `usersModel.userPasswordCheck`
+    函数，并发送它返回的对象：
+- en: '[PRE17]'
+  id: totrans-90
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'Then, finally, if required, we send a list of Notes application users back
+    to the requestor. In case no list of users is available, we at least send an empty
+    array:'
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，最后，如果需要，我们将 Notes 应用程序用户的列表发送回请求者。如果没有用户列表可用，我们至少发送一个空数组：
+- en: '[PRE18]'
+  id: totrans-92
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: As with the Notes application, we listen to the port named in the `PORT` environment
+    variable. By explicitly listening only on `localhost`, we'll limit the scope of
+    systems that can access the user authentication server. In a real deployment,
+    we might have this server behind a firewall with a tight list of host systems
+    allowed to have access.
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与笔记应用一样，我们监听名为 `PORT` 环境变量的端口。通过明确只监听 `localhost`，我们将限制可以访问用户认证服务器的系统范围。在实际部署中，我们可能将此服务器放在防火墙后面，并有一个严格的允许访问的主机系统列表。
+- en: This last function, `check`, implements authentication for the REST API itself.
+    This is the handler function we added earlier.
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后这个函数 `check` 实现了 REST API 本身的认证。这是我们之前添加的处理程序函数。
+- en: It requires the caller to provide credentials on the HTTP request using the
+    basic auth headers. The `authorizationParser` handler looks for this and gives
+    it to us on the `req.authorization.basic` object. The `check` function simply
+    verifies that the named user and password combination exists in the local array.
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这要求调用者在 HTTP 请求中使用基本认证头提供凭证。`authorizationParser` 处理程序寻找这些凭证，并在 `req.authorization.basic`
+    对象上将其提供给我们。`check` 函数只是简单地验证指定的用户和密码组合是否存在于本地数组中。
+- en: This is meant to mimic assigning an API key to an application. There are several
+    ways of doing so; this is just one.
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是为了模仿将 API 密钥分配给应用程序。有几种方法可以做到这一点；这只是其中一种。
+- en: This approach is not limited to just authenticating using HTTP basic auth. The
+    Restify API lets us look at any header in the HTTP request, meaning we could implement
+    any kind of security mechanism we like. The `check` function could implement some
+    other security method, with the right code.
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种方法不仅限于使用 HTTP 基本认证进行认证。Restify API 允许我们查看 HTTP 请求中的任何头信息，这意味着我们可以实现我们喜欢的任何类型的网络安全机制。`check`
+    函数可以实现其他安全方法，只要代码正确。
+- en: Because we added `check` with the initial set of `server.use` handlers, it is
+    called on every request. Therefore, every request to this server must provide
+    the HTTP basic auth credentials required by this check.
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于我们最初添加了 `check` 到 `server.use` 处理程序集合中，因此它在每个请求上都会被调用。因此，每个请求到这个服务器都必须提供 `check`
+    所需的 HTTP 基本认证凭证。
+- en: 'This strategy is good if you want to control access to every single function
+    in your API. For the user authentication service, that''s probably a good idea.
+    Some REST services in the world have certain API functions that are open to the
+    world and others protected by an API token. To implement that, the `check` function
+    should not be configured among the `server.use` handlers. Instead, it should be
+    added to the appropriate route handlers as follows:'
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你想控制 API 中每个功能的访问，这种策略是好的。对于用户认证服务来说，这可能是个好主意。世界上的一些 REST 服务将某些 API 功能对全世界开放，而其他则通过
+    API 令牌保护。为了实现这一点，`check` 函数不应配置在 `server.use` 处理程序中。相反，它应该添加到适当的路由处理程序中，如下所示：
+- en: '[PRE19]'
+  id: totrans-100
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: Such an `authHandler` would be coded similarly to our `check` function. A failure
+    to authenticate is indicated by sending an error code and using `next(false)`
+    to end the routing function chain.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这样的`authHandler`将类似于我们的`check`函数编写。认证失败通过发送错误代码并使用`next(false)`来结束路由函数链来表示。
+- en: We now have the complete code for the user authentication server. It defines
+    several request URLs, and for each, the corresponding function in the user model
+    is called.
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经有了用户认证服务器的完整代码。它定义了几个请求URL，并且对于每个URL，都会调用用户模型中的相应函数。
+- en: 'Now we need a YAML file to hold the database credentials, so create `sequelize-sqlite.yaml`,
+    containing the following code:'
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们需要一个YAML文件来保存数据库凭据，因此创建`sequelize-sqlite.yaml`，包含以下代码：
+- en: '[PRE20]'
+  id: totrans-104
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: Since this is Sequelize, it's easy to switch to other database engines simply
+    by supplying a different configuration file. Remember that the filename of this
+    configuration file must appear in the `SEQUELIZE_CONNECT` environment variable.
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于这是Sequelize，只需提供不同的配置文件就可以轻松切换到其他数据库引擎。记住，此配置文件的文件名必须出现在`SEQUELIZE_CONNECT`环境变量中。
+- en: 'Finally, `package.json` should look as follows:'
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，`package.json`应该看起来如下：
+- en: '[PRE21]'
+  id: totrans-107
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: We configure this server to listen on port `3333` using the database credentials
+    we just gave and with debugging output for the server code.
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将这个服务器配置为使用我们刚刚提供的数据库凭据监听端口`3333`，并且为服务器代码提供调试输出。
+- en: 'You can now start the user authentication server:'
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你现在可以启动用户认证服务器了：
+- en: '[PRE22]'
+  id: totrans-110
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: But we don't have any way to interact with this server, yet.
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但我们目前还没有任何与这个服务器交互的方法。
+- en: Scripts to test and administer the user authentication server
+  id: totrans-112
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 测试和管理用户认证服务器的脚本
+- en: To give ourselves assurance that the user authentication server works, let's
+    write a couple of scripts to exercise the API. Because we're not going to take
+    the time to write an administrative backend to the Notes application, these scripts
+    will let us add and delete users who are allowed access to Notes. These scripts
+    will live within the user authentication server package directory.
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了确保用户认证服务器工作正常，让我们编写几个脚本来测试API。因为我们不会花时间编写笔记应用的行政后端，所以这些脚本将允许我们添加和删除允许访问笔记的用户。这些脚本将位于用户认证服务器包目录中。
+- en: The Restify package supports coding REST servers. For the REST clients, we're
+    using a companion library, `restify-clients`, which has been spun out of Restify.
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Restify包支持编写REST服务器。对于REST客户端，我们使用一个配套库，`restify-clients`，它已经从Restify中分离出来。
+- en: 'Create a file named `users-add.js`, containing the following code:'
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 创建一个名为`users-add.js`的文件，包含以下代码：
+- en: '[PRE23]'
+  id: totrans-116
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: This is the basic structure of a Restify client. We create the `Client` object
+    – we have a choice between the `JsonClient`, as used here, the `StringClient`,
+    and the `HttpClient`. The HTTP `basicAuth` credentials are easy to set, as shown
+    here.
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是Restify客户端的基本结构。我们创建`Client`对象——我们在这里有选择`JsonClient`，`StringClient`和`HttpClient`。HTTP
+    `basicAuth`凭据很容易设置，如所示。
+- en: Then we make the request, in this case a `POST` request on `/create-user`. Because
+    it is a `POST` request, the object we specify here is formatted by Restify into
+    `HTTP POST` body parameters. As we saw earlier, the server has the `bodyParser`
+    handler function configured, which converts those body parameters into the `req.param`
+    object.
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后我们发起请求，在这种情况下是一个对`/create-user`的`POST`请求。因为这是一个`POST`请求，所以我们指定的对象被Restify格式化为`HTTP
+    POST`正文参数。如我们之前所见，服务器已经配置了`bodyParser`处理函数，它将这些正文参数转换为`req.param`对象。
+- en: In the Restify client, as for the Restify server, we use the various HTTP methods
+    by calling `client.METHOD`. Because it is a `POST` request, we use `client.post`.
+    When the request finishes, the callback function is invoked.
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在Restify客户端中，就像在Restify服务器中一样，我们通过调用`client.METHOD`使用各种HTTP方法。因为这是一个`POST`请求，所以我们使用`client.post`。当请求完成时，回调函数将被调用。
+- en: 'Before running these scripts, start the authentication server in one window
+    using the following command:'
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在运行这些脚本之前，在一个窗口中使用以下命令启动认证服务器：
+- en: '[PRE24]'
+  id: totrans-121
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: 'Now run the test script using the following command:'
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在运行以下命令来执行测试脚本：
+- en: '[PRE25]'
+  id: totrans-123
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'We can inspect our handiwork using the following command:'
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用以下命令来检查我们的成果：
+- en: '[PRE26]'
+  id: totrans-125
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'Now let''s write a script, `users-find.js`, to look up a given user:'
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在让我们编写一个脚本，`users-find.js`，来查找指定的用户：
+- en: '[PRE27]'
+  id: totrans-127
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: This simply calls the `/find` URL, specifying the `username` that the user supplies
+    as a command-line argument. Note that the `get` operation does not take an object
+    full of parameters. Instead, any parameters would be added to the URL.
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这只是简单地调用`/find` URL，指定用户作为命令行参数提供的`username`。请注意，`get`操作不接收一个包含参数的对象。相反，任何参数都会添加到URL中。
+- en: 'It''s run as follows:'
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 它的运行方式如下：
+- en: '[PRE28]'
+  id: totrans-130
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: Similarly, we can write scripts against the other REST functions. But we need
+    to get on with the real goal of integrating this into the Notes application.
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 同样，我们可以针对其他REST函数编写脚本。但我们需要继续进行真正的目标，即将其集成到Notes应用中。
+- en: Login support for the Notes application
+  id: totrans-132
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Notes应用的登录支持
+- en: Now that we have proved that the user authentication service is working, we
+    can set up the Notes application to support user logins. We'll be using Passport
+    to support login/logout, and the authentication server to store the required data.
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经证明用户身份验证服务是正常工作的，我们可以设置Notes应用以支持用户登录。我们将使用Passport来支持登录/注销，并使用身份验证服务器来存储所需的数据。
+- en: Among the available packages, Passport stands out for simplicity and flexibility.
+    It integrates directly with the Express middleware chain, and the Passport community
+    has developed hundreds of so-called Strategy modules to handle authentication
+    against a long list of third-party services. See [http://www.passportjs.org/](http://www.passportjs.org/)
+    for information and documentation.
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在可用的包中，Passport因其简洁性和灵活性而脱颖而出。它直接集成到Express中间件链中，Passport社区已经开发了数百个所谓的策略模块，用于处理对大量第三方服务的身份验证。有关信息和文档，请参阅[http://www.passportjs.org/](http://www.passportjs.org/)。
+- en: Accessing the user authentication REST API
+  id: totrans-135
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 访问用户身份验证REST API
+- en: The first step is to create a user data model for the Notes application. Rather
+    than retrieving data from data files or a database, it will use REST to query
+    the server we just created. We could have created user model code that directly
+    accesses the database but, for reasons already discussed, we've decided to segregate
+    user authentication into a separate service.
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第一步是为Notes应用创建一个用户数据模型。而不是从数据文件或数据库中检索数据，它将使用REST查询我们刚刚创建的服务器。我们本可以直接创建访问数据库的用户模型代码，但由于已经讨论过的原因，我们决定将用户身份验证分离成一个独立的服务。
+- en: Let us now turn to the Notes application, which you may have stored as `chap08/notes`.
+    We'll be modifying the application, first to access the user authentication REST
+    API, and then to use Passport for authorization and authentication.
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们转向Notes应用，你可能将其存储为`chap08/notes`。我们将修改该应用，首先是为了访问用户身份验证REST API，然后使用Passport进行授权和身份验证。
+- en: For the test/admin scripts that we created earlier, we used the `restify-clients`
+    module. That package is a companion to the `restify` library, where `restify`
+    supports the server side of the REST protocol and `restify-clients` supports the
+    client side. Their names might give away the purpose.
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于我们之前创建的测试/管理脚本，我们使用了`restify-clients`模块。这个包是`restify`库的配套包，其中`restify`支持REST协议的服务器端，而`restify-clients`支持客户端。它们的名字可能已经揭示了它们的目的。
+- en: 'However nice the `restify-clients` library is, it doesn''t support a Promise-oriented
+    API, as is required to play well with `async` functions. Another library, `superagent`,
+    does support a Promise-oriented API, plays well in `async` functions, and there
+    is a companion to that package, Supertest, that''s useful in unit testing. We''ll
+    use Supertest in Chapter 11, *Unit Testing and Functional Testing*, when we talk
+    about unit testing. For documentation, see [https://www.npmjs.com/package/superagent](https://www.npmjs.com/package/superagent):'
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管`restify-clients`库很棒，但它不支持Promise导向的API，这是与`async`函数良好协作所必需的。另一个库`superagent`支持Promise导向的API，在`async`函数中表现良好，并且有一个与该包配套的Supertest，它在单元测试中非常有用。我们将在第11章*单元测试和功能测试*中讨论单元测试时使用Supertest。有关文档，请参阅[https://www.npmjs.com/package/superagent](https://www.npmjs.com/package/superagent)：
+- en: '[PRE29]'
+  id: totrans-140
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'Create a new file, `models/users-superagent.mjs`, containing the following
+    code:'
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 创建一个新文件，`models/users-superagent.mjs`，包含以下代码：
+- en: '[PRE30]'
+  id: totrans-142
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: 'The `reqURL` function replaces the `connectXYZZY` functions that we wrote in
+    earlier modules. With `superagent`, we don''t leave a connection open to the service,
+    but open a new connection on each request. The common thing to do is to formulate
+    the request URL. The user is expected to provide a base URL, such as `http://localhost:3333/`,
+    in the `USER_SERVICE_URL` environment variable. This function modifies that URL,
+    using the new WHATWG URL support in Node.js, to use a given URL path:'
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`reqURL` 函数替换了我们在早期模块中编写的 `connectXYZZY` 函数。使用 `superagent`，我们不会在服务上留下一个打开的连接，而是在每次请求时打开一个新的连接。通常的做法是制定请求
+    URL。用户预计会在 `USER_SERVICE_URL` 环境变量中提供一个基本 URL，例如 `http://localhost:3333/`。此函数会修改该
+    URL，使用 Node.js 中的新 WHATWG URL 支持，以使用给定的 URL 路径：'
+- en: '[PRE31]'
+  id: totrans-144
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: These are our `create` and `update` functions. In each case, they take the data
+    provided, construct an anonymous object, and `POST` it to the server.
+  id: totrans-145
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些是我们的 `create` 和 `update` 函数。在每种情况下，它们都接受提供的数据，构建一个匿名对象，并将其 `POST` 到服务器。
+- en: The `superagent` library uses an API style where one chains together method
+    calls to construct a request. The chain of method calls can end in a `.then` or
+    `.end` clause, either of which take a callback function. But leave off both, and
+    it will return a Promise.
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`superagent` 库使用一种 API 风格，其中通过链式调用方法来构建请求。方法调用的链可以以 `.then` 或 `.end` 子句结束，这两个子句都接受一个回调函数。但省略这两个子句，它将返回一个
+    Promise。'
+- en: All through this library, we'll use the `.auth` clause to set up the required
+    authentication key.
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在整个库中，我们将使用 `.auth` 子句来设置所需的认证密钥。
+- en: 'These anonymous objects are a little different than usual. We''re using a new
+    ES-2015 feature here that we haven''t discussed so far. Rather than specifying
+    the object fields using the `fieldName: fieldValue` notation, ES-2015 gives us
+    the option to shorten this when the variable name used for `fieldValue` matches
+    the desired `fieldName`. In other words, we can just list the variable names,
+    and the field name will automatically match the variable name.'
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '这些匿名对象与通常的有所不同。在这里，我们使用了尚未讨论的新 ES-2015 功能。而不是使用 `fieldName: fieldValue` 语法来指定对象字段，ES-2015
+    给我们提供了当 `fieldValue` 使用的变量名称与所需的 `fieldName` 匹配时缩短此语法的选项。换句话说，我们只需列出变量名称，字段名称将自动与变量名称匹配。'
+- en: 'In this case, we''ve purposely chosen variable names for the parameters to
+    match field names of the object with parameter names used by the server. By doing
+    so, we can use this shortened notation for anonymous objects, and our code is
+    a little cleaner by using consistent variable names from beginning to end:'
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个情况下，我们故意选择了与服务器使用的参数名称匹配的对象字段名称的变量名称。通过这样做，我们可以为匿名对象使用这种简化的表示法，并且由于从头到尾使用一致的变量名称，我们的代码也变得更加简洁：
+- en: '[PRE32]'
+  id: totrans-150
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: 'Our `find` operation lets us look up user information:'
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的 `find` 操作使我们能够查找用户信息：
+- en: '[PRE33]'
+  id: totrans-152
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: We're sending the request to check passwords to the server.
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们正在向服务器发送检查密码的请求。
+- en: 'A point about this method is useful to note. It could have taken the parameters
+    in the URL, instead of the request body as is done here. But since request URL
+    are routinely logged to files, putting the username and password parameters in
+    the URL means user identity information would be logged to files and part of activity
+    reports. That would obviously be a very bad choice. Putting those parameters in
+    the request body not only avoids that bad result, but if an HTTPS connection to
+    the service were used, the transaction would be encrypted:'
+  id: totrans-154
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 关于此方法的要点值得注意。它本可以用 URL 中的参数代替这里使用的请求体作为参数。但由于请求 URL 通常会被记录到文件中，将用户名和密码参数放在 URL
+    中意味着用户身份信息将被记录到文件中，并成为活动报告的一部分。这显然是一个非常糟糕的选择。将这些参数放在请求体中不仅避免了这种不良结果，而且如果使用了到服务的
+    HTTPS 连接，事务将被加密：
+- en: '[PRE34]'
+  id: totrans-155
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: 'The `findOrCreate` function either discovers the user in the database, or creates
+    a new user. The `profile` object will come from Passport, but take careful note
+    of what we do with `profile.id`. The Passport documentation says it will provide
+    the username in the `profile.id` field. But we want to store it as `username`,
+    instead:'
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`findOrCreate` 函数要么在数据库中找到用户，要么创建一个新用户。`profile` 对象将来自 Passport，但请注意我们对 `profile.id`
+    的处理。Passport 文档说明它将在 `profile.id` 字段中提供用户名。但我们的目的是将其存储为 `username`：'
+- en: '[PRE35]'
+  id: totrans-157
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: Finally, we can retrieve a list of users.
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们可以检索用户列表。
+- en: Login and logout routing functions
+  id: totrans-159
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 登录和注销路由函数
+- en: What we've built so far is a user data model, with a REST API wrapping that
+    model to create our authentication information service. Then, within the Notes
+    application, we have a module that requests user data from this server. As of
+    yet, nothing in the Notes application knows that this user model exists. The next
+    step is to create a routing module for login/logout URLs and to change the rest
+    of Notes to use user data.
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们迄今为止构建的是一个用户数据模型，该模型通过 REST API 包装以创建我们的身份验证信息服务。然后，在笔记应用程序中，我们有一个模块从这个服务器请求用户数据。到目前为止，笔记应用程序中的任何内容都不知道这个用户模型的存在。下一步是创建用于登录/注销
+    URL 的路由模块，并将笔记的其余部分更改为使用用户数据。
+- en: 'The routing module is where we use `passport` to handle user authentication.
+    The first task is to install the required modules:'
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 路由模块是我们使用 `passport` 处理用户身份验证的地方。第一个任务是安装所需的模块：
+- en: '[PRE36]'
+  id: totrans-162
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: The `passport` module gives us the authentication algorithms. To support different
+    authentication mechanisms, the passport authors have developed several strategy
+    implementations. The authentication mechanisms, or strategies, correspond to the
+    various third-party services that support authentication, such as using OAuth2
+    to authenticate against services such as Facebook, Twitter, or GitHub.
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`passport` 模块为我们提供了身份验证算法。为了支持不同的身份验证机制，passport 作者开发了几个策略实现。身份验证机制或策略对应于支持身份验证的各种第三方服务，例如使用
+    OAuth2 对 Facebook、Twitter 或 GitHub 等服务进行身份验证。'
+- en: The `LocalStrategy` authenticates solely using data stored local to the application,
+    for example, our user authentication information service.
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`LocalStrategy` 仅使用存储在应用程序本地的数据进行身份验证，例如我们的用户身份验证信息服务。'
+- en: 'Let''s start by creating the routing module, `routes/users.mjs`:'
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们从创建路由模块 `routes/users.mjs` 开始：
+- en: '[PRE37]'
+  id: totrans-166
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: This brings in the modules we need for the `/users` router. This includes the
+    two `passport` modules and the REST-based user authentication model.
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这引入了我们需要的 `/users` 路由器模块。这包括两个 `passport` 模块和基于 REST 的用户身份验证模型。
+- en: 'In `app.mjs`, we will be adding *session* support so our users can log in and
+    log out. That relies on storing a cookie in the browser, and the cookie name is
+    found in this variable exported from `app.mjs`. We''ll be using that cookie in
+    a moment:'
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 `app.mjs` 中，我们将添加 *会话* 支持，以便我们的用户可以登录和注销。这依赖于在浏览器中存储一个 cookie，cookie 名称可以在从
+    `app.mjs` 导出的这个变量中找到。我们将在稍后使用这个 cookie：
+- en: '[PRE38]'
+  id: totrans-169
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: The `initPassport` function will be called from `app.mjs`, and it installs the
+    `Passport` middleware into the Express configuration. We'll discuss the implications
+    of this later when we get to `app.mjs` changes, but `Passport` uses sessions to
+    detect whether this HTTP request is authenticated or not. It looks at every request
+    coming into the application, looks for clues about whether this browser is logged
+    in or not, and attaches data to the request object as `req.user`.
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`initPassport` 函数将从 `app.mjs` 中调用，并将 `Passport` 中间件安装到 Express 配置中。我们将在到达 `app.mjs`
+    变更时讨论这一点的含义，但 `Passport` 使用会话来检测此 HTTP 请求是否经过身份验证。它检查进入应用程序的每个请求，寻找有关此浏览器是否登录的线索，并将数据附加到请求对象作为
+    `req.user`。'
+- en: 'The `ensureAuthenticated` function will be used by other routing modules and
+    is to be inserted into any route definition that requires an authenticated logged-in
+    user. For example, editing or deleting a note requires the user to be logged in,
+    and therefore the corresponding routes in `routes/notes.mjs` must use `ensureAuthenticated`.
+    If the user is not logged in, this function redirects them to `/users/login` so
+    that they can do so:'
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`ensureAuthenticated` 函数将由其他路由模块使用，并应插入到任何需要经过身份验证的已登录用户的路由定义中。例如，编辑或删除笔记需要用户登录，因此
+    `routes/notes.mjs` 中的相应路由必须使用 `ensureAuthenticated`。如果用户未登录，此函数将重定向他们到 `/users/login`，以便他们可以登录：'
+- en: '[PRE39]'
+  id: totrans-172
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: 'Because this router is mounted on `/users`, all these routes will have `/user`
+    prepended. The `/users/login` route simply shows a form requesting a username
+    and password. When this form is submitted, we land in the second route declaration,
+    with a `POST` on `/users/login`. If `passport` deems this a successful login attempt
+    using `LocalStrategy`, then the browser is redirected to the home page. Otherwise,
+    it is redirected to the `/users/login` page:'
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因为这个路由器挂载在 `/users` 上，所以所有这些路由都将添加 `/user` 前缀。`/users/login` 路由简单地显示一个请求用户名和密码的表单。当此表单提交时，我们将进入第二个路由声明，在
+    `/users/login` 上有一个 `POST` 请求。如果 `passport` 认为这是一个使用 `LocalStrategy` 成功的登录尝试，则浏览器将被重定向到主页。否则，它将被重定向到
+    `/users/login` 页面：
+- en: '[PRE40]'
+  id: totrans-174
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: When the user requests to log out of Notes, they are to be sent to `/users/logout`.
+    We'll be adding a button to the header template for this purpose. The `req.logout`
+    function instructs Passport to erase their login credentials, and they are then
+    redirected to the home page.
+  id: totrans-175
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当用户请求从笔记中注销时，他们将被发送到`/users/logout`。我们将为此在页眉模板中添加一个按钮。`req.logout`函数指示护照擦除他们的登录凭证，然后他们将被重定向到主页。
+- en: 'This function deviates from what''s in the Passport documentation. There, we
+    are told to simply call `req.logout`. But calling only that function sometimes
+    results in the user not being logged out. It''s necessary to destroy the session
+    object, and to clear the cookie, in order to ensure that the user is logged out.
+    The cookie name is defined in `app.mjs`, and we imported `sessionCookieName` for
+    this function:'
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此函数与Passport文档中的内容不同。在那里，我们被告知只需调用`req.logout`。但只调用该函数有时会导致用户没有被注销。为了确保用户被注销，有必要销毁会话对象并清除cookie。cookie名称在`app.mjs`中定义，我们为此函数导入了`sessionCookieName`：
+- en: '[PRE41]'
+  id: totrans-177
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: Here is where we define our implementation of `LocalStrategy`. In the callback
+    function, we call `usersModel.userPasswordCheck`, which makes a REST call to the
+    user authentication service. Remember that this performs the password check and
+    then returns an object indicating whether they're logged in or not.
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里是我们定义的`LocalStrategy`的实现。在回调函数中，我们调用`usersModel.userPasswordCheck`，它向用户身份验证服务发出REST调用。记住，这执行密码检查然后返回一个对象，指示他们是否已登录。
+- en: A successful login is indicated when `check.check` is `true`. For this case,
+    we tell Passport to use an object containing the `username` in the session object.
+    Otherwise, we have two ways to tell Passport that the login attempt was unsuccessful.
+    In one case, we use `done(null, false)` to indicate an error logging in, and pass
+    along the error message we were given. In the other case, we'll have captured
+    an exception, and pass along that exception.
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当`check.check`为`true`时，表示登录成功。对于这种情况，我们告诉护照使用包含会话对象中的`username`的对象。否则，我们有两种方式告诉护照登录尝试失败。在一种情况下，我们使用`done(null,
+    false)`来指示登录错误，并传递我们得到的错误消息。在另一种情况下，我们将捕获一个异常，并传递那个异常。
+- en: 'You''ll notice that Passport uses a callback-style API. Passport provides a
+    `done` function, and we are to call that function when we know what''s what. While
+    we use an `async` function to make a clean asynchronous call to the backend service,
+    Passport doesn''t know how to grok the Promise that would be returned. Therefore,
+    we have to throw a `try/catch` around the function body to catch any thrown exception:'
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你会注意到护照使用回调风格的API。护照提供了一个`done`函数，当我们知道发生了什么时，我们就调用这个函数。虽然我们使用`async`函数来对后端服务进行干净的异步调用，但护照不知道如何处理返回的Promise。因此，我们必须在函数体周围抛出`try/catch`来捕获任何抛出的异常：
+- en: '[PRE42]'
+  id: totrans-181
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: The preceding functions take care of encoding and decoding authentication data
+    for the session. All we need to attach to the session is the `username`, as we
+    did in `serializeUser`. The `deserializeUser` object is called while processing
+    an incoming HTTP request and is where we look up the user profile data. Passport will
+    attach this to the request object.
+  id: totrans-182
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面的函数负责对会话中的身份验证数据进行编码和解码。我们只需要附加到会话中的是`username`，就像我们在`serializeUser`中做的那样。`deserializeUser`对象在处理传入的HTTP请求时被调用，这是我们查找用户配置数据的地方。Passport将此附加到请求对象。
+- en: Login/logout changes to app.js
+  id: totrans-183
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 登录/注销更改到app.js
+- en: We have a few changes required in `app.mjs`, some of which we've already touched
+    on. We did carefully isolate the Passport module dependencies to `routes/users.mjs`.
+    The changes required in `app.mjs` support the code in `routes/users.mjs`.
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们需要在`app.mjs`中进行一些更改，其中一些我们已经提到。我们仔细地将Passport模块依赖项隔离到`routes/users.mjs`。`app.mjs`中所需的更改支持`routes/users.mjs`中的代码。
+- en: 'It''s now time to uncomment a line we told you to comment out way back in [Chapter
+    5](e4322e55-673b-45c5-b64e-fc107d57ef03.xhtml), *Your First Express Application. *The
+    imports for the routing modules will now look as follows:'
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在是时候取消注释我们在[第5章](e4322e55-673b-45c5-b64e-fc107d57ef03.xhtml)“你的第一个Express应用程序”中告诉你要注释掉的那一行了。路由模块的导入现在将如下所示：
+- en: '[PRE43]'
+  id: totrans-186
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: 'The User router supports the `/login` and `/logout` URL''s as well as using
+    `Passport` for authentication. We need to call `initPassport` for a little bit
+    of initialization:'
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 用户路由器支持`/login`和`/logout` URL以及使用`Passport`进行身份验证。我们需要调用`initPassport`进行一些初始化：
+- en: '[PRE44]'
+  id: totrans-188
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: Because `Passport` uses sessions, we need to enable session support in Express,
+    and these modules do so. The `session-file-store` module saves our session data
+    to disk so that we can kill and restart the application without losing sessions.
+    It's also possible to save sessions to databases with appropriate modules. A filesystem
+    session store is suitable only when all Notes instances are running on the same
+    server computer. For a distributed deployment situation, you'll need to use a
+    session store that runs on a network-wide service, such as a database.
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因为`Passport`使用会话，所以我们需要在Express中启用会话支持，这些模块就是这样做的。`session-file-store`模块将我们的会话数据保存到磁盘上，这样我们可以在不丢失会话的情况下终止并重新启动应用程序。也有可能使用适当的模块将会话保存到数据库中。当所有Notes实例都在同一台服务器计算机上运行时，文件系统会话存储是合适的。对于分布式部署情况，您需要使用运行在全网范围内的服务（如数据库）的会话存储。
+- en: We're defining `sessionCookieName` here so it can be used in multiple places.
+    By default, `express-session` uses a cookie named `connect.sid` to store the session
+    data. As a small measure of security, it's useful when there's a published default
+    to use a different non-default value. Any time we use the default value, it's
+    possible that an attacker might know a security flaw depending on that default.
+  id: totrans-190
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在这里定义`sessionCookieName`，以便可以在多个地方使用。默认情况下，`express-session`使用名为`connect.sid`的cookie来存储会话数据。作为一个小的安全措施，当有一个已发布的默认值时，使用不同的非默认值是有用的。每次我们使用默认值时，攻击者可能知道一个基于该默认值的安全漏洞。
+- en: 'Use the following command to install the modules:'
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用以下命令安装模块：
+- en: '[PRE45]'
+  id: totrans-192
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: Express Session support, including all the various Session Store implementations,
+    is documented on its GitHub project page at [https://github.com/expressjs/session](https://github.com/expressjs/session).
+  id: totrans-193
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Express Session支持，包括所有各种Session Store实现，可以在其GitHub项目页面上找到文档：[https://github.com/expressjs/session](https://github.com/expressjs/session)。
+- en: 'Add this in `app.mjs`:'
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在`app.mjs`中添加以下内容：
+- en: '[PRE46]'
+  id: totrans-195
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: Here we initialize the session support. The field named `secret` is used to
+    sign the session ID cookie. The session cookie is an encoded string that is encrypted
+    in part using this secret. In the Express Session documentation, they suggest
+    the string `keyboard cat` for the secret. But, in theory, what if Express has
+    a vulnerability, such that knowing this secret can make it easier to break the
+    session logic on your site? Hence, we chose a different string for the secret
+    just to be a little different and perhaps a little more secure.
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里我们初始化会话支持。名为`secret`的字段用于签名会话ID cookie。会话cookie是一个编码的字符串，部分使用这个密钥加密。在Express
+    Session文档中，他们建议使用字符串`keyboard cat`作为密钥。但在理论上，如果Express有一个漏洞，知道这个密钥可能会使攻击者更容易破坏你网站上会话逻辑？因此，我们选择了一个不同的字符串作为密钥，以使其略有不同，也许更加安全。
+- en: Similarly, the default cookie name used by `express-session` is `connect.sid`.
+    Here's where we change the cookie name to a non-default name.
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 类似地，`express-session`默认使用的cookie名称是`connect.sid`。这里我们将cookie名称更改为非默认名称。
+- en: 'The `FileStore` will store its session data records in a directory named `sessions`.
+    This directory will be auto-created as needed:'
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`FileStore`将把其会话数据记录存储在名为`sessions`的目录中。此目录将根据需要自动创建：'
+- en: '[PRE47]'
+  id: totrans-199
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: The preceding are the three routers used in the Notes application.
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面是Notes应用程序中使用的三个路由。
+- en: Login/logout changes in routes/index.mjs
+  id: totrans-201
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在`routes/index.mjs`中修改了登录/登出更改
+- en: 'This router module handles the home page. It does not require the user to be
+    logged in, but we want to change the display a little if they are logged in:'
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此路由模块处理主页。它不需要用户登录，但如果我们知道他们已经登录，我们想稍微改变一下显示：
+- en: '[PRE48]'
+  id: totrans-203
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: Remember that we ensured that `req.user` has the user profile data, which we
+    did in `deserializeUser`. We simply check for this and make sure to add that data
+    when rendering the views template.
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 记住我们在`deserializeUser`中确保了`req.user`有用户配置数据，我们就是这样做的。我们只是检查这一点，并确保在渲染视图模板时添加这些数据。
+- en: We'll be making similar changes to most of the other route definitions. After
+    that, we'll go over the changes to the view templates in which we use `req.user`
+    to show the correct buttons on each page.
+  id: totrans-205
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将对大多数其他路由定义进行类似的更改。之后，我们将查看使用`req.user`在视图模板中显示正确按钮的更改。
+- en: Login/logout changes required in routes/notes.mjs
+  id: totrans-206
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在`routes/notes.mjs`中需要修改登录/登出更改
+- en: 'The changes required here are more significant, but still straightforward:'
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里需要更改的内容更为重大，但仍然简单明了：
+- en: '[PRE49]'
+  id: totrans-208
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE49]'
+- en: 'We need to use the `ensureAuthenticated` function to protect certain routes
+    from being used by users who are not logged in. Notice how ES6 modules let us
+    import just the function(s) we require. Since that function is in the user router
+    module, we need to import it from there:'
+  id: totrans-209
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们需要使用`ensureAuthenticated`函数来保护某些路由不被未登录的用户使用。注意ES6模块如何让我们只导入所需的函数。由于该函数位于用户路由模块中，我们需要从那里导入它：
+- en: '[PRE50]'
+  id: totrans-210
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE50]'
+- en: The first thing we added is to call `usersRouter.ensureAuthenticated` in the
+    route definition. If the user is not logged in, they'll redirect to `/users/login`,
+    thanks to that function.
+  id: totrans-211
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们首先在路由定义中调用`usersRouter.ensureAuthenticated`。如果用户未登录，他们将被重定向到`/users/login`，多亏了那个函数。
+- en: Because we've ensured that the user is authenticated, we know that `req.user`
+    will already have their profile information. We can then simply pass it to the
+    view template.
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于我们已经确保用户已认证，我们知道`req.user`将已经包含他们的个人资料信息。然后我们可以简单地将其传递给视图模板。
+- en: 'For the other routes, we need to make similar changes:'
+  id: totrans-213
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于其他路由，我们需要进行类似更改：
+- en: '[PRE51]'
+  id: totrans-214
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE51]'
+- en: 'The `/save` route requires only this change to call `ensureAuthenticated` to
+    make sure that the user is logged in:'
+  id: totrans-215
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`/save`路由只需要这个更改来调用`ensureAuthenticated`以确保用户已登录：'
+- en: '[PRE52]'
+  id: totrans-216
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE52]'
+- en: 'For this route, we don''t require the user to be logged in. We do need the
+    user''s profile information, if any, sent to the view template:'
+  id: totrans-217
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于这个路由，我们不需要用户登录。如果我们有的话，我们需要将用户的个人资料信息发送到视图模板：
+- en: '[PRE53]'
+  id: totrans-218
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE53]'
+- en: For these routes, we require the user to be logged in. In most cases, we need
+    to send the `req.user` value to the view template.
+  id: totrans-219
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于这些路由，我们需要用户已登录。在大多数情况下，我们需要将`req.user`值发送到视图模板。
+- en: View template changes supporting login/logout
+  id: totrans-220
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 支持登录/退出的视图模板更改
+- en: So far, we've created a backend user authentication service, a REST module,
+    to access that service, a router module to handle routes related to logging in
+    and out of the website, and changes in `app.mjs` to use those modules. We're almost
+    ready, but we've got a number of outstanding changes to make in the templates.
+    We're passing the `req.user` object to every template because each one must be
+    changed to accommodate whether the user is logged in or not.
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到目前为止，我们已经创建了一个后端用户认证服务，一个REST模块来访问该服务，一个路由模块来处理与登录和退出网站相关的路由，以及`app.mjs`中的更改以使用这些模块。我们几乎准备好了，但在模板中还有许多待解决的问题。我们正在将`req.user`对象传递给每个模板，因为每个模板都必须进行更改以适应用户是否已登录。
+- en: 'In `partials/header.hbs`, make the following additions:'
+  id: totrans-222
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在`partials/header.hbs`中，进行以下添加：
+- en: '[PRE54]'
+  id: totrans-223
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE54]'
+- en: What we're doing here is controlling which buttons to display at the top of
+    the screen depending on whether the user is logged in or not. The earlier changes
+    ensure that the `user` variable will be `undefined` if the user is logged out,
+    otherwise it will have the user profile object. Therefore, it's sufficient to
+    check the `user` variable as shown here to render different user interface elements.
+  id: totrans-224
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在这里做的是根据用户是否登录来控制屏幕顶部的按钮显示。早期更改确保如果用户已登出，`user`变量将是`undefined`，否则它将包含用户个人资料对象。因此，只需检查这里显示的`user`变量就足以渲染不同的用户界面元素。
+- en: A logged-out user doesn't get the ADD Note button, and gets a Log in button.
+    Otherwise, the user gets an ADD Note button and a Log Out button. The Log in button
+    takes the user to `/users/login`, while the Log Out button takes them to `/users/logout`.
+    Both of those are handled in `routes/users.js`, and perform the expected function.
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 登出用户不会看到“添加笔记”按钮，而是看到“登录”按钮。否则，用户将看到“添加笔记”按钮和“登出”按钮。“登录”按钮将用户带到`/users/login`，而“登出”按钮将他们带到`/users/logout`。这两个操作都在`routes/users.js`中处理，并执行预期的功能。
+- en: The Log Out button has a Bootstrap badge component displaying the username. This
+    adds a little visual splotch, in which we'll put the username that's logged in. As
+    we'll see later, it will serve as a visual cue to the user as to their identity.
+  id: totrans-226
+  prefs: []
+  type: TYPE_NORMAL
+  zh: “登出”按钮有一个Bootstrap徽章组件显示用户名。这添加了一个小视觉点，我们将放置已登录的用户名。正如我们稍后将会看到的，它将作为用户身份的视觉提示。
+- en: 'We need to create `views/login.hbs`:'
+  id: totrans-227
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们需要创建`views/login.hbs`：
+- en: '[PRE55]'
+  id: totrans-228
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE55]'
+- en: This is a simple form decorated with Bootstrap goodness to ask for the username
+    and password. When submitted, it creates a `POST` request to `/users/login`, which
+    invokes the desired handler to verify the login request. The handler for that
+    URL will start the Passport's process to decide whether the user is authenticated
+    or not.
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是一个简单的表单，用Bootstrap的样式装饰，用于请求用户名和密码。提交后，它将创建一个`POST`请求到`/users/login`，这将调用所需的处理器来验证登录请求。该URL的处理程序将启动Passport的过程以决定用户是否已认证。
+- en: 'In `views/notedestroy.hbs`, we want to display a message if the user is not
+    logged in. Normally, the form to cause the note to be deleted is displayed, but
+    if the user is not logged in, we want to explain the situation:'
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 `views/notedestroy.hbs` 中，我们希望在用户未登录时显示一条消息。通常，会显示导致笔记被删除的表单，但如果用户未登录，我们希望解释情况：
+- en: '[PRE56]'
+  id: totrans-231
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE56]'
+- en: That's straightforward; if the user is logged in, display the form, otherwise
+    display the message in `partials/not-logged-in.hbs`. We determine our approach
+    based on the `user` variable.
+  id: totrans-232
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这很简单；如果用户已登录，显示表单，否则在 `partials/not-logged-in.hbs` 中显示消息。我们根据 `user` 变量确定我们的方法。
+- en: 'We could put something like this in `partials/not-logged-in.hbs`:'
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以在 `partials/not-logged-in.hbs` 中放入类似的内容：
+- en: '[PRE57]'
+  id: totrans-234
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE57]'
+- en: 'In `views/noteedit.hbs`, we need a similar change:'
+  id: totrans-235
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 `views/noteedit.hbs` 中，我们需要进行类似的更改：
+- en: '[PRE58]'
+  id: totrans-236
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE58]'
+- en: That is, at the bottom we add a segment that, for non-logged-in users, pulls
+    in the `not-logged-in` partial.
+  id: totrans-237
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 即，在底部添加一个段落，对于未登录用户，它会引入 `not-logged-in` 部分。
+- en: The **Bootstrap jumbotron** component makes a nice and large text display that
+    stands out nicely, and will catch the viewer's attention. However, the user should
+    never see this because each of those templates is used only when we've preverified
+    that the user is logged in.
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**Bootstrap jumbotron** 组件创建了一个漂亮且大型的文本显示，非常引人注目，并能吸引观众的注意力。然而，用户永远不应该看到这个，因为每个模板都只在用户已预先验证登录时使用。'
+- en: A message such as this is useful as a check against bugs in your code. Suppose
+    that we slipped up and failed to properly ensure that these forms were displayed
+    only to logged-in users. Suppose that we had other bugs that didn't check the
+    form submission to ensure it's requested only by a logged-in user. Fixing the
+    template in this way is another layer of prevention against displaying forms to
+    users who are not allowed to use that functionality.
+  id: totrans-239
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这样的消息对于检查你代码中的错误很有用。假设我们犯了一个错误，未能正确确保这些表单只对已登录用户显示。假设我们还有其他错误，没有检查表单提交以确保它只由已登录用户发起。以这种方式修复模板是防止向不允许使用该功能的用户显示表单的又一层预防措施。
+- en: Running the Notes application with user authentication
+  id: totrans-240
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 运行带有用户身份验证的笔记应用程序
+- en: Now we're ready to run the Notes application and try our hand at logging in and
+    out.
+  id: totrans-241
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经准备好运行笔记应用程序并尝试登录和注销。
+- en: 'We need to change the scripts section of `package.json` as follows:'
+  id: totrans-242
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们需要按照以下方式更改 `package.json` 中的 `scripts` 部分：
+- en: '[PRE59]'
+  id: totrans-243
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE59]'
+- en: In the previous chapters, we built up quite a few combinations of models and
+    databases for running the Notes application. This leaves us with one, configured
+    to use the Sequelize model for Notes, using the SQLite3 database, and to use the
+    new user authentication service that we wrote earlier. We can simplify the `scripts`
+    section by deleting those other configurations. All the other Notes data models
+    are still available just by setting the environment variables appropriately.
+  id: totrans-244
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的章节中，我们为运行笔记应用程序构建了许多模型和数据库的组合。这使我们只剩下一个配置，使用 Sequelize 模型为笔记，使用 SQLite3
+    数据库，并使用我们之前编写的新的用户身份验证服务。我们可以通过删除其他配置来简化 `scripts` 部分。所有其他笔记数据模型只需设置适当的环境变量即可使用。
+- en: The `USER_SERVICE_URL` needs to match the port number that we designated for
+    that service.
+  id: totrans-245
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`USER_SERVICE_URL` 需要与为该服务指定的端口号相匹配。'
+- en: 'In one window, start the user authentication service as follows:'
+  id: totrans-246
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在一个窗口中，按照以下方式启动用户身份验证服务：
+- en: '[PRE60]'
+  id: totrans-247
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE60]'
+- en: 'Then, in another window, start the Notes application:'
+  id: totrans-248
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，在另一个窗口中，启动笔记应用程序：
+- en: '[PRE61]'
+  id: totrans-249
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE61]'
+- en: 'You''ll be greeted with the following:'
+  id: totrans-250
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你将看到以下内容：
+- en: '![](img/e80c39ba-4a49-467f-a29b-2c538f7b7225.png)'
+  id: totrans-251
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/e80c39ba-4a49-467f-a29b-2c538f7b7225.png)'
+- en: Notice the new button, Log in, and the lack of an ADD Note button. We're not
+    logged in, and therefore `partials/header.hbs` is rigged to show only the Log
+    in button.
+  id: totrans-252
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意到新的按钮，登录，以及缺少的“添加笔记”按钮。我们尚未登录，因此 `partials/header.hbs` 被配置为只显示登录按钮。
+- en: 'Click on the Log in button, and you will see the login screen:'
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 点击登录按钮，你将看到登录界面：
+- en: '![](img/0713ca75-9e6f-4d2c-9b5d-3ca5e5178d45.png)'
+  id: totrans-254
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/0713ca75-9e6f-4d2c-9b5d-3ca5e5178d45.png)'
+- en: 'This is our login form from `views/login.hbs`. You can now log in, create a
+    note or three, and you might end up with the following on the home page:'
+  id: totrans-255
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是我们从 `views/login.hbs` 中获取的登录表单。你现在可以登录，创建一个或几个笔记，你可能会在主页上看到以下内容：
+- en: '![](img/8a54e0a3-df46-44ba-ab10-925f5be169fd.png)'
+  id: totrans-256
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/8a54e0a3-df46-44ba-ab10-925f5be169fd.png)'
+- en: You now have both Log Out and ADD Note buttons.
+  id: totrans-257
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在你有了注销和添加笔记按钮。
+- en: You'll notice that the Log Out button has the username (me) shown. After some
+    thought and consideration, this seemed the most compact way to show whether the
+    user is logged in or not, and which user is logged in. This might drive the user
+    experience team nuts, and you won't know whether this user interfaces design works
+    until it's tested with users, but it's good enough for our purpose at the moment.
+  id: totrans-258
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你会注意到注销按钮显示了用户名（我）。经过一番思考和考虑，这似乎是显示用户是否登录以及哪个用户登录的最紧凑方式。这可能会让用户体验团队抓狂，而且你不知道这个用户界面设计是否有效，除非它被用户测试过，但对我们目前的目的来说已经足够好了。
+- en: Twitter login support for the Notes application
+  id: totrans-259
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Notes应用程序的Twitter登录支持
+- en: If you want your application to hit the big time, it's a great idea to allow
+    users to register using third-party credentials. Websites all over the internet
+    allow you to log in using Facebook, Twitter, or accounts from other services.
+    Doing so removes hurdles to prospective users signing up for your service. Passport
+    makes it extremely easy to do this.
+  id: totrans-260
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你想让你的应用程序走向成功，允许用户使用第三方凭证进行注册是个好主意。互联网上的许多网站都允许你使用Facebook、Twitter或其他服务的账户登录。这样做可以消除潜在用户注册你服务的障碍。Passport使得这样做变得极其简单。
+- en: Supporting Twitter requires installing **TwitterStrategy**, registering a new
+    application with Twitter, and adding a couple of routes into `routes/user.mjs`
+    and a small change in `partials/header.hbs`. Integrating other third-party services
+    requires similar steps.
+  id: totrans-261
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 支持Twitter需要安装**TwitterStrategy**，在Twitter上注册一个新的应用程序，并将几条路由添加到`routes/user.mjs`中，同时在`partials/header.hbs`中进行一些小的修改。集成其他第三方服务也需要类似的步骤。
+- en: Registering an application with Twitter
+  id: totrans-262
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在Twitter上注册应用程序
+- en: Twitter, as with every other third-party service, uses OAuth to handle authentication
+    and requires an authentication key to write software using their API. It's their
+    service, so you have to play by their rules, of course.
+  id: totrans-263
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与其他所有第三方服务一样，Twitter使用OAuth来处理身份验证，并需要使用他们的API编写软件时提供认证密钥。这是他们的服务，所以当然你必须遵守他们的规则。
+- en: To register a new application with Twitter, go to [https://apps.twitter.com/](https://apps.twitter.com/). Then
+    you click on the *Create New App* button. Since we haven't deployed the Notes
+    application to a regular server and, more importantly, there isn't a valid domain
+    name for the application, we have to give Twitter the configuration required for
+    testing on our local laptop.
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要在Twitter上注册一个新应用程序，请访问[https://apps.twitter.com/](https://apps.twitter.com/)。然后点击*创建新应用*按钮。由于我们没有将Notes应用程序部署到常规服务器上，更重要的是，应用程序没有有效的域名，我们必须向Twitter提供在本地笔记本电脑上进行测试所需的配置。
+- en: Every service offering OAuth2 authentication has an administrative backend for
+    registering new applications. The common purpose is to describe the application
+    to the service so that the service can correctly recognize the application when
+    requests are made using the authentication tokens. The normal situation is that
+    the application is deployed to a regular server, and is accessed through a domain
+    name such as `MyNotes.info`.  We've done neither as of this moment.
+  id: totrans-265
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 每个提供OAuth2身份验证服务的都有用于注册新应用程序的管理后端。其共同目的是向服务描述应用程序，以便服务可以在使用认证令牌发出请求时正确识别应用程序。正常情况下，应用程序部署到常规服务器上，并通过类似`MyNotes.info`的域名进行访问。到目前为止，我们还没有这样做。
+- en: 'At the time of writing, there are four pieces of information requested by the
+    Twitter sign-up process:'
+  id: totrans-266
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在撰写本文时，Twitter注册过程需要以下四条信息：
+- en: '**Name**: This is the application name, and it can be anything you like. It
+    would be good form to use test in the name in case Twitter''s staff decide to
+    do some validation.'
+  id: totrans-267
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**名称**：这是应用程序名称，可以是任何你喜欢的。如果Twitter的员工决定进行一些验证，那么在名称中使用测试会是个好主意。'
+- en: '**Description**: Descriptive phrase, and again it can be anything you like.
+    Again, it would be good form to, at this time, describe it as a test application.'
+  id: totrans-268
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**描述**：描述性短语，可以是任何你喜欢的。同样，此时将其描述为测试应用程序是很好的形式。'
+- en: '**Website**: This would be your desired domain name. Here, the help text helpfully
+    suggests *If you don''t have a URL yet, just put a placeholder here but remember
+    to change it later*.'
+  id: totrans-269
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**网站**：这将是你想要的域名。在这里，帮助文本有用地建议*如果你还没有URL，只需在这里放置占位符，但请记住稍后更改它*。'
+- en: '**Callback URL**: This is the URL to return to after successful authentication.
+    Since we don''t have a public URL to supply, this is where we specify a value
+    referring to your laptop. It''s been found that `http://localhost:3000` works
+    just fine. macOS users have another option because of the `.local` domain name,
+    which is automatically assigned to their laptop. All along, we could have used
+    a URL similar to this to access the Notes application at `http://MacBook-Pro-2.local:3000/`.'
+  id: totrans-270
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**回调URL**：这是认证成功后返回的URL。由于我们没有公共URL可以提供，因此我们在这里指定一个指向您的笔记本电脑的值。发现`http://localhost:3000`可以正常工作。macOS用户有另一个选择，因为`.local`域名会自动分配给他们的笔记本电脑。一直以来，我们都可以使用类似这样的URL来访问`http://MacBook-Pro-2.local:3000/`上的Notes应用。'
+- en: It was found by attempting this procedure with different services that Facebook
+    (and other) services are not lenient about test applications hosted on laptops.
+    At least Twitter is keen for developers to configure a test application on their
+    laptop. Passport's other OAuth-based strategies will work similarly enough to
+    Twitter, so the knowledge we're gaining will transfer to those other authentication
+    strategies.
+  id: totrans-271
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过尝试使用不同的服务执行此程序发现，Facebook（和其他）服务对在笔记本电脑上托管测试应用并不宽容。至少Twitter希望开发者能在他们的笔记本电脑上配置测试应用。Passport的其他基于OAuth的策略将与Twitter相似，所以我们获得的知识将转移到那些其他认证策略。
+- en: The last thing to notice is the extremely sensitive nature of the authentication
+    keys. It's bad form to check these into a source code repository or otherwise
+    put them in a place where anybody can access the key.
+  id: totrans-272
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后要注意的是认证密钥的极端敏感性。将这些密钥检查到源代码仓库或放在任何人都可以访问的地方是不恰当的。
+- en: 'Twitter does change the signup page from time to time, but it should look something
+    like the following:'
+  id: totrans-273
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Twitter会不时更改注册页面，但应该看起来像以下这样：
+- en: '![](img/f7bd3f21-c2c0-470f-b5df-27ac96f8ae4f.png)'
+  id: totrans-274
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/f7bd3f21-c2c0-470f-b5df-27ac96f8ae4f.png)'
+- en: Implementing TwitterStrategy
+  id: totrans-275
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现Twitter策略
+- en: As with many web applications, we have decided to allow our users to log in using
+    Twitter credentials. The OAuth2 protocol is widely used for this purpose and is
+    the basis for authenticating on one website using credentials maintained by another
+    website.
+  id: totrans-276
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就像许多Web应用一样，我们决定允许我们的用户使用Twitter凭证登录。OAuth2协议被广泛用于此目的，并且是使用另一个网站维护的凭证在网站上认证的基础。
+- en: The application registration process you just followed at `apps.twitter.com`
+    generated for you a pair of API keys, a consumer key, and, consumer secret. These
+    keys are part of the OAuth protocol, and will be supplied by any OAuth service
+    you register with, and the keys should be treated with the utmost care. Think
+    of them as the username and password your service uses to access the OAuth-based
+    service (Twitter et al). The more people who can see these keys, the more likely
+    a miscreant can see them and then cause trouble. Anybody with those secrets can
+    write access the service API as if they are you.
+  id: totrans-277
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你在`apps.twitter.com`上遵循的应用程序注册过程为你生成了一对API密钥，一个消费者密钥和一个消费者密钥。这些密钥是OAuth协议的一部分，将由你注册的任何OAuth服务提供，并且应该非常小心地处理这些密钥。把它们想象成你的服务用来访问基于OAuth的服务（如Twitter等）的用户名和密码。能看见这些密钥的人越多，恶意分子看到并造成麻烦的可能性就越大。任何拥有这些秘密的人都可以像你一样写入访问服务API。
+- en: 'Dozens of Strategy packages for various third-party services are available
+    within the Passport ecosystem. Let''s install the package required to use `TwitterStrategy`:'
+  id: totrans-278
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Passport生态系统中提供了各种第三方服务的策略包。让我们安装使用`TwitterStrategy`所需的包：
+- en: '[PRE62]'
+  id: totrans-279
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE62]'
+- en: 'In `routes/users.mjs`, let''s start making some changes:'
+  id: totrans-280
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在`routes/users.mjs`中，让我们开始做一些更改：
+- en: '[PRE63]'
+  id: totrans-281
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE63]'
+- en: 'To bring in the package we just installed, add the following:'
+  id: totrans-282
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要引入我们刚刚安装的包，请添加以下内容：
+- en: '[PRE64]'
+  id: totrans-283
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE64]'
+- en: This registers `TwitterStrategy` with `passport`, arranging to call the user
+    authentication service as users register with the Notes application. This `callback`
+    function is called when users successfully authenticate using Twitter.
+  id: totrans-284
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将`TwitterStrategy`注册到`passport`中，安排在用户使用Notes应用注册时调用用户认证服务。当用户使用Twitter成功认证时，将调用此`callback`函数。
+- en: We defined the `usersModel.findOrCreate` function specifically to handle user
+    registration from third-party services such as Twitter. Its task is to look for
+    the user described in the profile object and, if that user does not exist, to
+    autocreate that user account in Notes.
+  id: totrans-285
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们特别定义了`usersModel.findOrCreate`函数来处理来自Twitter等第三方服务的用户注册。它的任务是查找配置文件对象中描述的用户，如果该用户不存在，则在Notes中自动创建该用户账户。
+- en: The `consumerKey` and `consumerSecret` values are supplied by Twitter, after
+    you've registered your application. These secrets are used in the OAuth protocol
+    as proof of identity to Twitter.
+  id: totrans-286
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`consumerKey` 和 `consumerSecret` 值是在你注册应用程序后由 Twitter 提供的。这些密钥在 OAuth 协议中用作身份证明，以证明对
+    Twitter 的身份。'
+- en: The `callbackURL` setting in the `TwitterStrategy` configuration is a holdover
+    from Twitter's OAuth1-based API implementation. In OAuth1, the callback URL was
+    passed as part of the OAuth request. Since `TwitterStrategy` uses Twitter's OAuth1
+    service, we have to supply the URL here. We'll see in a moment where that URL
+    is implemented in Notes.
+  id: totrans-287
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`TwitterStrategy` 配置中的 `callbackURL` 设置是 Twitter 基于 OAuth1 的 API 实现的遗留问题。在
+    OAuth1 中，回调 URL 作为 OAuth 请求的一部分传递。由于 `TwitterStrategy` 使用 Twitter 的 OAuth1 服务，我们必须在这里提供
+    URL。我们将在稍后看到这个 URL 在 Notes 中的实现。'
+- en: The `callbackURL`, `consumerKey`, and `consumerSecret` are all injected using
+    environment variables. It is tempting, because of the convenience, to just put
+    those keys in the source code. But, how widely distributed is your source code? 
+    In the Slack API documentation ([https://api.slack.com/docs/oauth-safety](https://api.slack.com/docs/oauth-safety)),
+    we're warned *Do not distribute client secrets in email, distributed native applications,
+    client-side JavaScript, or public code repositories*.
+  id: totrans-288
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`callbackURL`、`consumerKey` 和 `consumerSecret` 都是通过环境变量注入的。由于方便，人们可能会倾向于直接将这些密钥放入源代码中。但是，你的源代码分布有多广呢？在
+    Slack API 文档（[https://api.slack.com/docs/oauth-safety](https://api.slack.com/docs/oauth-safety)）中，我们被警告不要在电子邮件、分布式原生应用、客户端
+    JavaScript 或公共代码仓库中分发客户端密钥。'
+- en: In [Chapter 10](7542f45a-6bd9-432e-875a-c110c0d84c61.xhtml),* Deploying Node.js
+    Applications*, we'll put these keys into a Dockerfile. That's not entirely secure
+    because the Dockerfile will also be committed to a source repository somewhere.
+  id: totrans-289
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 [第 10 章](7542f45a-6bd9-432e-875a-c110c0d84c61.xhtml)，“部署 Node.js 应用程序”中，我们将这些密钥放入
+    Dockerfile 中。这并不完全安全，因为 Dockerfile 也将被提交到某个源代码库中。
+- en: 'It was found while debugging that the profile object supplied by the `TwitterStrategy`
+    did not match the documentation on the `passport` website. Therefore, we have
+    mapped the object actually supplied by `passport` into something that Notes can
+    use:'
+  id: totrans-290
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在调试过程中发现，`TwitterStrategy` 提供的配置文件对象与 `passport` 网站上的文档不符。因此，我们将 `passport`
+    实际提供的对象映射为 Notes 可以使用的对象：
+- en: '[PRE65]'
+  id: totrans-291
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE65]'
+- en: To start the user logging in with Twitter, we'll send them to this URL. Remember
+    that this URL is really `/users/auth/twitter`, and, in the templates, we'll have
+    to use that URL. When this is called, the passport middleware starts the user
+    authentication and registration process using `TwitterStrategy`.
+  id: totrans-292
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要开始用户使用 Twitter 登录，我们将他们发送到这个 URL。记住，这个 URL 实际上是 `/users/auth/twitter`，在模板中，我们必须使用这个
+    URL。当这个 URL 被调用时，passport 中间件将启动用户认证和注册过程，使用 `TwitterStrategy`。
+- en: Once the user's browser visits this URL, the OAuth dance begins. It's called
+    a dance because the OAuth protocol involves carefully designed redirects between
+    several websites. Passport sends the browser over to the correct URL at Twitter,
+    where Twitter asks the user whether they agree to authenticate using Twitter,
+    and then Twitter redirects the user back to your callback URL. Along the way,
+    specific tokens are passed back and forth in a very carefully designed dance between
+    websites.
+  id: totrans-293
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦用户的浏览器访问此 URL，OAuth 舞蹈就开始了。它被称为舞蹈，因为 OAuth 协议涉及在几个网站之间精心设计的重定向。Passport 将浏览器发送到
+    Twitter 的正确 URL，Twitter 会询问用户是否同意使用 Twitter 进行认证，然后 Twitter 将用户重定向回你的回调 URL。在这个过程中，会在网站之间通过精心设计的舞蹈传递特定的令牌。
+- en: 'Once the OAuth dance concludes, the browser lands here:'
+  id: totrans-294
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦 OAuth 舞蹈结束，浏览器将跳转到此处：
+- en: '[PRE66]'
+  id: totrans-295
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE66]'
+- en: This route handles the callback URL, and it corresponds to the `callbackURL`
+    setting configured earlier. Depending on whether it indicates a successful registration
+    or not, passport will redirect the browser to either the home page or back to
+    the `/users/login` page.
+  id: totrans-296
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此路由处理回调 URL，并且它与之前配置的 `callbackURL` 设置相对应。根据它是否表示成功注册，passport 将将浏览器重定向到主页或返回到
+    `/users/login` 页面。
+- en: Because `router` is mounted on `/user`, this URL is actually `/user/auth/twitter/callback`.
+    Therefore, the full URL to use in configuring the `TwitterStrategy`, and to supply
+    to Twitter, is `http://localhost:3000/user/auth/twitter/callback`
+  id: totrans-297
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因为 `router` 被挂载在 `/user` 上，所以这个 URL 实际上是 `/user/auth/twitter/callback`。因此，在配置
+    `TwitterStrategy` 和提供给 Twitter 时要使用的完整 URL 是 `http://localhost:3000/user/auth/twitter/callback`。
+- en: In the process of handling the callback URL, Passport will invoke the callback
+    function shown earlier. Because our callback uses the `usersModel.findOrCreate`
+    function, the user will be automatically registered if necessary.
+  id: totrans-298
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在处理回调 URL 的过程中，Passport 将调用前面显示的回调函数。因为我们的回调使用了 `usersModel.findOrCreate` 函数，所以如果需要，用户将被自动注册。
+- en: We're almost ready, but we need to make a couple of small changes elsewhere in
+    Notes.
+  id: totrans-299
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们几乎准备好了，但需要在 Notes 的其他地方做一些小的修改。
+- en: 'In `partials/header.hbs`, make the following changes to the code:'
+  id: totrans-300
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 `partials/header.hbs` 中，对代码进行以下修改：
+- en: '[PRE67]'
+  id: totrans-301
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE67]'
+- en: This adds a new button that, when clicked, takes the user to `/users/auth/twitter`,
+    which, of course, kicks off the Twitter authentication process.
+  id: totrans-302
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这添加了一个新按钮，点击后会将用户带到 `/users/auth/twitter`，这当然会启动 Twitter 身份验证过程。
+- en: The image being used is from the official Twitter brand assets page at [https://about.twitter.com/company/brand-assets](https://about.twitter.com/company/brand-assets).
+    Twitter recommends using these branding assets for a consistent look across all
+    services using Twitter. Download the whole set and then pick one you like. For
+    the URL shown here, place the chosen image in a directory named `public/assets/vendor/twitter`.
+    Notice that we force the size to be small enough for the navigation bar.
+  id: totrans-303
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用的图像来自官方 Twitter 品牌资产页面 [https://about.twitter.com/company/brand-assets](https://about.twitter.com/company/brand-assets)。Twitter
+    建议使用这些品牌资产，以确保所有使用 Twitter 的服务外观一致。下载整个系列，然后选择一个你喜欢的。对于这里显示的 URL，将选定的图像放置在名为 `public/assets/vendor/twitter`
+    的目录中。注意，我们强制将大小调整为足够小，以便导航栏可以容纳。
+- en: With these changes, we're ready to try logging in with Twitter.
+  id: totrans-304
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 经过这些修改，我们准备好尝试使用 Twitter 登录。
+- en: 'Start the Notes application server as done previously:'
+  id: totrans-305
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前所述启动 Notes 应用程序服务器：
+- en: '[PRE68]'
+  id: totrans-306
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE68]'
+- en: 'Then use a browser to visit `http://localhost:3000`:'
+  id: totrans-307
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后使用浏览器访问 `http://localhost:3000`：
+- en: '![](img/7c4b072f-7f67-4306-91be-d8b3940a897c.png)'
+  id: totrans-308
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/7c4b072f-7f67-4306-91be-d8b3940a897c.png)'
+- en: Notice the new button. It looks about right, thanks to having used the official
+    Twitter branding image. The button is a little large, so maybe you want to consult
+    a designer. Obviously, a different design is required if you're going to support
+    dozens of authentication services.
+  id: totrans-309
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意到新按钮。它看起来相当合适，多亏了使用了官方的 Twitter 品牌图像。按钮有点大，所以你可能想咨询一下设计师。显然，如果你打算支持数十个身份验证服务，就需要不同的设计。
+- en: 'Clicking on this button takes the browser to `/users/auth/twitter`, which starts
+    Passport running the OAuth2 protocol transactions necessary to authenticate. And
+    then, once you''re logged in with Twitter, you''ll see something like the following
+    screenshot:'
+  id: totrans-310
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 点击此按钮会将浏览器带到 `/users/auth/twitter`，这会启动 Passport 运行 OAuth2 协议事务，以进行身份验证。然后，一旦你用
+    Twitter 登录，你会看到如下截图：
+- en: '![](img/a13f58f3-02dd-4107-b131-241723950d75.png)'
+  id: totrans-311
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/a13f58f3-02dd-4107-b131-241723950d75.png)'
+- en: We're now logged in, and notice that our Notes username is the same as our Twitter
+    username. You can browse around the application and create, edit, or delete notes.
+    In fact, you can do this to any note you like, even ones created by others. That's
+    because we did not create any sort of access control or permissions system, and
+    therefore every user has complete access to every note. That's a feature to put
+    on the backlog.
+  id: totrans-312
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们现在已登录，并注意到我们的 Notes 用户名与我们的 Twitter 用户名相同。你可以浏览应用程序，创建、编辑或删除笔记。实际上，你可以对任何你喜欢的笔记这样做，即使是别人创建的。那是因为我们没有创建任何形式的访问控制或权限系统，因此每个用户都可以完全访问每个笔记。这是一个需要添加到待办事项的功能。
+- en: By using multiple browsers or computers, you can simultaneously log in as different
+    users, one user per browser.
+  id: totrans-313
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过使用多个浏览器或计算机，你可以同时以不同的用户身份登录，每个浏览器一个用户。
+- en: 'You can run multiple instances of the Notes application by doing what we did
+    earlier:'
+  id: totrans-314
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以通过我们之前做过的操作来运行多个 Notes 应用程序实例：
+- en: '[PRE69]'
+  id: totrans-315
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE69]'
+- en: 'Then, in one command window, run the following command:'
+  id: totrans-316
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，在一个命令窗口中，运行以下命令：
+- en: '[PRE70]'
+  id: totrans-317
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE70]'
+- en: 'In another command window, run the following command:'
+  id: totrans-318
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在另一个命令窗口中，运行以下命令：
+- en: '[PRE71]'
+  id: totrans-319
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE71]'
+- en: As previously, this starts two instances of the Notes server, each with a different
+    value in the `PORT` environment variable. In this case, each instance will use
+    the same user authentication service. As shown here, you'll be able to visit the
+    two instances at `http://localhost:3000` and `http://localhost:3002`. And, as
+    previously, you'll be able to start and stop the servers as you wish, see the
+    same notes in each, and see that the notes are retained after restarting the server.
+  id: totrans-320
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前所述，这里启动了两个 Notes 服务器实例，每个实例的 `PORT` 环境变量中都有不同的值。在这种情况下，每个实例将使用相同的用户身份验证服务。正如这里所示，您将能够访问两个实例，地址分别是
+    `http://localhost:3000` 和 `http://localhost:3002`。同样，您也可以根据需要启动和停止服务器，查看每个服务器中的相同笔记，并看到在重启服务器后笔记仍然保留。
+- en: 'Another thing to try is to fiddle with the **session store**. Our session data
+    is being stored in the `sessions` directory. These are just files in the filesystem,
+    and we can take a look:'
+  id: totrans-321
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一件事可以尝试的是调整 **会话存储**。我们的会话数据被存储在 `sessions` 目录中。这些只是文件系统中的文件，我们可以查看一下：
+- en: '[PRE72]'
+  id: totrans-322
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE72]'
+- en: This is after logging in using a Twitter account; you can see that the Twitter
+    account name is stored here in the session data.
+  id: totrans-323
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是使用 Twitter 账户登录后的情况；您可以看到 Twitter 账户名称存储在会话数据中。
+- en: What if you want to clear a session? It's just a file in the filesystem. Deleting
+    the session file erases the session, and the user's browser will be forcefully
+    logged out.
+  id: totrans-324
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果您想清除一个会话怎么办？它只是文件系统中的一个文件。删除会话文件将清除会话，并且用户的浏览器将被强制注销。
+- en: The session will time out if the user leaves their browser idle for long enough.
+    One of the `session-file-store` options, `ttl`, controls the timeout period, which
+    defaults to 3,600 seconds (an hour). With a timed-out session, the application
+    reverts to a logged-out state.
+  id: totrans-325
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果用户长时间不使用浏览器，会话将超时。`session-file-store` 选项之一 `ttl` 控制超时时间，默认为 3,600 秒（一小时）。会话超时后，应用程序将恢复到注销状态。
+- en: Securely keeping secrets and passwords
+  id: totrans-326
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 安全地保存秘密和密码
+- en: 'We''ve cautioned several times about the importance of safely handling user
+    identification information. The intention to safely handle that data is one thing,
+    but it is important to follow through and actually do so. While we''re using a
+    few good practices so far, as it stands, the Notes application would not withstand
+    any kind of security audit:'
+  id: totrans-327
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们多次警告过安全处理用户标识信息的重要性。有意愿安全处理这些数据是一回事，但重要的是要贯彻到底并真正这样做。虽然我们迄今为止使用了一些良好的做法，但就现状而言，Notes
+    应用程序无法通过任何类型的网络安全审计：
+- en: User passwords are kept in clear text in the database
+  id: totrans-328
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 用户密码在数据库中以明文形式保存
+- en: The authentication tokens for Twitter *et al*, are in the source code in clear
+    text
+  id: totrans-329
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Twitter 等服务的身份验证令牌在源代码中以明文形式存在
+- en: The authentication service API key is not a cryptographically secure anything,
+    it's just a cleartext UUID
+  id: totrans-330
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 身份验证服务 API 密钥不是一个加密安全的东西，它只是一个明文 UUID
+- en: If you don't recognize the phrase clear text, it simply means unencrypted. Anyone
+    could read the text of user passwords or the authentication tokens. It's best
+    to keep both encrypted to avoid information leakage.
+  id: totrans-331
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果您不认识“明文”这个短语，它只是意味着未加密。任何人都可以阅读用户密码或身份验证令牌的文本。最好将两者都加密，以避免信息泄露。
+- en: The Notes application stack
+  id: totrans-332
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Notes 应用程序堆栈
+- en: Did you notice earlier when we said run the Notes application stack? It's time
+    to explain to the marketing team what's meant by that phrase. They'll perhaps
+    need to put an architecture diagram on marketing brochures and the like. It's
+    also useful for developers like us to take a step back and draw a picture of what
+    we've created, or are planning to create.
+  id: totrans-333
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您注意到了我们之前提到的运行 Notes 应用程序堆栈吗？现在是时候向市场营销团队解释这个短语的含义了。他们可能需要在营销手册和类似材料上放置架构图。对我们这样的开发者来说，退后一步，绘制我们已创建或计划创建的图画也是很有用的。
+- en: 'Here''s the sort of diagram that an engineer might draw to show the marketing
+    team the system design. The marketing team will, of course, hire a graphics artist
+    to clean it up:'
+  id: totrans-334
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里是一个工程师可能会绘制的图表，向市场营销团队展示系统设计。当然，市场营销团队会雇佣一位图形艺术家来清理它：
+- en: '![](img/10d38f27-e686-4a9b-a61e-2039a23497d8.png)'
+  id: totrans-335
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](img/10d38f27-e686-4a9b-a61e-2039a23497d8.png)'
+- en: The box labeled Notes Application is the public-facing code implemented by the
+    templates and the router modules. As currently configured, it's visible from our
+    laptop on port 3000\. It can use one of several data storage services. It communicates
+    with the backend **User Authentication Service** over port 3333 (as currently
+    configured).
+  id: totrans-336
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 标有“笔记应用”的框是模板和路由模块实现的面向公众的代码。根据当前配置，它可以从我们的笔记本电脑上的端口3000访问。它可以使用几种数据存储服务之一。它通过端口3333（当前配置）与后端**用户身份验证服务**进行通信。
+- en: In [Chapter 10](7542f45a-6bd9-432e-875a-c110c0d84c61.xhtml),* Deploying Node.js
+    Applications,* we'll be expanding this picture a bit as we learn how to deploy
+    on a real server.
+  id: totrans-337
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在[第10章](7542f45a-6bd9-432e-875a-c110c0d84c61.xhtml)，“部署Node.js应用”中，我们将随着学习如何在真实服务器上部署，对这个图景进行一些扩展。
+- en: Summary
+  id: totrans-338
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 摘要
+- en: You've covered a lot of ground in this chapter, looking at not only user authentication
+    in Express applications, but also microservice development.
+  id: totrans-339
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你在本章中覆盖了大量的内容，不仅探讨了Express应用中的用户身份验证，还探讨了微服务开发。
+- en: Specifically, you covered session management in Express, using Passport for
+    user authentication, including Twitter/OAuth, using router middleware to limit
+    access, creating a REST service with Restify, and when to create a microservice.
+  id: totrans-340
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 具体来说，你涵盖了Express中的会话管理，使用Passport进行用户身份验证，包括Twitter/OAuth，使用路由中间件限制访问，创建REST服务使用Restify，以及何时创建微服务。
+- en: In the next chapter, we'll take the *Notes* application to a new level-semi-real-time
+    communication between application users. To do this, we'll write some browser-side
+    JavaScript and explore how the `Socket.io` package can let us send messages between
+    users.
+  id: totrans-341
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一章中，我们将把*笔记*应用提升到一个新的水平——应用用户之间的半实时通信。为此，我们将编写一些浏览器端的JavaScript代码，并探索`Socket.io`包如何让我们在用户之间发送消息。
