@@ -1,0 +1,2074 @@
+<html><head></head><body><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Real-Time Communication with Socket.IO and ExpressJS</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we will cover the following recipes:</p>
+<ul>
+<li>Understanding NodeJS events</li>
+<li>Understanding Socket.IO events</li>
+<li>Working with Socket.IO namespaces</li>
+<li>Defining and joining to Socket.IO rooms</li>
+<li>Writing middleware for Socket.IO</li>
+<li>Integrating Socket.IO with ExpressJS</li>
+<li>Using ExpressJS middleware in Socket.IO</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Technical requirements</h1>
+                </header>
+            
+            <article>
+                
+<p><span>You will be required to have an IDE, Visual Studio Code, Node.js and MongoDB. You will also need to install Git, in order use the Git repository of this book.</span></p>
+<p>The code files of this chapter can be found on GitHub:<br/>
+<a href="https://github.com/PacktPublishing/MERN-Quick-Start-Guide/tree/master/Chapter04">https://github.com/PacktPublishing/MERN-Quick-Start-Guide/tree/master/Chapter04</a></p>
+<p>Check out the following video to see the code in action:<br/>
+<a href="https://goo.gl/xfyDBn">https://goo.gl/xfyDBn</a></p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Introduction</h1>
+                </header>
+            
+            <article>
+                
+<p>Modern web applications usually require real-time communication where data is continuously flowing from client to server and vice versa with (almost) no delay.</p>
+<p>The HTML5 WebSocket Protocol was created to fulfill this requirement. WebSocket uses a single TCP connection that is kept open even when the server or client is not sending any data. That means, while a connection between the client and the server exists, data can be sent at any time without having to open a new connection to the server.</p>
+<p>Real-time communication has several applications from building chat applications to multi-user games, where the response time is really important.</p>
+<p>In this chapter, we will focus on learning how to build a real-time web application using Socket.IO (<a href="https://socket.io">https://socket.io</a>) and understanding the Node.js event-driven architecture.</p>
+<p>Socket.IO is one of the most used libraries for implementing real-time communication. Socket.IO uses WebSocket whenever possible but falls-back to other methods when WebSocket is not supported on a specific web browser. Because you probably want to make your application accessible from any web browser, having to work directly with WebSocket may not seem like a good idea.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Understanding Node.js events</h1>
+                </header>
+            
+            <article>
+                
+<p>Node.js has an event-driven architecture. Most of Node.js' core API is built around <kbd>EventEmitter</kbd>. This is a Node.js module that allows <kbd>listeners</kbd> to subscribe to certain named events that can be triggered later by an <strong>emitter</strong>.</p>
+<p>You can define your own event emitter easily by just including the events Node.js module and creating a new instance of <kbd>EventEmitter</kbd>:</p>
+<pre>const EventEmitter = require('events') 
+const emitter = new EventEmitter() 
+emitter.on('welcome', () =&gt; { 
+    console.log('Welcome!') 
+}) </pre>
+<p>Then, you can trigger the <kbd>welcome</kbd> event by using the <kbd>emit</kbd> method:</p>
+<pre>emitter.emit('welcome') </pre>
+<p>It is actually, pretty simple. One of the advantages is that you can subscribe multiple listeners to the same event, and they will get triggered when the <kbd>emit</kbd> method is used:</p>
+<pre>emitter.on('welcome', () =&gt; { 
+    console.log('Welcome') 
+}) 
+emitter.on('welcome', () =&gt; { 
+    console.log('There!') 
+}) 
+emitter.emit('welcome') </pre>
+<p>The <kbd>EventEmitter</kbd> API provides several helpful methods that give you more control to handle events. Check the official Node.js documentation to see all information about the API: <a href="https://nodejs.org/api/events.html"><span class="URLPACKT">https://nodejs.org/api/events.html</span></a>.<a href="https://nodejs.org/api/events.html"/></p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>In this recipe, you will create a class that will extend <kbd>EventEmitter</kbd>, and which will contain its own instance methods to trigger listeners attached to a specific event. First, create a new project by opening a Terminal and running the following line:</p>
+<pre class="CommandLinePACKT"><strong>npm init</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>Create a class that extends <kbd>EventEmitter</kbd> and define two instance methods called <kbd>start</kbd> and <kbd>stop</kbd>. When the <kbd>start</kbd> method is called, it will trigger all listeners attached to the <kbd>start</kbd> event. It will keep the starting time using <kbd>process.hrtime</kbd>. Then, when the <kbd>stop</kbd> method is called, it will trigger all listeners attached to the <kbd>stop</kbd> event passing as an argument the difference in time since the <kbd>start</kbd> method was called:</p>
+<ol>
+<li>Create a new file named <kbd>timer.js</kbd></li>
+<li>Include the events NodeJS module:</li>
+</ol>
+<pre>      const EventEmitter = require('events') </pre>
+<ol start="3">
+<li>Define two constants that we will use to convert the returned value of <kbd>process.hrtime</kbd> from seconds to nanoseconds and then to milliseconds:</li>
+</ol>
+<pre>      const NS_PER_SEC = 1e9 
+      const NS_PER_MS = 1e6 </pre>
+<ol start="4">
+<li>Define a class named <kbd>Timer</kbd> with two instance methods:</li>
+</ol>
+<pre>      class Timer extends EventEmitter { 
+          start() { 
+              this.startTime = process.hrtime() 
+              this.emit('start') 
+          } 
+          stop() { 
+              const diff = process.hrtime(this.startTime) 
+              this.emit( 
+                  'stop', 
+                  (diff[0] * NS_PER_SEC + diff[1]) / NS_PER_MS, 
+              ) 
+          } 
+      } </pre>
+<ol start="5">
+<li>Create a new instance of the previously defined class:</li>
+</ol>
+<pre>      const tasks = new Timer() </pre>
+<ol start="6">
+<li>Attach an event listener to the <kbd>start</kbd> event that will have a loop that will perform multiplications. Afterwards, it will call the <kbd>stop</kbd> method:</li>
+</ol>
+<pre>      tasks.on('start', () =&gt; { 
+          let res = 1 
+          for (let i = 1; i &lt; 100000; i++) { 
+              res *= i 
+          } 
+          tasks.stop() 
+      }) </pre>
+<ol start="7">
+<li>Attach an event listener to the <kbd>stop</kbd> event that will print the time it took for the event <kbd>start</kbd> to execute all its attached listeners:</li>
+</ol>
+<pre>      tasks.on('stop', (time) =&gt; { 
+          console.log(`Task completed in ${time}ms`) 
+      }) </pre>
+<ol start="8">
+<li>Call the <kbd>start</kbd> method to trigger all <kbd>start</kbd> event listeners:</li>
+</ol>
+<pre>      tasks.start() </pre>
+<ol start="9">
+<li>Save the file</li>
+<li>Open a new Terminal and run:</li>
+</ol>
+<pre><strong>      node timer.js</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p>When the <kbd>start</kbd> method is executed, it keeps the starting time using <kbd>process.hrtime</kbd>, which returns the current high-resolution real time in an array of two items, where the first item is a number that represents seconds while the second item is another number that represents nanoseconds. Then, it triggers all event listeners attached to the <kbd>start</kbd> event.</p>
+<p>On the other side, when the <kbd>stop</kbd> method is executed, it uses the result of previously calling <kbd>process.hrtime</kbd> as an argument to the same function, which returns the difference in time. This is useful to measure the time from when the <kbd>start</kbd> method was called until the time when the <kbd>stop</kbd> method was called.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">There's more...</h1>
+                </header>
+            
+            <article>
+                
+<p>A common mistake is to assume that events are called asynchronously. It is true that defined events can be called at any time. However, they are still executed synchronously. Take the following example:</p>
+<pre>const EventEmitter = require('events') 
+const events = new EventEmitter() 
+events.on('print', () =&gt; console.log('1')) 
+events.on('print', () =&gt; console.log('2')) 
+events.on('print', () =&gt; console.log('3')) 
+events.emit('print') </pre>
+<p>The outputs for the preceding code will be shown as follows:</p>
+<pre><strong>1 
+2 
+3</strong> </pre>
+<p>If you have a loop running inside one of your events, the next event won't get called until the previous one finishes executing.</p>
+<p>Events can be made asynchronous by simply adding an <kbd>async</kbd> function as an event listener. By doing so, every function will still be called in order from the first <kbd>listener</kbd> defined to the last. However, the emitter won't wait for the first <kbd>listener</kbd> to finish its execution to call the next listener. That means you cannot guarantee that the output will always be in the same order, for instance:</p>
+<pre>events.on('print', () =&gt; console.log('1')) 
+events.on('print', async () =&gt; console.log( 
+    await Promise.resolve('2')) 
+) 
+events.on('print', () =&gt; console.log('3')) 
+events.emit('print')  </pre>
+<p><span>The outputs for the preceding code will be shown as follows:</span></p>
+<pre><strong>1 
+3 
+2</strong> </pre>
+<p>Asynchronous functions allow us to write non-blocking applications. If implemented correctly, you won't run into problems like this above.</p>
+<p><kbd>EventEmitter</kbd> instances have a method called <kbd>listeners</kbd> which when executed, providing an event name as an argument, returns an array of the attached listeners for that specific event. We can use this method in a way to allow <kbd>async</kbd> functions to be executed in the order they were attached, for instance:</p>
+<pre>const EventEmitter = require('events') 
+class MyEvents extends EventEmitter { 
+    start() { 
+        return this.listeners('logme').reduce( 
+            (promise, nextEvt) =&gt; promise.then(nextEvt), 
+            Promise.resolve(), 
+        ) 
+    } 
+} 
+const event = new MyEvents() 
+event.on('logme', () =&gt; console.log(1)) 
+event.on('logme', async () =&gt; console.log( 
+    await Promise.resolve(2) 
+)) 
+event.on('logme', () =&gt; console.log(3)) 
+event.start() </pre>
+<p>This will execute and display output in the order they were attached:</p>
+<pre><strong>1 
+2 
+3</strong> </pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Understanding Socket.IO events</h1>
+                </header>
+            
+            <article>
+                
+<p>Socket.IO is an event-driven module or library, and, as you probably guessed, is based on <kbd>EventEmitter</kbd>. Everything in Socket.IO works with events. An event is triggered when a new connection is made to the Socket.IO server and an event can be emitted to send data to the client.</p>
+<p>The Socket.IO server API differs from the Socket.IO client API. However, both work with events to send data from client to server and vice versa.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">The Socket.IO server events</h1>
+                </header>
+            
+            <article>
+                
+<p>Socket.IO uses a single TCP connection to a single path. That means, by default, the connection is made to the URL <kbd><span class="URLPACKT">http[s]://host:port</span><span class="URLPACKT">/socket.io</span></kbd>. However, within Socket.IO, it allows you to define <strong>namespaces</strong>. That means, different end-points but the connection will still remain a single URL.</p>
+<div class="packt_infobox">By default, Socket.IO Server uses the <kbd>"/"</kbd> or root namespace</div>
+<p>You can, of course, define multiple instances and listen to different URLs as well. However, we will assume, for the purpose of this recipe, that only one connection is created.</p>
+<p>The Socket.IO namespace has the following events that your application can subscribe to:</p>
+<ul>
+<li><kbd>connect</kbd> or <kbd>connection</kbd>: When a new connection is made, this event is fired. It provides a <strong>socket object</strong> to the listener as the first parameter that represents the new connection with the client</li>
+</ul>
+<pre>      io.on('connection', (socket) =&gt; { 
+          console.log('A new client is connected') 
+      }) 
+      // Which is the same as:<br/>       io.of('/').on('connection', (socket) =&gt; { 
+          console.log('A new client is connected') 
+      }) </pre>
+<p>The Socket.IO socket object has the following events:</p>
+<ul>
+<li><kbd>disconnecting</kbd>: This event is emitted when the client is going to be disconnected from the server. It provides to the listener a parameter that specifies the reason for the disconnection</li>
+</ul>
+<pre>      socket.on('disconnecting', (reason) =&gt; { 
+          console.log('Disconnecting because', reason) 
+      }) </pre>
+<ul>
+<li><kbd>disconnected</kbd>: Similar to the disconnecting event. However, this event is fired after the client has been disconnected from the server:</li>
+</ul>
+<pre>      socket.on('disconnect', (reason) =&gt; { 
+          console.log('Disconnected because', reason) 
+      }) </pre>
+<ul>
+<li><kbd>error</kbd>: This event is emitted when an error occurs within events</li>
+</ul>
+<pre>      socket.on('error', (error) =&gt; { 
+          console.log('Oh no!', error.message) 
+      }) </pre>
+<ul>
+<li><kbd>[eventName]</kbd>: A user-defined event that will get fired when the client emits an event with the same name. The client can emit an event providing data in the arguments. On the server, the event will be fired and it will receive the data sent by the client</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Socket.IO client events</h1>
+                </header>
+            
+            <article>
+                
+<p>A client doesn't necessarily need to be a web browser. We could write a Node.js Socket.IO client application as well.</p>
+<p>The Socket.IO client events are extensive and give a lot of control over your application:</p>
+<ul>
+<li><kbd>connect</kbd>: This event gets fired when there is a successful connection to the server</li>
+</ul>
+<pre>      clientSocket.on('connect', () =&gt; { 
+          console.log('Successfully connected to server') 
+      }) </pre>
+<ul>
+<li><kbd>connect_error</kbd>: This event is emitted when there is an error when trying to connect or reconnect to the server</li>
+</ul>
+<pre>      clientSocket.on('connect_error', (error) =&gt; { 
+          console.log('Connection error:', error) 
+      }) </pre>
+<ul>
+<li><kbd>connect_timeout:</kbd> By default, the timeout set before a <kbd>connect_error</kbd> and <kbd>connect_timeout</kbd> is emitted is 20 seconds. After this, the Socket.IO client may try to reconnect to the server once again:</li>
+</ul>
+<pre>      clientSocket.on('connect_timeout', (timeout) =&gt; { 
+          console.log('Connect attempt timed out after', timeout) 
+      }) </pre>
+<ul>
+<li><kbd>disconnect</kbd>: This event is fired when the client is disconnected from the server. An argument is provided specifying the reason of the disconnection:</li>
+</ul>
+<pre>      clientSocket.on('disconnect', (reason) =&gt; { 
+          console.log('Disconnected because', reason) 
+      }) </pre>
+<ul>
+<li><kbd>reconnect</kbd>: Fired after a successful reconnection attempt. An argument is provided that specifies how many attempts happened before the connection was successful:</li>
+</ul>
+<pre>      clientSocket.on('reconnect', (n) =&gt; { 
+          console.log('Reconnected after', n, 'attempt(s)') 
+      }) </pre>
+<ul>
+<li><kbd>reconnect_attempt</kbd> or <kbd>reconnecting</kbd>: This event is emitted when trying to reconnect to the server. An argument is provided specifying the number of current attempts to connect to the server:</li>
+</ul>
+<pre>      clientSocket.on('reconnect_attempt', (n) =&gt; { 
+          console.log('Trying to reconnect again', n, 'time(s)') 
+      })  </pre>
+<ul>
+<li><kbd>reconnect_error</kbd>: Similar to the <kbd>connect_error</kbd> event. However, it gets fired only if there is an error when trying to reconnect to the server:</li>
+</ul>
+<pre>      clientSocket.on('reconnect_error', (error) =&gt; { 
+          console.log('Oh no, couldn't reconnect!', error) 
+      })  </pre>
+<ul>
+<li><kbd>reconnect_failed:</kbd> By the default, the maximum number of attempts is set to <kbd>Infinity</kbd>. That means, it is unlikely that this event will ever get fired. However, we can specify an option to limit the maximum number of connection attempts. Let's see that later:</li>
+</ul>
+<pre>      clientSocket.on('reconnect_failed', (n) =&gt; { 
+    console.log('Couldn'nt reconnected after', n, 'times') 
+      }) </pre>
+<ul>
+<li><kbd>ping</kbd>: In short, this event gets fired to check if the connection with the server is still alive:</li>
+</ul>
+<pre>      clientSocket.on('ping', () =&gt; { 
+          console.log('Checking if server is alive') 
+      }) </pre>
+<ul>
+<li><kbd>pong</kbd>: Fired when a response is received from the server after the event <kbd>ping</kbd> is fired. An argument is provided specifying the latency or response time:</li>
+</ul>
+<pre>      clientSocket.on('pong', (latency) =&gt; { 
+          console.log('Server responded after', latency, 'ms') 
+      }) </pre>
+<ul>
+<li><kbd>error</kbd>: This event is fired when an error occurs within events:</li>
+</ul>
+<pre>      clientSocket.on('error', (error) =&gt; { 
+          console.log('Oh no!', error.message) 
+      }) </pre>
+<ul>
+<li><kbd>[eventName]</kbd>: A user-defined event that gets fired when the event is emitted in the server. The arguments provided by the server will be received by the client.</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>In this recipe, you will build a Socket.IO server and a Socket.IO client using what you have just learned about events. Before you start, create a new <kbd>package.json</kbd> file with the following content:</p>
+<pre>{ 
+  "dependencies": { 
+    "socket.io": "2.1.0" 
+  } 
+} </pre>
+<p>Then, install the dependencies by opening a Terminal and running:</p>
+<pre><strong>npm install</strong> </pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>A Socket.IO server will be built to respond to a single event named <kbd>time</kbd>. When the event is fired, it will get the server's current time and emit another event named <kbd>"got time?"</kbd> providing two arguments, the current <kbd>time</kbd> and a <kbd>counter</kbd> that specifies how many times a request was made.</p>
+<ol>
+<li>Create a new file named <kbd>simple-io-server.js</kbd></li>
+</ol>
+<ol start="2">
+<li>Include the Socket.IO module and initialize a new server:</li>
+</ol>
+<pre>      const io = require('socket.io')() </pre>
+<ol start="3">
+<li>Define the URL path where connections will be made:</li>
+</ol>
+<pre>      io.path('/socket.io') </pre>
+<ol start="4">
+<li>Use the root or <kbd>"/"</kbd> namespace:</li>
+</ol>
+<pre>      const root = io.of('/') </pre>
+<ol start="5">
+<li>When a new connection is made, initialize a <kbd>counter</kbd> variable to <kbd>0</kbd>. Then, add a new listener to the <kbd>time</kbd> event that will increase the <kbd>counter</kbd> by one, every time there is a new request, and emit the <kbd>"got time?"</kbd> event that will be later defined on the client side:</li>
+</ol>
+<pre>      root.on('connection', socket =&gt; { 
+          let counter = 0 
+          socket.on('time', () =&gt; { 
+              const currentTime = new Date().toTimeString() 
+              counter += 1 
+              socket.emit('got time?', currentTime, counter) 
+          }) 
+      }) </pre>
+<ol start="6">
+<li>Listen on port <kbd>1337</kbd> for new connections:</li>
+</ol>
+<pre>      io.listen(1337) </pre>
+<ol start="7">
+<li>Save the file</li>
+</ol>
+<p>Next, build a Socket.IO client that will connect to our server:</p>
+<ol>
+<li>Create a new file named <kbd>simple-io-client.js</kbd></li>
+<li>Include the Socket.IO client module:</li>
+</ol>
+<pre>      const io = require('socket.io-client') </pre>
+<ol start="3">
+<li>Initialize a new Socket.IO client providing the server URL and an options object where we will define the path used in the URL where the connections will be made:</li>
+</ol>
+<pre>      const clientSocket = io('http://localhost:1337', { 
+          path: '/socket.io', 
+      }) </pre>
+<ol start="4">
+<li>Add an event listener to the <kbd>connect</kbd> event. Then, when a connection is made, using a <kbd>for</kbd> loop, emit the <kbd>time</kbd> event 5 times:</li>
+</ol>
+<pre>      clientSocket.on('connect', () =&gt; { 
+          for (let i = 1; i &lt;= 5; i++) { 
+              clientSocket.emit('time') 
+          } 
+      }) </pre>
+<ol start="5">
+<li>Add an event listener to the <kbd>"got time?"</kbd> event that will expect to receive two arguments the time and a counter that specifies how many requests were made to the server, then print on the console:</li>
+</ol>
+<pre>      clientSocket.on('got time?', (time, counter) =&gt; { 
+          console.log(counter, time) 
+      }) </pre>
+<ol start="6">
+<li>Save the file</li>
+<li>Open a Terminal and run first the Socket.IO server:</li>
+</ol>
+<pre>    <strong>node simple-io-server.js</strong></pre>
+<ol start="8">
+<li>Open another terminal and run the Socket.IO client:</li>
+</ol>
+<pre>    <strong>node simple-io-client.js</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p>Everything works with events. Socket.IO allows events to be defined in the server side that the client can emit. On the other side, it also allows to define events in the client side that the server can emit.</p>
+<p>When a user-defined event is emitted by the server side, the data is sent to the client. The Socket.IO client checks whether there is a listener for that event first. Then, if there is a listener, it will get triggered. The same thing happens the other way around when a user-defined event is emitted by the client side:</p>
+<ol>
+<li>An event listener <kbd>time</kbd> was added in our Socket.IO server's <strong>socket object</strong> which can be emitted by the client side</li>
+<li>An event listener <kbd>"got time?"</kbd> was added in our Socket.IO Client which can be emitted by the server side</li>
+</ol>
+<ol start="3">
+<li>On connection, the client emits the <kbd>time</kbd> event first</li>
+<li>Afterwards, the <kbd>time</kbd> event is fired on the server side which will emit the <kbd>"got time?"</kbd> event providing two arguments, the current server's <kbd>time</kbd> and a <kbd>counter</kbd> that specifies how many times a request was made</li>
+<li>Then, the <kbd>"got time?"</kbd> event is fired on the client side receiving two arguments that were provided by the server, the <kbd>time</kbd> and a <kbd>counter</kbd></li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Working with Socket.IO namespaces</h1>
+                </header>
+            
+            <article>
+                
+<p>Namespaces are a way of separating the business logic of your application while reusing the same TCP connection or minimizing the need for creating new TCP connections for to implement real-time communication between the server and the client.</p>
+<p>Namespaces look pretty similar to ExpressJS' route paths:</p>
+<pre>/home 
+/users 
+/users/profile </pre>
+<p>However, as mentioned in previous recipes, these are not related to URLs. By default, a single TCP connection is created at this URL <kbd><span class="URLPACKT">http[s]://host:port/socket.io</span></kbd></p>
+<p>Reusing the same event names is a good practice when using namespaces. For example, let's suppose that we have a Socket.IO server that we use to emit a <kbd>setWelcomeMsg</kbd> event when the client emits a <kbd>getWelcomeMsg</kbd> event:</p>
+<pre>io.of('/en').on('connection', (socket) =&gt; { 
+    socket.on('getWelcomeMsg', () =&gt; { 
+        socket.emit('setWelcomeMsg', 'Hello World!') 
+    }) 
+}) 
+io.of('/es').on('connection', (socket) =&gt; { 
+    socket.on('getWelcomeMsg', () =&gt; { 
+        socket.emit('setWelcomeMsg', 'Hola Mundo!') 
+    }) 
+}) </pre>
+<p>As you can see, we defined a listener for the event <kbd>getWelcomeMsg</kbd> in two different namespaces:</p>
+<ul>
+<li>If the client is connected to the English or <kbd>/en</kbd> namespace, when the <kbd>setWelcomeMsg</kbd> event is fired, the client will receive <kbd>"Hello World!"</kbd></li>
+<li>On the other hand, if the client is connected to the Spanish or <kbd>/es</kbd> namespace, when the <kbd>setWelcomeMsg</kbd> event is fired, the client will receive <kbd>"Hola Mundo!"</kbd></li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>In this recipe, you will see how to work with two different namespaces that contain the same event names. Before you start, create a new <kbd>package.json</kbd> file with the following content:</p>
+<pre>{ 
+  "dependencies": { 
+    "socket.io": "2.1.0" 
+  } 
+} </pre>
+<p>Then, install the dependencies by opening a terminal and running:</p>
+<pre><strong>npm install</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>Build a Socket.IO server that will fire a <kbd>data</kbd> event and send an object containing two properties, <kbd>title</kbd> and <kbd>msg</kbd>, that will be used to populate HTML content in the selected language. Use namespaces to separate and send different data according to the language that the client chooses, English or Spanish.</p>
+<ol>
+<li>Create a new file named <kbd>nsp-server.js</kbd></li>
+<li>Include the Socket.IO npm module and the required modules for creating an HTTP server:</li>
+</ol>
+<pre>      const http = require('http') 
+      const fs = require('fs') 
+      const path = require('path') 
+      const io = require('socket.io')() </pre>
+<ol start="3">
+<li>Use the <kbd>http</kbd> module to create a new HTTP server that will serve an HTML file you will create later as a Socket.IO client:</li>
+</ol>
+<pre>     const app = http.createServer((req, res) =&gt; { 
+      if (req.url === '/') { 
+               fs.readFile( 
+               path.resolve(__dirname, 'nsp-client.html'), 
+              (err, data) =&gt; { 
+                  if (err) { 
+                    res.writeHead(500) 
+                    return void res.end() 
+                   } 
+                    res.writeHead(200) 
+                    res.end(data) 
+                } 
+              ) 
+          } else { 
+              res.writeHead(403) 
+             res.end() 
+         } 
+    }) </pre>
+<ol start="4">
+<li>Specify the path new connections will be made to:</li>
+</ol>
+<pre>      io.path('/socket.io') </pre>
+<ol start="5">
+<li>For the <kbd>"/en"</kbd> namespace, add a new event listener, <kbd>getData</kbd>, which when fired will emit a <kbd>data</kbd> event on the client side and send an object including a <kbd>title</kbd> and a <kbd>msg</kbd> property in the English language:</li>
+</ol>
+<pre>     io.of('/en').on('connection', (socket) =&gt; { 
+        socket.on('getData', () =&gt; { 
+            socket.emit('data', { 
+               title: 'English Page', 
+               msg: 'Welcome to my Website', 
+           }) 
+        }) 
+   }) </pre>
+<ol start="6">
+<li>For the <kbd>"/es"</kbd> namespace, do the same. However, the object sent to the client will include a <kbd>title</kbd> and a <kbd>msg</kbd> property in the Spanish language:</li>
+</ol>
+<pre>      io.of('/es').on('connection', (socket) =&gt; { 
+          socket.on('getData', () =&gt; { 
+              socket.emit('data', { 
+                  title: 'Página en Español', 
+                  msg: 'Bienvenido a mi sitio Web', 
+              }) 
+          }) 
+      }) </pre>
+<ol start="7">
+<li>Listen on port <kbd>1337</kbd> for new connections and attach Socket.IO to the underlying HTTP server:</li>
+</ol>
+<pre>      io.attach(app.listen(1337, () =&gt; { 
+          console.log( 
+              'HTTP Server and Socket.IO running on port 1337' 
+          ) 
+      })) </pre>
+<ol start="8">
+<li>Save the file.</li>
+</ol>
+<p>Afterwards, create a Socket.IO client that will connect to our server and populate HTML content based on the data received from the server.</p>
+<ol>
+<li>Create a new file named <kbd>nsp-client.html</kbd></li>
+<li>First, specify the document type as HTML5. Next to it, add an <kbd>html</kbd> tag and set the language to English. Inside the <kbd>html</kbd> tag, include the <kbd>head</kbd> and <kbd>body</kbd> tags as well:</li>
+</ol>
+<pre>      &lt;!DOCTYPE html&gt; 
+      &lt;html lang="en"&gt; 
+      &lt;head&gt; 
+          &lt;meta charset="UTF-8"&gt; 
+          &lt;title&gt;Socket.IO Client&lt;/title&gt; 
+      &lt;/head&gt; 
+      &lt;body&gt; 
+          &lt;!-- code here --&gt; 
+      &lt;/body&gt; 
+      &lt;/html&gt; </pre>
+<ol start="3">
+<li>Inside the <kbd>body</kbd> tag, add the first three elements: a heading (<kbd>h1</kbd>) that will contain the title of the content, a <kbd>p</kbd> tag that will include a message from the server, and a <kbd>button</kbd> that will be used to switch to a different namespace. Also, include the Socket.IO client library. The Socket.IO server will make the library file available at this URL: <span class="URLPACKT">http[s]://host:port/socket.io/socket.io.js</span> . Then, also include as well the <kbd>babel</kbd> standalone library which will transform the code in the next steps into JavaScript code that can run in all browsers:</li>
+</ol>
+<pre>      &lt;h1 id="title"&gt;&lt;/h1&gt; 
+      &lt;section id="msg"&gt;&lt;/section&gt; 
+      &lt;button id="toggleLang"&gt;Get Content in Spanish&lt;/button&gt; 
+       &lt;script src="http://localhost:1337/socket.io/socket.io.js"&gt;  <br/>       &lt;/script&gt; 
+        &lt;script src="https://unpkg.com/@babel/standalone/babel.min.js"&gt;<br/>      &lt;/script&gt; </pre>
+<ol start="4">
+<li>Inside the <kbd>body</kbd>, after the last <kbd>script</kbd> tags, add another <kbd>script</kbd> tag and set its type to <kbd>"text/babel"</kbd>:</li>
+</ol>
+<pre>      &lt;script type="text/babel"&gt; 
+          // code here! 
+      &lt;/script&gt; </pre>
+<ol start="5">
+<li>After that, inside the <kbd>script</kbd> tag, add the following JavaScript code</li>
+<li>Define three constants that will contain a reference to the elements we have created in the <kbd>body</kbd>:</li>
+</ol>
+<pre>      const title = document.getElementById('title') 
+      const msg = document.getElementById('msg') 
+      const btn = document.getElementById('toggleLang') </pre>
+<ol start="7">
+<li>Define a Socket.IO client manager. It will help us to create sockets with the provided configuration:</li>
+</ol>
+<pre>      const manager = new io.Manager( 
+          'http://localhost:1337', 
+          { path: '/socket.io' }, 
+      ) </pre>
+<ol start="8">
+<li>Create a new socket that will connect to the <kbd>"/en"</kbd> namespace. We will assume that this is the default connection:</li>
+</ol>
+<pre>      const socket = manager.socket('/en') </pre>
+<ol start="9">
+<li>Reserve two connections for namespaces <kbd>"/en"</kbd> and <kbd>"/es"</kbd>. A reserved connection will allow us to switch to a different namespace without the need of to create a new TCP connection:</li>
+</ol>
+<pre>      manager.socket('/en') 
+      manager.socket('/es') </pre>
+<ol start="10">
+<li>Add an event listener that, once the socket is connected, will emit a <kbd>getData</kbd> event to request data from the server:</li>
+</ol>
+<pre>      socket.on('connect', () =&gt; { 
+          socket.emit('getData') 
+      }) </pre>
+<ol start="11">
+<li>Add an event listener for the <kbd>data</kbd> event that will get triggered when the client received data from the server:</li>
+</ol>
+<pre>      socket.on('data', (data) =&gt; { 
+          title.textContent = data.title 
+          msg.textContent = data.msg 
+      }) </pre>
+<ol start="12">
+<li>Add an event listener for the <kbd>button</kbd>. When it gets clicked, switch to a different namespace:</li>
+</ol>
+<pre>      btn.addEventListener('click', (event) =&gt; { 
+          socket.nsp = socket.nsp === '/en' 
+              ? '/es' 
+              : '/en' 
+          btn.textContent = socket.nsp === '/en' 
+              ? 'Get Content in Spanish' 
+              : 'Get Content in English' 
+          socket.close() 
+          socket.open() 
+      }) </pre>
+<ol start="13">
+<li>Save the file</li>
+<li>Open a new terminal and run:</li>
+</ol>
+<pre><strong>      node nsp-server.js</strong></pre>
+<ol start="15">
+<li>In the web browser, navigate to:</li>
+</ol>
+<pre><strong>      http://localhost:1337/</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Let's test it...</h1>
+                </header>
+            
+            <article>
+                
+<p>To see your previous work in action, follow these steps:</p>
+<ol>
+<li>Once you navigate to <kbd><span class="URLPACKT">http://localhost:1337/</span></kbd> in your web browser, click on the <kbd>"Get Content in Spanish"</kbd> button to switch to the Spanish namespace</li>
+<li>Click on the <kbd>"Get Content in English"</kbd> button to switch back to the English namespace</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p>This is what happens on the server side:</p>
+<ol>
+<li>We defined two namespaces, <kbd>"/en"</kbd> and <kbd>"/es"</kbd>, then added a new event listener, <kbd>getData</kbd>, to the <strong>socket object.</strong></li>
+<li>When the <kbd>getData</kbd> event is fired in any of the two defined namespaces, it will emit a data event and send an object, that contains a title and a message property, to the client</li>
+</ol>
+<p>On the client side, inside the script tag in our HTML document:</p>
+<ol>
+<li>Initially, a new socket is created for the namespace <kbd>"/en"</kbd>:</li>
+</ol>
+<pre>      const socket = manager.socket('/en')</pre>
+<ol start="2">
+<li>At the same time, we created two new <strong>sockets</strong> for the namespaces <kbd>"/en"</kbd> and <kbd>"/es"</kbd>. They will act as reserved connections:</li>
+</ol>
+<pre>      manager.socket('/en')<br/>      manager.socket('/es')</pre>
+<ol start="3">
+<li>After, an event listener connect was added that sends a request to the server on connection</li>
+<li>Then, another event listener data was added that is fired when data is received from the server</li>
+<li>Inside the event listener that handles onclick events for our button, we change the nsp property to switch to a different namespace. However, for this to happen, we had to disconnect the <strong>socket</strong> first, and call the open method to make a new connection again using the new namespace</li>
+</ol>
+<p>Let's see one of the confusing parts about reserved connections. When you create one or more <strong>sockets</strong> in the same namespace, the first connection is reused, for example:</p>
+<pre>const first = manager.socket('/home')<br/>const second = manager.socket('/home') // &lt;- reuses first connection</pre>
+<p>On the client side, if there were no reserved connections, then switching to a namespace that was not used before would result in a new connection being created.<br/>
+If you are curious, remove these two lines from the <kbd>nsp-client.html</kbd> file:</p>
+<pre>manager.socket('/en')<br/>manager.socket('/es')</pre>
+<p>Afterwards, restart or run the Socket.IO server again. You will notice that there is a slow response when switching to a different namespace because a new connection is created instead of being reused.</p>
+<p>There is an alternative way of achieving the same goal. We could have created two sockets that point to two different namespaces, <kbd>"/en"</kbd> and <kbd>"/es"</kbd>. Then, we could have added two event listeners connect and data to each socket. However, because the first and second socket would contain the same event names and receive data in the same format from the server, we would have gotten repeated code. Imagine the case if we had to do the same for five different namespaces that have the same event names and receive data in the same format, there would be too many repeated lines of code. This is where switching namespaces and reusing the same socket object is helpful. However, there may be cases were two or more different namespaces have different event names for different kinds of event, in that case, it is better to add event listeners for each of the namespaces separately. For example:</p>
+<pre>const englishNamespace = manager.socket('/en')<br/>const spanishNamespace = manager.socket('/es')<br/>// They listen to different events<br/>englishNamespace.on('showMessage', (data) =&gt; {})<br/>spanishNamespace.on('mostrarMensaje', (data) =&gt; {})</pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">There's more...</h1>
+                </header>
+            
+            <article>
+                
+<p>On the client side, you have probably noticed one thing that we didn't use before, <kbd>io.Manager</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">io.Manager</h1>
+                </header>
+            
+            <article>
+                
+<p>This allows us predefine or configure how new connections will be created. The options defined in a <kbd>Manager</kbd>, as the URL, will be passed to the socket on initiation.</p>
+<p>In our HTML file, inside a <kbd>script</kbd> tag, we created a new instance of <kbd>io.Manager</kbd> and passed two arguments; the server URL and an options object including a <kbd>path</kbd> property which indicates where new connections will be made:</p>
+<pre>const manager = new io.Manager( 
+    'http://localhost:1337', 
+    { path: '/socket.io' }, 
+) </pre>
+<p>To find out more about the <kbd>io.Manager</kbd> API visit the official documentation Website offer for Socket.IO <a href="https://socket.io/docs/client-api/#manager"><span class="URLPACKT">https://socket.io/docs/client-api/#manager</span></a>.</p>
+<p>Later, we used the <kbd>socket</kbd> method to initialize and create a new Socket for the provided namespace:</p>
+<pre>const socket = manager.socket('/en') </pre>
+<p>This way, it is easier to work with several namespaces at the same time without having to configure each one of them with the same options.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Defining and joining Socket.IO rooms</h1>
+                </header>
+            
+            <article>
+                
+<p>Within namespaces, you can define rooms or channels that a socket can join and leave.</p>
+<p>By default, a room is created with a random un-guessable ID for the connected <strong>socket</strong>:</p>
+<pre>io.on('connection', (socket) =&gt; { 
+    console.log(socket.id) // Outputs socket ID 
+}) </pre>
+<p>On connection, when emitting an event, for example:</p>
+<pre>io.on('connection', (socket) =&gt; { 
+    socket.emit('say', 'hello') 
+}) </pre>
+<p>What happens underneath is similar to this:</p>
+<pre>io.on('connection', (socket) =&gt; { 
+    socket.join(socket.id, (err) =&gt; { 
+        if (err) { 
+            return socket.emit('error', err) 
+        } 
+        io.to(socket.id).emit('say', 'hello') 
+    }) 
+}) </pre>
+<p>The <kbd>join</kbd> method was used to include the socket inside a room. In this case, the socket ID is the joint room, and the only client connected to that room is the socket itself.</p>
+<p>Because a socket ID represents a unique connection with a client and, by default, a room with the same ID is created; all data sent by the server to that room will be received only by that client. However, if several clients or socket IDs join a room with the same name and the server sends data; all clients could be able to receive it.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>In this recipe, you will see how to join a room and broadcast a message to all clients connected to that specific room. Before you start, create a new <kbd>package.json</kbd> file with the following content:</p>
+<pre>{ 
+  "dependencies": { 
+    "socket.io": "2.1.0" 
+  } 
+} </pre>
+<p>Then, install the dependencies by opening a terminal and running:</p>
+<pre><strong>npm install</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>Build a Socket.IO server that will notify all the connected clients to the <kbd>"commonRoom"</kbd> room when a new socket is connected.</p>
+<ol>
+<li>Create a new file named <kbd>rooms-server.js</kbd></li>
+<li>Include the Socket.IO NPM module and initialize a new HTTP server:</li>
+</ol>
+<pre>      const http = require('http') 
+      const fs = require('fs') 
+      const path = require('path') 
+      const io = require('socket.io')() 
+      const app = http.createServer((req, res) =&gt; { 
+          if (req.url === '/') { 
+              fs.readFile( 
+                  path.resolve(__dirname, 'rooms-client.html'), 
+                  (err, data) =&gt; { 
+                     if (err) { 
+                          res.writeHead(500) 
+                          return void res.end() 
+                      } 
+                      res.writeHead(200) 
+                      res.end(data) 
+                  } 
+              ) 
+          } else { 
+              res.writeHead(403) 
+              res.end() 
+          } 
+      }) </pre>
+<ol start="3">
+<li>Specify the path where new connections will be made:</li>
+</ol>
+<pre>      io.path('/socket.io') </pre>
+<ol start="4">
+<li>Use the root namespace to listen for events:</li>
+</ol>
+<pre>      const root = io.of('/') </pre>
+<ol start="5">
+<li>Define a method that will be used to emit an <kbd>updateClientCount</kbd> event to all socket clients connected to the <kbd>"commonRoom"</kbd> providing as an argument the number of connected clients:</li>
+</ol>
+<pre>      const notifyClients = () =&gt; { 
+          root.clients((error, clients) =&gt; { 
+              if (error) throw error 
+              root.to('commonRoom').emit( 
+                  'updateClientCount', 
+                  clients.length, 
+              ) 
+          }) 
+      } </pre>
+<ol start="6">
+<li>On connection, all newly connected Socket clients will join the <kbd>commonRoom</kbd>. Then, the server will emit a <kbd>welcome</kbd> event. After this, notify all connected sockets to update the number of connected clients and also do the same operation once a client is disconnected:</li>
+</ol>
+<pre>      root.on('connection', socket =&gt; { 
+          socket.join('commonRoom') 
+          socket.emit('welcome', `Welcome client: ${socket.id}`) 
+          socket.on('disconnect', notifyClients) 
+          notifyClients() 
+      }) </pre>
+<ol start="7">
+<li>Listen on port <kbd>1337</kbd> for new connections and attach Socket.IO to the HTTP server:</li>
+</ol>
+<pre>      io.attach(app.listen(1337, () =&gt; { 
+          console.log( 
+              'HTTP Server and Socket.IO running on port 1337' 
+          ) 
+      })) </pre>
+<ol start="8">
+<li>Save the file.</li>
+</ol>
+<p>After this, build a Socket.IO client that will connect to the Socket.IO server and populate the HTML content with received data:</p>
+<ol>
+<li>Create a new file named <kbd>rooms-client.html</kbd></li>
+<li>Add the following code:</li>
+</ol>
+<pre>      &lt;!DOCTYPE html&gt; 
+      &lt;html lang="en"&gt; 
+      &lt;head&gt; 
+          &lt;meta charset="UTF-8"&gt; 
+          &lt;title&gt;Socket.IO Client&lt;/title&gt; 
+      &lt;/head&gt; 
+      &lt;body&gt; 
+          &lt;h1 id="title"&gt; 
+              Connected clients: 
+              &lt;span id="n"&gt;&lt;/span&gt; 
+          &lt;/h1&gt; 
+          &lt;p id="welcome"&gt;&lt;/p&gt; 
+          &lt;script src="http://localhost:1337/socket.io/socket.io.js"&gt;<br/>          &lt;/script&gt; 
+          &lt;script <br/>          src="https://unpkg.com/@babel/standalone/babel.min.js"&gt;<br/>          &lt;/script&gt; 
+          &lt;script type="text/babel"&gt; 
+      // Code here 
+          &lt;/script&gt; 
+      &lt;/body&gt; 
+      &lt;/html&gt; </pre>
+<ol start="3">
+<li>Inside the script tag, add code in the following steps, starting from step 4</li>
+<li>Define two constants that will make a reference to two HTML elements that we will update according to the data sent by the Socket.IO Server:</li>
+</ol>
+<pre>      const welcome = document.getElementById('welcome') 
+      const n = document.getElementById('n') </pre>
+<ol start="5">
+<li>Define a Socket.IO Client Manager:</li>
+</ol>
+<pre>      const manager = new io.Manager( 
+          '<a href="http://localhost:1337">http://localhost:1337</a>', 
+          { path: '/socket.io' }, 
+      ) </pre>
+<ol start="6">
+<li>Use the root namespace which is the one used in the Socket.IO Server:</li>
+</ol>
+<pre>      const socket = manager.socket('/') </pre>
+<ol start="7">
+<li>Add an event listener for the <kbd>welcome</kbd> event that expects an argument that will contain a welcome message sent by the server:</li>
+</ol>
+<pre>      socket.on('welcome', msg =&gt; { 
+          welcome.textContent = msg 
+      }) </pre>
+<ol start="8">
+<li>Add an event listener for the <kbd>updateClientCount</kbd> event that expects an argument that will contain the number of connected clients:</li>
+</ol>
+<pre>      socket.on('updateClientCount', clientsCount =&gt; { 
+          n.textContent = clientsCount 
+      }) </pre>
+<ol start="9">
+<li>Save the file</li>
+<li>Open a new Terminal and run:</li>
+</ol>
+<pre><strong>      node rooms-server.js</strong></pre>
+<ol start="11">
+<li>On the web browser, navigate to:</li>
+</ol>
+<pre><strong>      </strong>http://localhost:1337/</pre>
+<ol start="12">
+<li>Without closing the previous tab or window, on the web browser, navigate once again to:</li>
+</ol>
+<pre><strong>      </strong>http://localhost:1337/</pre>
+<ol start="13">
+<li>The number of connected clients in both tabs or windows should have increased to <kbd>2</kbd></li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">There's more...</h1>
+                </header>
+            
+            <article>
+                
+<p>Sending the same message or data, to more than one client, is called broadcasting. The method we have seen broadcasts a message to all clients, including the client that generated the request.</p>
+<p>There are other several methods to broadcast a message. For instance:</p>
+<pre>socket.to('commonRoom').emit('updateClientCount', data) </pre>
+<p>Which will emit an <kbd>updateClientCount</kbd> event to all clients in <kbd>commonRoom</kbd> expect to the sender or the socket that originated the request.</p>
+<p>For a complete list check the official documentation of Socket.IO emit cheatsheet: <a href="https://socket.io/docs/emit-cheatsheet/"><span class="URLPACKT">https://socket.io/docs/emit-cheatsheet/</span></a></p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Writing middleware for Socket.IO</h1>
+                </header>
+            
+            <article>
+                
+<p>Socket.IO allows us to define two kinds of middleware functions in the server side:</p>
+<ul>
+<li><strong>Namespace middleware</strong>: Registers a function that gets executed for every new connected Socket and has the following signature:</li>
+</ul>
+<pre>      namespace.use((socket, next) =&gt; { ... }) </pre>
+<ul>
+<li><strong>Socket middleware</strong>: Registers a function that gets executed for every incoming Packet and has the following signature:</li>
+</ul>
+<pre>      socket.use((packet, next) =&gt; { ... }) </pre>
+<p>It works similarly to how ExpressJS middleware functions do. We can add new properties to the <kbd>socket</kbd> or <kbd>packet</kbd> objects. Then, we can call <kbd>next</kbd> to pass the control to the next middleware in the chain. If <kbd>next</kbd> is not called, then the <kbd>socket</kbd> won't be connected, or the <kbd>packet</kbd> received.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>In this recipe, you will build a Socket.IO server application where you will define middleware functions to restrict access to a certain namespace as well as restricting access to a certain socket based on some criteria. Before you start, create a new <kbd>package.json</kbd> file with the following content:</p>
+<pre>{ 
+  "dependencies": { 
+    "socket.io": "2.1.0" 
+  } 
+} </pre>
+<p>Then, install the dependencies by opening a terminal and running:</p>
+<pre>    <strong>npm install</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>The Socket.IO server application will expect the users to be logged-in in order for them to be able to connect to the <kbd>/home</kbd> namespace. Using socket middleware, we will also restrict access to <kbd>/home</kbd> namespace to a certain user:</p>
+<ol>
+<li>Create a new file named <kbd>middleware-server.js</kbd></li>
+<li>Include the Socket.IO library and initialize a new HTTP server:</li>
+</ol>
+<pre>      const http = require('http') 
+      const fs = require('fs') 
+      const path = require('path') 
+      const io = require('socket.io')() 
+      const app = http.createServer((req, res) =&gt; { 
+          if (req.url === '/') { 
+              fs.readFile( 
+                  path.resolve(__dirname, 'middleware-cli.html'), 
+                  (err, data) =&gt; { 
+                      if (err) { 
+                          res.writeHead(500) 
+                          return void res.end() 
+                      } 
+                      res.writeHead(200) 
+                      res.end(data) 
+                  } 
+              ) 
+          } else { 
+              res.writeHead(403) 
+              res.end() 
+          } 
+      }) </pre>
+<ol start="2">
+<li>Specify the path where new connections will be made:</li>
+</ol>
+<pre>      io.path('/socket.io') </pre>
+<ol start="3">
+<li>Define an array of users that we will use as an in-memory database:</li>
+</ol>
+<pre>      const users = [ 
+          { username: 'huangjx', password: 'cfgybhji' }, 
+          { username: 'johnstm', password: 'mkonjiuh' }, 
+          { username: 'jackson', password: 'qscwdvb' }, 
+      ] </pre>
+<ol start="4">
+<li>Define a method to verify if the provided username and password exist in the users array:</li>
+</ol>
+<pre>      const userMatch = (username, password) =&gt; ( 
+          users.find(user =&gt; ( 
+              user.username === username &amp;&amp; 
+              user.password === password 
+          )) 
+      ) </pre>
+<ol start="5">
+<li>Define a namespace middleware function that will check whether the user is already logged-in. A client won't be able to connect to a specific namespace using this middleware if they are not logged in:</li>
+</ol>
+<pre>      const isUserLoggedIn = (socket, next) =&gt; { 
+          const { session } = socket.request 
+          if (session &amp;&amp; session.isLogged) { 
+              next() 
+          } 
+      } </pre>
+<ol start="6">
+<li>Define two namespaces, one for <kbd>/login</kbd> and another for <kbd>/home</kbd>. The <kbd>/home</kbd> namespace will use our previously defined middleware function to check whether the user is logged in:</li>
+</ol>
+<pre>      const namespace = { 
+          home: io.of('/home').use(isUserLoggedIn), 
+          login: io.of('/login'), 
+      } </pre>
+<ol start="7">
+<li>When a new socket is connected to <kbd>/login</kbd> namespace, first we will define a socket middleware function for checking all incoming packages and ban access to the <kbd>johntm</kbd> username. Then, we will add an event listener for the enter event that will expect to receive a plain object containing a username and password, and if they exist in the users array, then we set a session object which will tell whether the user is logged in. Otherwise, we will send a <kbd>loginError</kbd> event with an error message to the client:</li>
+</ol>
+<pre>      namespace.login.on('connection', socket =&gt; { 
+          socket.use((packet, next) =&gt; { 
+              const [evtName, data] = packet 
+              const user = data 
+              if (evtName === 'tryLogin' 
+                  &amp;&amp; user.username === 'johnstm') { 
+                  socket.emit('loginError', { 
+                      message: 'Banned user!', 
+                  }) 
+              } else { 
+                  next() 
+              } 
+          }) 
+          socket.on('tryLogin', userData =&gt; { 
+              const { username, password } = userData 
+              const request = socket.request 
+              if (userMatch(username, password)) { 
+                  request.session = { 
+                      isLogged: true, 
+                      username, 
+                  } 
+                  socket.emit('loginSuccess') 
+              } else { 
+                  socket.emit('loginError', { 
+                      message: 'invalid credentials', 
+                  }) 
+              } 
+          }) 
+      }) </pre>
+<ol start="8">
+<li>Listen on port 1337 for new connections and attach Socket.IO to the HTTP server:</li>
+</ol>
+<pre>      io.attach(app.listen(1337, () =&gt; { 
+          console.log( 
+              'HTTP Server and Socket.IO running on port 1337' 
+          ) 
+      })) </pre>
+<ol start="9">
+<li>Save the file</li>
+</ol>
+<p>After this, build a Socket.IO client application that will connect to our Socket.IO Server and allow us to attempt to log in and test:</p>
+<ol>
+<li>Create a new file named <kbd>middleware-cli.html</kbd></li>
+<li>Add the following code:</li>
+</ol>
+<pre>      &lt;!DOCTYPE html&gt; 
+      &lt;html lang="en"&gt; 
+      &lt;head&gt; 
+          &lt;meta charset="UTF-8"&gt; 
+          &lt;title&gt;Socket.IO Client&lt;/title&gt; 
+          &lt;script src="http://localhost:1337/socket.io/socket.io.js"&gt;<br/>          &lt;/script&gt; 
+          &lt;script <br/>          src="https://unpkg.com/@babel/standalone/babel.min.js"&gt;<br/>          &lt;/script&gt; 
+      &lt;/head&gt; 
+      &lt;body&gt; 
+          &lt;h1 id="title"&gt;&lt;/h1&gt; 
+          &lt;form id="loginFrm" disabled&gt; 
+            &lt;input type="text" name="username" placeholder="username"/&gt; 
+              &lt;input type="password" name="password" <br/>                placeholder="password" /&gt; 
+              &lt;input type="submit" value="LogIn" /&gt; 
+              &lt;output name="logs"&gt;&lt;/output&gt; 
+          &lt;/form&gt; 
+          &lt;script type="text/babel"&gt; 
+              // Code here 
+          &lt;/script&gt; 
+      &lt;/body&gt; 
+      &lt;/html&gt; </pre>
+<ol start="3">
+<li>Inside the script tag, add the code in the following steps, starting from step 4</li>
+<li>Define three constant that will make a reference to the HTML elements that we will use to get input or display output:</li>
+</ol>
+<pre>      const title = document.getElementById('home') 
+      const error = document.getElementsByName('logErrors')[0] 
+      const loginForm = document.getElementById('loginForm') </pre>
+<ol start="5">
+<li>Define a Socket.IO Manager:</li>
+</ol>
+<pre>      const manager = new io.Manager( 
+          'http://localhost:1337', 
+          { path: '/socket.io' }, 
+      ) </pre>
+<ol start="6">
+<li>Let's define a namespace constant that will contain an object containing the Socket.IO namespaces <kbd>/home</kbd> and <kbd>/login</kbd>:</li>
+</ol>
+<pre>      const namespace = { 
+          home: manager.socket('/home'), 
+          login: manager.socket('/login'), 
+      } </pre>
+<ol start="7">
+<li>Add an event listener for the connect event to the <kbd>/home</kbd> namespace. It will get triggered only when the <kbd>/home</kbd> namespace successfully connects to the server:</li>
+</ol>
+<pre>      namespace.home.on('connect', () =&gt; { 
+          title.textContent = 'Great! you are connected to /home' 
+          error.textContent = '' 
+      }) </pre>
+<ol start="8">
+<li>Add an event listener for the <kbd>loginSuccess</kbd> event to the <kbd>/login</kbd> namespace. It will ask the <kbd>/home</kbd> namespace to connect to the server again. If the user is logged in, then the server will allow this connection:</li>
+</ol>
+<pre>      namespace.login.on('loginSuccess', () =&gt; { 
+          namespace.home.connect() 
+      }) </pre>
+<ol start="9">
+<li>Add an event listener for the <kbd>loginError</kbd> event to the <kbd>/login</kbd> namespace. It will display error messages sent by the server:</li>
+</ol>
+<pre>      namespace.login.on('loginError', (err) =&gt; { 
+          logs.textContent = err.message 
+      }) </pre>
+<ol start="10">
+<li>Add an event listener for the submit event for the login form. It will emit the enter event providing an object containing the username and password filled in the form:</li>
+</ol>
+<pre>      form.addEventListener('submit', (event) =&gt; { 
+          const body = new FormData(form) 
+          namespace.login.emit('tryLogin', { 
+              username: body.get('username'), 
+              password: body.get('password'), 
+          }) 
+          event.preventDefault() 
+      }) </pre>
+<ol start="11">
+<li>Save the file</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Let's test it...</h1>
+                </header>
+            
+            <article>
+                
+<p>To see our previous work in action:</p>
+<ol>
+<li>Run the Socket.IO server first. Open a new terminal and run:</li>
+</ol>
+<pre><strong>      node middleware-server.js</strong></pre>
+<ol start="2">
+<li>On your web browser, navigate to:</li>
+</ol>
+<pre><strong>      http://localhost:1337</strong></pre>
+<ol start="3">
+<li>You will see a login form with two fields, <kbd>username</kbd> and <kbd>password</kbd></li>
+<li>Try to log in with random invalid credentials. The following error is displayed:</li>
+</ol>
+<pre>      invalid credentials </pre>
+<ol start="5">
+<li>Next, try to log in with <kbd>johntm</kbd> as <kbd>username</kbd> and any <kbd>password</kbd>. The following error is displayed:</li>
+</ol>
+<pre>      Banned user! </pre>
+<ol start="6">
+<li>After that, log in with any of the two other valid credentials. For instance, using <kbd>jingxuan</kbd> as username and <kbd>qscwdvb</kbd> as password. The following title is displayed:</li>
+</ol>
+<pre>      Connected to /home </pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Integrating Socket.IO with ExpressJS</h1>
+                </header>
+            
+            <article>
+                
+<p>Socket.IO works well with ExpressJS. In fact, it's possible to run an ExpressJS application and a Socket.IO server using the same port or HTTP server.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>In this recipe, we will see how to integrate Socket.IO with ExpressJS. You will build an ExpressJS application that will serve an HTML file containing a Socket.IO client application. Before you start, create a new <kbd>package.json</kbd> file with the following content:</p>
+<pre>{ 
+  "dependencies": { 
+    "express": "4.16.3", 
+    "socket.io": "2.1.0" 
+  } 
+} </pre>
+<p>Then, install the dependencies by opening a terminal and running:</p>
+<pre><strong>npm install</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>Create a Socket.IO client application that will connect to the Socket.IO server, that you will build next, and display a welcome message sent by the server.</p>
+<ol>
+<li>Create a new file named <kbd>io-express-view.html</kbd></li>
+<li>Add the following code:</li>
+</ol>
+<pre>      &lt;!DOCTYPE html&gt; 
+      &lt;html lang="en"&gt; 
+      &lt;head&gt; 
+          &lt;meta charset="UTF-8"&gt; 
+          &lt;title&gt;Socket.IO Client&lt;/title&gt; 
+          &lt;script src="http://localhost:1337/socket.io/socket.io.js"&gt;<br/>          &lt;/script&gt; 
+          &lt;script <br/>           src="https://unpkg.com/@babel/standalone/babel.min.js"&gt;<br/>          &lt;/script&gt; 
+      &lt;/head&gt; 
+      &lt;body&gt; 
+          &lt;h1 id="welcome"&gt;&lt;/h1&gt; 
+          &lt;script type="text/babel"&gt; 
+              const welcome = document.getElementById('welcome') 
+              const manager = new io.Manager( 
+                  'http://localhost:1337', 
+                  { path: '/socket.io' }, 
+              ) 
+              const root = manager.socket('/') 
+              root.on('welcome', (msg) =&gt; { 
+                  welcome.textContent = msg 
+              }) 
+          &lt;/script&gt; 
+      &lt;/body&gt; 
+      &lt;/html&gt; </pre>
+<ol start="3">
+<li>Save the file</li>
+</ol>
+<p>Next, build an ExpressJS application and a Socket.IO server. The ExpressJS application will serve the previously created HTML file on the root path <kbd>"/"</kbd>:</p>
+<ol>
+<li>Create a new file named <kbd>io-express-server.js</kbd></li>
+<li>Initialize a new Socket.IO server application and an ExpressJS application:</li>
+</ol>
+<pre>      const path = require('path') 
+      const express = require('express') 
+      const io = require('socket.io')() 
+      const app = express() </pre>
+<ol start="3">
+<li>Define the URL path where new connections will be made to the Socket.IO server:</li>
+</ol>
+<pre>      io.path('/socket.io') </pre>
+<ol start="4">
+<li>Define a route method to serve our HTML file containing our Socket.IO client application:</li>
+</ol>
+<pre>      app.get('/', (req, res) =&gt; { 
+          res.sendFile(path.resolve( 
+              __dirname, 
+              'io-express-view.html', 
+          )) 
+      }) </pre>
+<ol start="5">
+<li>Define a namespace <kbd>"/"</kbd> and emit a <kbd>welcome</kbd> event with welcome message:</li>
+</ol>
+<pre>      io.of('/').on('connection', (socket) =&gt; { 
+          socket.emit('welcome', 'Hello from Server!') 
+      }) </pre>
+<ol start="6">
+<li>Attach the Socket.IO to ExpressJS Server:</li>
+</ol>
+<pre>      io.attach(app.listen(1337, () =&gt; { 
+          console.log( 
+              'HTTP Server and Socket.IO running on port 1337' 
+          ) 
+      })) </pre>
+<ol start="7">
+<li>Save the file</li>
+<li>Open the Terminal and run:</li>
+</ol>
+<pre><strong>      node io-express-server.js</strong></pre>
+<ol start="9">
+<li>In your browser, visit:</li>
+</ol>
+<pre><strong><span class="URLPACKT">      </span></strong>http://localhost:1337/</pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p>Socket.IO's <kbd>attach</kbd> method expects to receive a HTTP server as a parameter in order to attach the Socket.IO server application to it. The reason why we can attach Socket.IO to an ExpressJS server application is because the <kbd>listen</kbd> method returns the underlying HTTP server to which ExpressJS is connected.</p>
+<p>To sum up, the <kbd>listen</kbd> method returns the underlying HTTP server. Then, it is passed as a parameter to the <kbd>attach</kbd> method. This way, we can share the same connection with ExpressJS.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">There's more...</h1>
+                </header>
+            
+            <article>
+                
+<p>So far, we have seen that we can share the same underlying HTTP server between ExpressJS and Socket.IO. However, that is not all.</p>
+<p>The reason why we define a Socket.IO path is actually useful when working with ExpressJS. Take the following example:</p>
+<pre>const express = require('express') 
+const io = require('socket.io')() 
+const app = express() 
+io.path('/socket.io')<br/> app.get('/socket.io', (req, res) =&gt; { 
+    res.status(200).send('Hey there!') 
+}) 
+io.of('/').on('connection', socket =&gt; { 
+    socket.emit('someEvent', 'Data from Server!') 
+}) 
+io.attach(app.listen(1337)) </pre>
+<p>As you can see, we are using the same URL path for Socket.IO and ExpressJS. We accept new connections to the Socket.IO server on the <kbd>/socket.io</kbd> path, but we also send content for <kbd>/socket.io</kbd> using the GET route method.</p>
+<p>Even though this preceding example won't actually break your application, make sure to never use the same URL path to serve content from ExpressJS and accept new connections for Socket.IO at the same time. For instance, changing the previous code to this:</p>
+<pre>io.path('/socket.io')<br/> app.get('/socket.io/:msg', (req, res) =&gt; { 
+    res.status(200).send(req.params.msg) 
+}) </pre>
+<p>While you may expect your browser, when visiting <kbd><span class="URLPACKT">http://localhost:1337/socket.io/message</span></kbd>, to display <kbd>message</kbd>, that won't be the case and you will see the following instead:</p>
+<pre>{"code":0,"message":"Transport unknown"} </pre>
+<p>That is because Socket.IO will interpret the incoming data first and it won't understand the data you just sent. In addition, your route handler will never be executed.</p>
+<p>Besides that, the Socket.IO server also serves, by default, its own Socket.IO Client under the defined URL path. For example, try visiting <a href="http://localhost:1337/socket.io/socket.io.js"><span class="URLPACKT">http://localhost:1337/socket.io/socket.io.js</span></a> and you will be able to see the minimized JavaScript code of the Socket.IO client.</p>
+<p>If you wish to server your own version of Socket.IO client or if it is included in the bundle of your application, you can disable the default behavior in your Socket.IO server application with the <kbd>serveClient</kbd> method:</p>
+<pre>io.serveClient(false) </pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">See also</h1>
+                </header>
+            
+            <article>
+                
+<ul>
+<li><a href="66f37ef6-5a78-4c3e-85ba-738094c9eba2.xhtml">Chapter 2</a>, <em>Building a Web server with ExpressJS</em>, section <em>Using Express.js' built-in middleware function for serving static assets</em></li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Using ExpressJS middleware in Socket.IO</h1>
+                </header>
+            
+            <article>
+                
+<p>Socket.IO namespace middleware works pretty similar to how ExpressJS middleware does. In fact, the Socket Object also contains a <kbd>request</kbd> and a <kbd>response</kbd> object that we can use to store other properties in the same manner as we do with ExpressJS middleware functions:</p>
+<pre>namespace.use((socket, next) =&gt; { 
+    const req = socket.request 
+    const res = socket.request.res 
+    next() 
+}) </pre>
+<p>Because ExpressJS middleware functions have the following signature:</p>
+<pre>const expressMiddleware = (request, response, next) =&gt; { 
+    next() 
+} </pre>
+<p>We can safely execute the same function in a Socket.IO namespace middleware passing the necessary arguments:</p>
+<pre>root.use((socket, next) =&gt; { 
+    const req = socket.request 
+    const res = socket.request.res 
+    expressMiddleware(req, res, next) 
+}) </pre>
+<p>However, that doesn't mean that all ExpressJS middleware functions will work out of the box. For example, if an ExpressJS middleware function uses methods only available within ExpressJS, it may fail or have an unexpected behavior.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>In this recipe, we will see how to integrate the ExpressJS <kbd>express-session</kbd> middleware to share the session object between Socket.IO and ExpressJS. Before you start, create a new <kbd>package.json</kbd> file with the following content:</p>
+<pre>{ 
+  "dependencies": { 
+    "express": "4.16.3", 
+    "express-session": "1.15.6", 
+    "socket.io": "2.1.0" 
+  } 
+} </pre>
+<p>Then, install the dependencies by opening a Terminal and running:</p>
+<pre><strong>npm install</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>Build a Socket.IO client application that will connect to a Socket.IO server you will build next. Include a form where the user can type a username and a password to attempt to log in. The Socket.IO client will only be able to connect to the <kbd>/home</kbd> namespace after the user is logged-in:</p>
+<ol>
+<li>Create a new file named <kbd>io-express-cli.html</kbd></li>
+<li>Add the following HTML content:</li>
+</ol>
+<pre>      &lt;!DOCTYPE html&gt; 
+      &lt;html lang="en"&gt; 
+      &lt;head&gt; 
+          &lt;meta charset="UTF-8"&gt; 
+          &lt;title&gt;Socket.IO Client&lt;/title&gt; 
+          &lt;script src="http://localhost:1337/socket.io/socket.io.js"&gt;  <br/>          &lt;/script&gt; 
+          &lt;script <br/>           src="https://unpkg.com/@babel/standalone/babel.min.js"&gt;<br/>          &lt;/script&gt; 
+      &lt;/head&gt; 
+      &lt;body&gt; 
+          &lt;h1 id="title"&gt;&lt;/h1&gt; 
+          &lt;form id="loginForm"&gt; 
+            &lt;input type="text" name="username" placeholder="username"/&gt; 
+              &lt;input type="password" name="password" <br/>                placeholder="password" /&gt; 
+              &lt;input type="submit" value="LogIn" /&gt; 
+              &lt;output name="logErrors"&gt;&lt;/output&gt; 
+          &lt;/form&gt; 
+          &lt;script type="text/babel"&gt; 
+              // Code here 
+          &lt;/script&gt; 
+      &lt;/body&gt; 
+      &lt;/html&gt; </pre>
+<ol start="3">
+<li>Inside the script tag add the code in the next steps, starting from step 4</li>
+<li>Define constants that make a reference to the HTML elements that we will use:</li>
+</ol>
+<pre>      const title = document.getElementById('title') 
+      const error = document.getElementsByName('logErrors')[0] 
+      const loginForm = document.getElementById('loginForm') </pre>
+<ol start="5">
+<li>Define a Socket.IO Manager:</li>
+</ol>
+<pre>      const manager = new io.Manager( 
+          'http://localhost:1337', 
+          { path: '/socket.io' }, 
+      ) </pre>
+<ol start="6">
+<li>Define two namespaces, one for <kbd>/login</kbd> and another one for <kbd>/home</kbd>:</li>
+</ol>
+<pre>      const namespace = { 
+          home: manager.socket('/home'), 
+          login: manager.socket('/login'), 
+      } </pre>
+<ol start="7">
+<li>Add an event listener for the <kbd>welcome</kbd> event that will be triggered by the server side once a connection is allowed to the <kbd>/home</kbd> namespace:</li>
+</ol>
+<pre>      namespace.home.on('welcome', (msg) =&gt; { 
+          title.textContent = msg 
+          error.textContent = '' 
+      }) </pre>
+<ol start="8">
+<li>Add an event listener for <kbd>loginSuccess</kbd> event that, when triggered, will ask the <kbd>/home</kbd> namespace to try and reconnect to the Socket.IO Server:</li>
+</ol>
+<pre>      namespace.login.on('loginSuccess', () =&gt; { 
+          namespace.home.connect() 
+      }) </pre>
+<ol start="9">
+<li>Add an event listener for <kbd>loginError</kbd> event that will display an error when invalid credentials are provided:</li>
+</ol>
+<pre>      namespace.login.on('loginError', err =&gt; { 
+          error.textContent = err.message 
+      }) </pre>
+<ol start="10">
+<li>Add an event listener for <kbd>submit</kbd> event that will get triggered when submitting the form. It will emit an <kbd>enter</kbd> event with data containing the provided <kbd>username</kbd> and <kbd>password</kbd>:</li>
+</ol>
+<pre>      loginForm.addEventListener('submit', event =&gt; { 
+          const body = new FormData(loginForm) 
+          namespace.login.emit('enter', { 
+              username: body.get('username'), 
+              password: body.get('password'), 
+          }) 
+          event.preventDefault() 
+      }) </pre>
+<ol start="11">
+<li>Save the file.</li>
+</ol>
+<p>After this, build an ExpressJS application that will serve the Socket.IO client on the root path <kbd>"/"</kbd> and a Socket.IO server that will include the logic for logging the user:</p>
+<ol>
+<li>Create a new file named <kbd>io-express-srv.js</kbd></li>
+<li>Initialize a new ExpressJS application and a Socket.IO server application. Also, include the <kbd>express-session</kbd> NPM module:</li>
+</ol>
+<pre>      const path = require('path') 
+      const express = require('express') 
+      const io = require('socket.io')() 
+      const expressSession = require('express-session') 
+      const app = express() </pre>
+<ol start="3">
+<li>Define the path where new connections to Socket.IO server will be made:</li>
+</ol>
+<pre>      io.path('/socket.io') </pre>
+<ol start="4">
+<li>Define an ExpressJS session middleware function with the given options:</li>
+</ol>
+<pre>      const session = expressSession({ 
+          secret: 'MERN Cookbook Secret', 
+          resave: true, 
+          saveUninitialized: true, 
+      }) </pre>
+<ol start="5">
+<li>Define a Socket.IO namespace middleware that will use the previously created session middleware to generate a session object:</li>
+</ol>
+<pre>      const ioSession = (socket, next) =&gt; { 
+          const req = socket.request 
+          const res = socket.request.res 
+          session(req, res, (err) =&gt; { 
+              next(err) 
+              req.session.save() 
+          }) 
+      } </pre>
+<ol start="6">
+<li>Define two namespaces, one for <kbd>/home</kbd> and another for <kbd>/login</kbd>:</li>
+</ol>
+<pre>      const home = io.of('/home') 
+      const login = io.of('/login') </pre>
+<ol start="7">
+<li>Define an in-memory database or array of objects that will contain <kbd>username</kbd> and <kbd>password</kbd> properties. These define which users are allowed to login:</li>
+</ol>
+<pre>      const users = [ 
+          { username: 'huangjx', password: 'cfgybhji' }, 
+          { username: 'johnstm', password: 'mkonjiuh' }, 
+          { username: 'jackson', password: 'qscwdvb' }, 
+      ] </pre>
+<ol start="8">
+<li>Include the session middleware in ExpressJS:</li>
+</ol>
+<pre>      app.use(session) </pre>
+<ol start="9">
+<li>Add a route method for <kbd>/home</kbd> path that will serve our previously created HTML document containing the Socket.IO client:</li>
+</ol>
+<pre>      app.get('/home', (req, res) =&gt; { 
+          res.sendFile(path.resolve( 
+              __dirname, 
+              'io-express-cli.html', 
+          )) 
+      }) </pre>
+<ol start="10">
+<li>Use the session middleware in <kbd>/home</kbd> Socket.IO namespace. Then, check for every new socket if the user is logged in. If not, forbid the user to connect to this namespace:</li>
+</ol>
+<pre>      home.use(ioSession) 
+      home.use((socket, next) =&gt; { 
+          const { session } = socket.request 
+          if (session.isLogged) { 
+              next() 
+          } 
+      }) </pre>
+<ol start="11">
+<li>Once a connection is made to the <kbd>/home</kbd> namespace, meaning that the user can log in, emits a <kbd>welcome</kbd> event with a welcome message that will be displayed to the user:</li>
+</ol>
+<pre>      home.on('connection', (socket) =&gt; { 
+          const { username } = socket.request.session 
+          socket.emit( 
+              'welcome', 
+              `Welcome ${username}!, you are logged in!`, 
+          ) 
+      }) </pre>
+<ol start="12">
+<li>Use the Session Middleware in the <kbd>/login</kbd> Socket.IO namespace. Then, when the client emits an <kbd>enter</kbd> event with the provided username and password, it verifies the profile exists in the <kbd>users</kbd> array. If the user exists, set the <kbd>isLogged</kbd> property to <kbd>true</kbd> and the <kbd>username</kbd> property to the current user that has logged in:</li>
+</ol>
+<pre>      login.use(ioSession) 
+      login.on('connection', (socket) =&gt; { 
+          socket.on('enter', (data) =&gt; { 
+              const { username, password } = data 
+              const { session } = socket.request 
+              const found = users.find((user) =&gt; ( 
+                  user.username === username &amp;&amp; 
+                  user.password === password 
+              )) 
+              if (found) { 
+                  session.isLogged = true 
+                  session.username = username 
+                  socket.emit('loginSuccess') 
+              } else { 
+                  socket.emit('loginError', { 
+                      message: 'Invalid Credentials', 
+                  }) 
+              } 
+          }) 
+      }) </pre>
+<ol start="13">
+<li>Listen on port <kbd>1337</kbd> for new connections and attach the Socket.IO server to it:</li>
+</ol>
+<pre>      io.attach(app.listen(1337, () =&gt; { 
+          console.log( 
+              'HTTP Server and Socket.IO running on port 1337' 
+          ) 
+      })) </pre>
+<ol start="14">
+<li>Save the file</li>
+<li>Open a new Terminal and run:</li>
+</ol>
+<pre><strong>      node io-express-srv.js</strong>  </pre>
+<ol start="16">
+<li>In your browser, visit:</li>
+</ol>
+<pre><strong><span class="URLPACKT">     </span></strong> http://localhost:1337/home</pre>
+<ol start="17">
+<li>Login with valid credentials. For example:</li>
+</ol>
+<pre>      * Username: johntm<br/>      * Password: mkonjiuh</pre>
+<ol start="18">
+<li>If you logged in successfully, after refreshing the page, your Socket.IO client application will still be able to connect to <kbd>/home</kbd> and you will see a welcome message every time</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p>When the session middleware is used inside ExpressJS, after modifying the session object, the <kbd>save</kbd> method is automatically called at the end of the response. However, that is not the case when using the session middleware in Socket.IO namespaces, that is why we call the <kbd>save</kbd> method manually to save the session back to the store. In our case, the store is the memory where the sessions are kept until the server stops.</p>
+<p>Forbidding access to certain namespaces based on specific conditions is possible thanks to Socket.IO namespace middleware. If the control is not passed to the <kbd>next</kbd> handler, then the connection is not made. That's why after the login is successful, we ask the <kbd>/home</kbd> namespace to attempt to connect again.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  
+<div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">See also</h1>
+                </header>
+            
+            <article>
+                
+<ul>
+<li><a href="66f37ef6-5a78-4c3e-85ba-738094c9eba2.xhtml" target="_blank">Chapter 2</a>, <em>Building a Web server with ExpressJS</em>, section <em>Writing middleware functions</em></li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </div>
+
+
+
+  </body></html>
