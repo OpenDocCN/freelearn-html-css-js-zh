@@ -1,0 +1,612 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;10.&#xA0;Building a Concurrent Application"><div class="titlepage"><div><div><h1 class="title"><a id="ch10"/>Chapter 10. Building a Concurrent Application</h1></div></div></div><p>We've now covered all the major areas that JavaScript has to offer in terms of concurrency. We've seen the browser and how the JavaScript interpreter fits into this environment. We've looked at the few language mechanisms that assist with writing concurrent code, and we've learned how to write concurrent JavaScript in the back-end. In this chapter, we're going to try and put this all together by building a simple chat application.</p><p>It's worth noting upfront that this isn't a basic rehash of individual topics covered in earlier chapters, which would serve no real purpose. Instead, we're going to focus more on the concurrency decisions that we have to make during the initial implementation of the app, adapting earlier ideas learned in this book wherever appropriate. It's the design of concurrency semantics we put to use in our code that matters much more so than the actual mechanism that's used to do so.</p><p>We'll start with a brief foray into the pre-implementation activities. Then, we'll look at the more detailed requirements of the application that we're building. Finally, we'll walk through the actual implementation, which is divided into two parts, the front-end and back-end.</p><div class="section" title="Getting started"><div class="titlepage"><div><div><h1 class="title"><a id="ch10lvl1sec62"/>Getting started</h1></div></div></div><p>Looking at examples with code snippets is a good avenue for introducing a given topic. This is more or less what we've done so far throughout this book while going through concurrency in JavaScript. In the first chapter, we introduced a few concurrency principles. We should parallelize our code to take advantage of concurrent hardware. We should synchronize concurrent actions unobtrusively. We should conserve the CPU and memory by deferring computations and allocations wherever possible. Throughout the chapters, we've seen how these principles apply to different areas of JavaScript concurrency. They're also applicable in the first stages of development when we don't have an application or we're trying to fix an application.</p><p>We'll start this section with another look at the idea that concurrency is the default mode. When concurrency is the default, everything is concurrent. We'll go over again, why this is such an important system trait. Then, we'll look at whether or not the same principles apply to applications that already exist. Lastly, we'll look at the types of applications we might be building, and how they influence our approach to concurrency.</p><div class="section" title="Concurrency first"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec132"/>Concurrency first</h2></div></div></div><p>As we're well aware by now, concurrency <a id="id401" class="indexterm"/>is difficult. No matter how we dress it up or how solid our abstractions are, it's simply counter-intuitive to how our brains work. This sounds impossible, doesn't it? This definitely isn't the case. As with any difficult problem, the right approach is almost always a variation of divide and conquer. In the case of JavaScript concurrency, we want to divide the problem into no more than a few really small, easy-to-solve problems. An easy way to do this is to heavily scrutinize potential concurrency issues before we actually sit down to write any code.</p><p>For example, let's say we work under the assumption that we're likely to encounter concurrency issues frequently, all throughout our code. This would mean that we'd have to spend a lot of time doing upfront concurrency design. Things like generators and promises make sense from the early stages of development, and they get us closer to our end goal. But other ideas, like functional programming, map/reduce, and web workers solve larger concurrency problems. Does this mean that we want to spend a lot of design time on issues like these that we have yet to actually experience in our application?</p><p>The other approach is to spend less time on upfront concurrency design. This is not to say that we ignore concurrency; that would defeat the whole premise of this book. Rather, we work under the assumptions that we don't yet have any concurrency issues, but there's a strong possibility that we will have them later on. Put differently, we continue to write code that's concurrent by default, without investing in solutions to concurrency problems that don't exist yet. The principles we've used throughout this book, again, help us solve the important problems first.</p><p>For instance, we want to parallelize our code where we can get the most out of multiple CPUs on the system. Thinking about this principle forces the question—do we really care about leveraging eight CPUs for something that's easily handled by one? With little effort, we can build our application in such a way that we don't end up paralyzing ourselves by bikeshedding on concurrency issues that aren't real. Think about how to facilitate concurrency in the early stages in development. Think, how does this implementation make future concurrency issues difficult to deal with, and what's a better approach? Later in the chapter, our demo application will aim to implement code in this fashion.</p></div><div class="section" title="Retrofitting concurrency"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec133"/>Retrofitting concurrency</h2></div></div></div><p>Given that it's ill-advised<a id="id402" class="indexterm"/> to spend much time upfront thinking about concurrency issues, how do we go about fixing these issues once they happen? In some circumstances, the issues can be serious problems that render the interface unusable. For example, if we try to process a large amount of data, we could crash the browser tab by trying to allocate too much memory, or the UI could simply freeze. These are tough problems that require immediate attention, and they often don't come with the luxury of time.</p><p>The other circumstance that we're likely to find ourselves in is less-critical cases, where a concurrent implementation could objectively improve the user experience, but the application isn't going to fail if we don't fix it right away. For example, let's say that our application makes three API calls on the initial page load. Each call waits for the previous call to complete. But, it turns out that there's no actual dependency between the calls; they don't require response data from each other. Fixing these calls so that they all happen in parallel is relatively low-risk and improves the load time, possibly by more than a second.</p><p>The ultimate deciding factor on how easy or difficult these changes are to retrofit into our application depends on how the application was written. As mentioned in the preceding section, we don't want to spend a lot of time thinking about concurrency problems that don't exist. Instead, our initial focus should be on facilitating concurrency by default. So, when these circumstances arise, and we need to implement a concurrent solution that solves a tangible problem, it's not so difficult. We're already thinking concurrently because that's the way the code was written.</p><p>We're just as likely to find ourselves fixing an application that paid no mind to concurrency. These are trickier to handle when trying to fix issues that call for a concurrent solution. We'll often find that we need to refactor a lot of code just to fix something basic. This gets tough when we're under-the-gun time-wise, but generally-speaking, this can be a good thing. If a legacy application starts getting refactored for better concurrency facilitation one piece at a time, then we're better off. This just makes the next concurrency issue easier to fix, and it promotes a good style of coding—concurrency by default.</p></div><div class="section" title="Application types"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec134"/>Application types</h2></div></div></div><p>One thing you can and should pay close<a id="id403" class="indexterm"/> attention to during the initial phases of implementation is the type of application that we're building. There's no generic approach to writing code that facilitates concurrency. The reason for this is that every application is concurrent in its own unique way. There's obviously some overlap between concurrency scenarios, but in general, it's a good bet that our application is going to require its own special treatment.</p><p>For example, does it make sense to devote a lot of time and effort to designing abstractions around web workers? It wouldn't make sense to think about making API responses promised values if our application hardly makes any web requests at all. Finally, do we really want to think about inter-process communication design in our Node components if we don't have a high request/connectivity rate?</p><p>The trick isn't to ignore <a id="id404" class="indexterm"/>these lower-priority items, because as soon as we ignore some dimension of concurrency in our application, next week is when everything changes, and we'll be completely unprepared to handle the situation. Instead of completely ignoring these dimensions of our application in a concurrency context, we need to optimize for the common case. The most effective way to do this is to profoundly think about the nature of our application. By doing this, we can easily spot the best candidate problems to work on in our code as far as concurrency is concerned.</p></div></div></div>
+<div class="section" title="Requirements"><div class="titlepage"><div><div><h1 class="title"><a id="ch10lvl1sec63"/>Requirements</h1></div></div></div><p>Now it's time to turn our<a id="id405" class="indexterm"/> attention to actually building a concurrent application. In this section, we'll go through a brief overview of the chat application that we're going to build, starting with the overall goal of the application. Then, we'll break down the other requirements into the "API" and the "UI". We'll drive into some code momentarily, don't worry.</p><div class="section" title="The overall goal"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec135"/>The overall goal</h2></div></div></div><p>First things first, why yet another chat application? Well, for two reasons; first, it's not a real application, and we're not building it for the sake of reinventing the wheel; we're building it to learn about concurrent JavaScript in the context of an application. Second, a chat application has a lot of moving parts that help you demonstrate some of the concurrency mechanisms that you've learned about in this book. That being said, it will be a very simply chat application—we only have so much space in a chapter.</p><p>The chat concept that we'll implement is the same as with most other familiar chat applications out there. There's the chat itself, labeled with a topic, and there are the users and messages within. We'll implement these and not much else. Even the UI itself will be a stripped-down version of a typical chat window. Again, this is an effort to keep the code samples down to what's pertinent in a concurrency context.</p><p>To further simplify things, we won't actually persist the chats to disk; we'll just hold everything in memory. This way, we can keep our focus on other concurrency issues in the app, and it's easy to run without setting up storage or dealing with disk space. We'll also skip on the other common features of chats, such as typing notifications, emoji, etc. They're just not relevant to what we're trying to learn here. Even with all these functions removed, we'll see how involved concurrency design and implementation can get; larger projects are all the more challenging.</p><p>Finally, instead of using<a id="id406" class="indexterm"/> authentication, this chat app will serve more of a transient usage scenario, where users want to throw up a quick chat that doesn't require registration. So, the chat creator will create a chat, and this creates a unique URL that can be shared with participants.</p></div><div class="section" title="The API"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec136"/>The API</h2></div></div></div><p>The API for our chat <a id="id407" class="indexterm"/>app will be implemented using a simple Node HTTP server. It doesn't use any web frameworks, only a couple small libraries. There's no reason for this other than the application is simple enough that using a framework doesn't enhance the examples in this chapter in any way. In the real world, by all means, use a Node web framework that simplifies your code—the lessons from this book—including this chapter—are still applicable.</p><p>The responses will be JSON strings of our chat data. Only the most basic API endpoints that are fundamental to the application will be implemented. Here's what we need in terms of API endpoints:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Create a new chat</li><li class="listitem" style="list-style-type: disc">Join an existing chat</li><li class="listitem" style="list-style-type: disc">Post a new message to an existing chat</li><li class="listitem" style="list-style-type: disc">Fetch an existing chat</li></ul></div><p>Pretty simple, right? It's deceptively simple. Since there are no filtering capabilities, this needs to be handled in the front-end. This is on purpose; an API that's missing features is common, and a concurrent solution in the front-end is the likely outcome. We'll revisit this topic again when we start building the UI.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note32"/>Note</h3><p>The NodeJS code implemented for this sample application also includes handlers for serving static files. This is really a convenience measure more than a reflection on what should be happening in production. It's more important that you be able to easily run this application and play around with it, than replicate how static files are served in a production environment.</p></div></div></div><div class="section" title="The UI"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec137"/>The UI</h2></div></div></div><p>The user interface of <a id="id408" class="indexterm"/>our chat application will consist of a single HTML file and some accompanying JavaScript code. There are three pages within the HTML document—just simple <code class="literal">div</code> elements, and they are as follows:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Create chat</strong></span>: user provides a topic and their name.</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Join chat</strong></span>: user provides their name and is redirected to the chat.</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>View chat</strong></span>: user can view chat messages and send new messages.</li></ul></div><p>The role of these pages is fairly self-explanatory. The most complex page is view chat, and even this isn't too bad. It displays a list of all messages sent from any participant, including ourselves, along with the list of users. We'll have to implement a polling mechanism to keep the content of this page synchronized with chat data. Style-wise, we're not doing much beyond some very basic layout and font adjustments.</p><p>Lastly, since users are likely to join chats frequently, they're transient and ad-hoc in nature. After all, it'd be nice if we didn't always have to enter our user name every time we create or join a chat. We'll add functionality that keeps the name of the user in browser local storage.</p><p>Alright, time to write some code, ready?</p></div></div>
+<div class="section" title="Building the API"><div class="titlepage"><div><div><h1 class="title"><a id="ch10lvl1sec64"/>Building the API</h1></div></div></div><p>We'll begin the<a id="id409" class="indexterm"/> implementation with the NodeJS back-end. This is where we'll build the necessary API endpoints. We don't necessarily have to start with building the back-end first. In fact, a lot of the time, the UI design drives the API design. Different development shops have different approaches; we're doing the back-end first for no particular reason.</p><p>We'll start by implementing the basic HTTP serving and request routing mechanisms. Then, we'll look at using coroutines as handler functions. We'll wrap up the section with a look at how each of our handler functions are implemented.</p><div class="section" title="The HTTP server and routing"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec138"/>The HTTP server and routing</h2></div></div></div><p>We're not <a id="id410" class="indexterm"/>going to use<a id="id411" class="indexterm"/> anything more than the core <code class="literal">http</code> Node module for handling HTTP requests. In a real application, where we're more likely to use a web framework that takes care of a lot of boilerplate code for us, we would probably have a router component at our disposal. Our requirements are very similar to what we'd find in these routers, so we'll just roll our own here for the sake of simplicity.</p><p>We'll use the <code class="literal">commander</code> library for parsing command line options but this is actually not so straightforward to do. The library is tiny and introducing it early on in our project just means it's easier to add new configuration options to our server. Let's look at a diagram that shows how our main program fits into the environment:</p><div class="mediaobject"><img src="graphics/B05133_10_01.jpg" alt="The HTTP server and routing"/></div><p>The job of our <a id="id412" class="indexterm"/>main <a id="id413" class="indexterm"/>module is to launch the HTTP server and set up a handler function that does the routing. The routes themselves are a static mapping of regular expression to handler function. As we can see, the handler functions are stored in a separate module. So let's take a look at our main program now:</p><div class="informalexample"><pre class="programlisting">// The core Node modules we'll need.
+var http = require('http');
+
+// Commander is an "npm" package, and is very helpful
+// with parsing command line arguments.
+var commander = require('commander');
+
+// Our request handler functions that respond to
+// requests.
+var handlers = require('./handlers');
+
+// The routes array contains route-handler parings. That 
+// is, when a given route RegExp matches against the 
+// request URL, the associated handler function is 
+// called.
+var routes = [
+    [ /^\/api\/chat\/(.+)\/message/i, 
+        handlers.sendMessage ],
+    [ /^\/api\/chat\/(.+)\/join$/i, handlers.joinChat ],
+    [ /^\/api\/chat\/(.+)$/i, handlers.loadChat ],
+    [ /^\/api\/chat$/i, handlers.createChat ],
+    [ /^\/(.+)\.js$/i, handlers.staticFile ],
+    [ /^\/(.*)$/i, handlers.index ]
+];
+
+// Adds command line options using the "commander" library,
+// and parses them. We're only interested in the "host" and
+// the "port" values right now. Both options have default
+// values.
+commander
+    .option('-p, --port &lt;port&gt;', 
+        'The port to listen on', 8081)
+    .option('-H --host &lt;host&gt;', 
+        'The host to serve from', 'localhost')
+    .parse(process.argv);
+
+// Creates an HTTP server. This handler will iterate over
+// our "routes" array, and test for a match. If found, the
+// handler is called with the request, the response, and
+// the regular expression result.
+http.createServer((req, res) =&gt; {
+    for (let route of routes) {
+        let result = route[0].exec(req.url);
+
+        if (result) {
+            route[1](req, res, result);
+            break;
+        }
+    }
+}).listen(commander.port, commander.host);
+
+console.log(`listening
+at http://${commander.host}:${commander.port}`);</pre></div><p>This is the extent <a id="id414" class="indexterm"/>of our handler routing mechanism. We have all our routes defined in<a id="id415" class="indexterm"/> the <code class="literal">routes</code> variable, and as our application changes over time, this is where the route changes happen. We can also see that getting options from the command line using <code class="literal">commander</code> is pretty straightforward. Adding new options here is easy.</p><p>The request handler function that we've given to our HTTP server will probably never need to change, because it doesn't actually fulfill any requests. All it does is iterate over the routes until the route regular expression matches the request URL. When this happens, the request is handed off to the handler function. So, let's turn our attention to the actual handler implementation.</p></div><div class="section" title="Co-routines as handlers"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec139"/>Co-routines as handlers</h2></div></div></div><p>As we saw <a id="id416" class="indexterm"/>in earlier chapters of this book, it doesn't take much to <a id="id417" class="indexterm"/>introduce callback hell in our front-end JavaScript code. This is where promises come in handy, because they allow us to encapsulate nasty synchronization semantics. The result is clean and readable code in our components, where we try to implement product features. Do we have the same problem with Node HTTP request handlers?</p><p>In simpler handlers, no, we don't face this challenge. All we have to do is look at the request, figure out what to do about it, do it, and then update the response before sending it. In more complex scenarios, we have to do all kinds of asynchronous activities within our request handler before we're able to respond. In other words, callback hell is inevitable if we're not careful. For example, our handler might reach out to other web services for some data, it could issue a database query, or it could write to disk. In all these cases, we need to execute callbacks when the asynchronous action completes; otherwise, we'd never finish our responses.</p><p>In <a class="link" href="ch09.html" title="Chapter 9. Advanced NodeJS Concurrency">Chapter 9</a>, <span class="emphasis"><em>Advanced NodeJS Concurrency</em></span>, we looked at implementing coroutines in Node using the <code class="literal">Co</code> library. What if we could do something similar with our request handler functions? That is, make them coroutines instead of plain callable functions. The ultimate goal would be to produce something that looks like the following:</p><div class="mediaobject"><img src="graphics/B05133_10_02.jpg" alt="Co-routines as handlers"/></div><p>Here, we can see that the <a id="id418" class="indexterm"/>values we get from these services behave as simple <a id="id419" class="indexterm"/>variables in our code. They don't have to be services; however, they could be any asynchronous action. For example, our chat application needs to parse form data that's posted from the UI. It's going to use the <code class="literal">formidable</code> library to do this, which is an asynchronous action. The parsed form fields are passed to a callback function. Let's wrap this action in a promise, and see what it looks like:</p><div class="informalexample"><pre class="programlisting">// This function returns a promise, which is resolved
+// with parsed form data as an object.
+function formFields(req) {
+    return new Promise((resolve, reject) =&gt; {
+
+        // Use the "IncomingForm" class from the
+        // "formidable" lib to parse the data. This
+        // "parse()" method is async, so we resolve or
+        // reject the promise in the callback.
+        new formidable.IncomingForm()
+            .parse(req, (err, fields) =&gt; {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(fields);
+                }
+            });
+    });
+}</pre></div><p>When we want form fields, we have a promise to work with, which is good. But now, we need to use the function in the context of a coroutine. Let's walk through each of our request handlers, and<a id="id420" class="indexterm"/> see how to use the <code class="literal">formFields()</code> function <a id="id421" class="indexterm"/>to treat the promised value as a synchronous value.</p></div><div class="section" title="The create chat handler"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec140"/>The create chat handler</h2></div></div></div><p>The <a id="id422" class="indexterm"/>create chat handler is responsible for creating a new chat. It expects a topic and a user. It's going to use the <code class="literal">formFields()</code> function to parse the form data that's posted to this handler. After it stores the new chat in the global <code class="literal">chat</code> object (remember, this application stores everything in  memory), the handler responds with the chat data as a JSON string. Let's take a look at the handler code:</p><div class="informalexample"><pre class="programlisting">// The "create chat" API. This endpoint
+// creates a new chat object and stores it in memory.
+exports.createChat = co.wrap(function* (req, res) {
+    if (!ensureMethod(req, res, 'POST')) {
+        return;
+    }
+
+    // Yield the promise returned by "formFields()".
+    // This pauses the execution of this handler because
+    // it's a co-routine, created using "co.wrap()".
+    var fields = yield formFields(req);
+
+    // The ID for the new chat.
+    var chatId = id();
+
+    // The timestamp used for both the chat, and the
+    // added user.
+    var timestamp = new Date().getTime();
+
+    // Creates the new chat object and stores it. The
+    // "users" array is populated with the user that
+    // created the chat. The "messages" array is empty
+    // by default.
+    var chat = chats[chatId] = {
+        timestamp: timestamp,
+        topic: fields.topic,
+        users: [{
+            timestamp: timestamp,
+            name: fields.user
+        }],
+        messages: []
+    };
+
+    // The response is the JSON encoded version of the
+    // chat object. The chat ID is added to the response
+    // since it's stored as a key, not a chat property.
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(Object.assign({
+        id: chatId
+    }, chat)));
+});</pre></div><p>We can see <a id="id423" class="indexterm"/>that the <code class="literal">createChat()</code> function is exported from this module, because it's used by our router in the main application module. We can also see that the handler function is a generator, and it's wrapped with <code class="literal">co.wrap()</code>. This is because we want it to be a coroutine instead of a regular function. The call to <code class="literal">formFields()</code> illustrates the ideas that we covered in the previous section. Notice that we yield the promise, and we get the resolved value in return. The function blocks while this is happening, and this is of key importance because it's how we're able to keep our code clean and free of excessive callbacks.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note33"/>Note</h3><p>There are a few utility functions used by each of our handlers. These functions aren't covered here in the interest of page space. However, they're in the code that ships with this book, and they're documented in the comments.</p></div></div></div><div class="section" title="The join chat handler"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec141"/>The join chat handler</h2></div></div></div><p>The join chat chandler is <a id="id424" class="indexterm"/>how a user is able to join a chat created by another user. The user first needs the URL of the chat shared with them. Then, they can provide their name and post to this endpoint, which has the chat ID encoded as part of the URL. The job of this handler is to push the new user onto the users array of the chat. Let's take a look at handler code now:</p><div class="informalexample"><pre class="programlisting">// This endpoint allows a user to join an existing
+// chat that's been shared with them (a URL).
+exports.joinChat = co.wrap(function* (req, res, id) {
+    if (!ensureMethod(req, res, 'POST')) {
+        return;
+    }
+
+    // Load the chat from the memory - the "chats"
+    // object.
+    var chat = chats[id[1]];
+
+    if (!ensureFound(req, res, chat)) {
+        return;
+    }
+
+    // Yield to get the parsed form fields. This
+    // function is a co-routine created using "co.wrap()".
+    var fields = yield formFields(req);
+
+    chat.timestamp = new Date().getTime();
+
+    // Adds the new user to the chat.
+    chat.users.push({
+        timestamp: chat.timestamp,
+        name: fields.user
+    });
+
+    // Responds with the JSON encoded chat string. We
+    // need to add the ID separately as it's not a
+    // chat property.
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(Object.assign({
+        id: id[1],
+    }, chat)));
+});</pre></div><p>We can probably notice<a id="id425" class="indexterm"/> many similarities between this handler and the create chat handler. We check for the correct HTTP method, return a JSON response, and wrap the handler function as a coroutine so that we can parse the form in a way that completely avoids callback functions. The main difference is that we update an existing chat, instead of creating a new one.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note34"/>Note</h3><p>The code where we push the new <code class="literal">user</code> object to the <code class="literal">users</code> array would be considered storing the chat. In a real application, this would mean writing the data to disk somehow —likely a call to a database library. This would mean making an asynchronous request. Luckily, we can follow the same technique used with our form parsing—have it return a promise and leverage the coroutine that's already in place.</p></div></div></div><div class="section" title="The load chat handler"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec142"/>The load chat handler</h2></div></div></div><p>The job of the load chat <a id="id426" class="indexterm"/>handler is exactly what it sounds like—load the given chat using an ID found in the URL and respond with the JSON string of this chat. Here's the code to do this:</p><div class="informalexample"><pre class="programlisting">// This endpoint loads a chat. This function
+// isn't wrapped as a co-routine because there's
+// no asynchronous actions to wait for.
+exports.loadChat = function(req, res, id) {
+
+    // Lookup the chat, using the "id" from the URL
+    // as the key.
+    var chat = chats[id[1]];
+
+    if (!ensureFound(req, res, chat)) {
+        return;
+    }
+
+    // Respond with the JSON encoded string version
+    // of the chat.
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(chat));
+};</pre></div><p>There's no <code class="literal">co.wrap()</code> call for this function, nor a generator. This is because it's not needed. It's not that it's harmful to have this function be a generator that's wrapped as a coroutine, it's just wasteful.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note35"/>Note</h3><p>This is actually an example of us, the developers, making a conscious decision to avoid concurrency where it isn't justified. This might change down the road with this handler, and if it does, we'll have work to do. However, the trade-off is the fact that we now have less code, and it runs faster. It's beneficial to others who read it as it doesn't look like an asynchronous function, and it shouldn't be treated as such.</p></div></div></div><div class="section" title="The send message handler."><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec143"/>The send message handler.</h2></div></div></div><p>The last major API endpoint <a id="id427" class="indexterm"/>that we need to implement is send message. This is how any user in a given chat is able to post a message that's available for all other chat participants to consume. This is similar to the join chat handler, except we're pushing a new message object onto the messages array. Let's take a look at the handler code; this pattern should start to look familiar by now:</p><div class="informalexample"><pre class="programlisting">// This handler posts a new message to a given chat. It's
+// also a co-routine function since it needs to wait for
+// asynchronous actions to complete.
+exports.sendMessage = co.wrap(function* (req, res, id) {
+    if (!ensureMethod(req, res, 'POST')) {
+        return;
+    }
+
+    // Load the chat and ensures that it's found.
+    var chat = chats[id[1]];
+
+    if (!ensureFound(req, res, chat)) {
+        return;
+    }
+
+    // Get's the parsed form fields by yielding the
+    // promise returned from "formFields()".
+    var fields = yield formFields(req);
+
+    chat.timestamp = new Date().getTime();
+
+    // Pushes the new message object to the "messages" 
+    // property.
+    chat.messages.push({
+        timestamp: chat.timestamp,
+        user: fields.user,
+        message: fields.message
+    });
+
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(chat));
+});</pre></div><p>The same idea applies <a id="id428" class="indexterm"/>when joining a chat. Modifying the chat object is likely an asynchronous action in a real application, and now, our coroutine handler pattern is all set up for us to make this change when the time is right. That's the key with these coroutine handlers, making it easy to add new asynchronous actions to handlers instead of overwhelmingly difficult.</p></div><div class="section" title="Static handlers"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec144"/>Static handlers</h2></div></div></div><p>The last group of handlers that <a id="id429" class="indexterm"/>make up our chat application are the static content handlers. These have the job of serving static files from the file system to the browser, such as the <code class="literal">index.html</code> document and our JavaScript source. Typically, this is handled outside of the node application, but we'll include them here because there are times where it's just easier to go batteries included:</p><div class="informalexample"><pre class="programlisting">// Helper function used to serve static files.
+function serveFile(req, res, file) {
+
+    // Creates a stream to read the file.
+    var stream = fs.createReadStream(file);
+
+    // End the response when there's no more input.
+    stream.on('end', () =&gt; {
+        res.end();
+    });
+
+    // Pipe the input file to the HTTP response,
+    // which is a writable stream.
+    stream.pipe(res);
+}
+
+// Serves the requested path as a static file.
+exports.staticFile = function(req, res) {
+    serveFile(req, res,
+        path.join(__dirname, req.url));
+};
+
+// By default, we want to serve the "index.html" file.
+exports.index = function index(req, res) {
+    res.setHeader('ContentType', 'text/html');
+
+    serveFile(req, res,
+        path.join(__dirname, 'index.html'));
+};</pre></div></div></div>
+<div class="section" title="Building the UI"><div class="titlepage"><div><div><h1 class="title"><a id="ch10lvl1sec65"/>Building the UI</h1></div></div></div><p>We now have an API to <a id="id430" class="indexterm"/>target; it's time to start building the user interface for our chat. We'll start by thinking about talking to the API that we've just built, then implementing that piece. Next, we'll build the actual HTML we need to render the three pages used by this application. From here, we'll move onto perhaps the most challenging part of the front end—building the DOM event handlers and manipulators. Finally, we'll see if we can enhance the responsiveness of the application by throwing a web worker into the mix.</p><div class="section" title="Talking to the API"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec145"/>Talking to the API</h2></div></div></div><p>The API communication<a id="id431" class="indexterm"/> paths in our UI are inherently concurrent—they send and receive data over a network connection. Therefore, it's in the best interest of our application architecture that we take time to hide the synchronization mechanisms from the rest of the system as best as we can. To communicate with our API, we'll use instances of the <code class="literal">XMLHttpRequest</code> class. However, as we've seen in earlier chapters of this book, this class can lead us toward callback hell.</p><p>The solution, as we know, is to use a promise to support a consistent interface to all our API data. This doesn't mean we need to abstract the <code class="literal">XMLHttpRequest</code> class over and over again. We create a simple utility function that handles the concurrency encapsulation for us, and then we create several smaller functions that are specific to a corresponding API endpoint. Here's <a id="id432" class="indexterm"/>a diagram that illustrates the idea:</p><div class="mediaobject"><img src="graphics/B05133_10_03.jpg" alt="Talking to the API"/></div><p>This approach to talking with asynchronous API endpoints scales well, because adding new capabilities involves simply adding a small function. All the synchronization semantics are encapsulated within one <code class="literal">api()</code> function. Let's take a look at the code now:</p><div class="informalexample"><pre class="programlisting">// A generic function used to send HTTP requests to the
+// API. The "method" is the HTTP method, the "path" is
+// the request path, and the "data" is the optional
+// request payload.
+function api(method, path, data) {
+
+    // Returns a promise to the called, resolved with
+    // the API response, or failure.
+    return new Promise((resolve, reject) =&gt; {
+        var request = new XMLHttpRequest();
+
+        // Resolves the promise using the parsed JSON
+        // object - usually a chat.
+        request.addEventListener('load', (e) =&gt; {
+            resolve(JSON.parse(e.target.responseText));
+        });
+
+        // Rejects the promise when there's a problem with
+        // the API.
+        request.addEventListener('error', (e) =&gt; {
+            reject(e.target.statusText || 'unknown error');
+        });
+
+        request.addEventListener('abort', resolve);
+
+        request.open(method, path);
+
+        // If there's no "data", we can simply "send()"
+        // the request. Otherwise, we have to create a
+        // new "FormData" instance to properly encode
+        // the form data for the request.
+        if (Object.is(data, undefined)) {
+            request.send();
+        } else {
+            var form = new FormData();
+
+            Object.keys(data).forEach((key) =&gt; {
+                form.append(key, data[key]);
+            });
+
+            request.send(form);
+        }
+    });
+}</pre></div><p>This function is pretty<a id="id433" class="indexterm"/> easy to use and supports all our API usage scenarios. The smaller API functions that we'll implement shortly can simply return the promise that's returned by this <code class="literal">api()</code> function. There's no need to do anything fancier than this.</p><p>However, there is another thing we'll want to consider here. If we recall from the requirements of this application, the API doesn't have any filtering capabilities. This is a problem for the UI because we're not going to re-render the entire chat object. Messages can be posted frequently, and if we re-render a lot of messages, there's a good chance that the screen will flicker as we render the DOM elements. So, we obviously need to filter the chat messages and users in the browser; but where should this happen?</p><p>Let's think about this in the context of concurrency. Say we decide to perform the filtering in a component that directly manipulates the DOM. This is good in a sense because it means that we can have several independent components using the same data yet filtering it differently. It's also difficult to make any kind of adjustments for concurrency when the data transformations are this close to the DOM. For example, our application doesn't need flexibility. There's only one component that renders filtered data. But, it might benefit from concurrency. The following diagram illustrates another approach, where the API functionality that we implement performs the filtering:</p><div class="mediaobject"><img src="graphics/B05133_10_04.jpg" alt="Talking to the API"/></div><p>With this approach, the <a id="id434" class="indexterm"/>API functions are isolated enough from the DOM. We can introduce concurrency later on if we want. Let's look at some specific API functions now in addition to a filtering mechanism we can attach to the given API calls as needed:</p><div class="informalexample"><pre class="programlisting">// Filters the "chat" object to include only new users
+// and new messages. That is, data with a newer
+// "timestamp" than when we last checked.
+function filterChat(chat) {
+    Object.assign(chat, {
+
+        // Assigns the filtered arrays to the
+        // corresponding "chat" properties.
+        users: chat.users.filter(
+            user =&gt; user.timestamp &gt; timestamp
+        ),
+        messages: chat.messages.filter(
+            message =&gt; message.timestamp &gt; timestamp
+        )
+    });
+
+    // Reset the "timestamp" so we can look for newer
+    // data next time around. We return the modified
+    // chat instance.
+    timestamp = chat.timestamp;
+    return chat;
+}
+
+// Creates a chat using the given "topic" and "user".
+// The returned promise is resolved with the created
+// chat data.
+function createChat(topic, user) {
+    return api('post', 'api/chat', {
+        topic: topic,
+        user: user
+    });
+}
+
+// Joins the given "user" to the given chat "id".
+// The returned promise is resolved with the
+// joined chat data.
+function joinChat(id, user) {
+    return api('post', `api/chat/${id}/join`, {
+        user: user
+    }).then(filterChat);
+}
+
+// Loads the given chat "id". The returned promise
+// is resolved with filtered chat data.
+function loadChat(id) {
+    return api('get', `api/chat/${id}`)
+        .then(filterChat);
+};
+
+// Posts a "message" from the given "user" to the given
+// chat "id". The returned promise is resolved with
+// filtered chat data.
+function sendMessage(id, user, message) {
+    return api('post', `api/chat/${id}/message`, {
+        user: user,
+        message: message
+    }).then(filterChat);
+}</pre></div><p>The <code class="literal">filterChat()</code> function<a id="id435" class="indexterm"/> is straightforward enough. It just modifies the given <code class="literal">chat</code> object to include only new users and messages. New messages are those that have a timestamp greater than the <code class="literal">timestamp</code> variable used here. After the filtering is done, <code class="literal">timestamp</code> is updated based on the chat's <code class="literal">timestamp</code> property. This could be the same value if nothing has changed, but if something has changed, this value is updated so that duplicate values aren't returned.</p><p>We can see that in our specific API functions, the <code class="literal">filterChat()</code> function is passed to the promise as a resolver. So we do retain a level of flexibility here. For example, if a different component needs to filter the chat differently, we can introduce a new function that uses the same approach, and add a different promise resolver function that filters accordingly.</p></div><div class="section" title="Implementing the HTML"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec146"/>Implementing the HTML</h2></div></div></div><p>Our UI needs some <a id="id436" class="indexterm"/>HTML in order to render. The chat application is simple enough to get away with just a single HTML page. We can organize the DOM structure into three <code class="literal">div</code> elements, each of which represents our page. The elements on each page are simple in themselves, because there aren't many moving parts at this stage in development. Our first priority is functionality—building features that work. At the same time, we should be thinking about concurrency design. These items are definitely more pertinent to building a resilient architecture than thinking about, say, widgets and virtual DOM rendering libraries. These are important considerations, but they're also easier to work around than a faulty concurrency design.</p><p>Let's take a look at the HTML source used with our UI. There are a few CSS styles defined for these elements. However, they're trivial and aren't covered here. For example, the hide class is used to toggle the visibility of a given page. By default, everything is hidden. It's up to our event handlers to handle the display of these elements—we'll cover these next:</p><div class="informalexample"><pre class="programlisting">&lt;div id="create" class="hide"&gt;
+    &lt;h1&gt;Create Chat&lt;/h1&gt;
+    &lt;p&gt;
+        &lt;label for="topic"&gt;Topic:&lt;/label&gt;
+        &lt;input name="topic" id="topic" autofocus/&gt;
+    &lt;/p&gt;
+    &lt;p&gt;
+        &lt;label for="create-user"&gt;Your Name:&lt;/label&gt;
+        &lt;input name="create-user" id="create-user"/&gt;
+    &lt;/p&gt;
+    &lt;button&gt;Create&lt;/button&gt;
+&lt;/div&gt;
+&lt;div id="join" class="hide"&gt;
+    &lt;h1&gt;Join Chat&lt;/h1&gt;
+    &lt;p&gt;
+        &lt;label for="join-user"&gt;Your Name:&lt;/label&gt;
+        &lt;input name="join-user" id="join-user" autofocus/&gt;
+    &lt;/p&gt;
+    &lt;button&gt;Join&lt;/button&gt;
+&lt;/div&gt;
+&lt;div id="view" class="hide"&gt;
+    &lt;h1&gt;&lt;/h1&gt;
+    &lt;div&gt;
+        &lt;div&gt;
+            &lt;ul id="messages"&gt;&lt;/ul&gt;
+            &lt;input placeholder="message" autofocus/&gt;
+        &lt;/div&gt;
+        &lt;ul id="users"&gt;&lt;/ul&gt;
+    &lt;/div&gt;
+&lt;/div&gt;</pre></div></div><div class="section" title="DOM events and manipulation"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec147"/>DOM events and manipulation</h2></div></div></div><p>We now have some API communication <a id="id437" class="indexterm"/>mechanisms and DOM elements in place. Let's turn our<a id="id438" class="indexterm"/> attention to the event handlers of our application, and how they interact with the DOM. The most involved DOM manipulation activity for us to tackle is drawing the chat. That is, displaying messages and users participating in the chat. Let's start here. We'll implement a <code class="literal">drawChat()</code> function because it's likely going to be used in more than one place:</p><div class="informalexample"><pre class="programlisting">// Updates the given "chat" in the DOM.
+function drawChat(chat) {
+
+    // Our main DOM components. "$users" is the
+    // list of users in the chat. "$messages" is the
+    // list of messages in the chat. "$view" is the
+    // container element for both lists.
+    var $users = document.getElementById('users'),
+    $messages = document.getElementById('messages'),
+    $view = document.getElementById('view');
+
+    // Update the document title to reflect the chat
+    // "topic", display the chat container by removing
+    // the "hide" class, and update the title of the
+    // chat in bold heading.
+    document.querySelector('title')
+        .textContent = chat.topic;
+    $view.classList.remove('hide');
+    $view.querySelector('h1')
+        .textContent = chat.topic;
+
+    // Iterates over the messages, making no assumptions
+    // about filtering or anything like that.
+    for (var message of chat.messages) {
+
+        // Constructs the DOM elements we'll need for
+        // the user portion of the message.
+        var $user = document.createElement('li'),
+            $strong = document.createElement('strong'),
+            $em = document.createElement('em');
+
+        // Assemble the DOM structure...
+        $user.appendChild($strong);
+        $user.appendChild($em);
+        $user.classList.add('user');
+
+        // Add content - the user name, and time the message
+        // was posted.
+        $strong.textContent = message.user + ' ';
+        $em.textContent = new Date(message.timestamp)
+            .toLocaleString();
+
+        // The message itself...
+        var $message = document.createElement('li');
+        $message.textContent = message.message;
+
+        // Attach the user portion and the message portion,
+        // to the DOM.
+        $messages.appendChild($user);
+        $messages.appendChild($message);
+    }
+
+    // Iterates over the users in the chat, making no
+    // assumptions about the data, only displaying it.
+    for (var user of chat.users) {
+        var $user = document.createElement('li');
+        $user.textContent = user.name;
+
+        $users.appendChild($user);
+    }
+
+    // Make sure that the user can see the newly-rendered
+    // content.
+    $messages.scrollTop = $messages.scrollHeight;
+
+    // Return the chat so that this function can be used
+    // as a resolver in a promise resolution chain.
+    return chat;
+}</pre></div><p>There are two important things to note about the <code class="literal">drawChat()</code> function. First, there's no chat filtering done here. It assumes that any message and user are new, and it simply appends them to the <a id="id439" class="indexterm"/>DOM. Second, we actually return the chat object after we've <a id="id440" class="indexterm"/>rendered the DOM. This may seem unnecessary at first, but we're actually going to use this function as a promise resolver. This means that if we want to add more resolvers to the <code class="literal">then()</code> chain, we have to pass the data along by returning it.</p><p>Let's take a look at the load event to highlight the previous point. After the chat has been rendered, we need to perform some more work. To do this, we can just chain the next function with another <code class="literal">then()</code> call:</p><div class="informalexample"><pre class="programlisting">// When the page loads...
+window.addEventListener('load', (e) =&gt; {
+
+    // The "chatId" comes from the page URL. The "user"
+    // might already exist in localStorage.
+    var chatId = location.pathname.slice(1),
+        user = localStorage.getItem('user'),
+        $create = document.getElementById('create'),
+        $join = document.getElementById('join');
+
+    // If there's no chat ID in the URL, then we display
+    // the create chat screen, populating the user
+    // input if it was found in localStorage.
+    if (!chatId) {
+        $create.classList.remove('hide');
+
+        if (user) {
+            document.getElementById('create-user')
+               .value = user;
+        }
+
+        return;
+    }
+
+    // If there's no user name found in localStorage,
+    // we display the join screen which allows them
+    // to enter their name before joining the chat.
+    if (!user) {
+        $join.classList.remove('hide');
+        return;
+    }
+
+    // We load the chat, draw it using drawChat(), and
+    // start the chat polling process.
+    api.postMessage({
+        action: 'loadChat',
+        chatId: chatId
+    }).then(drawChat).then((chat) =&gt; {
+
+        // If the user isn't part of the chat already,
+        // we join it. This happens when the user name
+        // is cached in localStorage. If the user creates
+        // a chat, then loads it, they'll already belong
+        // to the chat.
+        if (chat.users.map(u =&gt; u.name).indexOf(user) &lt; 0) {
+            api.postMessage({
+                action: 'joinChat',
+                chatId: chatId,
+                user: user
+            }).then(drawChat).then(() =&gt; {
+                poll(chatId);
+            });
+        } else {
+            poll(chatId);
+         }
+    });
+});</pre></div><p>This handler is called when the page first loads, and it first needs to check if there's a chat to load based on the current URL. If there is, then we make an API call to load the chat using <code class="literal">drawChat()</code> as the resolver. But, we also need to perform some additional functionality, and this is added to<a id="id441" class="indexterm"/> the next <code class="literal">then()</code> resolver in the chain. It's job is to make sure the user is actually part of the chat, and for this, it needs the chat we just loaded from the API, which is passed along from <code class="literal">drawChat()</code>. After we make further API calls to add the user to the chat, if necessary, we start the polling mechanism. This is how we keep the UI up-to-date with new messages and new users joining the chat:</p><div class="informalexample"><pre class="programlisting">// Starts polling the API for the given chat "id".
+function poll(chatId) {
+    setInterval(() =&gt; {
+        api.postMessage({
+            action: 'loadChat',
+            chatId: chatId
+        }).then(drawChat);
+    }, 3000);
+}</pre></div><p>You may have noticed <a id="id442" class="indexterm"/>that we're using strange call almost like a web<a id="id443" class="indexterm"/> worker—<code class="literal">api.postMessage()</code>. This is because it is a web worker, and this is what we'll cover next.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note36"/>Note</h3><p>In the interest of space, we're leaving out three other DOM event handlers related to creating chats, joining chats, and sending messages. There's nothing different about them in terms of concurrency compared to the load handler that we just covered.</p></div></div></div><div class="section" title="Adding an API worker"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec148"/>Adding an API worker</h2></div></div></div><p>Earlier, when we were implementing the <a id="id444" class="indexterm"/>API communication functions, we decided that having filtering components coupled with the API rather than the DOM made more sense from a concurrency perspective. It's now time to benefit from this decision and encapsulate our API code within a web worker. The main reason we want to do this is because the <code class="literal">filterChat()</code> function has the potential to lock up responsiveness. In other words, for larger chats, this would take longer to complete, and text inputs would stop responding to user input. For instance, there's no reason to prevent a user from sending a message while we try to render the updated list of messages.</p><p>First, we need to extend the worker API to have <code class="literal">postMessage()</code> return a promise. This is just as we did in <a class="link" href="ch07.html" title="Chapter 7. Abstracting Concurrency">Chapter 7</a>, <span class="emphasis"><em>Abstracting Concurrency</em></span>. Take a look at the following code:</p><div class="informalexample"><pre class="programlisting">// This will generate unique IDs. We need them to
+// map tasks executed by web workers to the larger
+// operation that created them.
+function* genID() {
+    var id = 0;
+
+    while (true) {
+        yield id++;
+    }
+}
+
+// Creates the global "id" generator.
+var id = genID();
+
+// This object holds the resolver functions from promises,
+// as results come back from workers, we look them up here,
+// based on ID.
+var resolvers = {};
+
+var rejectors = {};
+
+// Keep the original implementation of "postMessage()"
+// so we can call it later on, in our custom "postMessage()"
+// implementation.
+var postMessage = Worker.prototype.postMessage;
+
+// Replace "postMessage()" with our custom implementation.
+Worker.prototype.postMessage = function(data) {
+    return new Promise((resolve, reject) =&gt; {
+
+        // The ID that's used to tie together a web worker
+        // response, and a resolver function.
+        var msgId = id.next().value;
+    
+        // Stores the resolver so in can be used later, in
+        // the web worker message callback.
+        resolvers[msgId] = resolve;
+
+        rejectors[msgId] = reject;
+
+        // Run the original "Worker.postMessage()"
+        // implementation, which takes care of 
+        // actually posting the message to the 
+        // worker thread.
+        postMessage.call(this, Object.assign({
+            msgId: msgId,
+        }, data));
+    });
+};
+
+// Starts our worker...
+var api = new Worker('ui-api.js');
+
+// Resolves the promise that was returned by
+// "postMessage()" when the worker responds.
+api.addEventListener('message', (e) =&gt; {
+
+    // If the data is in an error state, then
+    // we want the rejector function, and we call
+    // that with the error. Otherwise, call the
+    // regular resolver function with the data returned
+    // from the worker.
+    var source = e.data.error ? rejectors : resolvers,
+        callback = source[e.data.msgId],
+        data = e.data.error ? e.data.error : e.data;
+
+    callback(data);
+
+    // Don't need'em, delete'em.
+    delete resolvers[e.data.msgId];
+    delete rejectors[e.data.msgId];
+});</pre></div><p>There's one minor <a id="id445" class="indexterm"/>detail that we didn't cover in <a class="link" href="ch07.html" title="Chapter 7. Abstracting Concurrency">Chapter 7</a>, <span class="emphasis"><em>Abstracting Concurrency</em></span>, with this technique of rejecting promises. For example, if the API call for some reason fails, we have to make sure that the promise in the main thread that's waiting on the worker is rejected; otherwise, strange bugs will start popping up.</p><p>Now, we need to make an addition to our <code class="literal">ui-api.js</code> module, where all our API functions are defined to accommodate for the fact that it's running inside a web worker. We just need to add the following event handler:</p><div class="informalexample"><pre class="programlisting">// Listens for messages coming from the main thread.
+addEventListener('message', (e) =&gt; {
+
+    // The generic promise resolver function. It's
+    // job is to post data back to the main thread
+    // using "postMessage()". It also returns the
+    // data so that it may be used further down in
+    // the promise resolution chain.
+    function resolve(data) {
+        postMessage(Object.assign({
+            msgId: e.data.msgId
+        }, data));
+
+        return data;
+    }
+
+    // The generic rejector function posts data back
+    // to the main thread. The difference here is that
+    // it marks the data as an error. This allows the
+    // promise on the other end to be rejected.
+    function reject(error) {
+        postMessage({
+            msgId: e.data.msgId,
+            error: error.toString()
+        });
+
+        return error;
+    }
+
+    // This switch decides which function to call based
+    // on the "action" message property. The "resolve()"
+    // function is passed as the resolver to each returned 
+    // promise.
+    switch (e.data.action) {
+        case 'createChat':
+            createChat(e.data.topic, e.data.user)
+                .then(resolve, reject);
+            break;
+        case 'joinChat':
+            joinChat(e.data.chatId, e.data.user)
+                .then(resolve, reject);
+            break;
+        case 'loadChat':
+            loadChat(e.data.chatId)
+                .then(resolve, reject)
+            break;
+        case 'sendMessage':
+            sendMessage(
+                e.data.chatId,
+                e.data.user,
+                e.data.message
+            ).then(resolve, reject);
+            break;
+    }
+});</pre></div><p>This <code class="literal">message</code> event <a id="id446" class="indexterm"/>handler is how we're able to communicate with the main thread. The <code class="literal">action</code> property is how we're able to determine which API endpoint to call. So now, whenever we perform any expensive filtering on our chat messages, it's in a separate thread.</p><p>Another consequence of introducing this worker is that it encapsulates the API functionality into a cohesive whole. The API web worker component can now be thought of as a smaller application within the larger UI as a whole.</p></div></div>
+<div class="section" title="Additions and improvements"><div class="titlepage"><div><div><h1 class="title"><a id="ch10lvl1sec66"/>Additions and improvements</h1></div></div></div><p>And that's the extent of<a id="id447" class="indexterm"/> coverage we'll have on the development of our chat application. We didn't walk through every bit of code, but this is why the code is made available as a companion to this book to look through it in it's entirety. The focus of the preceding sections has been through the lens of writing concurrent JavaScript code. We didn't utilize every last example from the chapters before this one, which would defeat the whole purpose of concurrency to fix issues that lead to a suboptimal user experience.</p><p>The focus of the chat application example was the facilitation of concurrency. This means making it possible to implement concurrent code when there's a need to do so as opposed to the implementing concurrent code for the sake of it. The latter doesn't make our application any better than it is right now, nor does it leave us in a better position to fix concurrency issues that happen later on.</p><p>We'll wrap up the chapter with a few areas that might be worth considering for our chat application. You, the reader, are encouraged to work with the chat application code and see if any of these points that follow are applicable. How would you go about supporting them? Do we need to alter our design? The point is that concurrency design in our JavaScript applications isn't a one-time occurrence, it's an ever evolving design task that changes alongside our application.</p><div class="section" title="Clustering the API"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec149"/>Clustering the API</h2></div></div></div><p>In <a class="link" href="ch09.html" title="Chapter 9. Advanced NodeJS Concurrency">Chapter 9</a>, <span class="emphasis"><em>Advanced NodeJS Concurrency</em></span>, you were introduced to the cluster module in NodeJS. This <a id="id448" class="indexterm"/>transparently scales the request handling ability of our HTTP servers. This module works by forking the node process into several child processes. Since they're each they're own process, they have their own even loop. Furthermore, there's no additional communication synchronization code required.</p><p>It wouldn't take much effort on our behalf to add in these clustering capabilities to our <code class="literal">app.js</code> module. But here's the question—at what point do we decide that clustering is worthwhile? Do we wait until we actually have performance issues, or we just have it turned on automatically? These are the things that are difficult to know in advance. The reality is that it depends on how CPU-intensive our request handlers get. And these changes usually come about as a result of new features being added to the software.</p><p>Will our chat app ever need clustering? Perhaps, someday. But there's really no work being performed by the handlers. This can always change. Maybe we could go ahead and implement<a id="id449" class="indexterm"/> the clustering capabilities, but also add an option that let's us turn it off.</p></div><div class="section" title="Cleaning up chats"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec150"/>Cleaning up chats</h2></div></div></div><p>Our chat application<a id="id450" class="indexterm"/> doesn't have any persistent storage; it holds all the chat data in memory. This is fine for our particular use case, because it's meant for users that want to spin up a transient chat so that they can share a link with people and not have to go through a registration process. The problem here is that long after the chat is no longer being used, its data still occupies memory. Eventually, this will be fatal to our Node process.</p><p>What if we decided to implement a cleanup service, whose job would be to periodically iterate over the chat data and chats that hadn't been modified in a given amount of time would be deleted? This would keep only active chats in memory.</p></div><div class="section" title="Asynchronous entry points"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec151"/>Asynchronous entry points</h2></div></div></div><p>We made the early<a id="id451" class="indexterm"/> decision to use coroutines for most of our request handlers. The only asynchronous action used by these handlers is the form parsing behavior. However, the likelihood of this remaining the only asynchronous action in any given handler is small. Especially as our application grows, we're going to start depending on more core NodeJS functionality, which means we're going to want to wrap in promises more asynchronous callback-style code. We'll probably start depending on external services too either our own or third-party software.</p><p>Can we take our asynchronous architecture a step further and provide entry points into these handlers for those that wish to extend the system? For example, if the request is a create chat request, send requests to any before create chat extensions that have been provided. Something like this is quite the undertaking and is error prone. But for larger systems that have many moving parts, all of them being asynchronous, it's best to look at standardizing on asynchronous entry points into the system.</p></div><div class="section" title="Who's typing?"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec152"/>Who's typing?</h2></div></div></div><p>Something we left out of our chat application is the<a id="id452" class="indexterm"/> typing state for a given user. This is the mechanism that informs all other members of the chat that a particular user is typing a message and is present on just about every modern chat system.</p><p>What would it take for us to implement such a feature, given our current design? Is the polling mechanism enough to deal with such a constantly-changing state? Would the data model have to change much, and would such a change bring about problems with our request handlers?</p></div><div class="section" title="Leaving chats"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec153"/>Leaving chats</h2></div></div></div><p>Another feature <a id="id453" class="indexterm"/>missing from our chat application is removing users that are no longer participating in the chat. For example, does it really make sense for other chat participants to see users in the chat that aren't really there? Would listening to a unload event and implementing a new leave chat API endpoint suffice, or is there a lot more to it than this?</p></div><div class="section" title="Polling timeouts"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec154"/>Polling timeouts</h2></div></div></div><p>The chat application that <a id="id454" class="indexterm"/>we've just built does little to no error handling. One case in particular that's worth fixing is killing the polling mechanism when it times out. By this, we're talking about preventing the client from repeating failed request attempts. Let's say the server is down, or the handler is simply failing because of a bug introduced; do we want the poller to just spin indefinitely? We don't want it to do this, and there's probably something that can be done about it.</p><p>For example, we would need to cancel the interval that's set up when the polling starts with the call to <code class="literal">setInterval()</code>. Likewise, we would need a means to track the number of successive failed attempts, so we would know when to shut it off.</p></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch10lvl1sec67"/>Summary</h1></div></div></div><p>Hopefully, this walk-through of a silly chat application has given you a new appreciation of what's involved with designing concurrent JavaScript applications end-to-end. This book started off with a high-level overview of what concurrency is, especially in the context of a JavaScript application, because it is different from other programming language environments. Then, we introduced some guiding principles to help us along the way.</p><p>The chapters where we took a disciplined look at the various language and environment concurrency mechanisms are really just a means to an end. The ultimate end game for us—the JavaScript programmers and architects—is an application that's free of concurrency issues. This is a broad statement, but at the end of the day, many issues that we face in our web applications are a direct result of inadequate concurrency design.</p><p>So use these principles. Use the awesome concurrency features available in JavaScript. Combine these two things to make great applications that exceed the expectations of our users. When we write code that's concurrent by default, many JavaScript programming challenges simply vanish.</p></div></body></html>

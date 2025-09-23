@@ -1,0 +1,429 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;13.&#xA0;Testing and Performance"><div class="titlepage"><div><div><h1 class="title"><a id="ch13"/>Chapter 13. Testing and Performance</h1></div></div></div><p>We want the architecture of our application to be the best that it can possibly be. It may sound silly to have to state this, but it does bear repeating from time to time, as a reminder that the work we're doing with Flux has the potential to make or break the success of the application. The best tools we have in our arsenal are unit tests and performance tests. These two activities are equally important. Being functionally-correct but slow as hell is a failure. Being fast as hell and riddled with bugs is a failure.</p><p>A huge contributing factor to implementing successful tests is to focus on what's relevant. We'll spend time in this chapter thinking about what the important tests are for Flux architectures—from both a functional and a performance perspective. This is especially important to think about given how new Flux is to the community. We'll focus on specific Flux components and design some unit tests for them. We'll then think about the difference between benchmarking low-level code versus performance testing end-to-end scenarios.</p><div class="section" title="Hello Jest"><div class="titlepage"><div><div><h1 class="title"><a id="ch13lvl1sec75"/>Hello Jest</h1></div></div></div><p>Jasmine is the widely accepted tool of choice when it comes to writing effective unit tests for JavaScript code. There's no shortage of add-on tools for Jasmine that make it possible to test just about anything and to <a id="id490" class="indexterm"/>use any tool to run your tests. For example, it's common practice to use a task runner such as Grunt or Gulp to run tests, along with the other various build tasks associated with the project.</p><p>Jest is a unit testing tool, developed by Facebook, which leverages the best parts of Jasmine while adding new capabilities. It's also easy to run Jest in our projects. For example, projects that depend on Webpack generally rely on NPM scripts to perform various tasks, as opposed to a task runner. This is easy to do with Jest, as we'll see in a moment.</p><p>There are three key aspects to Jest<a id="id491" class="indexterm"/> that will help us test our Flux architectures:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Jest provides a virtualized JavaScript environment, including a DOM interface</li><li class="listitem" style="list-style-type: disc">Jest spawns multiple worker processes to run our tests, leading to less time waiting for tests to<a id="id492" class="indexterm"/> complete and an overall faster development lifecycle</li><li class="listitem" style="list-style-type: disc">Jest can mock JavaScript modules for us, making it easier to isolate units of code to test</li></ul></div><p>Let's take a look at a quick example to get things rolling. Suppose we have the following function that we'd like to test:</p><div class="informalexample"><pre class="programlisting">// Builds and returns a string based
+// on the "name" argument.
+export default function sayHello(name = 'World') {
+  return `Hello ${name}!`;
+}</pre></div><p>This should be easy<a id="id493" class="indexterm"/> enough, we just need to write a unit test that checks for expected output. Let's see what this test looks like in Jest:</p><div class="informalexample"><pre class="programlisting">// Tells Jest that we want the real "hello"
+// module, not the mocked version.
+jest.unmock('../hello');
+
+// Imports the function we want to test.
+import sayHello from '../hello';
+
+// Your typical Jasmine test suite, test cases,
+// and test assertions.
+describe('sayHello()', () =&gt; {
+  it('says hello world', () =&gt; {
+    expect(sayHello()).toBe('Hello World!');
+  });
+
+  it('says hello flux', () =&gt; {
+    expect(sayHello('Flux')).toBe('Hello Flux!');
+  });
+});</pre></div><p>If this looks a lot like Jasmine, that's because it is. Jasmine is actually used under the hood to perform all the test assertions. However, at the top of the test module, you can see that there's a Jest function call to <code class="literal">unmock()</code>. This tells Jest that we don't want a mocked version of the <code class="literal">sayHello()</code> function. We want to test the real thing.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note35"/>Note</h3><p>There's actually quite a bit of tinkering involved with getting Jest set up to work with ES2015 module imports. But rather than try to explain that here, I'd recommend looking at the source code that ships along with this book. And now, back to the important stuff.</p></div></div><p>Let's create a <code class="literal">main.js</code> module that imports the <code class="literal">sayHello()</code> function and calls it:</p><div class="informalexample"><pre class="programlisting">import sayHello from './hello';
+sayHello();</pre></div><p>The Jest unit test that we<a id="id494" class="indexterm"/> created for the <code class="literal">sayHello()</code> function isolated the <code class="literal">sayHello()</code> function. That is, we didn't have to test any other code in order to test this function. If we apply this same logic to the main module, we shouldn't have to rely on the code that implements <code class="literal">sayHello()</code>. This is where the mocking capability of Jest comes in handy. Our last test turned off the mocking feature for the hello module, where <code class="literal">sayHello()</code> is defined. This time, we actually want to mock the function. Let's see what the main test looks like:</p><div class="informalexample"><pre class="programlisting">jest.unmock('../main');
+
+// The "main" module is the real deal. The
+// "sayHello()" function is a mock.
+import '../main';
+import sayHello from '../hello';
+
+describe('main', () =&gt; {
+
+  // We're expecting the "main" module to call
+  // "sayHello()" exactly once. Since the "sayHello()"
+  // function we've imported here is the same mock
+  // called by main, we can verify this is indeed
+  // what main is actually doing.
+  it('calls sayHello()', () =&gt; {
+    expect(sayHello.mock.calls.length).toBe(1);
+  });
+});</pre></div><p>This time around, we're making sure that the <code class="literal">main.js</code> module is not mocked by Jest. This means that the <code class="literal">sayHello()</code> function that we've imported is in fact the mocked version. To verify that the main module is working as expected, as simple as the module is, we just need to verify that the <code class="literal">sayHello()</code> function was called once.</p></div></div>
+<div class="section" title="Testing action creators"><div class="titlepage"><div><div><h1 class="title"><a id="ch13lvl1sec76"/>Testing action creators</h1></div></div></div><p>Now that we have a rough idea of how Jest works, it's time to start testing the various components of our Flux<a id="id495" class="indexterm"/> architecture. We'll start with action creator functions, since these determine the data that enters the system and are the starting point of the unidirectional data-flow. There are two types of action creators we'll want to test. First, we have the basic synchronous functions, followed by the asynchronous ones. Both types of actions lead to very different types of unit tests.</p><div class="section" title="Synchronous functions"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec160"/>Synchronous functions</h2></div></div></div><p>The job of an action creator is to <a id="id496" class="indexterm"/>create the necessary payload data and to dispatch it to stores. So to test this functionality, we'll want the real action creator function and a mocked dispatcher component. Remember, the idea is to isolate the component as the single unit that's being tested—we don't want any side-effects from the dispatcher code to influence the test outcome. With that said, lets take a look at the action creator:</p><div class="informalexample"><pre class="programlisting">import dispatcher from '../dispatcher';
+
+export const SYNC = 'SYNC';
+
+// Your typical synchronous action creator
+// function. Dispatches an action with
+// payload data.
+export function syncFunc(payload) {
+  dispatcher.dispatch({
+    type: SYNC,
+    payload
+  });
+}</pre></div><p>This sort of function is probably looking familiar by now. We want our unit test for this function to verify whether or not the <code class="literal">dispatch()</code> method is called correctly. Let's take a look at the test now:</p><div class="informalexample"><pre class="programlisting">// We want to test the real "syncFunc()" implementation.
+jest.unmock('../actions/sync-func');
+
+import dispatcher from '../dispatcher';
+import { syncFunc } from '../actions/sync-func';
+
+// The "dispatch()" method is mocked by
+// Jest. We'll use it in the test to validate
+// our action.
+const { dispatch } = dispatcher;
+
+describe('syncFunc()', () =&gt; {
+  it('calls dispatch()', () =&gt; {
+
+    // Calling "syncFunc()" should dispatch an
+    // action. We can verify this by making sure
+    // that the "dispatch()" was called.
+    syncFunc('data');
+    expect(dispatch.mock.calls.length).toBe(1);
+  });
+
+  it('calls dispatch() with correct payload', () =&gt; {
+    syncFunc('data');
+
+    // After calling "syncFunc()", we can get
+    // argument information from the mock.
+    const args = dispatch.mock.calls[1];
+    const [ action ] = args;
+
+    // Make sure the correct information was
+    // passed to the dispater.
+    expect(action).toBeDefined();
+    expect(action.type).toBe('SYNC');
+    expect(action.payload).toBe('data');
+  });
+});</pre></div><p>This works exactly as we expect it to. The first step is to tell Jest not to mock what's in the sync-func<a id="id497" class="indexterm"/> module, using the <code class="literal">unmock()</code> function. Jest will still mock everything else, including the dispatcher. So when this test calls <code class="literal">syncFunc()</code>, it's  calling the mock dispatcher in-turn. When it does so, the mock records information about the call, which we then use in our test assertions to make sure that everything is working as expected.</p><p>Nice and easy, right? Things get a little trickier when we need to mock asynchronous action creator functions, but we'll try to simplify everything in the next section.</p></div><div class="section" title="Asynchronous functions"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec161"/>Asynchronous functions</h2></div></div></div><p>Jest makes it easy for us to<a id="id498" class="indexterm"/> isolate the code that a given unit test should be testing by mocking all the irrelevant parts. Some things are easily handled by the Jest mock generator. Others need our intervention, as you'll see in this example. So let's start off and take a look at the asynchronous action creator function that we're trying to test:</p><div class="informalexample"><pre class="programlisting">import dispatcher from '../dispatcher';
+import request from '../request';
+
+export const ASYNC = 'ASYNC';
+
+// Makes a "request()" call (which is really
+// just an alias for "fetch()") and dispatches
+// the "ASYNC" action with the JSON response
+// as the action payload.
+export function asyncFunc() {
+  return request('https://httpbin.org/ip')
+    .then(resp =&gt; resp.json())
+    .then(resp =&gt; dispatcher.dispatch({
+      type: ASYNC,
+      payload: resp
+    }));
+}</pre></div><p>This action creator makes a request to a public JSON endpoint, and then dispatches the <code class="literal">ASYNC</code> action with the<a id="id499" class="indexterm"/> response as the action payload. If the <code class="literal">request()</code> function that we're using to make the network request looks a lot like the global <code class="literal">fetch()</code> function, that's because it is that function. The request module simply exports it, as follows:</p><div class="informalexample"><pre class="programlisting">// We're exporting the global "fetch()" function
+// so that Jest has an opportunity to mock it.
+export default fetch;</pre></div><p>It seems pointless, but there's really no overhead involved. This is how we're able to mock all network requests in our code easily. If we mock this request module for our unit tests, it means that our code won't be trying to reach a remote server. To mock this module, we just have to create a module by the same name in the <code class="literal">__mocks__ </code>directory, alongside the <code class="literal">__tests__</code> directory. Jest will mock find this mock and substitute it for the real module when it's imported. Let's look at the source of the mock <code class="literal">request()</code> function now:</p><div class="informalexample"><pre class="programlisting">// Exports the mocked version of the "request()"
+// function our action creators use. In this case,
+// we're emulating the "fetch()" function and the
+// "Response" object that it resolves.
+export default function request() {
+  return new Promise((resolve, reject) =&gt; {
+    process.nextTick(() =&gt; {
+      resolve({
+        json: () =&gt; new Promise((resolve, reject) =&gt; {
+
+          // This is where we put all of our mock fetch
+          // data. A given function should just test
+          // the properties that it's interested in,
+          // ignoring the rest.
+          resolve({ origin: 'localhost' });
+        })
+      });
+    });
+  });
+}</pre></div><p>If this code looks a little gross, don't worry—it's confined to this one place. All it's doing is replicating the interface of the native <code class="literal">fetch()</code> function that this module replaces (because we don't actually<a id="id500" class="indexterm"/> want to fetch anything). The tricky part of this approach is that any <code class="literal">request()</code> calls in our code are going to get the same resolved values. But this should be fine, assuming that our code can just ignore properties that it doesn't care about and that we can keep the test data in here to a minimum.</p><p>At this point, we have a mocked network layer, which means that we're ready to implement the actual unit test now. Let's go ahead and do that:</p><div class="informalexample"><pre class="programlisting">jest.unmock('../actions/async-func');
+
+// The "dispatcher" is mock while "asyncFunc()"
+// is not.
+import dispatcher from '../dispatcher';
+import { asyncFunc } from '../actions/async-func';
+
+describe('asyncFunc()', () =&gt; {
+
+  // For testing asynchronous code that returns
+  // promises, we use "pit()" in place of "it()".
+  pit('dispatch', () =&gt; {
+
+    // Once the call to "asyncFunc()" has resolved,
+    // we can perform our test assertions.
+    return asyncFunc().then(() =&gt; {
+      // Collect stats about he mock
+      // "dispatch()" method.
+      const { calls } = dispatcher.dispatch.mock;
+      const { type, payload } = calls[0][0];
+
+      // Make sure that the asynchronous function
+      // dispatches an action with the appropriate
+      // payload.
+      expect(calls.length).toBe(1);
+      expect(type).toBe('ASYNC');
+      expect(payload.origin).toBe('localhost');
+    });
+  });
+});</pre></div><p>There are two<a id="id501" class="indexterm"/> important things to note about this test. One, it's using the <code class="literal">pit()</code> function as a drop-in replacement for <code class="literal">it()</code>. Two, the <code class="literal">asyncFunc()</code> function itself returns a promise. These two aspects of Jest are what make writing asynchronous unit tests so straightforward. The difficult part of this example isn't the test, it's the infrastructure we need in place in order to mock things like network requests. Thanks to everything Jest takes care of for us, our unit test code is actually a lot smaller than it would otherwise be.</p></div></div>
+<div class="section" title="Testing stores"><div class="titlepage"><div><div><h1 class="title"><a id="ch13lvl1sec77"/>Testing stores</h1></div></div></div><p>In the previous section, we used Jest to test action creator functions. This wasn't much different from testing<a id="id502" class="indexterm"/> any other JavaScript function, except that Flux action creators need to somehow dispatch the actions they create to stores. Jest helps us achieve this by automatically mocking certain components, and it will certainly help us test our store components.</p><p>In this section, we'll look at testing the basic path of an action being dispatched to a store and the store emitting a change event. Then, we'll think about the initial store state and how this can lead to bugs that unit tests should be able to catch. Making all of this work is going to involve thinking about implementing testable store code, which is something we have yet to think about in this book.</p><div class="section" title="Testing store listeners"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec162"/>Testing store listeners</h2></div></div></div><p>Store components can be<a id="id503" class="indexterm"/> tricky to isolate from other components. This in turn makes designing unit tests for stores difficult. For example, a store will typically register itself with the dispatcher by passing it a callback function. This is the function that will change the state of the store, depending on the action payload that's passed to it. The reason this is a challenge is that it's tightly-coupled with the dispatcher.</p><p>Ideally, we want the dispatcher removed from the unit test completely. We're only testing our store code in the unit test, so we don't want anything that's happening in the dispatcher to interfere with the outcome. The odds of this happening are slim, since the dispatcher doesn't really have much to do. However, it's better to be consistent with all our Flux components and somehow isolate them completely. We've seen how Jest can help us out in the previous section. We just need to somehow apply this principle to stores—to decouple them from the dispatcher during unit tests.</p><p>This is a case where we might need to reconsider how we write our store code—sometimes for code to be<a id="id504" class="indexterm"/> good, it needs to be changed slightly so that it's good and testable. For example, the anonymous function that we would normally register with the dispatcher becomes a store method. This allows the test to call the method directly, skipping the whole dispatching mechanism, which is exactly what we want. Let's take a look at the store code now:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from '../events';
+import dispatcher from '../dispatcher';
+import { DO_STUFF } from '../actions/do-stuff';
+
+var state = {};
+
+class MyStore extends EventEmitter {
+  constructor() {
+    super();
+
+    // Registers a method of this store as the
+    // handler, to better support unit testing.
+    this.id = dispatcher.register(this.onAction.bind(this));
+  }
+
+  // Instead of performing the state transformation
+  // in the function that's registered with the
+  // dispatcher, it just determines which store
+  // method to call. This approach better supports
+  // testability.
+  onAction(action) {
+    switch (action.type) {
+      case DO_STUFF:
+        this.doStuff(action.payload);
+        break;
+    }
+  }
+
+  // Changes the "state" of the store, and emits
+  // a "change" event.
+  doStuff(payload) {
+    this.emit('change', (state = payload));
+  }
+}
+
+export default new MyStore();</pre></div><p>As you can see, the <code class="literal">onAction()</code> method is registered with the dispatcher, and will be called any time an action is dispatched. The <code class="literal">doStuff()</code> method breaks the specific state transformation that takes place in response to the <code class="literal">DO_STUFF</code> action out of the <code class="literal">onAction()</code> method. This isn't strictly necessary, but it does provide us with another target for our unit<a id="id505" class="indexterm"/> tests. For example, we could have just left the anonymous callback function in place and have our tests target the <code class="literal">doStuff()</code> method directly. However, if our tests call <code class="literal">onAction()</code> with the same type of payload data that comes from the dispatcher, we get better test coverage of the store.</p><p>The astute reader might have noticed that this store is importing <code class="literal">EventEmitter</code> from a different place than usual—<code class="literal">../events</code>. We have our own events module? We do now, and it's the same idea as with the <code class="literal">fetch()</code> function in the preceding section. We're providing a module of our own that Jest can mock. This is an easy way for Jest to mock the <code class="literal">EventEmitter</code> class. We were so busy thinking about the dispatcher, that we forgot to decouple our store from the event emitter for our test. Let's take a look at the events module so that you can see we're still exposing the good old <code class="literal">EventEmitter</code> we all know and love:</p><div class="informalexample"><pre class="programlisting">// In order to mock the Node "EventEmitter" API,
+// we need to expose it through one of our own modules.
+import { EventEmitter } from 'events';
+export { EventEmitter as EventEmitter } ;</pre></div><p>This means that the methods inherited by our store will be mocked by Jest, which is perfect because now our store is completely isolated from other component code and we can use data collected by the mock to perform some test assertions. Let's implement the unit test for this store now:</p><div class="informalexample"><pre class="programlisting">// We want to test the real store...
+jest.unmock('../stores/my-store');
+
+import myStore from '../stores/my-store';
+
+describe('MyStore', () =&gt; {
+  it('does stuff', () =&gt; {
+
+    // Directly calls the store method that's
+    // registered with the dispatcher, passing it
+    // the same type of data that the dispatcher
+    // would.
+    myStore.onAction({
+      type: 'DO_STUFF',
+      payload: { foo: 'bar' }
+    });
+
+    // Get some of the mocked "emit()" call info...
+    const calls = myStore.emit.mock.calls;
+    const [ args ] = calls;
+
+    // We can now assert that the store emits a
+    // "change" event and that it has the correct info.
+    expect(calls.length).toBe(1);
+    expect(args[0]).toBe('change');
+    expect(args[1].foo).toBe('bar');
+  });
+});</pre></div><p>What's nice about this approach is that it closely resembles how the data flows through the store, but without <a id="id506" class="indexterm"/>actually depending on other components in order to run the test. The test data enters the store the same way it would with an actual dispatcher component. Likewise, we know that the correct event data is being emitted by the store by measuring the mock implementation. This is where the store's responsibilities end, and so too do the test's responsibilities.</p></div><div class="section" title="Testing initial conditions"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec163"/>Testing initial conditions</h2></div></div></div><p>One thing we'll learn<a id="id507" class="indexterm"/> soon after our Flux stores grow large and complex is that they become increasingly difficult to test. For example, if the number of actions that a store responds to goes up, then the number of state configurations we'll want to test with will also go up. To help accommodate the unit tests for our stores, it would be helpful to be able to set the initial state of the store. Let's take a look at a store that allows us to set the initial state and responds to a couple of actions:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from '../events';
+import dispatcher from '../dispatcher';
+import { POWER_ON } from '../actions/power-on';
+import { POWER_OFF } from '../actions/power-off';
+
+// The initial state of the store...
+var state = {
+  power: 'off',
+  busy: false
+};
+
+class MyStore extends EventEmitter {
+
+  // Sets the initial state of the store to the given
+  // argument if provided.
+  constructor(initialState = state) {
+    super();
+    state = initialState;
+    this.id = dispatcher.register(this.onAction.bind(this));
+  }
+
+  // Figure out which action was dispatched and call the
+  // appropriate method.
+  onAction(action) {
+    switch (action.type) {
+      case POWER_ON:
+        this.powerOn();
+        break;
+      case POWER_OFF:
+        this.powerOff();
+        break;
+    }
+  }
+
+  // Changes the power state to "on", if the power state is
+  // currently "off".
+  powerOn() {
+    if (state.power === 'off') {
+      this.emit('change', 
+        (state = Object.assign({}, state, {
+          power: 'on'
+        }))
+      );
+    }
+  }
+
+  // Changes the power state to "off" if "busy" is false and
+  // if the current power state is "on".
+  powerOff() {
+    if (!state.busy &amp;&amp; state.power === 'on') {
+      this.emit('change', 
+        (state = Object.assign({}, state, {
+          power: 'off'
+        }))
+      );
+    }
+  }
+
+  // Gets the state...
+  get state() {
+    return state;
+  }
+}
+
+export default MyStore;</pre></div><p>This store responds to the <code class="literal">POWER_ON</code> and <code class="literal">POWER_OFF</code> actions. If you look at the methods that handle the state transformations of these two actions, you can see that the result depends on the current state. For example, powering on a store requires that the store already be off. Powering<a id="id508" class="indexterm"/> off a store is even more restrictive—the store has to be off and cannot be busy. These types of state transformations need to be tested using different initial store states, to make sure that the happy path works as expected, as well as the edge cases. Now let's take a look at the test for this store:</p><div class="informalexample"><pre class="programlisting">// We want to test the real store...
+jest.unmock('../stores/my-store');
+
+import MyStore from '../stores/my-store';
+
+describe('MyStore', () =&gt; {
+
+  // The default initial state of the store is
+  // powered off. This test makes sure that
+  // dispatching the "POWER_ON" action changes the
+  // power state of the store.
+  it('powers on', () =&gt; {
+    let myStore = new MyStore();
+
+    myStore.onAction({ type: 'POWER_ON' });
+
+    expect(myStore.state.power).toBe('on');
+    expect(myStore.state.busy).toBe(false);
+    expect(myStore.emit.mock.calls.length).toBe(1);
+  });
+
+  // This test changes the initial state of the store
+  // when it is first instantiated. The initial state
+  // is now powered off, and we've also marked the
+  // store as busy. This test makes sure that the
+  // logic of the store works as expected - the state
+  // shouldn't change, and no events are emitted.
+  it('does not powers off if busy', () =&gt; {
+    let myStore = new MyStore({
+      power: 'on',
+      busy: true
+    });
+
+    myStore.onAction({ type: 'POWER_OFF' });
+
+    expect(myStore.state.power).toBe('on');
+    expect(myStore.state.busy).toBe(true);
+    expect(myStore.emit.mock.calls.length).toBe(0);
+  });
+
+  // This test is just like the one above, only the
+  // "busy" property is false, which means that we
+  // should be able to power off the store when the
+  // "POWER_OFF" action is dispatched.
+  it('does not powers off if busy', () =&gt; {
+    let myStore = new MyStore({
+      power: 'on',
+      busy: false
+    });
+    myStore.onAction({ type: 'POWER_OFF' });
+
+    expect(myStore.state.power).toBe('off');
+    expect(myStore.state.busy).toBe(false);
+    expect(myStore.emit.mock.calls.length).toBe(1);
+  });
+});</pre></div><p>The second test is perhaps<a id="id509" class="indexterm"/> the most interesting because it makes sure that no events were emitted as a result of the action, due to the way the state transformation logic of the store works.</p></div></div>
+<div class="section" title="Performance goals"><div class="titlepage"><div><div><h1 class="title"><a id="ch13lvl1sec78"/>Performance goals</h1></div></div></div><p>It's time to switch gears <a id="id510" class="indexterm"/>and think about testing the performance of our Flux architecture. Testing the performance of a particular component can be difficult for the same reason that testing the functionality of a component is difficult—we have to isolate it from other code. On the other hand, our users don't necessarily care about the performance of individual components—just the overall user experience.</p><p>In this section, we'll discuss what we're trying to achieve with our Flux architecture in terms of performance. We'll start with the user perceived performance of the application, because this is the most<a id="id511" class="indexterm"/> consequential aspect of an under-performing architecture. Next, we'll think about measuring the raw performance of our Flux components. Finally, we'll consider the benefits of putting performance requirements in place for when we develop new components.</p><div class="section" title="User perceived performance"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec164"/>User perceived performance</h2></div></div></div><p>From the point of view of our users, our application either feels responsive or laggy. This <span class="emphasis"><em>feeling</em></span> is called <a id="id512" class="indexterm"/>user-perceived performance, because the user isn't actually measuring how long something takes to complete. Generally speaking, user-perceived performance is about frustration thresholds. Whenever we have to wait for something, frustration grows because we don't feel in control of the situation. We can't do anything to make it hurry up, in other words.</p><p>One solution is to distract the user. There are times when our code has to process something and there's no way around the length of time it takes. While this is happening, we can keep the user updated on the task progress. We might even be able to show some of the output that's already been processed, depending on the type of task. The other answer is to write performant code, which is something we should always strive for anyway.</p><p>User-perceived performance is critically important for the software product that we're building because if it's perceived as being slow, it's also perceived as being of poor quality. At the end of the day, it's the user's opinion that matters—this is how we measure whether or not our Flux architecture scales to an acceptable level. The downside of user perceived performance is that it's impossible to quantify, at least at a granular level. This is where we need tooling in place to help us measure how our components perform.</p></div><div class="section" title="Measured performance"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec165"/>Measured performance</h2></div></div></div><p>Performance metrics tell<a id="id513" class="indexterm"/> us specifically where the performance bottlenecks in our code are. If we know where the performance issues are, then we're better equipped to address them. From the perspective of a Flux architecture, for example, we would want to know whether the action creators are taking a long time to respond, or whether the stores are taking a long time to transform their state.</p><p>There are two types of performance testing that can help us stay on top of any performance issues during the development of our Flux architecture. The first type of testing is profiling, and we'll look at this in more detail in the next section. The second type of performance testing is benchmarking. This latter type of testing is done at a lower level and is good for comparing different implementations.</p><p>The only question is—how do<a id="id514" class="indexterm"/> we make performance measurement a fact of daily life, and what can we do with the results?</p></div><div class="section" title="Performance requirements"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec166"/>Performance requirements</h2></div></div></div><p>Given that we have the tools<a id="id515" class="indexterm"/> necessary for performance testing at our disposal, it would seem that it's possible to define some requirements around performance. For example, if someone is implementing a store, could we introduce a performance requirement that says a store can take no longer than x milliseconds to emit a change event? The plus side is that we could be reasonably confident about the performance of our architecture, right down to the component level. The down side is the complexity involved.</p><p>For one thing, development of new code would noticeably slow down, because not only would we have to test for functional correctness, we would also have a strict performance bar to clear. This takes time, and the payoff is most likely nothing. Let's say that we end up spending a bunch of time improving the performance of some component because it's barely failing the requirement. This would mean that we're spinning our wheels on something that's intangible to the user.</p><p>This isn't to say that performance testing cannot be automated or that it shouldn't be done at all. We simply have to be smart about where we invest our time testing the performance of our Flux code. The ultimate decider of performance is the user, so it's difficult to set concrete requirements that mean <span class="emphasis"><em>good enough</em></span> performance, but it's really easy to waste time trying to achieve optimal performance that nobody will notice, least of all your customers.</p></div></div>
+<div class="section" title="Profiling tools"><div class="titlepage"><div><div><h1 class="title"><a id="ch13lvl1sec79"/>Profiling tools</h1></div></div></div><p>The various profiling tools<a id="id516" class="indexterm"/> available to us through a web browser are often enough to address any performance issues in our interface. These include the components that make up our Flux architecture. In this section, we'll go over the three main tools found in browser developer tools that we'll want to use to profile our Flux architecture.</p><p>First are the action creator functions, specifically asynchronous functions. Then we'll think about the memory consumption of our Flux components. Finally, we'll discuss CPU utilization.</p><div class="section" title="Asynchronous actions"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec167"/>Asynchronous actions</h2></div></div></div><p>The network is always going to be the slowest layer of the application. Even if the API call we're making is<a id="id517" class="indexterm"/> relatively fast, it's still slow compared to other JavaScript code. If our application didn't make any network requests, it would be blazing fast. It also wouldn't be of much use. Generally speaking, JavaScript applications rely on remote API endpoints as their data resources.</p><p>To make sure that these network calls aren't causing performance issues, we can leverage the networking profiler of the browser developer tools. This shows us, in great detail, what any given request is doing, and how long it takes to do it. For example, if the server is taking a long time to respond to a request, this will be reflected in the timeline of the request.</p><p>Using this tool, we can also see the number of requests that are outstanding at any given point. For instance, maybe there's a page in our application that's hammering the server with requests and overwhelming it. In that case, we have to rethink the design. Each request that we look at in this tool allows us to drill down into the code that initiated the request. In Flux applications, this should always be an action creator function. With this tool, we always know which action creator functions are problematic from a network point of view and we can do something about them.</p></div><div class="section" title="Store memory"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec168"/>Store memory</h2></div></div></div><p>The next developer tool that<a id="id518" class="indexterm"/> can help us test the performance of our Flux architecture is the memory profiler. Memory is obviously something that we have to be careful with. On the one hand, we have to be considerate of other applications running on the system and avoid hogging memory. On the other hand, when we try to be careful with memory, we end up with frequent allocations/deallocations, triggering the garbage collector. It's hard to put a number on the maximum amount of memory a component should use. The application needs what it needs.</p><p>In terms of Flux, we're most interested in what the memory profiler can tell us about our stores. Remember, stores are where we're likely to face scalability issues as our application grows, because they'll have to handle more input data. Of course, we'll also want to keep an eye on the memory consumed by our view components as well, but ultimately it's the stores that control how much or how little memory views will consume.</p><p>There are two ways the memory profiler can help us better understand the memory consumption of our Flux stores. First, there's the memory timeline. This view shows how memory is allocated/deallocated over time. This is useful because it lets us see how memory is used as we interact with the application the same way a user would. Second, the memory profiler lets us take a snapshot of the current memory allocations. This is how we determine the type of data that's being allocated, and the code that's doing it. For example, with a snapshot, we can see which store is taking up the most memory.</p></div><div class="section" title="CPU utilization"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec169"/>CPU utilization</h2></div></div></div><p>As you saw in the <a id="id519" class="indexterm"/>previous section on the memory profiler, the frequent garbage collections can cause issues with responsiveness. This is because the garbage collector will block any other JavaScript code from running. The CPU profiler can actually show us how much CPU time the garbage collector is taking away from other code. If it's a lot, then we can figure out a better memory strategy.</p><p>Once again, however, we should turn our attention to the store components of our Flux architecture when profiling the CPU. The simple reason is that this will have the biggest return on investment. The scalability issues that we're likely to face are centered around the data transformation functions used to handle action payloads within stores. Unless these functions are efficient enough to handle the data that enters the system, the architecture won't scale because the CPU is being over-utilized by our code. And with that, we'll turn our attention to benchmarking the functions that are critical to the scalability of our systems.</p></div></div>
+<div class="section" title="Benchmarking tools"><div class="titlepage"><div><div><h1 class="title"><a id="ch13lvl1sec80"/>Benchmarking tools</h1></div></div></div><p>On one end of the<a id="id520" class="indexterm"/> performance testing spectrum, there's user-perceived performance. This is where one of our customers is complaining about laggyness, and sure enough, it's easy for us to replicate the problem. This could be an issue with view components, network requests, or something in our store that's causing the suboptimal user experience. On the other end of the spectrum, we have raw benchmarking of code, where we want accurate timings to ensure that we're using the most efficient implementation.</p><p>In this section, we'll briefly introduce the concept of benchmarking, and then we'll show an example that uses <code class="literal">Benchmark.js</code> to compare two state transformation implementations.</p><div class="section" title="Benchmarking code"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec170"/>Benchmarking code</h2></div></div></div><p>When we benchmark our <a id="id521" class="indexterm"/>code, we're comparing one implementation to another, or we can compare three or more implementations. The key is to isolate the implementations from any other components and to make sure that they each have the same input and produce the same output. Benchmarks are like unit tests in a sense, because we have a unit of code that we isolate as a unit and use a tool to measure and test its performance.</p><p>One challenge with performing these sorts of micro-benchmarks is accurate timing. Another challenge is creating an environment that isn't disrupted by other things. For example, trying to run a JavaScript<a id="id522" class="indexterm"/> benchmark in a web page is likely to face interference by other things, such as the DOM. <code class="literal">Benchmark.js</code> handles the nitty-gritty details of getting the most accurate measurement for our code. With that said, let's jump into an example.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note36"/>Note</h3><p>Unlike unit tests, benchmarks aren't necessarily something we want to keep around and maintain forever. It's simply too much of a burden, and the value of benchmarks tends to diminish when there's hundreds of them. There are probably a few exceptions, where we want to keep benchmarks in the repository for illustrative purposes. But generally speaking, benchmarks can safely be discarded once the code has been implemented or once the performance of existing code has been improved.</p></div></div></div><div class="section" title="State transformations"><div class="titlepage"><div><div><h2 class="title"><a id="ch13lvl2sec171"/>State transformations</h2></div></div></div><p>The state transformations<a id="id523" class="indexterm"/> that happen inside of Flux stores have the potential to bring the system to a halt when we try to scale it up. As you know, the rest of the Flux components in our architecture scale well. It's the added request volume and added data volume that cause problems. Low-level functions that transform this data need to perform well. We can use a tool like <code class="literal">Benchmark.js</code> to build benchmarks for the code that works with store data. Here's an example:</p><div class="informalexample"><pre class="programlisting">import { Suite } from 'benchmark';
+
+// The "setup()" function is used by each benchmark in
+// the suite to create data to used within the test.
+// This is run before anything is measured.
+function setup() {
+
+  // The "coll" array will be available in each
+  // benchmark function because this source gets
+  // compiled into the benchmark function.
+  const coll = new Array(10000)
+    .fill({
+      first: 'First',
+      last: 'Last',
+      disabled: false
+    });
+
+  // Disable some of the items...
+  for (let i = 0; i&lt;coll.length; i += 10) {
+    coll[i].disabled = true;
+  }
+}
+
+new Suite()
+
+  // Adds a benchmark that tests the "filter()"
+  // function to remove disabled items and the
+  // "map()" function to transform the string
+  // properties.
+  .add('filter() + map()', () =&gt; {
+    const results = coll
+      .filter(item =&gt; !item.disabled)
+      .map(item =&gt; ({
+        first: item.first.toUpperCase(),
+        last: item.last.toUpperCase()
+      }));
+  }, { setup: setup })
+
+  // Adds a benchmark that tests a "for..of" loop
+  // to build the "results" array.
+  .add('for..of', () =&gt; {
+    const results = [];
+
+    for (let item of coll) {
+      if (!item.disabled) {
+        results.push({
+          first: item.first.toUpperCase(),
+          last: item.last.toUpperCase()
+        });
+      }
+    }
+  }, { setup: setup })
+
+  // Adds a benchmark that tests a "reduce()"
+  // call to filter out disabled items
+  // and perform the string transforms.
+  .add('reduce()', () =&gt; {
+    const results = coll
+      .reduce((res, item) =&gt; !item.disabled ?
+        res.concat({
+          first: item.first.toUpperCase(),
+          last: item.last.toUpperCase()
+        }) : res);
+  }, { setup: setup })
+
+  // Setup event handlers for logging output...
+  .on('cycle', function(event) {
+    console.log(String(event.target));
+  })
+  .on('start', () =&gt; {
+    console.log('Running...');
+  })
+  .on('complete', function() {
+    const name = this.filter('fastest').map('name');
+    console.log(`Fastest is "${name}"`);
+  })
+  .on('error', function(e) {
+    console.error(e.target.error);
+  })
+  // Runs the benchmarks...
+  .run({ 'async': true });
+  // →
+  // Running...
+  // filter() x 1,470 ops/sec ±1.00% (86 runs sampled)
+  // for..of x 1,971 ops/sec ±2.39% (81 runs sampled)
+  // reduce() x 1,479 ops/sec ±0.89% (87 runs sampled)
+  // Fastest is "for..of"</pre></div><p>As you can see, we just need to add two or more benchmark functions to the suite, then run it. The output is specific performance data that compares the various implementations. In this case, we're filtering and mapping an array of 10,000 items. The <code class="literal">"for..of"</code> approach stands out as the best bet performance-wise.</p><p>What's important about <a id="id524" class="indexterm"/>benchmarking is that it can rule out false assumptions fairly easily. For example, we might assume that because <code class="literal">"for..of"</code> outperforms the alternative implementations, that it's automatically the best choice. Well, the two alternatives aren't that far behind. So if we really would rather implement the functionality using <code class="literal">reduce()</code>, there's probably no scaling risk in doing so.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note37"/>Note</h3><p>The code that ships with this book implements a few tricks to make this example work with ES2015 syntax using Babel. This is an especially good idea if you're transpiling your production code using Babel, so your benchmarks reflect reality. It's also handy to add an <code class="literal">npm bench</code> script to your <code class="literal">package.json</code> for easy access.</p></div></div></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch13lvl1sec81"/>Summary</h1></div></div></div><p>The focus of this chapter has been testing our Flux architectures. There are two types of tests that we employ to do this: functional and performance. With functional units, we verify that the units of code that make up our Flux architecture are behaving as expected. With performance units, we're validating that the code is performing at the expected levels.</p><p>We introduced the Jest testing framework to implement unit tests for our action creators and our stores. We then discussed the various tools in the browser that can help us troubleshoot performance issues at a high-level. These are the types of things that impact the user experience in a tangible way.</p><p>We closed the chapter with a look at benchmarking our code. This is something that takes place at a low-level and is most likely related to the state transformation functionality of our stores. Now it's time to consider the implications a Flux architecture has on the overall software development lifecycle.</p></div></body></html>

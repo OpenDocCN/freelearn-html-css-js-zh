@@ -1,0 +1,538 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;9.&#xA0;Immutable Stores"><div class="titlepage"><div><div><h1 class="title"><a id="ch09"/>Chapter 9. Immutable Stores</h1></div></div></div><p>In this chapter, we're going to look at immutable data in Flux stores. Immutability is a term that often coincides with functional programming. Immutable data is data that doesn't change (mutate) once it's been created. The key benefit is that you can predict the root cause of data changes in an application because data can't inadvertently be changed by side-effects. Immutability and Flux get along nicely because they're both about explicitness and predictability.</p><p>We'll kick things off by talking about hidden updates or side-effects. Flux by itself discourages such things and immutable data helps enforce the idea. Then, we'll go over what these side-effects entail for the integrity of our Flux architecture. The most severe consequence of side-effects caused by mutating store data are disruptions to the unidirectional data flow of Flux. Next, we'll look at the hidden costs of immutability—these are mostly related to the additional resources required, which can lead to noticeable performance degradation. Finally, we'll look at the <code class="literal">Immutable.js</code> library for help with performing transformations on immutable data.</p><div class="section" title="Renouncing hidden updates"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec55"/>Renouncing hidden updates</h1></div></div></div><p>The unidirectional<a id="id320" class="indexterm"/> nature of Flux is what sets it apart from other modern frontend architectures. The reason that the unidirectional data-flow works is because action creators are the only way that new data can enter the system. However, this isn't strictly enforced by Flux, and this means that some errant piece of code has the potential to completely break our architecture.</p><p>In this section, we'll look at how something like this is even possible in Flux. Then we'll look at how views typically get their data from stores and whether or not there's a better way. Finally, we'll think about other components in our Flux architecture and see if anything in addition to store data can be made immutable.</p><div class="section" title="How to break Flux"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec108"/>How to break Flux</h2></div></div></div><p>The easiest way to break Flux is by mutating the state of a store without going through the proper channels. The action dispatcher is the gateway for new data entering the system, and it also coordinates the action handlers of our stores. For example, one action might trigger the handler <a id="id321" class="indexterm"/>of a couple stores, using the action payload in different ways. This simply won't happen if the state of stores are being mutated directly. We could get lucky and the changes we make don't have any side-effects. But isn't the whole premise of being explicit with actions that we can't predict complex side-effects?</p><p>If we lower the bar and start directly manipulating state here and there, what's to stop us from doing this more frequently? The most likely scenario is a view event handler that mutates store data. This is because views typically have direct references to stores, whereas other Flux components typically do not. So when the user clicks a button and our handler simply changes the state of a store instead of dispatching an action, we could find ourselves in trouble.</p><p>Let's walk through an example that highlights just how dangerous operating outside of the Flux playing field can be. We'll check out the button store first:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import dispatcher from '../dispatcher';
+import { TOGGLE } from '../actions/toggle';
+
+class Button extends EventEmitter {
+  constructor() {
+    super();
+
+    // The default state is to show the button
+    // as enabled and to process click events.
+    this.state = {
+      text: 'Enabled',
+      disabled: false
+    };
+
+    this.id = dispatcher.register((e) =&gt; {
+      let { state } = this;
+
+      switch(e.type) {
+
+        // When the "TOGGLE" action is dispatched,
+        // the next state of the button depends on
+        // the current state of the "disabled"
+        // property.
+        case TOGGLE:
+          state.text = state.disabled ?
+            'Enabled' : 'Disabled';
+          state.disabled = !state.disabled;
+
+          this.emit('change', state);
+          break;
+      }
+    });
+  }
+}
+
+export default new Button();</pre></div><p>Seems pretty simple—control the text and the <code class="literal">disabled</code> status of the buttons. This is pretty simple, but only if we're <a id="id322" class="indexterm"/>abiding by the Flux rules and dispatching actions to change the state of a store. Now, let's take a look at a view component that uses this store to render itself:</p><div class="informalexample"><pre class="programlisting">import React from 'react';
+import button from '../stores/button';
+import { toggle } from '../actions/toggle';
+
+function onClick() {
+
+  // Oh snap! This just totally broke Flux...
+  button.state.disabled = !button.state.disabled;
+
+  // Call the action creator as we should...
+  toggle();
+}
+
+// Renders your typical HTML button, complete
+// with properties and a callback handler for
+// click events.
+export default ({ text, disabled }) =&gt; (
+  &lt;button
+    onClick={onClick}
+    disabled={disabled}&gt;{text}&lt;/button&gt;
+);</pre></div><p>What's supposed to happen here is that the button should become disabled when it's clicked, because the button store will change the state accordingly when the <code class="literal">TOGGLE</code> action is dispatched. This much works as expected. However, the result is that this will never work as expected, due to that one line above the call to <code class="literal">toggle()</code>. Here, we're directly manipulating the state of a store. This prevents the expected behavior from taking place when the <code class="literal">TOGGLE</code> action is dispatched, because the state has already been changed, so now it will change back.</p><p>It's these little hacks that can<a id="id323" class="indexterm"/> cause big trouble down the road if we're not careful. When you look at this view module, the problematic code jumps off the screen. Imagine a real project with many more views that are each much bigger than this one—would you be able to spot this issue before it's too late?</p></div><div class="section" title="Getting store data"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec109"/>Getting store data</h2></div></div></div><p>Given that referencing<a id="id324" class="indexterm"/> store state is a dangerous thing, perhaps we could avoid it altogether? This would drastically reduce the potential for errors, as we saw in the previous section. For example, when two stores depend on one another, they use the dispatcher's <code class="literal">waitFor()</code> method to ensure that the store we're dependent on is updated first. Then we can just directly access the store, knowing that its state has already been updated. The approach is visualized as follows:</p><div class="mediaobject"><img src="graphics/B05419_09_01.jpg" alt="Getting store data"/></div><p>The dependent store is directly referencing the state of the store that it depends on, which is something that can lead to big problems if we're not careful. An alternative approach would be to have the dependent store listen to the change event on the store that it depends on. The callback can then use the new state that's passed to it as an argument. Of course, we would still need to use <code class="literal">waitFor()</code> or something along those lines to ensure that the stores update in the correct order. This approach is shown here:</p><div class="mediaobject"><img src="graphics/B05419_09_02.jpg" alt="Getting store data"/></div><p>This is starting to look like a view component—views listen to the change event of stores so that they can render UI updates to reflect the changes in state. Views also need to perform an initial rendering of the store data, and this is why they typically reference store state. The<a id="id325" class="indexterm"/> problem with any of these ideas is that none of them actually insulate us from directly accessing store state—who knows what kind of reference will be passed in as one of these callback arguments. The other problem is that by introducing callback functions where directly reading a value is possible is an over-complication in design terms. There has to be a better way. Making our store state data immutable is a step in the right direction.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note25"/>Note</h3><p>In the next chapter, we're going to implement our own dispatcher component. While doing so, we'll think about implementing some safeguards against accessing state data from a store while an update round is happening, but the store hasn't been updated. This will make for easier troubleshooting with dependencies.</p></div></div></div><div class="section" title="Everything is immutable"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec110"/>Everything is immutable</h2></div></div></div><p>As the last topic before discussing how we might go about enforcing immutability, let's talk about the idea <a id="id326" class="indexterm"/>of everything in a Flux architecture being immutable. Theoretically, this shouldn't be that difficult to do since Flux cordons off state from living anywhere other than inside a store. So, let's start with stores.</p><p>Should all our stores be immutable, or perhaps just some of them? Having only some immutable stores isn't a good idea because it promotes inconsistency. What about having immutability in place at all, is it even necessary? Now this is a very important question one has to ask about their architecture because there's no cut-and-dried answer here. The immutability argument works when we need that extra assurance that there will be no surprises with store states later on. The counterargument is that we're disciplined enough as programmers that the immutability mechanisms just add overhead.</p><p>We'll spend the remainder of this chapter arguing in favor of immutable data, simply because the positives <a id="id327" class="indexterm"/>outweigh the negatives in almost every case. Regardless of how you feel about immutability, it's good to know what its strengths are in a Flux architecture—even if you're not going to use it.</p><p>What about view components—can they actually be immutable? Well, it turns out that they cannot, because the DOM API doesn't allow this. Our view components have to actually manipulate the state of the elements on the page. However, if we're using a view technology like React, then we get a veil of immutability because the idea is to always re-render components. So it seems as though we're taking old elements and replacing them with new ones when, all the while React figures out the DOM manipulations for us. This promotes the idea that state has no place within a Flux view.</p></div></div></div>
+<div class="section" title="Enforcing unidirectional data flow"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec56"/>Enforcing unidirectional data flow</h1></div></div></div><p>If new data only<a id="id328" class="indexterm"/> enters the system via action payloads delivered by the dispatcher and our store data is immutable, we have a unidirectional data-flow. This is the goal, so the questions is, how do we enforce this? Can we simply say that our store data is immutable and be done with it? Well, that's something to shoot for, absolutely, but there's more to it than that.</p><p>In this section, we'll address the concept of data flowing in unintended directions, and what causes this to happen. We'll then consider the notion of having too many stores and not enough actions as contributors to dysfunctional data-flows. Finally, we'll examine some techniques that we can utilize to make our store data immutable.</p><div class="section" title="Backwards, sideways, and leaky data flow"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec111"/>Backwards, sideways, and leaky data flow</h2></div></div></div><p>Flux architectures have a<a id="id329" class="indexterm"/> unidirectional data-flow—data enters from the left and exits on the right. This is easy to visualize as a flow that moves forward. What are some <a id="id330" class="indexterm"/>of the ways this can go wrong then? Take backwards flow, for instance. If a view instance holds a reference to a store instance and <a id="id331" class="indexterm"/>proceeds to mutate its state, then the flow is moving from the view to the store. This is the complete opposite of the expected flow direction, so it is moving backwards. Here's an illustration of what this looks like:</p><div class="mediaobject"><img src="graphics/B05419_09_03.jpg" alt="Backwards, sideways, and leaky data flow"/></div><p>This is obviously not what we'd expect when working with a Flux system. But it's also a likely scenario unless we rule out the possibility by having the store's state return immutable data structures to any other <a id="id332" class="indexterm"/>components that want to interact with it. What about stores - can they mutate the state of another store? They shouldn't, and if they<a id="id333" class="indexterm"/> do, that would look like a sideways data-flow.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note26"/>Note</h3><p><span class="strong"><strong>ProTip</strong></span>: Anything<a id="id334" class="indexterm"/> that goes sideways is a bad thing.</p></div></div><p>Here's what a sideways data-flow between two Flux stores might look like:</p><div class="mediaobject"><img src="graphics/B05419_09_04.jpg" alt="Backwards, sideways, and leaky data flow"/></div><p>This is just as bad as the view component that directly mutates the state of a store, because the state we just changed could impact the next state that's computed. This is the same situation we saw in the first code example we looked at in the chapter.</p><p>What about actions—are they capable of directly manipulating the state of a store? This is probably the least likely scenario, because action creator functions are supposed to just dispatch actions after they coordinate any asynchronous behavior. However, an action creator function could incorrectly mutate a store state in an AJAX callback handler, for example. This is what we refer to as <span class="emphasis"><em>leaky flows</em></span> because they're going around the dispatcher. So, we're leaking mutations<a id="id335" class="indexterm"/> without any traceable actions to show where they originated. Here's an illustration of the idea:</p><div class="mediaobject"><img src="graphics/B05419_09_05.jpg" alt="Backwards, sideways, and leaky data flow"/></div></div><div class="section" title="Too many stores?"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec112"/>Too many stores?</h2></div></div></div><p>There's always a possibility<a id="id336" class="indexterm"/> that there are too many Flux stores in our architecture. Perhaps the application has grown beyond what we had originally designed for in terms of features. Now, simply mapping a store to a feature won't suffice because there are dozens of stores.</p><p>If we're unable to rein in the store count, a possible outcome is more direct state mutations by other components. It's just a matter of convenience, if there's a ton of stores to think about, it means that we're going to have to take care of several other dispatcher-related development activities any time we want to do something. When there's lots of stores, there's the urge to manipulate their state directly. Removing stores reduces this urge.</p></div><div class="section" title="Not enough actions"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec113"/>Not enough actions</h2></div></div></div><p>Is it possible that our Flux architecture doesn't have enough actions? For example, a view that we're working on needs to<a id="id337" class="indexterm"/> change the state of a store. There's no action to handle this for us, so rather than build a new action creator and update the store to handle the logic, we just directly mutate the store. It sounds like an easy enough task—building an action creator function and adding the necessary store update logic. But if we have to keep implementing these one-off action creator functions, eventually we'll just stop caring. There are two ways to fix this issue. The first is to implement more generic actions that apply to more than just one specific situation and can accept parameters. The second is to build a handful of action creator functions that are relevant to the feature that you're working on, even before you need them. When you know that the functions are there, in the back of your mind, you're more likely to use them.</p></div><div class="section" title="Enforcing immutability"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec114"/>Enforcing immutability</h2></div></div></div><p>Let's explore some different <a id="id338" class="indexterm"/>approaches to keeping store state immutable. The goal is that when some external entity references a store's state, any changes that entity makes to the state doesn't actually affect the store because the data is immutable. We'll start by implementing a store that doesn't actually return a reference to its state—it returns a copy of it using <code class="literal">Object.assign()</code>:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import dispatcher from '../dispatcher';
+import { MY_ACTION } from '../actions/my-action';
+
+// The state of this store is encapsulated
+// within the module.
+var state = {
+  first: 1,
+  second: 2,
+};
+
+class Copy extends EventEmitter {
+  constructor() {
+    super();
+
+    this.id = dispatcher.register((e) =&gt; {
+      switch(e.type) {
+
+        case MY_ACTION:
+
+          // Mutates "state" with new properties...
+          Object.assign(state, e.payload);
+          this.emit('change', state);
+          break;
+      }
+    });
+  }
+
+  // Returns a new copy of "state", not a reference
+  // to the original.
+  get state() {
+    return Object.assign({}, state);
+  }
+}
+
+export default new Copy();</pre></div><p>Here, you can see that the actual store state is in a module-level <code class="literal">state</code> variable. This means that it isn't accessible directly by the outside world because it isn't exported. We want the state to be encapsulated like this so that it's harder for other components to mutate it. If other<a id="id339" class="indexterm"/> components need read access to the store's state properties, they can read the <code class="literal">state</code> property of the store. Since this is a getter method, it can compute the value that will be returned. In this case, we'll create a new object on the fly. Now let's look at a store that stores its state in a constant:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import dispatcher from '../dispatcher';
+import { MY_ACTION } from '../actions/my-action';
+
+// The state of this store is encapsulated
+// within this module. It's also stored as
+// a constant.
+const state = {
+  first: 1,
+  second: 2,
+};
+
+class Constant extends EventEmitter {
+  constructor() {
+    super();
+
+    this.id = dispatcher.register((e) =&gt; {
+      switch(e.type) {
+
+        case MY_ACTION:
+          // Mutates "state" with new properties...
+          Object.assign(state, e.payload);
+          this.emit('change', state);
+          break;
+      }
+    });
+  }
+
+  // Returns a reference to the "state" constant...
+  get state() {
+    return state;
+  }
+}
+
+export default new Constant();</pre></div><p>This store has the same structure and patterns as the <code class="literal">Copy</code> store. The difference is that <code class="literal">state</code> isn't a variable—it's a constant. This means that we shouldn't be able to mutate it, right? Well, not quite—we<a id="id340" class="indexterm"/> just can't assign new values to it. So this approach has limited value because the <code class="literal">state()</code> getter returns a direct reference to the constant. We'll see how this works momentarily, when other components use the store. Let's look at one more approach, which uses <code class="literal">Object.frozen()</code> to make objects immutable:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import dispatcher from '../dispatcher';
+import { MY_ACTION } from '../actions/my-action';
+
+// The store state is encapsulated within
+// this module...
+var state;
+
+// Merges new values with current values, freezes
+// the new state, and assigns it to "state".
+function change(newState) {
+  let changedState = Object.assign({}, state, newState);
+  state = Object.freeze(changedState);
+}
+
+// Sets the initial state and freezes it...
+change({
+  first: 1,
+  second: 2,
+});
+
+class Frozen extends EventEmitter {
+  constructor() {
+    super();
+
+    this.id = dispatcher.register((e) =&gt; {
+      switch(e.type) {
+
+        case MY_ACTION:
+
+          // Calls "change()" to update the "state"
+          // value and re-freeze it.
+          change(e.payload);
+          this.emit('change', state);
+          break;
+      }
+    });
+  }
+
+  // Returns a reference to the frozen "state"...
+  get state() {
+    return state;
+  }
+}
+
+export default new Frozen();</pre></div><p>The <code class="literal">state()</code> getter is actually returning a reference to the frozen <code class="literal">state</code> variable. What's interesting about this <a id="id341" class="indexterm"/>approach is that we don't necessarily need to make a new copy of the data because our <code class="literal">change()</code> function has made it immutable. And when the store itself needs to update its state, that's when the state is refrozen.</p><p>Let's see how these approaches compare now. First, we'll import the stores and get references to their states:</p><div class="informalexample"><pre class="programlisting">import copy from './stores/copy';
+import constant from './stores/constant';
+import frozen from './stores/frozen';
+
+var copyState = copy.state;
+var constantState = constant.state;
+var frozenState = frozen.state;
+
+copyState.second++;
+constantState.second++;
+
+try {
+  frozenState.second++;
+} catch (err) {
+  console.error(err);
+  // →
+  // TypeError: Cannot assign to read only property
+  // 'second' of object
+}
+
+console.assert(
+  copy.state.second !== copyState.second,
+  'copy.second mutated'
+);
+
+console.assert(
+  constant.state.second !== constantState.second,
+  'constant.second mutated'
+);
+// → Assertion failed: constant.second mutated</pre></div><p>It seems like we were able to successfully change the state of <code class="literal">copyState</code>. This is sort of true—we changed the state of a copy that doesn't actually reflect the state of the store. The <code class="literal">constantState</code> change,<a id="id342" class="indexterm"/> on the other hand, does have side-effects because any other components that read state from the constant store will see this change.</p><p>When we try to change <code class="literal">frozenState</code>, a <code class="literal">TypeError</code> is thrown. This might actually be the desired outcome, since it's made explicit that what we're trying to do with <code class="literal">fronzenState</code> is not allowed. Similar things happen when we add new properties to the store states—copy fails silently, constant fails, and frozen fails explicitly:</p><div class="informalexample"><pre class="programlisting">copyState.third = 3;
+constantState.third = 3;
+
+try {
+  frozenState.third = 3;
+} catch (err) {
+  console.error(err);
+  // →
+  // TypeError: Can't add property third, object is
+  // not extensible
+}</pre></div><p>Finally, let's look at the state data that's sent when the change event is emitted:</p><div class="informalexample"><pre class="programlisting">copy.on('change', (state) =&gt; {
+  console.assert(state !== copyState, 'copy same');
+  console.assert(state.fourth, 'copy missing fourth');
+});
+
+constant.on('change', (state) =&gt; {
+  console.assert(state !== constantState, 'constant same');
+  // → Assertion failed: constant same
+
+  console.assert(state.fourth, 'constant missing fourth');
+});
+
+frozen.on('change', (state) =&gt; {
+  console.assert(state !== frozenState, 'frozen same');
+  console.assert(state.fourth, 'frozen missing fourth');
+});
+
+myAction({ fourth: 4 });</pre></div><p>The <code class="literal">myAction()</code> function will extend the store state with new data. As we can see once again, the constant approach<a id="id343" class="indexterm"/> has failed us because it returns the same reference that was mutated. Generally speaking, none of these approaches are particularly easy to implement in practice. This is another reason why we'll want to seriously consider using a library like <code class="literal">Immutable.js</code>, where immutability is the default mode and mostly hidden from our code.</p></div></div>
+<div class="section" title="The cost of immutable data"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec57"/>The cost of immutable data</h1></div></div></div><p>By now you are well aware of the advantage immutable data brings to a Flux architecture—a level of <a id="id344" class="indexterm"/>assurance about our unidirectional data-flow. This safety net comes at a cost. In this section, we'll discuss how expensive immutability can be and what can be done about it.</p><p>We'll start by covering the biggest immutability issue—transient memory allocations and garbage collection. These things are big threats to the performance of our Flux architecture. Next, we'll think about lessening the amount of memory allocations by batching together transformations on immutable data. Finally, we'll think about the ways in which immutable data eliminates code that's only needed to handle scenarios where data is mutable.</p><div class="section" title="Garbage collection is expensive"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec115"/>Garbage collection is expensive</h2></div></div></div><p>One good thing about <a id="id345" class="indexterm"/>mutable data structures is that once they're allocated, they tend to stick around for a while. That is, we don't need to copy the properties of an existing structure into a new one, then destroy the old one any time we need to make an update. This is software, so we're going to be making a lot of updates.</p><p>With immutable data, we face a memory consumption challenge. Every time we mutate an object, we have to allocate a new copy of that object. Imagine we're in a loop, making changes to immutable objects in a collection—this adds up to a lot of memory allocations in a short period of time—a spike if you will. Furthermore, the old objects that have been superseded by the new ones aren't instantaneously deleted from memory. They have to wait for the garbage collector to clean them up.</p><p>When our application<a id="id346" class="indexterm"/> uses more memory than it needs to, performance suffers. When the garbage collector has to run frequently because of all our memory allocations, performance suffers. It's the garbage collector more than anything else that triggers laggy user experiences, because our JavaScript code can't respond to any pending events while it's running.</p><p>Maybe there's an approach to immutable data that's less memory-intensive than replacing large objects when all we want is a simple update.</p></div><div class="section" title="Batched mutations"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec116"/>Batched mutations</h2></div></div></div><p>Luckily for us, stores mutate<a id="id347" class="indexterm"/> their own state. This means that store dispatcher callbacks encapsulate everything that happens during state transformations. So if our stores have immutable state data, then the outside world doesn't need to know about any shortcuts the store takes internally in order to cut down on the number of memory allocations.</p><p>Let's say that a store receives an action and it has to perform three separate transformations on its state: make a transformation that results in a new object, make another transformation on that new object, and so on. That's a lot of transient memory allocations for intermediary data that no other component will ever touch. Here's an illustration of what's going on:</p><div class="mediaobject"><img src="graphics/B05419_09_06.jpg" alt="Batched mutations"/></div><p>We want the final result to be a new state reference, but the intermediary new state that's created in between is <a id="id348" class="indexterm"/>wasteful. Let's see if there's a way that we can batch together these state transformations before the final immutable value is returned:</p><div class="mediaobject"><img src="graphics/B05419_09_07.jpg" alt="Batched mutations"/></div><p>Now, we're only allocating one new object, despite making three state transformations. The mutations we're making <a id="id349" class="indexterm"/>within a Flux store are absolutely inconsequential to any other component in the system, yet we're maintaining immutability for anything else that wants to access and read this state.</p></div><div class="section" title="Offsetting the cost"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec117"/>Offsetting the cost</h2></div></div></div><p>The painful part of mutable data is that <a id="id350" class="indexterm"/>components using this data have to account for side-effects. They don't necessarily know when or how this data will mutate. So they need side-effect handling code. While code that handles unexpected side-effects often doesn't utilize more memory, it isn't free to run either. When there's code to handle edge cases all over our source, the performance degradation can add up. With immutable data, we can remove most, if not all, of this extraneous code that checks the state of something, because we can better predict what it's going to be. This helps to offset the cost of extra memory allocations and garbage collection runs. Even if we're not using immutable data in our stores, Flux architectures make the need for side-effect handling code virtually obsolete. A unidirectional data-flow makes Flux very predictable.</p></div></div>
+<div class="section" title="Using Immutable.js"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec58"/>Using Immutable.js</h1></div></div></div><p>The <code class="literal">Immutable.js</code> library from Facebook provides immutable JavaScript data structures. This might sound<a id="id351" class="indexterm"/> trivial but there's a lot that goes on behind the scenes to make this work, namely creating new instances from transformations as efficiently as possible.</p><p>In this section, we'll look at immutable lists and maps. These are viable substitutes for arrays and plain objects, respectively, in our Flux store data. Then, we'll look at how <code class="literal">Immutable.js</code> can compose complex transformations without the need for intermediary representations. Finally, we'll see how <code class="literal">Immutable.js</code> returns the same instance when there's no mutations after running through a transformation, allowing for efficient change detection.</p><div class="section" title="Immutable lists and maps"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec118"/>Immutable lists and maps</h2></div></div></div><p>We'll start by looking at lists and maps, since these are fairly common structures that we'll need to implement in <a id="id352" class="indexterm"/>our stores. Lists are kind of like arrays and maps <a id="id353" class="indexterm"/>are kind of like plain JavaScript objects. Let's implement a store that uses a list:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import Immutable from 'Immutable';
+
+import dispatcher from '../dispatcher';
+import { LIST_PUSH, LIST_CAPS } from '../actions/list';
+
+// The state of this store is an "Immutable.List"
+// instance...
+var state = Immutable.List();
+
+class List extends EventEmitter {
+  constructor() {
+    super();
+
+    this.id = dispatcher.register((e) =&gt; {
+      switch(e.type) {
+
+        // When the "LIST_PUSH" action is dispatched,
+        // we create a new List instance by calling
+        // "push()". The new list is assigned to "state".
+        case LIST_PUSH:
+          this.emit('change',
+            (state = state.push(...e.payload)));
+          break;
+
+        // When the "LIST_CAPS" action is dispatched,
+        // we created a new List instance by calling
+        // "map()". The new list is assigned to "state".
+        case LIST_CAPS:
+          this.emit('change',
+            (state = state.map(x =&gt; x.toUpperCase())));
+          break;
+      }
+    });
+  }
+
+  get state() {
+    return state;
+  }
+}
+
+export default new List();</pre></div><p>You can see that the <code class="literal">state</code> variable is initialized to an empty <code class="literal">Immutable.List()</code> instance (the <code class="literal">new</code> keyword isn't <a id="id354" class="indexterm"/>necessary because these are functions that return new instances). Whenever we call a method on this list instance, a new instance is returned. This is why we have to assign the result of calling <code class="literal">push()</code> and <code class="literal">map()</code> to <code class="literal">state</code>.</p><p>Now let's implement a map store:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import Immutable from 'Immutable';
+
+import dispatcher from '../dispatcher';
+import { MAP_MERGE, MAP_INCR } from '../actions/map';
+
+// The state of this store is an "Immutable.Map"
+// instance...
+var state = Immutable.Map();
+
+class MapStore extends EventEmitter {
+  constructor() {
+    super();
+
+    this.id = dispatcher.register((e) =&gt; {
+      switch(e.type) {
+
+        // When the "MAP_MERGE" action is dispatched,
+        // we create a new Map instance by calling
+        // "merge()". The new map is assigned to "state".
+        case MAP_MERGE:
+          this.emit('change',
+            (state = state.merge(e.payload)));
+          break;
+
+        // When the "MAP_INCR" action is dispatched,
+        // we create a new Map instance by calling
+        // "map()". The new map is assigned to "state".
+        case MAP_INCR:
+          this.emit('change',
+            (state = state.map(x =&gt; x + 1)));
+      }
+    });
+  }
+
+  get state() {
+    return state;
+  }
+}
+
+export default new MapStore();</pre></div><p>As you can see, maps<a id="id355" class="indexterm"/> follow the same immutability patterns as lists. The main difference is that they're keyed instead of indexed. Now let's see how both of these stores are used:</p><div class="informalexample"><pre class="programlisting">import list from './stores/list';
+import map from './stores/map';
+import { listPush, listCaps } from './actions/list';
+import { mapMerge, mapIncr } from './actions/map';
+
+// Logs the items in the "list" store when
+// it's state changes.
+list.on('change', (state) =&gt; {
+  for (let item of state) {
+    console.log('  list item', item);
+  }
+});
+
+// Logs the items in the "map" store when
+// it's state changes.
+map.on('change', (state) =&gt; {
+  for (let [key, item] of state) {
+    console.log(`  ${key}`, item);
+  }
+});
+
+console.log('List push...');
+listPush('First', 'Second', 'Third');
+// → List push...
+//     list item First
+//     list item Second
+//     list item Third
+
+console.log('List caps...');
+listCaps();
+// → List caps...
+//     list item FIRST
+//     list item SECOND
+//     list item THIRD
+
+console.log('Map merge...');
+mapMerge({ first: 1, second: 2 });
+// → Map merge...
+//     first 1
+//     second 2
+
+console.log('Map increment...');
+mapIncr();
+// → Map increment...
+//     first 2
+//     second 3</pre></div></div><div class="section" title="Immutable transformations"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec119"/>Immutable transformations</h2></div></div></div><p>Now, it's time to implement a more involved transformation inside a Flux store. This means chaining together<a id="id356" class="indexterm"/> operations on <code class="literal">Immutable.js</code> structures to create a new structure. But what about intermediary memory allocations—we'll want to keep an eye on these, right? Here's a store that attempts to use less memory while making transformations to a store's state:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import Immutable from 'Immutable';
+
+import dispatcher from '../dispatcher';
+import { SORT_NAMES } from '../actions/sort-names';
+
+// The state is an object with two immutable
+// list instances. The first is a list of user
+// maps. The second is a list of user names and
+// is empty by default.
+const state = {
+  users: Immutable.List([
+    Immutable.Map({ id: 33, name: 'tHiRd' }),
+    Immutable.Map({ id: 22, name: 'sEcoNd' }),
+    Immutable.Map({ id: 11, name: 'firsT' })
+  ]),
+  names: Immutable.List()
+};
+
+class Users extends EventEmitter {
+  constructor() {
+    super();
+
+    this.id = dispatcher.register((e) =&gt; {
+      switch(e.type) {
+
+        // The "SORT_NAMES" action was dispatched...
+        case SORT_NAMES:
+
+          // Determines the "sort" multiplier that's passed
+          // to "sortBy()" to sort in ascending or
+          // descending direction.
+          let sort = e.payload === 'desc' ? -1 : 1;
+
+          // Assigns the sorted list to "users" after
+          // performing a series of transforms. The
+          // "toSeq()" and "toList()" calls aren't strictly
+          // necessary. Any calls in between them, however,
+          // don't result in new structures being created.
+          state.names = state.users
+            .sortBy(x =&gt; x.get('id') * sort)
+            .toSeq()
+            .map(x =&gt; x.get('name'))
+            .map(x =&gt; `${x[0].toUpperCase()}${x.slice(1)}`)
+            .map(x =&gt; `${x[0]}${x.slice(1).toLowerCase()}`)
+            .toList();
+
+          this.emit('change', state);
+          break;
+      }
+    });
+  }
+
+  get state() {
+    return state;
+  }
+}
+
+export default new Users();</pre></div><p>The <code class="literal">SORT_NAMES</code> action results in some interesting transformations happening to our immutable list. The idea is to map it to a list of capitalized user names, sorted by user <code class="literal">id</code>. The technique that's employed here involves converting the list into a sequence once it's sorted, using <code class="literal">toSeq()</code>. This is done to prevent the <code class="literal">map()</code> calls from allocating new structures, because we <a id="id357" class="indexterm"/>don't actually need a concrete structure till we're done mapping. To do this, we just have to call <code class="literal">toList()</code>, which will call all the mappings we've set up on the sequence and create the list. This means that the only structures we're creating here, are the new list from <code class="literal">sortBy()</code>, the new sequence from <code class="literal">toSeq()</code>, and the new list from <code class="literal">toList()</code>.</p><p>In this particular example, this might be overkill, simply due to the fact that there are three operations done on a three-element list. So, we would just remove <code class="literal">toSeq()</code> and <code class="literal">toList()</code> from our code to simplify things. However, as we scale up to larger collections and more complex transformations on them, it doesn't hurt to know about this technique to reduce the memory footprint of our architecture. Let's see this store in action now:</p><div class="informalexample"><pre class="programlisting">import users from './stores/users';
+import { sortNames } from './actions/sort-names';
+
+// Logs the user names...
+users.on('change', ({names}) =&gt; {
+  for (let item of names) {
+    console.log('  name', item);
+  }
+});
+
+console.log('Ascending...');
+sortNames();
+// → Ascending...
+//     name First
+//     name Second
+//     name Third
+
+console.log('Descending...');
+sortNames(true);
+// → Descending...
+//     name Third
+//     name Second
+//     name First</pre></div></div><div class="section" title="Change detection"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec120"/>Change detection</h2></div></div></div><p>In this final example of the chapter, we'll see whether we can use <code class="literal">Immutable.js</code> structures to implement efficient change <a id="id358" class="indexterm"/>detection in our Flux stores. Actually, the detection itself will take place in the React view, but this relies on the store state using an <code class="literal">Immutable.js</code> object. Why would we want to do this—isn't React already efficient enough at computing diffs using its virtual DOM? React definitely excels here, but it still has to do a fair amount of work to figure out that no re-rendering is needed. We can lend a hand to our React components by providing hints that the store's state hasn't actually changed. So without further ado, here's the store we'll use:</p><div class="informalexample"><pre class="programlisting">import { EventEmitter } from 'events';
+import Immutable from 'Immutable';
+
+import dispatcher from '../dispatcher';
+import { MY_ACTION } from '../actions/my-action';
+
+// The store state is an Immutable.js Map instance.
+var state = Immutable.Map({
+  text: 'off'
+});
+
+class MyStore extends EventEmitter {
+  constructor() {
+    super();
+
+    this.id = dispatcher.register((e) =&gt; {
+      switch(e.type) {
+
+        // When "MY_ACTION" is dispatched, we set
+        // the "text" property of "state" as the
+        // "payload". If the value has change, "state"
+        // "set()" returns a new instance. If there's
+        // no change, it returns the same instance.
+        case MY_ACTION:
+          this.emit('change',
+            (state = state.set('text', e.payload)));
+          break;
+      }
+    });
+  }
+
+  get state() {
+    return state;
+  }
+}
+
+export default new MyStore();</pre></div><p>Nothing fancy is done on our part here; we're simply using an <code class="literal">Immutable.js Map</code> as our store state. We're then assigning the new <code class="literal">Map</code> instance to state when <code class="literal">set()</code> is called, since it returns a new<a id="id359" class="indexterm"/> instance. Here's the heuristic we're interested in—if nothing changes, the same instance is returned. Let's see how we can use this property of <code class="literal">Immutable.js</code> data in our a view:</p><div class="informalexample"><pre class="programlisting">import { default as React, Component } from 'react';
+
+export default class MyView extendsComponent {
+
+  render() {
+
+    // Logs the fact that we're rendering because
+    // "shouldComponentUpdate()" will prevent it
+    // if the store state hasn't changed.
+    console.log('Rendering...');
+
+    let { state } = this.props;
+
+    return (
+      &lt;p&gt;{state.get('text')}&lt;/p&gt;
+    );
+  }
+
+  // Since we're using an Immutable.js Map as
+  // the store state, we know that if the
+  // instances are equal, nothing has changed
+  // and there's no need to render.
+  shouldComponentUpdate(nextProps) {
+    return nextProps.state !== this.props.state;
+  }
+}</pre></div><p>The key piece of this component is the <code class="literal">shouldComponentUpdate()</code> method, which makes the determination that the store has changed by doing a strict inequality comparison. In cases where this component is being rendered a lot but there's no need to change anything, this will avoid a lot of virtual DOM tree checking. Now, let's see how we would go about using this view:</p><div class="informalexample"><pre class="programlisting">import React from 'react';
+import { render } from 'react-dom';
+
+import myStore from './stores/my-store';
+import MyView from './views/my-view';
+import { myAction } from './actions/my-action';
+
+// The container DOM element for our React component.
+const container = document.getElementById('app');
+
+// The payload that's sent to "myAction()"...
+var payload = 'off';
+
+// Renders the React components using the
+// "myStore" state...
+function renderApp(state=myStore.state) {
+  render(
+    &lt;MyView state={myStore.state} /&gt;,
+    container
+  );
+}
+
+// Re-render the app when the store changes...
+myStore.on('change', renderApp);
+
+// Performs the initial rendering...
+renderApp();
+
+// Dispatches "MY_ACTION" every 0.5 seconds. This
+// causes the store to change state and the app
+// to re-render.
+setInterval(() =&gt; {
+  myAction(payload);
+}, 500);
+
+// After 5 seconds, change the payload that's
+// dispatched with "MY_ACTION" so that the store
+// state is actually different.
+setTimeout(() =&gt; {
+  payload = 'on';
+}, 5000);</pre></div><p>As you can see, actions that <a id="id360" class="indexterm"/>cause our view to re-render are constantly dispatched. However, since the <code class="literal">set()</code> call in our store is returning the same instance when nothing changes, the view itself is doing very little work. Then, once we do change the payload value after 5 seconds, the <code class="literal">Immutable.js</code> map instance changes, and the view updates. This view is rendered a grand total of two times—the initial rendering and the rendering that takes place when the store data actually changes.</p><p>You may have noticed that this implementation could have gone in another direction, one where the store isn't so naive as to emit changes when nothing has changed. It's all a matter of taste and<a id="id361" class="indexterm"/> tradeoffs. The approach we've chosen does require that the views take an active role in optimizing the rendering work-flow. This is easy to do with React components, and it simplifies our store logic. On the other hand, we might prefer to keep our views completely logic-less, including the <code class="literal">shouldComponentUpdate()</code> checks. If this is the case, we'd simply move this logic back into the store, and not have the change event emitted if the two <code class="literal">Immutable.js</code> instances are the same.</p></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec59"/>Summary</h1></div></div></div><p>This chapter introduced you to immutability—both in the general sense of the term and from a Flux architecture viewpoint. We began the chapter with a discussion on the various ways that mutable data can break Flux. In particular, this breaks the crown jewel of any Flux architecture—unidirectional data-flow. Next, we looked at the different types of data-flow that emerge when we start mutating data outside of stores, as these are good things to look for when troubleshooting Flux architectures.</p><p>There are several ways that our code can enforce immutable data in our Flux stores, and we explored many of them. Immutable data comes at a cost—because the garbage collector constantly needs to run, blocking other JavaScript code from running, to collect all these extra copies of objects. We looked at how to minimize these extra memory allocations and how to offset the overall cost of using immutable data.</p><p>We closed the chapter by implementing several stores that used <code class="literal">Immutable.js</code> data structures. This library buys us immutability, added functionality, and efficient use of intermediary memory allocations by default. In the next chapter, we'll implement our own dispatcher component.</p></div></body></html>

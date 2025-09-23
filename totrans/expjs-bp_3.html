@@ -1,0 +1,719 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;3.&#xA0;Multiplayer Game API &#x2013; Connect 4"><div class="titlepage"><div><div><h1 class="title"><a id="ch03"/>Chapter 3. Multiplayer Game API – Connect 4</h1></div></div></div><p>Connect 4 is a <a id="id103" class="indexterm"/>turn-based two-player game, where each player would drop a chip down a column, with the objective to get four chip of the same color in a row. It can be vertical, horizontal, or diagonal.</p><p>In this chapter, we will build Connect4-as-a-Service. An API that allows you to build a game of Connect 4 on any client, be it a website, mobile app, or just play it from the command line; why not?</p><p>In <a class="link" href="ch01.html" title="Chapter 1. Building a Basic Express Site">Chapter 1</a>, <span class="emphasis"><em>Building a Basic Express Site</em></span>, and <a class="link" href="ch02.html" title="Chapter 2. A Robust Movie API">Chapter 2</a>, <span class="emphasis"><em>MMO Word Game</em></span>, we covered the most generic use cases for an Express backed API, which is to serve and persist data to and from a database. In this chapter, we'll cover something more fun. We'll build a<a id="id104" class="indexterm"/> multiplayer game API!</p><p>Some topics that will be covered include authentication, game state modeling, and validation middleware. Also, we will build an app using test-driven development with maximum code coverage.</p><p>For your reference, this is the folder structure of our app, which we will build throughout the chapter:</p><div class="mediaobject"><img src="graphics/0818_03_01.jpg" alt="Multiplayer Game API – Connect 4"/></div><p>How do you <a id="id105" class="indexterm"/>create a game? How do you join a game? How do you make a move? And how do you persist the game state in a DB?</p><p>It is always a good idea to start with the data structure. So let's get to it!</p><div class="section" title="Modeling game state with Mongoose"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec23"/>Modeling game state with Mongoose</h1></div></div></div><p>We will <a id="id106" class="indexterm"/>represent the board as a 2-dimensional array, with the values being <code class="literal">'x'</code>, <code class="literal">'o'</code>, or <code class="literal">' '</code>, representing the three possible states for each location on the grid. Here's an example, where player 2 wins the game:</p><div class="mediaobject"><img src="graphics/0818_03_02.jpg" alt="Modeling game state with Mongoose"/></div><p>This game <a id="id107" class="indexterm"/>state would be represented in an array as follows:</p><div class="informalexample"><pre class="programlisting"> [ [' ',' ',' ',' ',' ',' ',' ',' '],
+  [' ',' ',' ',' ',' ',' ',' ',' '],
+  [' ','o',' ',' ',' ',' ',' ',' '],
+  [' ','x','o','o','o',' ',' ',' '],
+  [' ','x','x','o','x',' ',' ',' '],
+  ['o','x','x','x','o',' ',' ',' '] ]</pre></div><p>This would suffice if the game were to be played locally with the state being stored in memory. In our case, we want to play on the internet, so we will need a way to identify which game we are playing, as well as which player you are, and whose turn it is. A game document would look as follows:</p><div class="informalexample"><pre class="programlisting">{
+  boardId: '&lt;id&gt;',
+  p1Key: '&lt;p1key&gt;',
+  p1Name: 'express',
+  p2Key: '&lt;p2key&gt;',
+  p2Name: 'koa',
+  columns: 7,
+  rows: 6,
+  status: 'Game in progress',
+  winner: undefined,
+  turn: 1,
+  board: [...]
+}</pre></div><p>Here are the parameters:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Parameter</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Description</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">boardId</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is a unique ID that you'll need if you want to take a look at the current game state.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">p1Key</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is a secret token to identify player 1; we want to avoid the possibility of cheating of course</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">p1Name</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is player 1's name</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">p2Key</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is a secret token to identify player 2</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">p2Name</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is a player 2's name</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">turn</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is the total number of turns played on this board</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">rows</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is the number of rows of the game board</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">columns</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is the number of columns of the game board</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">board</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is the game state stored in a 2D array</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">status</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is either Game in progress or Game Over.</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>
+<code class="literal">winner</code>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>This is the name of the winner once the game is over</p>
+</td></tr></tbody></table></div><p>Let's use the same<a id="id108" class="indexterm"/> app folder structure as was introduced in <a class="link" href="ch02.html" title="Chapter 2. A Robust Movie API">Chapter 2</a>, <span class="emphasis"><em>Building a Basic Express Site</em></span>, and let's define the preceding as a Mongoose model in <code class="literal">src/models/game.js</code>:</p><div class="informalexample"><pre class="programlisting">var mongoose = require('mongoose');
+
+var gameSchema = new mongoose.Schema({
+    type: String,
+    required: true
+  },
+  p2Key: {
+    type: String,
+    required: true
+  },
+  p1Name: {
+    type: String,
+    required: true
+  },
+  p2Name: {
+    type: String
+  },
+  turn: {
+    type: Number,
+    required: true
+  },
+  boardId: {
+    type: String,
+    required: true,
+    index: {
+      unique: true
+    }
+  },
+  board: {
+    type: Array,
+    required: true
+  },
+  rows: {
+    type: Number,
+    required: true
+  },
+  columns: {
+    type: Number,
+    required: true
+  },
+  status: {
+    type: String
+  },
+  winner: {
+    type: String
+  }
+});
+
+module.exports = mongoose.model('Game', gameSchema);</pre></div></div></div>
+<div class="section" title="Creating a new game"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec24"/>Creating a new game</h1></div></div></div><p>Now <a id="id109" class="indexterm"/>that we have defined the data structure of our game, let's start with implementing the logic to create and persist a new game document in the database, all the while following Test-Driven Development practices.</p><p>In order to create a new game, we need to accept a POST to <code class="literal">/create</code> with your name in the POST body:</p><div class="informalexample"><pre class="programlisting">{ name: 'player1' }</pre></div><p>There are a few things we should think about:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">We need to return the board information to the user, and whether or not game creation was successful</li><li class="listitem" style="list-style-type: disc">We need to ensure the player can access the game they just created, so we must send them the <code class="literal">boardId</code></li><li class="listitem" style="list-style-type: disc">In order for the player to identify themselves, we also need to ensure that we send them the <code class="literal">p1Key</code>, which will be needed for all future moves that Player One wishes to play to this board</li></ul></div><p>Since we're building the game, we have the power to bend the rules of the game. So let's allow player 1 to optionally configure the size of the playing board! We should have a minimum size of 6x7, though.</p><p>So let's start with the tests for creating a game and fetch the game information:</p><div class="informalexample"><pre class="programlisting">var expect = require('chai').expect,
+    request = require('supertest');
+
+var app = require('../src/lib/app');
+describe('Create new game | ', function() {
+  var boardId;
+
+  it('should return a game object with key for player 1', function(done) {
+    request(app).post('/create')
+      .send({name: 'express'})
+      .expect(200)
+      .end(function(err, res) {
+        var b = res.body;
+        expect(b.boardId).to.be.a('string');
+        expect(b.p1Key).to.be.a('string');
+        expect(b.p1Name).to.be.a('string').and.equal('express');
+        expect(b.turn).to.be.a('number').and.equal(1);
+        expect(b.rows).to.be.a('number');
+        expect(b.columns).to.be.a('number');
+
+        // Make sure the board is a 2D array
+        expect(b.board).to.be.an('array');
+        for(var i = 0; i &lt; b.board.length; i++){
+          expect(b.board[i]).to.be.an('array');
+        }
+
+        // Store the boardId for reference
+        boardId = b.boardId;
+        done();
+      });
+  });
+})</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note11"/>Note</h3><p>Throughout this chapter, we will use the <code class="literal">expect</code> assertion library. The only difference with <code class="literal">should</code> is the syntax, and the way it handles <code class="literal">undefined</code> more gracefully. The <code class="literal">should</code> library patches the object prototype, which means that if the object is undefined, it will throw a TypeError: Cannot read property should of undefined.</p></div></div><p>The <a id="id110" class="indexterm"/>test will use supertest to simulate POSTing data to the <code class="literal">/create</code> endpoint, and we describe everything that we expect from the response.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Now let's create a <code class="literal">POST</code> route in <code class="literal">src/routes/games.js</code> to create a game in the database, and <a id="id111" class="indexterm"/>make the first test pass:<div class="informalexample"><pre class="programlisting">var Utils = require('../lib/utils');
+var connect4 = require('../lib/connect4');
+var Game = require('../models/game');
+
+app.post('/create', function(req, res) {
+    if(!req.body.name) {
+      res.status(400).json({
+        "Error": "Must provide name field!"
+      });
+    }
+
+    var newGame = {
+      p1Key: Utils.randomValueHex(25),
+      p2Key: Utils.randomValueHex(25),
+      boardId: Utils.randomValueHex(6),
+      p1Name: req.body.name,
+      board: connect4.initializeBoard(req.body.rows, req.body.columns),
+      rows: req.body.rows || app.get('config').MIN_ROWS,
+      columns: req.body.columns || app.get('config').MIN_COLUMNS,
+      turn: 1,
+      status: 'Game in progress'
+    };
+
+    Game.create(newGame, function(err, game) {
+      if (err) {
+        return res.status(400).json(err);
+      }
+      game.p2Key = undefined;
+      res.status(201).json(game);
+    });
+  });</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note12"/>Note</h3><p>Note that an API should always take care of all possible inputs, and make sure it return <code class="literal">400</code> error if it does not pass the input validation; more on this as follows.</p></div></div></li><li class="listitem">The <code class="literal">Utils.randomValueHex() method</code> will return a random string, which we use to generate a token as well as <code class="literal">boardId</code>. Instead of defining it in the preceding file, let's package it up nicely in <code class="literal">src/lib/utils.js</code>:<div class="informalexample"><pre class="programlisting">var crypto = require('crypto');
+
+module.exports = {
+  randomValueHex: function(len) {
+    return crypto.randomBytes(Math.ceil(len/2))
+        .toString('hex')
+        .slice(0,len);
+  }
+}</pre></div><p>All the game logic of Connect4 is in <code class="literal">src/lib/connect4.js</code>, which you can find in the Appendix. We'll use that library to initialize the board.</p></li><li class="listitem">Also notice<a id="id112" class="indexterm"/> that rows and columns are optional arguments. We don't want to be hardcoding the default values in the code, so we have the following <code class="literal">config.js</code> file in the root folder:<div class="informalexample"><pre class="programlisting">module.exports = {
+  MIN_ROWS: 6,
+  MIN_COLUMNS: 7
+};</pre></div></li><li class="listitem">As we initiate the app in <code class="literal">src/lib/app.js</code>, we can attach this <code class="literal">config</code> object onto the <code class="literal">app</code> object, so we have app-wide access to the config:<div class="informalexample"><pre class="programlisting">var express = require('express'),
+    app = express(),
+    config = require('../../config'),
+    db = require('./db');
+
+app.set('config', config);
+db.connectMongoDB();
+require('./parser')(app);
+require('../routes/games')(app);
+
+module.exports = app;</pre></div><p>By now, your first pass should pass—congratulations! We can now be rest assured that the <code class="literal">POST</code> endpoint is working, and will keep working as expected. It's a great feeling because if we ever break something in the future, the test will fail. Now you don't have to worry about it anymore and focus on your next task.</p></li><li class="listitem">You do have to be diligent about getting as much code coverage as possible. For instance, we allow the client to customize the size of the board, but we have not <a id="id113" class="indexterm"/>written tests to test this feature yet, so let's get right to it:<div class="informalexample"><pre class="programlisting"> it('should allow you to customize the size of the board', function(done) {
+    request(app).post('/create')
+      .send({
+        name: 'express',
+        columns: 8,
+        rows: 16
+      })
+      .expect(200)
+      .end(function(err, res) {
+        var b = res.body;
+        expect(b.columns).to.equal(8);
+        expect(b.rows).to.equal(16);
+        expect(b.board).to.have.length(16);
+        expect(b.board[0]).to.have.length(8);
+        done();
+      });
+  });</pre></div></li><li class="listitem">We should also enforce a minimum size of the board; otherwise, the game can't be played. Remember how we defined <code class="literal">MIN_ROWS</code> and <code class="literal">MIN_COLUMNS</code> in the <code class="literal">config.js</code> file? We can reuse that in our tests as well, without having to resort to hardcoding the tests. Now if we want to be changing the minimum size of the game, we can do it one place! As given in the following:<div class="informalexample"><pre class="programlisting">  it('should not accept sizes &lt; ' + MIN_COLUMNS + ' for columns', function(done) {
+    request(app).post('/create')
+      .send({
+        name: 'express',
+        columns: 5,
+        rows: 16
+      })
+      .expect(400)
+      .end(function(err, res) {
+        expect(res.body.error).to.equal('Number of columns has to be &gt;= ' + MIN_COLUMNS);
+        done();
+      });
+  });
+
+  it('should not accept sizes &lt; ' + MIN_ROWS + ' rows', function(done) {
+    request(app).post('/create')
+      .send({
+        name: 'express',
+        columns: 8,
+        rows: -6
+      })
+      .expect(400)
+      .end(function(err, res) {
+        expect(res.body.error).to.equal('Number of rows has to be &gt;= ' + MIN_ROWS);
+        done();
+      });
+  });</pre></div></li></ol></div><p>As <a id="id114" class="indexterm"/>described in the preceding test cases, we should make sure that if the player is customizing the size of the board, that the size is not less than the minimum size. There are many more validation checks that we'll be doing, so let's start to get a bit more organized.</p><div class="section" title="Input validation"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec28"/>Input validation</h2></div></div></div><p>We <a id="id115" class="indexterm"/>should always check that the inputs we receive from a <code class="literal">POST</code> request are indeed what we expect, and return a <code class="literal">400</code> input error otherwise. This requires thinking about as many edge-case scenarios as possible. When an API is used by thousands of users, it is guaranteed that some users will abuse or misuse it, be it either intentional or unintentional. However, it is your responsibility to make the API as user-friendly as possible.</p><p>The only input validation that we covered in the preceding <code class="literal">/create</code> route is to make sure that there is a name in the <code class="literal">POST</code> body. Now we can just add two more <code class="literal">if</code> blocks to cover the board-size cases to make the tests pass.</p><p>In true TDD philosophy, you should write the least amount of code to make the tests pass first. They call it red-green-refactor. First, write tests that fail (red), make them pass as quickly as possible (green), and refactor after.</p><p>We urge you to try the preceding first. The following is the result after refactoring.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">A lot of the input validation checks would be useful across multiple routes, so let's<a id="id116" class="indexterm"/> package it nicely as a collection of middleware in <code class="literal">src/lib/validators.js</code>:<div class="informalexample"><pre class="programlisting">// A collection of validation middleware
+
+module.exports = function(app) {
+  var MIN_COLUMNS = app.get('config').MIN_COLUMNS,
+      MIN_ROWS = app.get('config').MIN_ROWS;
+
+  // Helper to return 400 error with a custom message
+  var _return400Error = function(res, message) {
+    return res.status(400).json({
+      error: message
+    });
+  };
+
+  return {
+    name: function(req, res, next) {
+      if(!req.body.name) {
+        return _return400Error(res, 'Must provide name field!');
+      }
+      next();
+    },
+    columns: function(req, res, next) {
+      if(req.body.columns &amp;&amp; req.body.columns &lt; MIN_COLUMNS) {
+        return _return400Error(res, 'Number of columns has to be &gt;= ' + MIN_COLUMNS);
+      }
+      next();
+    },
+    rows: function(req, res, next) {
+      if(req.body.rows &amp;&amp; req.body.rows &lt; MIN_ROWS) {
+        return _return400Error(res, 'Number of rows has to be &gt;= ' + MIN_ROWS);
+      }
+      next();
+    }
+  }
+}</pre></div><p>The preceding packages three validation checkers in a reusable fashion. It returns an object with three middleware. Note how we DRYed up the code using a <code class="literal">private _return400Error</code> helper, to make it even cleaner.</p></li><li class="listitem">Now we<a id="id117" class="indexterm"/> can refactor the <code class="literal">/create</code> route as follows:<div class="informalexample"><pre class="programlisting">module.exports = function(app) {
+  // Initialize Validation middleware with app to use config.js
+  var Validate = require('../lib/validators')(app);
+
+  app.post('/create', [Validate.name, Validate.columns, Validate.rows], function(req, res) {
+
+    var newGame = {
+      p1Key: Utils.randomValueHex(25),
+      p2Key: Utils.randomValueHex(25),
+      boardId: Utils.randomValueHex(6),
+      p1Name: req.body.name,
+      board: connect4.initializeBoard(req.body.rows, req.body.columns),
+      rows: req.body.rows || app.get('config').MIN_ROWS,
+      columns: req.body.columns || app.get('config').MIN_COLUMNS,
+      turn: 1,
+      status: 'Game in progress'
+    };
+    Game.create(newGame, function(err, game) {
+      if (err) return res.status(400).json(err);
+
+      game.p2Key = undefined;
+      return res.status(201).json(game);
+    });
+  });
+}</pre></div></li></ol></div><p>This will create a nice separation of concerns, where each of the routes that we will define will accept an array of (reusable!) validation middleware that it has to go through, before it reaches the controller logic of the route.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip04"/>Tip</h3><p>Make sure your tests still pass before you proceed with the next endpoint.</p></div></div></div><div class="section" title="Getting the game state"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec29"/>Getting the game state</h2></div></div></div><p>Both<a id="id118" class="indexterm"/> players need a way to check on the state of a game that they are interested in. To do this, we can send a <code class="literal">GET</code> request to <code class="literal">/board/{boardId}</code>. This will return the current state of the game, allowing players to see the state of the board, as well as whose turn is next.</p><p>We will create another endpoint to fetch a board, so let's first write the test for that:</p><div class="informalexample"><pre class="programlisting">  it('should be able to fetch the board', function(done) {
+    request(app).get("/board/" + boardId)
+      .expect(200)
+      .end(function(err, res) {
+        var b = res.body;
+        expect(b.boardId).to.be.a('string').and.equal(boardId);
+        expect(b.turn).to.be.a('number').and.equal(1);
+        expect(b.rows).to.be.a('number');
+        expect(b.columns).to.be.a('number');
+        expect(b.board).to.be.an('array');
+        done();
+      });
+  });</pre></div><p>Note that we want to make sure that we don't accidentally leak the player tokens. The response should be basically identical to the one received by the player that most recently made a move as given in the following:</p><div class="informalexample"><pre class="programlisting"> app.get('/board/:id', function(req, res) {
+    Game.findOne({boardId: req.params.id}, function(err, game) {
+      if (err) return res.status(400).json(err);
+
+      res.status(200).json(_sanitizeReturn(game));
+    });
+  });</pre></div><p>Here, <code class="literal">_sanitizeReturn(game)</code> is a simple helper that just copies the game object, except for the player tokens.</p><div class="informalexample"><pre class="programlisting">// Given a game object, return the game object without tokens
+function _sanitizeReturn(game) {
+  return {
+    boardId: game.boardId,
+    board: game.board,
+    rows: game.rows,
+    columns: game.columns,
+    turn: game.turn,
+    status: game.status,
+    winner: game.winner,
+    p1Name: game.p1Name,
+    p2Name: game.p2Name
+  };
+}</pre></div></div><div class="section" title="Joining a game"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec30"/>Joining a game</h2></div></div></div><p>This <a id="id119" class="indexterm"/>game would be no fun if played alone, so we need to allow a second player to join the game.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">In order to join a game, we need to accept <code class="literal">POST</code> to <code class="literal">/join</code> with the name of player2 in the <code class="literal">POST</code> body:<div class="informalexample"><pre class="programlisting">{ name: 'player2' }</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note13"/>Note</h3><p>For this to work, we need to implement a rudimentary match-making system. An easy one is to simply have a queue of games in a joinable state, and popping one off when the <code class="literal">/join</code> API is hit. We chose to use Redis as our Queue implementation to keep track of the joinable games.</p></div></div><p>Once a game is joined, we will send <code class="literal">boardId</code> and <code class="literal">p2Key</code> back to the player, so that they can play on this board with player 1. This will intrinsically avoid a game to be joined multiple times.</p></li><li class="listitem">All we need to do is add this line to push <code class="literal">boardId</code> onto the queue, once the game is created and stored in the DB:<div class="informalexample"><pre class="programlisting">      client.lpush('games', game.boardId);</pre></div></li><li class="listitem">We glanced over database connections when we showed <code class="literal">app.js</code>. The way to set up a MongoDB connection was covered in <a class="link" href="ch02.html" title="Chapter 2. A Robust Movie API">Chapter 2</a>, <span class="emphasis"><em>A Robust Movie API</em></span>. The following is how we'll connect to a <code class="literal">redis</code> database in <code class="literal">src/lib/db.js</code>:<div class="informalexample"><pre class="programlisting">var redis = require('redis');
+var url = require('url');
+
+exports.connectRedis = function() {
+  var urlRedisToGo = process.env.REDISTOGO_URL;
+  var client = {};
+
+  if (urlRedisToGo) {
+    console.log('using redistogo');
+    rtg = url.parse(urlRedisToGo);
+    client = redis.createClient(rtg.port, rtg.hostname);
+    client.auth(rtg.auth.split(':')[1]);
+  } else {
+    console.log('using local redis');
+    // This would use the default redis config: { port 6347, host: 'localhost' }
+    client = redis.createClient();
+  }
+
+  return client;
+};</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note14"/>Note</h3><p>Note<a id="id120" class="indexterm"/> that in production, we'll be connecting to Redis To Go (you can start with a 2MB instance for free). For local development, all you need to do is <code class="literal">redis.createClient()</code>.</p></div></div></li><li class="listitem">Now we can write the tests to join a game, TDD style:<div class="informalexample"><pre class="programlisting">var expect = require('chai').expect,
+    request = require('supertest'),
+    redis = require('redis'),
+    client = redis.createClient();
+
+var app = require('../src/lib/app');
+
+describe('Create and join new game | ', function() {
+  before(function(done){
+    client.flushall(function(err, res){
+      if (err) return done(err);
+      done();
+    });
+  });</pre></div></li><li class="listitem">Note that we flush the <code class="literal">redis</code> queue each time we run this test suite, just to make sure that the stack is empty. In general, it is a good idea to write atomic tests that can run on their own, without reliance on outside state.<div class="informalexample"><pre class="programlisting">  it('should not be able to join a game without a name', function(done) {
+    request(app).post('/join')
+      .expect(400)
+      .end(function(err, res) {
+        expect(res.body.error).to.equal("Must provide name field!");
+        done();
+      });
+  });
+
+  it('should not be able to join a game if none exists', function(done) {
+    request(app).post('/join')
+      .send({name: 'koa'})
+      .expect(418)
+      .end(function(err, res) {
+        expect(res.body.error).to.equal("No games to join!");
+        done();
+      });
+  });</pre></div></li><li class="listitem">Always<a id="id121" class="indexterm"/> remember to cover input the edge-cases! In the preceding test, we make sure that we cover the case that we have no games left to join. If not, we might crash the server or return the <code class="literal">500</code> error (which we should attempt to eradicate because that means it's your fault, not the user!). Now let's write the following code:<div class="informalexample"><pre class="programlisting">  it('should create a game and add it to the queue', function(done) {
+    request(app).post('/create')
+      .send({name: 'express'})
+      .expect(200)
+      .end(function(err, res) {
+        done();
+      });
+  });
+
+  it('should join the game on the queue', function(done) {
+    request(app).post('/join')
+      .send({name: 'koa'})
+      .expect(200)
+      .end(function(err, res) {
+        var b = res.body;
+        expect(b.boardId).to.be.a('string');
+        expect(b.p1Key).to.be.undefined;
+        expect(b.p1Name).to.be.a('string').and.equal('express');
+        expect(b.p2Key).to.be.a('string');
+        expect(b.p2Name).to.be.a('string').and.equal('koa');
+        expect(b.turn).to.be.a('number').and.equal(1);
+        expect(b.rows).to.be.a('number');
+        expect(b.columns).to.be.a('number');
+        done();
+      });
+  });
+});</pre></div></li><li class="listitem">These<a id="id122" class="indexterm"/> tests describe the core logic of creating a game and joining it. Enough tests to describe this endpoint. Let's now write the accompanying code:<div class="informalexample"><pre class="programlisting">app.post('/join', Validate.name, function(req, res) {
+    client.rpop('games', function(err, boardId) {
+      if (err) return res.status(418).json(err);
+
+      if (!boardId) {
+        return res.status(418).json({
+          error: 'No games to join!'
+        });
+      }
+
+      Game.findOne({ boardId: boardId }, function (err, game){
+        if (err) return res.status(400).json(err);
+
+        game.p2Name = req.body.name;
+        game.save(function(err, game) {
+          if (err) return res.status(500).json(err);
+          game.p1Key = undefined;
+          res.status(200).json(game);
+        });
+      });
+    });
+  });</pre></div></li></ol></div><p>We reuse the <code class="literal">Validate.name</code> middleware here to make sure that we have a name for player 2. If so, we will look for the next joinable game in the queue. When there are no joinable games, we will return an appropriate <code class="literal">418</code> error.</p><p>If we successfully retrieve the next joinable <code class="literal">boardId</code>, we will fetch the board from the database, and store the name of player 2 in it. We also have to make sure that we do not return player 1's token along with the game object.</p><p>Now<a id="id123" class="indexterm"/> that both players have fetched their respective tokens, let the games begin!</p></div><div class="section" title="Playing the game"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec31"/>Playing the game</h2></div></div></div><p>The <a id="id124" class="indexterm"/>game state is stored in the database and can be retrieved with a <code class="literal">GET</code> request to <code class="literal">/board/{boardId}</code>. The essence of making a move is a change to the game state. In familiar CRUD terms, we would be updating the document. Following REST conventions whenever possible, a <code class="literal">PUT</code> request to <code class="literal">/board/{boardId}</code> would be the logical choice to make a move.</p><p>To make a valid move, a player needs to include an X-Player-Token in their request header matching that of the corresponding player, as well as a request body identifying which column to make a move in:</p><div class="informalexample"><pre class="programlisting">{ column: 2 }</pre></div><p>However, not all moves are legal, for example, we need to ensure that players only play moves when it is their turn. There are a few more things that need to be checked for every move:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Is the move valid? Does the column parameter specify an actual column?</li><li class="listitem" style="list-style-type: disc">Does the column still have space?</li><li class="listitem" style="list-style-type: disc">Is the X-Player-Token a valid token for the current game?</li><li class="listitem" style="list-style-type: disc">Is it your turn?</li><li class="listitem" style="list-style-type: disc">Did the move create a victory condition? Did this player win with this move?</li><li class="listitem" style="list-style-type: disc">Did the move fill up the board and cause a draw game?</li></ul></div><p>Now we will<a id="id125" class="indexterm"/> model all these scenarios.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Let's play a full game with the following tests:<div class="informalexample"><pre class="programlisting">var expect = require('chai').expect,
+    request = require('supertest'),
+    redis = require('redis'),
+    client = redis.createClient();
+
+var app = require('../src/lib/app'),
+    p1Key, p2Key, boardId;
+
+describe('Make moves | ', function() {
+  before(function(done){
+    client.flushall(function(err, res){
+      if (err) return done(err);
+      done();
+    });
+  });
+
+  it('create a game', function(done) {
+    request(app).post('/create')
+      .send({name: 'express'})
+      .expect(200)
+      .end(function(err, res) {
+        p1Key = res.body.p1Key;
+        boardId = res.body.boardId;
+        done();
+      });
+  });
+
+  it('join a game', function(done) {
+    request(app).post('/join')
+      .send({name: 'koa'})
+      .expect(200)
+      .end(function(err, res) {
+        p2Key = res.body.p2Key;
+        done();
+      });
+  });</pre></div><p>The first test creates the game and the second test joins it. The next six tests are validation tests to make sure that the requests are valid.</p></li><li class="listitem">Make sure that the X-Player-Token is present:<div class="informalexample"><pre class="programlisting">  it('Cannot move without X-Player-Token', function(done) {
+    request(app).put('/board/' + boardId)
+      .send({column: 1})
+      .expect(400)
+      .end(function(err, res) {
+        expect(res.body.error).to.equal('Missing X-Player-Token!');
+        done();
+      });
+  });</pre></div></li><li class="listitem">Make sure that the X-Player-Token is the correct one:<div class="informalexample"><pre class="programlisting">  it('Cannot move with wrong X-Player-Token', function(done) {
+    request(app).put('/board/' + boardId)
+      .set('X-Player-Token', 'wrong token!')
+      .send({column: 1})
+      .expect(400)
+      .end(function(err, res) {
+        expect(res.body.error).to.equal('Wrong X-Player-Token!');
+        done();
+      });
+  });</pre></div></li><li class="listitem">Make<a id="id126" class="indexterm"/> sure that the board you move on exists:<div class="informalexample"><pre class="programlisting">  it('Cannot move on unknown board', function(done) {
+    request(app).put('/board/3213')
+      .set('X-Player-Token', p1Key)
+      .send({column: 1})
+      .expect(404)
+      .end(function(err, res) {
+        expect(res.body.error).to.equal('Cannot find board!');
+        done();
+      });
+  });</pre></div></li><li class="listitem">Make sure that a column parameter is sent when making a move:<div class="informalexample"><pre class="programlisting">  it('Cannot move without a column', function(done) {
+    request(app).put('/board/' + boardId)
+      .set('X-Player-Token', p2Key)
+      .expect(400)
+      .end(function(err, res) {
+        expect(res.body.error).to.equal('Move where? Missing column!');
+        done();
+      });
+  });</pre></div></li><li class="listitem">Make sure that the column is not off the board:<div class="informalexample"><pre class="programlisting">  it('Cannot move outside of the board', function(done) {
+    request(app).put('/board/' + boardId)
+      .set('X-Player-Token', p1Key)
+      .send({column: 18})
+      .expect(200)
+      .end(function(err, res) {
+        expect(res.body.error).to.equal('Bad move.');
+        done();
+      });
+  });</pre></div></li><li class="listitem">Make sure<a id="id127" class="indexterm"/> that the wrong player cannot move:<div class="informalexample"><pre class="programlisting">  it('Player 2 should not be able to move!', function(done) {
+    request(app).put('/board/' + boardId)
+      .set('X-Player-Token', p2Key)
+      .send({column: 1})
+      .expect(400)
+      .end(function(err, res) {
+        console.log(res.body);
+        expect(res.body.error).to.equal('It is not your turn!');
+        done();
+      });
+  });</pre></div></li><li class="listitem">Now that we have covered all the validation cases, let's test the entire game play:<div class="informalexample"><pre class="programlisting">it('Player 1 can move', function(done) {
+    request(app).put('/board/' + boardId)
+      .set('X-Player-Token', p1Key)
+      .send({column: 1})
+      .expect(200)
+      .end(function(err, res) {
+        var b = res.body;
+        expect(b.p1Key).to.be.undefined;
+        expect(b.p2Key).to.be.undefined;
+        expect(b.turn).to.equal(2);
+        expect(b.board[b.rows-1][0]).to.equal('x');
+        done();
+      });
+  });</pre></div></li><li class="listitem">Just a quick check that player 1 cannot move again, before player 2 makes a move:<div class="informalexample"><pre class="programlisting">  it('Player 1 should not be able to move!', function(done) {
+    request(app).put('/board/' + boardId)
+      .set('X-Player-Token', p1Key)
+      .send({column: 1})
+      .expect(400)
+      .end(function(err, res) {
+        expect(res.body.error).to.equal('It is not your turn!');
+        done();
+      });
+  });
+
+  it('Player 2 can move', function(done) {
+    request(app).put('/board/' + boardId)
+      .set('X-Player-Token', p2Key)
+      .send({column: 1})
+      .expect(200)
+      .end(function(err, res) {
+        var b = res.body;
+        expect(b.p1Key).to.be.undefined;
+        expect(b.p2Key).to.be.undefined;
+        expect(b.turn).to.equal(3);
+        expect(b.board[b.rows-2][0]).to.equal('o');
+        done();
+      });
+  });</pre></div></li><li class="listitem">The<a id="id128" class="indexterm"/> remainder of this test suite plays out a full game. We won't show it all here, but you may refer to the source code. The last three tests are still interesting though because we cover the final game state and prevent any more moves.<div class="informalexample"><pre class="programlisting">  it('Player 1 can double-check victory', function(done) {
+    request(app).get('/board/' + boardId)
+      .set('X-Player-Token', p1Key)
+      .expect(200)
+      .end(function(err, res) {
+        var b = res.body;
+        expect(b.winner).to.equal('express');
+        expect(b.status).to.equal('Game Over.');
+        done();
+      });
+  });
+
+  it('Player 2 is a loser, to be sure', function(done) {
+    request(app).get('/board/' + boardId)
+      .set('X-Player-Token', p2Key)
+      .expect(200)
+      .end(function(err, res) {
+        var b = res.body;
+        expect(b.winner).to.equal('express');
+        expect(b.status).to.equal('Game Over.');
+        done();
+      });
+  });
+
+  it('Player 1 cannot move anymore', function(done) {
+    request(app).put('/board/' + boardId)
+      .set('X-Player-Token', p1Key)
+      .send({column: 3})
+      .expect(400)
+      .end(function(err, res) {
+        expect(res.body.error).to.equal('Game Over. Cannot move anymore!');
+        done();
+      });
+  });
+});</pre></div></li></ol></div><p>Now that <a id="id129" class="indexterm"/>we have described our expected behavior, let's begin with implementing the move endpoint.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">First, let's cover the validation pieces, making the first 8 tests pass.<div class="informalexample"><pre class="programlisting">app.put('/board/:id', [Validate.move, Validate.token], function(req, res) {
+
+    Game.findOne({boardId: req.params.id }, function(err, game) {</pre></div></li><li class="listitem">We fetch the board that the move is sent to. If we cannot find the board, we should return a 400 error. This should make the test 'Cannot move on unknown board' pass.<div class="informalexample"><pre class="programlisting">      if (!game) {
+        return res.status(400).json({
+          error: 'Cannot find board!'
+        });
+      }</pre></div></li><li class="listitem">If the game is over, you cannot make any moves.<div class="informalexample"><pre class="programlisting">      if(game.status !== 'Game in progress') {
+        return res.status(400).json({
+          error: 'Game Over. Cannot move anymore!'
+        });
+      }</pre></div></li><li class="listitem">The following code will make sure that the token is either <code class="literal">p1Key</code> or <code class="literal">p2Key</code>. If not, return the <code class="literal">400</code> error with the according message:<div class="informalexample"><pre class="programlisting">      if(req.headers['x-player-token'] !== game.p1Key &amp;&amp; req.headers['x-player-token'] !== game.p2Key) {
+        return res.status(400).json({
+          error: 'Wrong X-Player-Token!'
+        });
+      }</pre></div></li></ol></div><p>Now that<a id="id130" class="indexterm"/> we have verified that the token is indeed a valid one, we still need to check if it is your turn.</p><p>The <code class="literal">game.turn()</code> method will increment with each turn, so we have to take the modulo to check who's turn it is. Incrementing the turn, instead of toggling, will have the benefit of keeping a count on the number of turns that have been played, which will also be handy later, when we want to check whether the board is full, and end in a tie.</p><p>Now we know which key to compare the token with.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">If your token does not match, then it is not your turn:<div class="informalexample"><pre class="programlisting">      var currentPlayer = (game.turn % 2) === 0 ? 2 : 1;
+      var currentPlayerKey = (currentPlayer === 1) ? game.p1Key : game.p2Key;
+      if(currentPlayerKey !== req.headers['x-player-token']){
+        return res.status(400).json({
+          error: 'It is not your turn!'
+        });
+      }</pre></div></li><li class="listitem">We added two more validation middleware for this route, move and token, which we can add to the validators library in <code class="literal">src/lib/validators.js</code>:<div class="informalexample"><pre class="programlisting">    move: function(req, res, next) {
+      if (!req.body.column) {
+        return _return400Error(res, 'Move where? Missing column!');
+      }
+      next();
+    },
+    token: function(req, res, next) {
+      if (!req.headers['x-player-token']) {
+        return _return400Error(res, 'Missing X-Player-Token!');
+      }
+      next();
+    }</pre></div></li><li class="listitem">Since <a id="id131" class="indexterm"/>we are sending the <code class="literal">400</code> error four times in the preceding code, let's dry it up and reuse the same helper we had in <code class="literal">validators.js</code>, by extracting that helper into <code class="literal">src/lib/utils.js</code>:<div class="informalexample"><pre class="programlisting">var crypto = require('crypto');
+
+module.exports = {
+  randomValueHex: function(len) {
+    return crypto.randomBytes(Math.ceil(len/2))
+        .toString('hex')
+        .slice(0,len);
+  },
+  // Helper to return 400 error with a custom message
+  return400Error: function(res, message) {
+    return res.status(400).json({
+      error: message
+    });
+  }
+}</pre></div></li><li class="listitem">Don't forget to update <code class="literal">src/lib/validators.js</code> to use this <code class="literal">utils</code>, by replacing the line with the following:<div class="informalexample"><pre class="programlisting">  var _return400Error = require('./utils').return400Error;</pre></div></li><li class="listitem">Now we can refactor the move route to make a move as follows:<div class="informalexample"><pre class="programlisting">app.put('/board/:id', [Validate.move, Validate.token], function(req, res) {
+
+    Game.findOne({boardId: req.params.id }, function(err, game) {
+      if (!game) {
+        return _return400Error(res, 'Cannot find board!');
+      }
+
+      if(game.status !== 'Game in progress') {
+        return _return400Error(res, 'Game Over. Cannot move anymore!');
+      }
+
+      if(req.headers['x-player-token'] !== game.p1Key &amp;&amp; req.headers['x-player-token'] !== game.p2Key) {
+        return _return400Error(res, 'Wrong X-Player-Token!');
+      }
+
+      var currentPlayer = (game.turn % 2) === 0 ? 2 : 1;
+      var currentPlayerKey = game['p' + currentPlayer + 'Key'];
+      if(currentPlayerKey !== req.headers['x-player-token']){
+        return _return400Error(res, 'It is not your turn!');</pre></div></li></ol></div><p>Much cleaner, ain't it!</p><p>For the <a id="id132" class="indexterm"/>remainder of the controller logic, we will use the <code class="literal">connect4.js</code> library (see Appendix), which implements the <code class="literal">makeMove()</code> and <code class="literal">checkForVictory()</code> methods.</p><p>The <code class="literal">makeMove()</code> method will return a new board that results from the move, or return false if the move is invalid. Invalid here means that the column is already full, or the column is out of bounds. No turn validation is done here.</p><div class="informalexample"><pre class="programlisting">    // Make a move, which returns a new board; returns false if the move is invalid
+      var newBoard = connect4.makeMove(currentPlayer, req.body.column, game.board);
+      if(newBoard){
+        game.board = newBoard;
+        game.markModified('board');
+      } else {
+        return _return400Error(res, 'Bad move.');
+      }</pre></div><p>One really important thing to point out is the line <code class="literal">game.markModified('board')</code>. Since we are using a 2D array for board, Mongoose is unable to auto-detect any changes. It can only do so with the basic field types. So if we do not explicitly mark the board as modified, it will not persist any changes when we call <code class="literal">game.save</code>!</p><div class="informalexample"><pre class="programlisting">      // Check if you just won
+      var win = connect4.checkForVictory(currentPlayer, req.body.column, newBoard);
+      if(win) {
+        game.winner = game['p'+ currentPlayer + 'Name'];
+        game.status = 'Game Over.';
+      } else if(game.turn &gt;= game.columns*game.rows) {
+        game.winner = 'Game ended in a tie!';
+        game.status = 'Game Over.';
+      }</pre></div><p>The <code class="literal">checkForVictory()</code> method is a predicate that will check for victory based on the last move<a id="id133" class="indexterm"/> by the last player. We don't need to be checking the entire board each time. If the last move was a winning move, this method will return true; otherwise, it will return false.</p><div class="informalexample"><pre class="programlisting">      // Increment turns
+      game.turn++;
+
+      game.save(function(err, game){
+        if (err) return res.status(500).json(err);
+        return res.status(200).json(_sanitizeReturn(game));
+      });
+    });
+  });</pre></div><p>It is a good idea to keep the controller logic as thin as possible and defer as much of the business logic as possible to the libraries or models. This decoupling and separation of concerns improves maintainability and testability, as well as modularity and reusability. Given the current architecture, it would be very easy to reuse the core components of our application in another Express project.</p></div><div class="section" title="Testing for a tie"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec32"/>Testing for a tie</h2></div></div></div><p>The only<a id="id134" class="indexterm"/> thing we haven't covered yet in our test suite is a tie game. We could create another test suite that would fill the entire board manually using 42 individual moves, but that would be too tedious. So let's fill the board programmatically.</p><p>That may sound easy, but it can be a bit tricky with JavaScript's asynchronous control flow. What would happen if we were to simply wrap the move request in a <code class="literal">for</code> loop?</p><p>In short, it would be a mess. All requests would go out at the same time, and there will be no order. And how would you know that all moves are finished? You would need to maintain a global state counter that increments with each callback.</p><p>This is where the <code class="literal">async</code> library becomes indispensable from Github.</p><p>Async is a utility module, which provides straightforward, powerful functions to work with asynchronous JavaScript.</p><p>There is so much that you can do with async that would make your life easier; definitely a library that you should acquaint yourself with and add to your toolbox.</p><p>In our situation, we will use <code class="literal">async.series</code>, which allows us to send a flight of requests serially. Each request will wait until the previous request has returned.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note15"/>Note</h3><p>Run the functions in the tasks array in series, each one running once the previous function has completed. If any functions in the series pass an error to its callback, no more functions can be run, and callback is immediately called with the value of the error; otherwise, callback receives an array of results when tasks are completed.</p></div></div><p>So to prepare our moves to be passed to <code class="literal">async.series</code>, we will use the following helper to create a thunk:</p><div class="informalexample"><pre class="programlisting">function makeMoveThunk(player, column) {
+  return function(done) {
+    var token = player === 1 ? p1Key : p2Key;
+    request(app).put('/board/' + boardId)
+      .set('X-Player-Token', token)
+      .send({column: column})
+      .end(done);
+  };
+}</pre></div><p>A thunk is simply a subroutine; in this case calling the API to make a move, that is wrapped in a function, to be executed later. In this case, we create a thunk that accepts a callback parameter (as required by async), which notifies async that we're done.</p><p>Now we can fill the board programmatically and check for the tie state:</p><div class="informalexample"><pre class="programlisting">it('Fill the board! Tie the game!', function(done) {
+    var moves = [],
+        turn = 1,
+        nextMove = 1;
+
+    for(var r = 0; r &lt; rows; r++) {
+      for(var c = 1; c &lt;= columns; c++) {
+        moves.push(makeMoveThunk(turn, nextMove));
+        turn = turn === 1 ? 2 : 1;
+        nextMove = ((nextMove + 2) % columns) + 1;
+      }
+    }
+
+    async.series(moves, function(err, res) {
+      var lastResponse = res[rows*columns-1].body;
+      console.log(lastResponse);
+      expect(lastResponse.winner).to.equal('Game ended in a tie!');
+      expect(lastResponse.status).to.equal('Game Over.');
+      done();
+    });
+  });</pre></div></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec25"/>Summary</h1></div></div></div><p>Congratulations! By now, all your tests should be passing and your game should be complete. You have mastered developing a robust and well-tested API and deal with validation using reusable middleware. Along the way you've also learned to use Redis for a simple queue.</p><p>Now you<a id="id135" class="indexterm"/> can deploy your API and you'll have your Connect4-as-a-Service available for the world to build their own connect 4 game upon, using their own favorite platform. Whether it is an HTML5 interface, a mobile app, or a command-line interface, it will all be powered by your backend!</p><p>In the next chapter, we'll be taking game development to another level—it will be a realtime massively multiplayer online game!</p></div></body></html>

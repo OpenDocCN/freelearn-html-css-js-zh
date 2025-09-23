@@ -1,0 +1,547 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;9.&#xA0;Advanced NodeJS Concurrency"><div class="titlepage"><div><div><h1 class="title"><a id="ch09"/>Chapter 9. Advanced NodeJS Concurrency</h1></div></div></div><p>In <a class="link" href="ch08.html" title="Chapter 8. Evented IO with NodeJS">Chapter 8</a>, <span class="emphasis"><em>Evented IO with NodeJS</em></span>, you learned about the concurrency mechanism that's central to NodeJS applications—the IO event loop. In this chapter, we'll dig into some more advanced topics that are both—complimentary to the event loop and contrary to the event loop.</p><p>Kicking us off is a discussion on implementing coroutines in Node using the <code class="literal">Co</code> library. Next, we'll look at creating subprocesses and communicating with these processes. After this, we'll dig into Node's built-in capability to create a process cluster, each with their own event loop. We'll close this chapter with a look at creating clusters at large-scale clusters of Node servers.</p><div class="section" title="Coroutines with Co"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec57"/>Coroutines with Co</h1></div></div></div><p>We've already seen one approach to implement coroutines in the front-end using generators, in <a class="link" href="ch04.html" title="Chapter 4. Lazy Evaluation with Generators">Chapter 4</a>, <span class="emphasis"><em>Lazy Evaluation with Generators</em></span>. In this section, we'll use the <code class="literal">Co</code> library (<a class="ulink" href="https://github.com/tj/co">https://github.com/tj/co</a>) to implement coroutines. This library also relies on generators and promises.</p><p>We'll start by walking through the general premise of <code class="literal">Co</code>, and then, we'll write some code that waits for asynchronous values using promises. We'll then look into the mechanics of transferring resolved values from a promise to our coroutine function, asynchronous dependencies, and creating coroutine utility functions.</p><div class="section" title="Generating promises"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec118"/>Generating promises</h2></div></div></div><p>At its core, the <code class="literal">Co</code> library uses a <code class="literal">co()</code> function to create a coroutine. In fact, its basic usage looks familiar to the coroutine function that we created earlier in this book. Here's what it looks like:</p><div class="informalexample"><pre class="programlisting">co(function* () {
+    // TODO: co-routine amazeballs.
+});</pre></div><p>Another similarity between the <code class="literal">Co</code> library and our earlier coroutine implementation is that values are passed in through the <code class="literal">yield</code> statement. However, instead of calling the returned function to pass in the values, this coroutine uses promises to pass in values. The effect is the same—asynchronous values being passed into synchronous code, as this diagram shows:</p><div class="mediaobject"><img src="graphics/B05133_09_01.jpg" alt="Generating promises"/></div><p>The asynchronous value actually comes from a promise. The resolved value makes its way into the coroutine. We'll dig deeper into the mechanics of how this works shortly. Even if we don't yield promises, say we yielded a string for instance, the <code class="literal">Co</code> library will wrap this into a promise for us. But, doing this defeats the purpose of using asynchronous values in synchronous code.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note28"/>Note</h3><p>It cannot be understated how valuable it is for us, as programmers, when we find a tool  such as <code class="literal">Co</code>, that encapsulates messy synchronization semantics. Our code inside the coroutine is synchronous and maintainable.</p></div></div></div><div class="section" title="Awaiting values"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec119"/>Awaiting values</h2></div></div></div><p>Coroutines created by the <code class="literal">co()</code> function work a lot like ES7 asynchronous functions. The <code class="literal">async</code> keyword marks a function as asynchronous—meaning that it uses asynchronous values within. The <code class="literal">await</code> keyword, used in conjunction with a promise, pauses the execution of the function till the value resolves. If this feels a lot like what a generator does, it's because it's exactly what a generator does. Here's what the ES7 syntax looks like:</p><div class="informalexample"><pre class="programlisting">// This is the ES7 syntax, where the function is
+// marked as "async". Then, the "await" calls
+// pause execution till their operands resolve.
+(async function() {
+    var result;
+    result = await Promise.resolve('hello');
+    console.log('async result', `"${result}"`);
+    // → async result "hello"
+
+    result = await Promise.resolve('world');
+    console.log('async result', `"${result}"`);
+    // → async result "world"
+}());</pre></div><p>In this example, the promises are resolved immediately, so there's no real need to pause the execution. However, it waits even if the promise resolves a network request that takes several seconds. We'll go into more depth on resolving promises in the next section. Given that this is ES7 syntax, it'd be nice if we could use the same approach today. Here's how we would implement the same thing with <code class="literal">Co</code>:</p><div class="informalexample"><pre class="programlisting">// We need the "co()" function.
+var co = require('co');
+
+// The differences between the ES7 and "co()" are
+// subtle, the overall structure is the same. The
+// function is a generator, and we pause execution
+// by yielding generators.
+co(function*() {
+    var result;
+    result = yield Promise.resolve('hello');
+    console.log('co result', `"${result}"`);
+    // → co result "hello"
+
+    result = yield Promise.resolve('world');
+    console.log('co result', `"${result}"`);
+    // → co result "world"
+});</pre></div><p>It should be no surprise that the <code class="literal">Co</code> library is moving in the direction of ES7; nice move <code class="literal">Co</code> authors.</p></div><div class="section" title="Resolving values"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec120"/>Resolving values</h2></div></div></div><p>There are at least two places in a given <code class="literal">Co</code> coroutine where a promise is resolved. First, there's one or more promises yielded from within the generator function that we'll pass to <code class="literal">co()</code>. If there weren't any promises yielded within this function, there wouldn't be much point in using <code class="literal">Co</code>. The return value when calling <code class="literal">co()</code> is another promise, which is kind of cool because it means that coroutines can have other coroutines as dependencies. We'll explore this idea in more depth momentarily. For now, let's look at resolving the promises, and how it's done. Here's an illustration of the promise resolution order of a coroutine:</p><div class="mediaobject"><img src="graphics/B05133_09_02.jpg" alt="Resolving values"/></div><p>The promises are resolved in the same order that they're named. For instance, the first promise causes the execution of the code within the coroutine to pause execution until it's value is resolved. Then, the execution is paused again while waiting for the second promise. The final promise that's returned from <code class="literal">co()</code> is resolved with the return value of the generator function. Let's look at some code now:</p><div class="informalexample"><pre class="programlisting">var co = require('co');
+
+co(function* () {
+
+    // The promise that's yielded here isn't resolved
+    // till 1 second later. That's when the yield statement
+    // returns the resolved value.
+    var first = yield new Promise((resolve, reject) =&gt; {
+        setTimeout(() =&gt; {
+            resolve([ 'First1', 'First2', 'First3' ]);
+        }, 1000);
+    });
+
+    // Same idea here, except we're waiting 2 seconds
+    // before the "second" variable gets it's value.
+    var second = yield new Promise((resolve, reject) =&gt; {
+        setTimeout(() =&gt; {
+            resolve([ 'Second1', 'Second2', 'Second3' ]);
+        }, 2000);
+    });
+
+    // Both "first" and "second" are resolved at this
+    // point, so we can use both to map a new array.
+    return first.map((v, i) =&gt; [ v, second[i] ]);
+
+}).then((value) =&gt; {
+    console.log('zipped', value);
+    // → 
+    // [ 
+    //   [ 'First1', 'Second1' ],
+    //   [ 'First2', 'Second2' ],
+    //   [ 'First3', 'Second3' ] 
+    // ]
+});</pre></div><p>As we can see, the return value from the generator ends up as the resolved promise value. Recall that returning from a generator will return the same object as yielding does with the <code class="literal">value</code> and <code class="literal">done</code> properties. <code class="literal">Co</code> knows to resolve the promise with the <code class="literal">value</code> property.</p></div><div class="section" title="Asynchronous dependencies"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec121"/>Asynchronous dependencies</h2></div></div></div><p>Coroutines made with <code class="literal">Co</code> really shine when an action depends on an earlier asynchronous value later on in the coroutine. What would otherwise be a tangled mess of callbacks and state is instead just placing the assignments in the correct order. The dependent action is never called until the value is resolved. Here's an illustration of the idea:</p><div class="mediaobject"><img src="graphics/B05133_09_03.jpg" alt="Asynchronous dependencies"/></div><p>Now let's write some code that has two asynchronous actions, where the second action depends on the result of the first. This can be tricky, even with the use of promises:</p><div class="informalexample"><pre class="programlisting">var co = require('co');
+
+// A simple user collection.
+var users = [
+    { name: 'User1' },
+    { name: 'User2' },
+    { name: 'User3' },
+    { name: 'User4' }
+];
+
+co(function* () {
+
+    // The "userID" value is asynchronous, and execution
+    // pause at this yield statement till the promise
+    // resolves.
+    var userID = yield new Promise((resolve, reject) =&gt; {
+        setTimeout(() =&gt; {
+            resolve(1);
+        }, 1000);
+    });
+
+    // At this point, we have a "userID" value. This
+    // nested co-routine will look up the user based
+    // on this ID. We nest coroutines like this because
+    // "co()" returns a promise.
+    var user = yield co(function* (id) {
+        let user = yield new Promise((resolve, reject) =&gt; {
+            setTimeout(() =&gt; {
+                resolve(users[id]);
+            }, 1000);
+        });
+
+        // The "co()" promise is resolved with the
+        // "user" value.
+        return user;
+    }, userID);
+
+    console.log(user);
+    // → { name: 'User2' }
+});</pre></div><p>We used a nested coroutine in this example, but it could have been any type of function that required a parameter and returned a promise. This example, if nothing else, serves to highlight the versatility of promises in a concurrent environment.</p></div><div class="section" title="Wrapping coroutines"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec122"/>Wrapping coroutines</h2></div></div></div><p>The last <code class="literal">Co</code> example that we'll look at uses the <code class="literal">wrap()</code> utility to make a plain coroutine function into a reusable function that we can call over and over. As the name suggests, the coroutine is simply wrapped in a function. This is especially useful when we pass arguments to coroutines. Let's take a look at a modified version of the code example that we built:</p><div class="informalexample"><pre class="programlisting">var co = require('co');
+
+// A simple user collection.
+var users = [
+    { name: 'User1' },
+    { name: 'User2' },
+    { name: 'User3' },
+    { name: 'User4' }
+];
+
+// The "getUser()" function will create a new
+// co-routine whenever it's called, forwarding
+// any arguments as well.
+var getUser = co.wrap(function* (id) {
+    let user = yield new Promise((resolve, reject) =&gt; {
+        setTimeout(() =&gt; {
+            resolve(users[id]);
+        }, 1000);
+    });
+
+    // The "co()" promise is resolved with the
+    // "user" value.
+    return user;
+});
+
+co(function* () {
+
+    // The "userID" value is asynchronous, and execution
+    // pause at this yield statement till the promise
+    // resolves.
+    var userID = yield new Promise((resolve, reject) =&gt; {
+        setTimeout(() =&gt; {
+            resolve(1);
+        }, 1000);
+    });
+
+    // Instead of a nested co-routine, we have a function
+    // that can now be used elsewhere.
+    var user = yield getUser(userID);
+
+    console.log(user);
+    // → { name: 'User2' }
+});</pre></div><p>So, instead of a nested coroutine, we used <code class="literal">co.wrap()</code> to create a reusable coroutine function. That is, it'll create a new coroutine every time it's called, passing it all the arguments that the function gets. There really isn't much more to it than this, but the gains are noticeable and worthwhile. Instead of a nested coroutine function, we have something that can potentially be shared across components.</p></div></div></div>
+<div class="section" title="Child Processes"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec58"/>Child Processes</h1></div></div></div><p>We know that NodeJS uses an evented IO loop as its main concurrency mechanism. This is based on the assumption that our application does a lot of IO and very little CPU-intensive work. This is probably true for the majority of handlers in our code. However, there's always a particular edge case that requires more CPU time than usual.</p><p>In this section, we'll discuss how handlers can block the IO loop, and why all it takes is one bad handler to ruin the experience for everyone else. Then, we'll look at ways to get around this limitation by forking new Node child processes. We'll also look at how to spawn other non-Node processes in order to get the data that we need.</p><div class="section" title="Blocking the event loop"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec123"/>Blocking the event loop</h2></div></div></div><p>In <a class="link" href="ch08.html" title="Chapter 8. Evented IO with NodeJS">Chapter 8</a>, <span class="emphasis"><em>Evented IO with NodeJS</em></span>, we saw an example that demonstrated how one handler can block the entire IO event loop while performing expensive CPU operations. We're going to reiterate this point here to highlight the full scope of the problem. It's not just one handler that we're blocking, but all handlers. This could be hundreds, or it could be thousands, depending on the application, and how it's used.</p><p>Since we're not processing requests in parallel at the hardware level, which is the case with the multithreaded approach—it only takes one expensive handler to block all handlers. If there's one request that's able to cause this expensive handler to run, then we're likely to receive several of these expensive requests, bringing our application to a standstill. Let's look at a handler that blocks every other handler that comes in after it:</p><div class="informalexample"><pre class="programlisting">// Eat some CPU cycles...
+// Taken from http://adambom.github.io/parallel.js/
+function work(n) {
+    var i = 0;
+    while (++i &lt; n * n) {}
+    return i;
+}
+
+// Adds some functions to the event loop queue.
+process.nextTick(() =&gt; {
+    var promises = [];
+
+    // Creates 500 promises in the "promises"
+    // array. They're each resolved after 1 second.
+    for (let i = 0; i &lt; 500; i++) {
+        promises.push(new Promise((resolve) =&gt; {
+            setTimeout(resolve, 1000);
+        }));
+    }
+
+    // When they're all resolved, log that
+    // we're done handling them.
+    Promise.all(promises).then(() =&gt; {
+        console.log('handled requests');
+    });
+});
+
+// This takes a lot longer than the 1 second
+// it takes to resolve all the promises that
+// get added to the queue. So this handler blocks
+// 500 user requests till it finishes..
+process.nextTick(() =&gt; {
+    console.log('hogging the CPU...');
+    work(100000);
+});</pre></div><p>The first call to <code class="literal">process.nextTick()</code>simulates actual client requests by scheduling functions to run after one second. All these lead to a single promise being resolved; and this logs the fact that all the requests have been handled. The next call to <code class="literal">process.nextTick()</code> is expensive and completely blocks these 500 requests. This definitely isn't good for our application. The only way around scenarios where we run CPU-intensive code inside of NodeJS is to break out of the single-process approach. This topic is covered next.</p></div><div class="section" title="Forking processes"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec124"/>Forking processes</h2></div></div></div><p>We've reached the point in our application where there's simply no way around it. We have some relatively expensive requests to process. We need to utilize parallelism at the hardware layer. In Node, this means only one thing—forking a child process to handle the CPU-intensive work outside of the main process so that normal requests may continue on uninterrupted. Here's an illustration of what this tactic looks like:</p><div class="mediaobject"><img src="graphics/B05133_09_04.jpg" alt="Forking processes"/></div><p>Now, let's write some code that uses the <code class="literal">child_process.fork()</code> function to spawn a new Node process, when we need to process a request that's CPU-hungry. First, the main module:</p><div class="informalexample"><pre class="programlisting">// We need the "child_process" to fork new
+// node processes.
+var child_process = require('child_process');
+
+// Forks our worker process.
+var child = child_process.fork(`${__dirname}/child`);
+
+// This event is emitted when the child process
+// responds with data.
+child.on('message', (message) =&gt; {
+
+    // Displays the result, and kills the child
+    // process since we're done with it.
+    console.log('work result', message);
+    child.kill();
+});
+
+// Sends a message to the child process. We're
+// sending a number on this end, and the
+// "child_process" ensures that it arrives as a
+// number on the other end.
+child.send(100000);
+console.log('work sent...');
+
+// Since the expensive computation is happening in
+// another process, normal requests flow through
+// the event loop like normal.
+process.nextTick(() =&gt; {
+    console.log('look ma, no blocking!');
+});</pre></div><p>The only overhead we face now is that of actually spawning the new process, which pales in comparison to the actual work that we need to perform. We can clearly see that the main IO loop isn't blocked because the main process isn't hogging the CPU. The child process, on the other hand, hammers the CPU, but this is okay because it's probably happening on a different core. Here's what our child process code looks like:</p><div class="informalexample"><pre class="programlisting">// Eat some CPU cycles...
+// Taken from http://adambom.github.io/parallel.js/
+function work(n) {
+    var i = 0;
+    while (++i &lt; n * n) {}
+    return i;
+}
+
+// The "message" event is emitted when the parent
+// process sends a message. We then respond with
+// the result of performing expensive CPU operations.
+process.on('message', (message) =&gt; {
+    process.send(work(message));
+});</pre></div></div><div class="section" title="Spawning external processes"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec125"/>Spawning external processes</h2></div></div></div><p>Sometimes, our Node applications need to talk to other programs that aren't Node processes. These could be other applications we write, but using a different platform or basic system commands. We can spawn these types of processes and talk to them, but they don't work the same as forking another node process. Here's a visualization of the difference:</p><div class="mediaobject"><img src="graphics/B05133_09_05.jpg" alt="Spawning external processes"/></div><p>We could use <code class="literal">spawn()</code> to create a child Node process if we're so inclined, but this puts us at a disadvantage in some cases. For example, we don't get the message-passing infrastructure that's setup automatically for us by <code class="literal">fork()</code>. However, the best communication path depends on what we're trying to achieve, and most of the time, we don't actually need message-passing.</p><p>Let's look at some code that spawns a process and reads the output of that process:</p><div class="informalexample"><pre class="programlisting">// Our required modules...
+var child_process = require('child_process');
+var os = require('os');
+
+// Spawns our child process - the "ls" system
+// command. The command line flags are passed
+// as an array.
+var child = child_process.spawn('ls', [
+    '-lha',
+    __dirname
+]);
+
+// Our output accumulator is an empty string
+// initially.
+var output = '';
+
+// Adds output as it arrives from process.
+child.stdout.on('data', (data) =&gt; {
+    output += data;
+});
+
+// We're done getting output from the child
+// process - so log the output and kill it.
+child.stdout.on('end', () =&gt; {
+    output = output.split(os.EOL);
+    console.log(output.slice(1, output.length - 2));
+    child.kill();
+});</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note29"/>Note</h3><p>The <code class="literal">ls</code> command that we spawn doesn't exist on Windows systems. I have no other consolatory words of wisdom here—it's just a fact.</p></div></div></div><div class="section" title="Inter-process communication"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec126"/>Inter-process communication</h2></div></div></div><p>In the example that we just looked at, the child process was spawned, and our main process collected the output, killing the process; but, what about when we write servers and other types of long-lived programs? Under these circumstances, we probably don't want to constantly spawn and kill child processes. Instead, it's probably better to keep the process alive alongside the main program and keep feeding it messages, as is illustrated here:</p><div class="mediaobject"><img src="graphics/B05133_09_06.jpg" alt="Inter-process communication"/></div><p>Even if the worker is synchronously processing requests, it still serves as an advantage to our main application because nothing blocks it from serving requests. For instance, requests that don't require any heavy-lifting on behalf of the CPU can continue to deliver fast responses. Let's turn our attention to a code example now:</p><div class="informalexample"><pre class="programlisting">var child_process = require('child_process');
+
+// Forks our "worker" process and creates a "resolvers"
+// object to store our promise resolvers.
+var worker = child_process.fork(`${__dirname}/worker`),
+    resolvers = {};
+
+// When the worker responds with a message, pass
+// the message output to the appropriate resolver.
+worker.on('message', (message) =&gt; {
+    resolvers[message.id](message.output);
+    delete resolvers[message.id];  
+});
+
+// IDs are used to map responses from the worker process
+// to the promise resolver functions.
+function* genID() {
+    var id = 0;
+
+    while (true) {
+        yield id++;
+    }
+}
+
+var id = genID();
+
+// This function sends the given "input" to the worker,
+// and returns a promise. The promise is resolved with
+// the return value of the worker.
+function send(input) {
+    return new Promise((resolve, reject) =&gt; {
+        var messageID = id.next().value;
+
+        // Store the resolver function in the "resolvers"
+        // map.
+        resolvers[messageID] = resolve;
+
+        // Sends the "messageID" and the "input" to the
+        // worker.
+        worker.send({
+            id: messageID,
+            input: input
+        });
+    });
+}
+
+var array;
+
+// Builds an array of numbers to send to the worker
+// individually for processing.
+array = new Array(100)
+    .fill(null)
+    .map((v, i) =&gt; (i + 1) * 100);
+
+// Sends each number in "array" to the worker process
+// as a message. When each promise is resolved, we can
+// reduce the results.
+var first = Promise.all(array.map(send)).then((results) =&gt; {
+    console.log('first result', 
+        results.reduce((r, v) =&gt; r + v));
+    // → first result 3383500000
+});
+
+// Creates a smaller array, with smaller numbers - it 
+// should take less time to process than the previous 
+// array.
+array = new Array(50)
+    .fill(null)
+    .map((v, i) =&gt; (i + 1) * 10);
+
+// Process the second array, log the reduced result.
+var second = Promise.all(array.map(send))
+    .then((results) =&gt; {
+        console.log('second result',
+            results.reduce((r, v) =&gt; r + v));
+        // → second result 4292500
+});
+
+// When both arrays have finished being processed, we need
+// to kill the worker in order to exit our program.
+Promise.all([ first, second ]).then(() =&gt; {
+    worker.kill();
+});</pre></div><p>Now let's take a look at the <code class="literal">worker</code> module that we fork from the main module:</p><div class="informalexample"><pre class="programlisting">// Eat some CPU cycles...
+// Taken from http://adambom.github.io/parallel.js/
+function work(n) {
+    var i = 0;
+    while (++i &lt; n * n) {}
+    return i;
+}
+
+// Respond to the main process with the result of
+// calling "work()" and the message ID.
+process.on('message', (message) =&gt; {
+    process.send({
+        id: message.id,
+        output: work(message.input)
+    });
+});</pre></div><p>Each number in the arrays that we create is passed to the worker process where the CPU-heavy work is performed. The result is passed back to the main process, and is used to resolve a promise. This technique is very similar to the promise approach that we took with web workers in <a class="link" href="ch07.html" title="Chapter 7. Abstracting Concurrency">Chapter 7</a>, <span class="emphasis"><em>Abstracting Concurrency</em></span>.</p><p>There are two results we're trying to compute here—one for the <code class="literal">first</code> array, and one for the <code class="literal">second</code>. The first one has more array items than the second one, and the numbers are larger. This means that this will take longer to compute, and, in fact, it does. But, if we run this code, we don't see the output from the second array until the first has completed.</p><p>This is because despite requiring less CPU time, the second job is still blocked because the order of the messages sent to the worker is preserved. In other words, all 100 messages from the first array are processed before even starting on the second array. At first glance, this may seem like a bad thing because it doesn't actually solve anything for us. Well, this simply not true.</p><p>The only thing that's blocked are the queued messages that arrive at the worker process. Because the worker is busy with the CPU, it can't process messages immediately as they arrive. However, the purpose of this worker is to remove the heavy processing from web request handlers that require it. Not every request handler has this type of heavy load, and guess what? They can continue to run normally because there's nothing in the process that hogs the CPU.</p><p>However, as our applications continue to grow larger and more complex due to added features and the ways in which they interact with other features, we'll need a better approach to handling expensive request handlers because we'll have more of them. This is what we're going to cover in the next section.</p></div></div>
+<div class="section" title="Process Clusters"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec59"/>Process Clusters</h1></div></div></div><p>In the preceding section, we introduced child process creation in NodeJS. This is a necessary measure for web applications when request handlers start consuming more and more CPU, because of the way that this can block every other handler in the system. In this section, we'll build on this idea, but instead of forking a single general-purpose worker process, we'll maintain a pool of general-purpose processes, which is capable of handling any request.</p><p>We'll start by reiterating the challenges posed by manually managing these processes that help us with concurrency scenarios in Node. Then, we'll look at the built-in process clustering capabilities of Node.</p><div class="section" title="Challenges with process management"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec127"/>Challenges with process management</h2></div></div></div><p>The obvious problem with manually orchestrating processes within our application is that the concurrent code is right there, out in the open, intermingling with the rest of our application code. We actually experienced the exact same problem earlier in this book when implementing web workers. Without encapsulating the synchronization and the general management of the workers, our code consists mostly of concurrency boilerplate. Once this happens, it's tough to separate the concurrency mechanisms from the code that's essential to the features that make our product unique.</p><p>One solution with web workers is to create a pool of workers and hide them behind a unified API. This way, our feature code that needs to do things in parallel can do so without littering our editors with concurrency synchronization semantics.</p><p>It turns out that NodeJS solves the problem of leveraging the hardware parallelism available on most systems, which is similar to what we did with web workers. Next, we'll jump into how this works.</p></div><div class="section" title="Abstracting process pools"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec128"/>Abstracting process pools</h2></div></div></div><p>We're able to use the <code class="literal">child_process</code> module to manually fork our Node process to enable true parallelism. This is important when doing CPU-intensive work that could block the main process, and hence, the main IO event loop that services incoming requests. We could increase the level of parallelism beyond just a single worker process, but that would require a lot of manual synchronization logic on our part.</p><p>The <code class="literal">cluster</code> module requires a little bit of setup code, but the actual communication orchestration between worker processes and the main process is entirely transparent to our code. In other words, it looks like we're just running a single Node process to handle our incoming web requests, but in reality, there are several cloned processes that handle them. It's up to the <code class="literal">cluster</code> module to distribute these requests to the worker nodes, and by default, this uses the round-robin approach, which is good enough for most cases.</p><p>On Windows, the default isn't round-robin. We can manually change the approach we want to use, but the round-robin approach keeps things simple and balanced. The only challenge is when we have request handlers that are substantially more expensive to run than the majority. Then, we can end up distributing requests to an overloaded worker process. This is just something to be aware of when troubleshooting this module.</p><p>Here's a visualization showing worker Node processes relative to the main Node process:</p><div class="mediaobject"><img src="graphics/B05133_09_07.jpg" alt="Abstracting process pools"/></div><p>The main process has two responsibilities in a clustering scenario. First, it needs to establish communication channels with worker processes. Second, it needs to accept incoming connections and distribute them to the worker processes. This is actually trickier to draw and so isn't represented in the diagram. Let's look at some code before I try to explain this any further:</p><div class="informalexample"><pre class="programlisting">// The modules we need...
+var http = require('http');
+var cluster = require('cluster');
+var os = require('os');
+
+// Eat some CPU cycles...
+// Taken from http://adambom.github.io/parallel.js/
+function work(n) {
+    var i = 0;
+    while (++i &lt; n * n) {}
+    return i;
+}
+
+// Check which type of process this is. It's either
+// a master or a worker.
+if (cluster.isMaster) {
+
+    // The level of parallelism that goes into
+    // "workers".
+    var workers = os.cpus().length;
+
+    // Forks our worker processes.
+    for (let i = 0; i &lt; workers; i++) {
+        cluster.fork();
+    }
+
+    console.log('listening at http://localhost:8081');
+    console.log(`worker processes: ${workers}`);
+
+// If this process isn't the master, then it's
+// a worker. So we create the same HTTP server as
+// every other worker.
+} else {
+    http.createServer((req, res) =&gt; {
+        res.setHeader('Content-Type', 'text/plain');
+        res.end(`worker ${cluster.worker.id}: ${work(100000)}`);
+    }).listen(8081);
+}</pre></div><p>What's really nice about this approach to parallelizing our request handlers is that the concurrent code is unobtrusive. There' are about 10 lines of it in total. At a glance, we can easily see what this code does. If we want to see this application in action, we can open several browser windows and point them to the server at the same time. Since the request handler is expensive in terms of CPU cycles, we should be able to see that each page responds with the value that was computed as well as the worker ID that computed it. If we hadn't forked these worker processes, then we'd probably still be waiting for each of our browser tabs to load.</p><p>The only part that's a little tricky is the part where we actually create the HTTP server. Because this same code is run by each of the workers, the same host and port are used on the same computer—how can this be? Well, this is not actually what's happening. The <code class="literal">net</code> module, the low-level networking library that the <code class="literal">http</code> module uses, is actually cluster-aware. This means that when we ask the <code class="literal">net</code> module to listen to a socket for incoming requests, it first checks if it's a worker node. If it is, then it actually shares the same socket handle used by the main process. This is pretty neat. There's a lot of ugly logistics required to distribute requests to worker processes and actually hand off the request, all of which is handled for us by the <code class="literal">cluster</code> module.</p></div></div>
+<div class="section" title="Server clusters"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec60"/>Server clusters</h1></div></div></div><p>It's one thing to scale up a single machine that's running our NodeJS application by enabling parallelism through process management. This is a great way to get the most of our physical hardware or our virtual hardware—they both cost money. However, there's an inherent limitation to scaling up just one machine—it can only go so far. At some threshold in some dimension of our scaling problems, we'll hit a wall. Before this happens, we need to think about scaling our Node application to several machines.</p><p>In this section, we'll introduce the idea of proxying our web requests to other machines instead of handling them all on the machine where they arrive. Then, we'll look at implementing microservices, and how they can help compose a sound application architecture. Finally, we'll implement some load balancing code that's tailored to our application; and how it handles requests.</p><div class="section" title="Proxying requests"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec129"/>Proxying requests</h2></div></div></div><p>A request proxy in NodeJS is exactly what it sounds like. The request arrives at a server where it's handled by a Node process. However, the request isn't fulfilled here—it's proxied to another machine. So the question is, why bother with the proxy at all? Why not go straight to the target machine that actually responds to our requests?</p><p>The problem with this idea is that Node applications typically respond to HTTP requests coming from a browser. This means that we generally need a single entry point into the back-end. On the other hand, we don't necessarily want this single entry point to be a single Node server. This gets kind of limiting when our application grows larger. Instead, we want the ability to spread our application or scale it horizontally as they say. Proxy servers remove geographic restrictions; different parts of our application can be deployed in different parts of the world, different parts of the same data center, or even as different virtual machines. The point is that we have the flexibility to change where our application components reside, and how they're configured without impacting other parts of the application.</p><p>Another cool aspect of distributing web requests via proxy is that we can actually program our proxy handlers to modify requests and responses. So while the individual services that our proxy depends on can implement one specific aspect of our application, the proxy can implement the generic parts that apply to every request. Here is a visualization of a proxy server and the API endpoints that actually fulfill each request:</p><div class="mediaobject"><img src="graphics/B05133_09_08.jpg" alt="Proxying requests"/></div></div><div class="section" title="Facilitating micro-services"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec130"/>Facilitating micro-services</h2></div></div></div><p>Depending on the<a id="id392" class="indexterm"/> type of application that we're building, our API can be one monolithic service, or it can be composed of several microservices. On the one hand, monolithic APIs tend to be easier to maintain for smaller applications that don't have a large breadth of features and data. On the other hand, APIs for larger applications tend to grow outrageously complex to the point that it's impossible to maintain because there are so many areas that are all intertwined with one another. If we split them out into microservices, it's much easier to deploy them to specific environments suited to their needs and have a dedicated team focus on one service that's working well.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note30"/>Note</h3><p>Microservice architecture is a huge topic that obviously goes well beyond the scope of this book. The focus here is on microservice enablement—the mechanism more so than the design.</p></div></div><p>We're going to use the <a id="id393" class="indexterm"/>node-http-proxy (<a class="ulink" href="https://github.com/nodejitsu/node-http-proxy">https://github.com/nodejitsu/node-http-proxy</a>) module to implement our proxy servers. This isn't a core Node module, so our applications need to include it as an <code class="literal">npm</code> dependency. Let's look at a basic example that proxies requests to the appropriate service:</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note31"/>Note</h3><p>This example starts three web servers, each running on different ports.</p></div></div><div class="informalexample"><pre class="programlisting">// The modules we need...
+var http = require('http'),
+    httpProxy = require('http-proxy');
+
+// The "proxy" server is how we send
+// requests to other hosts.
+var proxy = httpProxy.createProxyServer();
+
+http.createServer((req, res) =&gt; {
+
+    // If the request is for the site root, we
+    // return some HTML with some links'.
+    if (req.url === '/') {
+        res.setHeader('Content-Type', 'text/html');
+        res.end(`
+            &lt;html&gt;
+                &lt;body&gt;
+                    &lt;p&gt;&lt;a href="hello"&gt;Hello&lt;/a&gt;&lt;/p&gt;
+                    &lt;p&gt;&lt;a href="world"&gt;World&lt;/a&gt;&lt;/p&gt;
+                &lt;/body&gt;
+            &lt;/html&gt;
+        `);
+
+    // If the URL is "hello" or "world", we proxy
+    // the request to the appropriate micro-service
+    // using "proxy.web()".
+    } else if (req.url === '/hello') {
+        proxy.web(req, res, {
+            target: 'http://localhost:8082'
+        });
+    } else if (req.url === '/world') {
+        proxy.web(req, res, {
+            target: 'http://localhost:8083'
+        });
+    } else {
+        res.statusCode = 404;
+        res.end();
+    }
+}).listen(8081);
+console.log('listening at http://localhost:8081');</pre></div><p>The two services<a id="id394" class="indexterm"/> hello and world aren't actually listed here because all they do is return a single line of plain text for any request. They' listen on ports <code class="literal">8082</code> and <code class="literal">8083</code> respectively. The <code class="literal">http-proxy</code> module makes it easy for us to simply forward the request to the appropriate service using the minimal amount of logic.</p></div><div class="section" title="Informed load balancing"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec131"/>Informed load balancing</h2></div></div></div><p>Earlier in this chapter, we<a id="id395" class="indexterm"/> looked at process clustering. This is where <a id="id396" class="indexterm"/>we use the <code class="literal">cluster</code> module to create a pool of processes, each capable of handling requests from clients. The main process acts as a proxy in this scenario, and by default, distributes requests to the worker processes in a round-robin fashion. We can do something similar using the <code class="literal">http-proxy</code> module, but using a less naive approach than round-robin one.</p><p>For example, let's say we have two instances of the same micro service running. Well, one of these services could become busier than the other, which knocks the service off balance because the busy node will continue to receive requests even though it can't get to them right away. It makes sense to hold onto the requests until the service can handle them. First, we'll implement a service that randomly takes a while to complete:</p><div class="informalexample"><pre class="programlisting">var http = require('http');
+
+// Get the port as a command line argument,
+// so we can run multiple instances of the
+// service.
+var port = process.argv[2];
+
+// Eat some CPU cycles...
+// Taken from http://adambom.github.io/parallel.js/
+function work() {
+    var i = 0,
+        min = 10000,
+        max = 100000,
+        n = Math.floor(Math.random() * (max - min)) + min;
+    while (++i &lt; n * n) {}
+    return i;
+}
+
+// Responds with plain text, after blocking
+// the CPU for a random interval.
+http.createServer((req, res) =&gt; {
+    res.setHeader('Content-Type', 'text/plain');
+    res.end(work().toString());
+}).listen(port);
+
+console.log(`listening at http://localhost:${port}`); </pre></div><p>Now we can start two<a id="id397" class="indexterm"/> instances of these processes, listening on<a id="id398" class="indexterm"/> different ports. In practice, these will be running on two different machines, but we're just testing the idea at this point. Now we'll implement the proxy server that needs to figure out which service worker a given request goes to:</p><div class="informalexample"><pre class="programlisting">var http = require('http'),
+    httpProxy = require('http-proxy');
+
+var proxy = httpProxy.createProxyServer();
+
+// These are the service targets. They have a "host",
+// and a "busy" property. Initially they're
+// not busy because we haven't sent any work.
+var targets = [
+    {
+        host: 'http://localhost:8082',
+        busy: false
+    }
+    {
+        host: 'http://localhost:8083',
+        busy: false
+    }
+];
+
+// Every request gets queued here, in case all
+// our targets are busy.
+var queue = [];
+
+// Process the request queue, by proxying requests
+// to targets that aren't busy.
+function processQueue() {
+
+    // Iterates over the queue of messages.
+    for (let i = 0; i &lt; queue.length; i++) {
+
+        // Iterates over the targets.
+        for (let target of targets) {
+
+            // If the target is busy, skip it.
+            if (target.busy) {
+                continue;
+            }
+
+            // Marks the target as busy - from this
+            // point forward, the target won't accept
+            // any requests untill it's unmarked.
+            target.busy = true;
+
+            // Gets the current item out of the queue.
+            let item = queue.splice(i, 1)[0];
+
+            // Mark the response, so we know which service
+            // worker the request went to when it comes
+            // back.
+            item.res.setHeader('X-Target', i);
+
+            // Sends the proxy request and exits the
+            // loop.
+            proxy.web(item.req, item.res, {
+                target: target.host
+            });
+
+            break;
+        }
+    }
+}
+
+// Emitted by the http-proxy module when a response
+// arrives from a service worker.
+proxy.on('proxyRes', function(proxyRes, req, res) {
+
+    // This is the value we set earlier, the index
+    // of the "targets" array.
+    var target = res.getHeader('X-Target');
+
+    // We use this index to unmark it. Now it'll
+    // except new proxy requests.
+    targets[target].busy = false;
+
+    // The client doesn't need this internal
+    // information, so remove it.
+    res.removeHeader('X-Target');
+
+    // Since a service worker just became available,
+    // process the queue again, in case there's pending
+    // requests.
+    processQueue();
+});
+
+http.createServer((req, res) =&gt; {
+
+    // All incoming requests are pushed onto the queue.
+    queue.push({
+        req: req,
+        res: res
+    });
+
+    // Reprocess the queue, leaving the request there
+    // if all the service workers are busy.
+    processQueue();
+}).listen(8081);
+
+console.log('listening at http://localhost:8081');</pre></div><p>The key thing to note about the way this proxy works is that requests are only proxied to services that aren't already busy handling a request. This is the informed part—the proxy knows when the<a id="id399" class="indexterm"/> server is available because it responds <a id="id400" class="indexterm"/>with the last request that it was busy with. When we know which servers are busy, we know not to overload them with yet more work.</p></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec61"/>Summary</h1></div></div></div><p>In this chapter, we looked beyond the event loop as a concurrency mechanism in NodeJS. We started out by implementing coroutines using the <code class="literal">Co</code> library. From there, we learned about launching new processes, including the difference between forking another Node process and spawning other non-Node processes. Then, we looked at another approach to managing concurrency using the <code class="literal">cluster</code> module, which makes handling web requests in parallel processes as transparent as possible. Finally, we wrapped up the chapter with a look at using the <code class="literal">node-http-proxy</code> module to parallelize our web requests at the machine level.</p><p>That does it for JavaScript concurrency topics. We've covered a lot of ground, both in the browser and in Node. But, how do these ideas and components all come together to form a concurrent application? In the final chapter of this book, we'll walk through the implementation of a concurrent app.</p></div></body></html>

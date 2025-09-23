@@ -1,0 +1,339 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;3.&#xA0;Adding Complexity"><div class="titlepage"><div><div><h1 class="title"><a id="ch03"/>Chapter 3. Adding Complexity</h1></div></div></div><p>With the first bot done, it's time to learn how to extend our bot with the use of other <span class="strong"><strong>application program interfaces</strong></span> (<span class="strong"><strong>APIs</strong></span>). This means teaching our bot how to listen for keywords, respond <a class="indexterm" id="id103"/>to commands, and deal with errors (human or otherwise). In this chapter, we will cover the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Responding to keywords</li><li class="listitem" style="list-style-type: disc">Bot commands</li><li class="listitem" style="list-style-type: disc">External API integration</li><li class="listitem" style="list-style-type: disc">Error handling</li></ul></div><div class="section" title="Responding to keywords"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec18"/>Responding to keywords</h1></div></div></div><p>In the previous <a class="indexterm" id="id104"/>chapter, we used regular expressions to test the contents of the message against some predefined keywords. Once the keywords were confirmed, we could perform actions and return the results. This worked well; however, it can lead to a large <code class="literal">if else</code> block for more feature-rich bots. Instead, we will now look at refactoring the end result of the previous chapter into a more modular design. In this section, we will accomplish this by using ES6's new <code class="literal">class</code> syntax and Node's <code class="literal">export</code> method.</p><div class="section" title="Using classes"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec21"/>Using classes</h2></div></div></div><p>Start by creating a new <a class="indexterm" id="id105"/>JavaScript file and name it <code class="literal">bot.js</code>. Paste the following into <code class="literal">bot.js</code> and save the file:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const RtmClient = require('@slack/client').RtmClient;
+const MemoryDataStore = require('@slack/client').MemoryDataStore;
+const CLIENT_EVENTS = require('@slack/client').CLIENT_EVENTS;
+const RTM_EVENTS = require('@slack/client').RTM_EVENTS;
+
+class Bot {
+  constructor(opts) {
+    let slackToken = opts.token;
+    let autoReconnect = opts.autoReconnect || true;
+    let autoMark = opts.autoMark || true;
+
+    this.slack = new RtmClient(slackToken, { 
+      // Sets the level of logging we require
+      logLevel: 'error', 
+      // Initialize a data store for our client, 
+      // this will load additional helper
+      // functions for the storing and retrieval of data
+      dataStore: new MemoryDataStore(),
+      // Boolean indicating whether Slack should automatically 
+      // reconnect after an error response
+      autoReconnect: autoReconnect,
+      // Boolean indicating whether each message should be marked
+      // as read or not after it is processed
+      autoMark: autoMark
+    });
+
+    this.slack.on(CLIENT_EVENTS.RTM.RTM_CONNECTION_OPENED, () =&gt; {
+      let user = this.slack.dataStore.getUserById(this.slack.activeUserId)
+      let team = this.slack.dataStore.getTeamById(this.slack.activeTeamId);
+
+      this.name = user.name;
+
+      console.log(`Connected to ${team.name} as ${user.name}`);      
+    });
+    
+    this.slack.start();
+  }
+}
+
+// Export the Bot class, which will be imported when 'require' is 
+// used
+module.exports = Bot;</pre></div><p>Let's look at the code in <a class="indexterm" id="id106"/>depth, starting with the <code class="literal">class</code> structure. The <span class="strong"><strong>Mozilla </strong></span><a class="indexterm" id="id107"/>
+<span class="strong"><strong>Developer Network</strong></span> (<span class="strong"><strong>MDN</strong></span>) defines JavaScript classes as:</p><div class="blockquote"><blockquote class="blockquote"><p><span class="emphasis"><em>JavaScript classes are introduced in ECMAScript 6 and are syntactical sugar over JavaScript's existing prototype-based inheritance. The class syntax is not introducing a new object-oriented inheritance model to JavaScript. JavaScript classes provide a much simpler and clearer syntax to create objects and deal with inheritance.</em></span></p></blockquote></div><p>Simply put, JavaScript classes are an <span class="emphasis"><em>alternative</em></span> to the prototype-based class pattern, and in fact function the exact same way under the hood. The benefit to using classes is when you wish to extend or inherit from a particular class, or provide a clearer overview of what your class does.</p><p>In the code example, we use a class in order to easily extend it later if we wish to add more functionality. Unique to classes is the <code class="literal">constructor</code> method, which is a special method for creating and initializing an object created with a class. When a class is called with the new keyword, this <a class="indexterm" id="id108"/>constructor function is what gets executed first:</p><div class="informalexample"><pre class="programlisting">constructor(opts) {
+    let slackToken = opts.token;
+    let autoReconnect = opts.autoReconnect || true;
+    let autoMark = opts.autoMark || true;
+
+    this.slack = new RtmClient(slackToken, { 
+      logLevel: 'error', 
+      dataStore: new MemoryDataStore(),
+      autoReconnect: autoReconnect,
+      autoMark: autoMark
+    });
+
+    this.slack.on(CLIENT_EVENTS.RTM.RTM_CONNECTION_OPENED, () =&gt; {
+      let user = this.slack.dataStore.getUserById(this.slack.activeUserId)
+      let team = this.slack.dataStore.getTeamById(this.slack.activeTeamId);
+
+      this.name = user.name;
+
+      console.log(`Connected to ${team.name} as ${user.name}`);      
+    });
+    
+    this.slack.start();
+  }</pre></div><p>Looking at our constructor, we see the familiar use of the Slack RTM client: the client is initialized and the <code class="literal">RTM_CONNECTION_OPENED</code> event is used to log the team and username upon connecting. We attach the <code class="literal">slack</code> variable to the <code class="literal">this</code> object as a property, making it accessible throughout our class. Similarly, we assign the bot's name to a variable, for easy access <a class="indexterm" id="id109"/>when required.</p><p>Finally, we export the bot class via the Node modules system:</p><div class="informalexample"><pre class="programlisting">module.exports = Bot;</pre></div><p>This instructs Node to return our class when this file is imported using the <code class="literal">require</code> method.</p><p>Create a new file in the same folder as <code class="literal">bot.js</code> and name it <code class="literal">index.js</code>. Paste the following inside it:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+let Bot = require('./Bot');
+
+const bot = new Bot({
+  token: process.env.SLACK_TOKEN,
+  autoReconnect: true,
+  autoMark: true
+});</pre></div><p>After saving the file, run the following from the terminal to start the bot:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>SLACK_TOKEN=[YOUR_TOKEN_HERE] node index.js</strong></span>
+</pre></div><p>You can use the Slack token created in the previous chapter, or generate a new one for this bot.</p><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="note13"/>Note</h3><p>It's generally a good idea to not hardcode sensitive information such as tokens or API keys (such as the Slack token) in your code. Instead, use Node's <code class="literal">process.env</code> object to pass variables from the command line to your code. Especially, take care of storing API keys in a public source control repository such as GitHub.</p></div></div><p>Once you've confirmed that your bot connects successfully to your Slack team, let's work on making the <code class="literal">Bot</code> class more modular.</p></div><div class="section" title="Reactive bots"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec22"/>Reactive bots</h2></div></div></div><p>All the functionality <a class="indexterm" id="id110"/>described in our bot examples so far have one thing in common: the bots react to stimuli provided by human users. A message containing a keyword is sent and the bot responds with an action. These types of bot can be called reactive bots; they respond to an input with an output. The majority of bots can be classified as reactive bots, as <a class="indexterm" id="id111"/>most bots require some input in order to complete an action. An active bot is the opposite of this; rather than responding to input, the active bot produces output without needing any human stimuli. We will cover active bots in <a class="link" href="ch06.html" title="Chapter 6. Webhooks and Slash Commands">Chapter 6</a>, <span class="emphasis"><em>Webhooks and Slack Commands</em></span>. For now, let's look at how we can optimize our reactive bots.</p><p>We already defined the essential mechanism of reactive bots: responding to stimuli. As this is a core concept of the reactive bot, it makes sense to have a mechanism in place to easily invoke the desired behavior.</p><p>To do this, let's add some functionality to our <code class="literal">Bot</code> class in the form of a <code class="literal">respondsTo</code> function. In previous examples, we used the <code class="literal">if</code> statements to determine when a bot should respond to a message:</p><div class="informalexample"><pre class="programlisting">if (/(hello|hi) (bot|awesomebot)/g.test(msg)) {
+  // do stuff...
+}
+
+if (/uptime/g.test(msg)) {
+  // do more stuff...
+}</pre></div><p>There is nothing wrong with this approach. If we wish to code a bot that has multiple keywords, our <code class="literal">Bot</code> class can get very complex and cluttered very quickly. Instead, let's abstract out this behavior to our <code class="literal">respondsTo</code> function. The function should take at least two arguments: the keywords we wish to listen for and a callback function that executes when the keywords are identified in a message.</p><p>In <code class="literal">bot.js</code>, add the following to the constructor:</p><div class="informalexample"><pre class="programlisting">// Create an ES6 Map to store our regular expressions
+this.keywords = new Map();
+
+this.slack.on(RTM_EVENTS.MESSAGE, (message) =&gt; {
+  // Only process text messages
+  if (!message.text) {
+    return;
+  }
+
+  let channel = this.slack.dataStore.getChannelGroupOrDMById(message.channel);
+  let user = this.slack.dataStore.getUserById(message.user);
+
+  // Loop over the keys of the keywords Map object and test each
+  // regular expression against the message's text property
+  for (let regex of this.keywords.keys()) {    
+    if (regex.test(message.text)) {
+      let callback = this.keywords.get(regex);
+      callback(message, channel, user);
+    }
+  }
+});</pre></div><p>This snippet uses the new ES6 <code class="literal">Map</code> object, which is a simple key/value store, much like dictionaries in other languages. <code class="literal">Map</code> differs from <code class="literal">Object</code> in that <code class="literal">Map</code> does not have default keys (as <code class="literal">Object</code> has a prototype), which means that you can iterate over a <code class="literal">Map</code> without having to explicitly <a class="indexterm" id="id112"/>check if the <code class="literal">Map</code> contains a value or if its prototype does. For example, with <code class="literal">Maps</code>, you no longer have to use <code class="literal">Object.hasOwnProperty</code> <a class="indexterm" id="id113"/>when iterating.</p><p>As we will see later, the <code class="literal">keywords Map</code> object uses regular expressions as a key and a callback function as the value. Insert the following code underneath the constructor function:</p><div class="informalexample"><pre class="programlisting">respondTo(keywords, callback, start) {
+  // If 'start' is truthy, prepend the '^' anchor to instruct the
+  // expression to look for matches at the beginning of the string
+  if (start) {
+    keywords = '^' + keywords;
+  }
+
+  // Create a new regular expression, setting the case 
+  // insensitive (i) flag
+  let regex = new RegExp(keywords, 'i');
+
+  // Set the regular expression to be the key, with the callback
+  // function as the value
+  this.keywords.set(regex, callback);
+}</pre></div><p>This function takes three parameters: <code class="literal">keywords</code>, <code class="literal">callback</code>, and <code class="literal">start</code>. <code class="literal">keywords</code> is the word or phrase we wish to act on in the form of a regular expression. <code class="literal">callback</code> is a function that will be called if the keywords match the message, and <code class="literal">start</code> is an optional Boolean indicating whether we wish to search only at the beginning of the message string or not.</p><p>Look back at our newly updated constructor and pay special attention to the following lines within our <code class="literal">message</code> <a class="indexterm" id="id114"/>event listener:</p><div class="informalexample"><pre class="programlisting">// Loop over the keys of the keywords Map object and test each
+// regular expression against the message's text property
+for (let regex of this.keywords.keys()) {    
+  if (regex.test(message.text)) {
+    let callback = this.keywords.get(regex);
+    callback(message, channel, user);
+  }
+}</pre></div><p>Here, we loop through the keywords <code class="literal">Map</code> object, which has regular expressions as its keys. We test each regular expression against the received message and call our callback function with the message, the <a class="indexterm" id="id115"/>channel, and the user that sent the message.</p><p>Finally, let's add a <code class="literal">sendMessage</code> functionality to our bot class. This will act as a wrapper for Slack's <code class="literal">sendMessage</code>. We don't have to expose the entire Slack object anymore. Add the following function underneath our constructor:</p><div class="informalexample"><pre class="programlisting">  // Send a message to a channel, with an optional callback
+  send(message, channel, cb) {
+    this.slack.sendMessage(message, channel.id, () =&gt; {
+      if (cb) {
+        cb();
+      }
+    });
+  }</pre></div><p>Despite having <code class="literal">channel</code> as an argument name, our <code class="literal">send</code> function will also work for a DM (a private channel between two people), additionally providing a callback via the Slack API's <code class="literal">sendMessage</code> function.</p><p>Now that we have a function <a class="indexterm" id="id116"/>that can subscribe to messages and their contents, open <a class="indexterm" id="id117"/>up <code class="literal">index.js</code> and let's add a simple "Hello World" implementation:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+let Bot = require('./Bot');
+
+const bot = new Bot({
+  token: process.env.SLACK_TOKEN,
+  autoReconnect: true,
+  autoMark: true
+});
+
+bot.respondTo('hello', (message, channel, user) =&gt; {
+  bot.send(`Hello to you too, ${user.name}!`, channel)
+}, true);</pre></div><p>Save the file, restart your node process, and test out your bot. Here's what it should look like:</p><div class="mediaobject"><img alt="Reactive bots" src="graphics/B05384_03_01.jpg"/><div class="caption"><p>Testing our refactor</p></div></div><p>The bot responds when our message has the string "hello", but only when it appears at the beginning of the message due to the <code class="literal">true</code> value we passed in after our callback.</p><p>We have now refactored our bot's code to abstract the Slack event system away and make our code cleaner in the <a class="indexterm" id="id118"/>process. Let's do something a little more impressive with <a class="indexterm" id="id119"/>our new system and implement a simple game.</p></div></div></div>
+<div class="section" title="Bot commands"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec19"/>Bot commands</h1></div></div></div><p>So far, our bots have responded to keywords in messages to say hello or tell us how long they've been running. These <a class="indexterm" id="id120"/>keywords are useful for simple tasks, but for more complex actions, we need to give the bot some parameters to work with. A keyword followed by parameters or arguments can be referred to as a bot command. Similar to the command line, we can issue as many arguments as we want to get the most out of our bot.</p><p>Let's test this by giving our bot a new function: a game of chance where the issuer of the <code class="literal">roll</code> command plays a game of who can roll the highest number.</p><p>Add the following code to <code class="literal">index.js</code>:</p><div class="informalexample"><pre class="programlisting">bot.respondTo('roll', (message, channel, user) =&gt; {
+  // get the arguments from the message body
+  let args = getArgs(message.text);
+
+  // Roll two random numbers between 0 and 100
+  let firstRoll = Math.round(Math.random() * 100);
+  let secondRoll = Math.round(Math.random() * 100);
+
+  let challenger = user.name;
+  let opponent = args[0];
+
+  // reroll in the unlikely event that it's a tie
+  while (firstRoll === secondRoll) {
+    secondRoll = Math.round(Math.random() * 100);
+  }
+
+  let winner = firstRoll &gt; secondRoll ? challenger : opponent;
+
+  // Using new line characters (\n) to format our response
+  bot.send(
+    `${challenger} fancies their chances against ${opponent}!\n
+    ${challenger} rolls: ${firstRoll}\n
+    ${opponent} rolls: ${secondRoll}\n\n
+    *${winner} is the winner!*`
+  , channel);
+
+}, true);
+
+// Take the message text and return the arguments
+function getArgs(msg) {
+  return msg.split(' ').slice(1);
+}</pre></div><p>The command is very simple: a <a class="indexterm" id="id121"/>user sends the keyword <code class="literal">roll</code> followed by the name of the user they wish to challenge. This is shown in the following screenshot:</p><div class="mediaobject"><img alt="Bot commands" src="graphics/B05384_03_02.jpg"/><div class="caption"><p>A straightforward implementation of the bot's roll command</p></div></div><p>It works well, but what happens if we omit any arguments to our <code class="literal">roll</code> command?</p><div class="mediaobject"><img alt="Bot commands" src="graphics/B05384_03_03.jpg"/><div class="caption"><p>
+<code class="literal">undefined</code> wins the game, which isn't expected behavior</p></div></div><p>No arguments are provided; therefore, the value at index 0 of our <code class="literal">args</code> array is <code class="literal">undefined</code>. Clearly, our <a class="indexterm" id="id122"/>bot lacks some basic functionality: invalid argument error handling.</p><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="note14"/>Note</h3><p>With bot commands, user input must always be sanitized and checked for errors, lest the bot perform some unwanted actions.</p></div></div><div class="section" title="Sanitizing inputs"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec23"/>Sanitizing inputs</h2></div></div></div><p>Add this block underneath our <a class="indexterm" id="id123"/>
+<code class="literal">getArgs</code> method call to stop empty rolls from happening:</p><div class="informalexample"><pre class="programlisting">  // if args is empty, return with a warning
+  if (args.length &lt; 1) {
+    channel.send('You have to provide the name of the person you wish to challenge!');
+    return;
+  }</pre></div><p>Here's the result:</p><div class="mediaobject"><img alt="Sanitizing inputs" src="graphics/B05384_03_04.jpg"/><div class="caption"><p>Awesomebot providing some necessary sanitizing</p></div></div><p>That's one use case down, but what if someone tries to challenge someone who's not in the channel? At the moment, the bot will roll against whatever you put as the first argument, be it a member of the channel or a complete fabrication. This is an example of where we want to further sanitize and restrict the user input to useful data.</p><p>To fix this, let's make <a class="indexterm" id="id124"/>sure that only members of the channel from where the <code class="literal">roll</code> command originated can be targeted.</p><p>First, let's add the following method to our <code class="literal">Bot</code> class:</p><div class="informalexample"><pre class="programlisting">getMembersByChannel(channel) {
+    // If the channel has no members then that means we're in a DM
+    if (!channel.members) {
+      return false;
+    }
+
+    // Only select members which are active and not a bot
+    let members = channel.members.filter((member) =&gt; {
+      let m = this.slack.dataStore.getUserById(member);
+      // Make sure the member is active (i.e. not set to 'away' status)
+      return (m.presence === 'active' &amp;&amp; !m.is_bot);
+    });
+
+    // Get the names of the members
+    members = members.map((member) =&gt; {
+      return this.slack.dataStore.getUserById(member).name;
+    });
+
+    return members;
+  }</pre></div><p>This function simply checks to see whether the <code class="literal">members</code> property of <code class="literal">channel</code> exists, and returns a list of active non-bot <a class="indexterm" id="id125"/>users by name. In <code class="literal">index.js</code>, replace your <code class="literal">roll</code> command block with the following code:</p><div class="informalexample"><pre class="programlisting">bot.respondTo('roll', (message, channel, user) =&gt; {
+  // get the members of the channel
+  const members = bot.getMembersByChannel(channel);
+
+  // make sure there actually members to interact with. If there
+  // aren't then it usually means that the command was given in a 
+  // direct message
+  if (!members) {
+    bot.send('You have to challenge someone in a channel, not a direct message!', channel);
+    return;
+  }
+
+  // get the arguments from the message body
+  let args = getArgs(message.text);
+
+  // if args is empty, return with a warning
+  if (args.length &lt; 1) {
+    bot.send('You have to provide the name of the person you wish to challenge!', channel);
+    return;
+  }
+
+  // does the opponent exist in this channel?
+  if (members.indexOf(args[0]) &lt; 0) {
+    bot.send(`Sorry ${user.name}, but I either can't find ${args[0]} in this channel, or they are a bot!`, channel);
+    return;
+  }
+
+  // Roll two random numbers between 0 and 100
+  let firstRoll = Math.round(Math.random() * 100);
+  let secondRoll = Math.round(Math.random() * 100);
+
+  let challenger = user.name;
+  let opponent = args[0];
+
+  // reroll in the unlikely event that it's a tie
+  while (firstRoll === secondRoll) {
+    secondRoll = Math.round(Math.random() * 100);
+  }
+
+  let winner = firstRoll &gt; secondRoll ? challenger : opponent;
+
+  // Using new line characters (\n) to format our response
+  bot.send(
+    `${challenger} fancies their changes against ${opponent}!\n
+    ${challenger} rolls: ${firstRoll}\n
+    ${opponent} rolls: ${secondRoll}\n\n
+    *${winner} is the winner!*`
+  , channel);
+
+}, true);</pre></div><p>Our biggest changes here are that the bot will now check to make sure the command given is a valid one. It will ensure that by checking the following (listed in order):</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">There are members <a class="indexterm" id="id126"/>available in the channel.</li><li class="listitem">An argument was provided after the command.</li><li class="listitem">Whether the argument was valid, by making sure the name provided is in the members list of the channel or that the name is not that of a bot.</li></ol></div><p>The important lesson to take away from this exercise is to minimize interruptions by ensuring that all use cases are handled correctly. Sufficient testing is required to be certain that you handled all use cases. For instance, in our <code class="literal">roll</code> command example, we missed an important case: users can use the <code class="literal">roll</code> command against themselves:</p><div class="mediaobject"><img alt="Sanitizing inputs" src="graphics/B05384_03_05.jpg"/><div class="caption"><p>Rolling against yourself probably isn't the most useful of functions</p></div></div><p>To fix this issue, we need <a class="indexterm" id="id127"/>to make a simple addition to our command. Add the following code in our previous sanitizing checks:</p><div class="informalexample"><pre class="programlisting">// the user shouldn't challenge themselves
+if (args.indexOf(user.name) &gt; -1) {
+  bot.send(`Challenging yourself is probably not the best use of your or my time, ${user.name}`, channel);
+  return;
+}</pre></div><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="note15"/>Note</h3><p>When developing bots, every precaution should be taken to ensure that bot inputs are sanitized and that error responses give information about the error. This is especially true when working with external APIs, where incorrect input could lead to wildly inaccurate results.</p></div></div></div></div>
+<div class="section" title="External API integration"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec20"/>External API integration</h1></div></div></div><p>Eternal APIs are <a class="indexterm" id="id128"/>third-party services hosted outside of our bot structure. These come in many varying types and are used to solve many different problems, but their use in tandem with bots follows the same data flow structure.</p><div class="mediaobject"><img alt="External API integration" src="graphics/B05384_03_06.jpg"/><div class="caption"><p>The API call data flow structure between Slack, bot, and API service</p></div></div><p>We will build an example bot with API integration using a common and free-to-use API, namely that of the <a class="indexterm" id="id129"/>Wikimedia foundation.</p><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="note16"/>Note</h3><p>Be warned that while many APIs are free, there are many that charge when a certain amount of requests are made. Always check whether there is a fee before incorporating them into your bots.</p></div></div><p>The <a class="indexterm" id="id130"/>Wikimedia foundation API is an example of a <span class="strong"><strong>representational state transfer</strong></span> (<span class="strong"><strong>REST</strong></span>) service, which communicates using <a class="indexterm" id="id131"/>standard <span class="strong"><strong>Hypertext Transfer Protocol</strong></span> (<span class="strong"><strong>HTTP</strong></span>) protocols such as GET or POST. Many RESTful services require you to transmit a token along with your request, ensuring security and for monetizing the service by tracking the amount of requests made. The Wikimedia API is a free RESTful service, meaning that we do not require a token to make use of it.</p><p>Our new bot, <code class="literal">wikibot</code>, will allow the user to search for a Wikipedia page and return the page's summary if found, or an error message if it does not exist.</p><p>To start, you should follow the steps in <a class="link" href="ch02.html" title="Chapter 2. Your First Bot">Chapter 2</a>, <span class="emphasis"><em>Your First Bot</em></span>, to create a new Slack bot integration via the Slack web service and start a new project. This new project will reuse the <code class="literal">Bot</code> class created in this chapter, whereas our new <code class="literal">index.js</code> entry point will be a new, empty file.</p><p>We will start with the annotated and explained <code class="literal">index.js</code> code. At the conclusion of the chapter the full code will be made available for easier accessibility. Here's the code:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const Bot = require('./Bot');
+const request = require('superagent');</pre></div><p>Here, we import our own <code class="literal">Bot</code> class alongside a new library called <code class="literal">superagent</code>, which is used for making asynchronous JavaScript and XML (AJAX) calls.</p><p>Before running this code, be sure to install <code class="literal">superagent</code> using NPM:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm install superagent --save</strong></span>
+</pre></div><p>
+<code class="literal">superagent</code> is installed with the <code class="literal">–save</code> flag, as the program cannot function without it.</p><p>Let's get back to our code:</p><div class="informalexample"><pre class="programlisting">const wikiAPI = "https://en.wikipedia.org/w/api.php?format=json&amp;action=query&amp;prop=extracts&amp;exintro=&amp;explaintext=&amp;titles="
+const wikiURL = 'https://en.wikipedia.org/wiki/';</pre></div><p>These constants <a class="indexterm" id="id132"/>are the RESTful API <span class="strong"><strong>Uniform Resource Link</strong></span> (<span class="strong"><strong>URL</strong></span>) and the base Wikipedia page URL, respectively. You can test out the former by copying the URL, pasting it into the address field in a browser, and appending a topic at the end. You can check this for the following URL: <a class="ulink" href="https://en.wikipedia.org/w/api.php?format=json&amp;action=query&amp;prop=extracts&amp;exintro=&amp;explaintext=&amp;titles=duck">https://en.wikipedia.org/w/api.php?format=json&amp;action=query&amp;prop=extracts&amp;exintro=&amp;explaintext=&amp;titles=duck</a>.</p><p>You should <a class="indexterm" id="id133"/>then see data returned in the <span class="strong"><strong>JavaScript object notation</strong></span> (<span class="strong"><strong>JSON</strong></span>) format, giving you an overview of the topic requested and the pages returned. The data and type of data returned is determined by the parameters in the <a class="indexterm" id="id134"/>query string of the URL. In the preceding URL, we query for the <code class="literal">extracts</code> property of a page, specifically the intro (<code class="literal">exintro</code>) and explanation (<code class="literal">explaintext</code>) for the page with the title <code class="literal">duck</code> in the JSON format.</p><p>The latter constant is used later to return the URL for the Wikipedia page requested:</p><div class="informalexample"><pre class="programlisting">const bot = new Bot({
+  token: process.env.SLACK_TOKEN,
+  autoReconnect: true,
+  autoMark: true
+});</pre></div><p>As before, we initiate a new instance of <code class="literal">Bot</code> with our options and Slack token. You can reuse the first token created in <a class="link" href="ch02.html" title="Chapter 2. Your First Bot">Chapter 2</a>, <span class="emphasis"><em>Your First Bot</em></span>. However, it is recommended to generate a new one instead. The code is as follows:</p><div class="informalexample"><pre class="programlisting">function getWikiSummary(term, cb) {
+  // replace spaces with unicode
+  let parameters = term.replace(/ /g, '%20');</pre></div><p>This function is a wrapper for the request to the Wikimedia API, in which we format the request by replacing the spaces in the search term with Unicode and make the GET request via the <code class="literal">superagent</code> library. The code is as follows:</p><div class="informalexample"><pre class="programlisting">  request
+    .get(wikiAPI + parameters)
+    .end((err, res) =&gt; {
+      if (err) {
+        cb(err);
+        return;
+      }
+
+      let url = wikiURL + parameters;
+
+      cb(null, JSON.parse(res.text), url);
+    });
+}</pre></div><p>As this is an asynchronous request, we provide a callback function to be called when the <code class="literal">GET</code> request has returned the data we need. Before returning we make sure to parse the data into a JavaScript object form for easy access. The code is as follows:</p><div class="informalexample"><pre class="programlisting">bot.respondTo('help', (message, channel) =&gt; {  
+  bot.send(`To use my Wikipedia functionality, type \`wiki\` followed by your search query`, channel); 
+}, true);</pre></div><div class="mediaobject"><img alt="External API integration" src="graphics/B05384_03_07.jpg"/><div class="caption"><p>Wikibot explaining how it can be used</p></div></div><p>The first command we <a class="indexterm" id="id135"/>implement is a simple <code class="literal">help</code> command; its only function is to explain how to use the bot's Wikipedia functionality:</p><div class="informalexample"><pre class="programlisting">bot.respondTo('wiki', (message, channel, user) =&gt; {
+  if (user &amp;&amp; user.is_bot) {
+    return;
+  }</pre></div><p>Set up our new bot command with the keyword <code class="literal">wiki</code> and make sure to return if the command sender is a bot:</p><div class="informalexample"><pre class="programlisting">  // grab the search parameters, but remove the command 'wiki' // from
+  // the beginning of the message first
+  let args = message.text.split(' ').slice(1).join(' ');</pre></div><p>This will extract the search query of the command. For instance if the command is <code class="literal">wiki</code> <code class="literal">fizz buzz</code>, the output of <code class="literal">args</code> will be a string containing "fizz buzz":</p><div class="informalexample"><pre class="programlisting">  getWikiSummary(args, (err, result, url) =&gt; {
+    if (err) {
+      bot.send(`I\'m sorry, but something went wrong with your query`, channel);
+      console.error(err);
+      return;
+    }</pre></div><p>Here, we call our <code class="literal">getWikiSummary</code> function, with the arguments issued with the bot command and provide the anonymous function callback. If an error has occurred, immediately send an error message and log the error in the console. The command is as follows:</p><div class="informalexample"><pre class="programlisting">    let pageID = Object.keys(result.query.pages)[0];</pre></div><p>The data object returned <a class="indexterm" id="id136"/>by the RESTful API call consists of a nested object named <code class="literal">query</code>, which in turn has a nested object called <code class="literal">pages</code>. Inside the <code class="literal">pages</code> object, there are more objects that use Wikipedia's internal page ID as a key, which is a series of numbers in a string format. Let's take a look at an example:</p><div class="informalexample"><pre class="programlisting">{
+  "batchcomplete": "",
+  "query": {
+    "normalized": [
+      {
+        "from": "duck",
+        "to": "Duck"
+      }
+    ],
+    "pages": {
+      "37674": {
+        "pageid": 37674,
+        "ns": 0,
+        "title": "Duck",
+        "extract": "Duck is the common name for a large number of species in the waterfowl family Anatidae, which also includes swans and geese. The ducks are divided among several subfamilies in the family Anatidae; they do not represent a monophyletic group (the group of all descendants of a single common ancestral species) but a form taxon, since swans and geese are not considered ducks. Ducks are mostly aquatic birds, mostly smaller than the swans and geese, and may be found in both fresh water and sea water.\nDucks are sometimes confused with several types of unrelated water birds with similar forms, such as loons or divers, grebes, gallinules, and coots.\n\n"
+      }
+    }
+  }
+}</pre></div><p>
+<code class="literal">Object.keys</code> is a useful trick to retrieve data from an object without knowing the property's name. We use it here as we don't know the key ID for the page that we want, but we know we want the first value. <code class="literal">Object.keys</code> will return an array of key names for the <code class="literal">result.query.pages</code> <a class="indexterm" id="id137"/>object. We then select the value at index 0, as we're only interested in the first result. The code is as follows:</p><div class="informalexample"><pre class="programlisting">    // -1 indicates that the article doesn't exist
+    if (parseInt(pageID, 10) === -1) {
+      bot.send('That page does not exist yet, perhaps you\'d like to create it:', channel);
+      bot.send(url, channel);
+      return;
+    }</pre></div><p>A Wikipedia page ID of -1 indicates that the article doesn't exist at all. Instead of trying to parse data that doesn't exist, we inform the user of the problem and return. The code is as follows:</p><div class="informalexample"><pre class="programlisting">    let page = result.query.pages[pageID];
+    let summary = page.extract;
+
+    if (/may refer to/i.test(summary)) {
+      bot.send('Your search query may refer to multiple things, please be more specific or visit:', channel);
+      bot.send(url, channel);
+      return;
+    }</pre></div><p>If the summary text contains the phrase <code class="literal">may refer to</code>, then we can conclude that the search term provided could lead to multiple Wikipedia entries. Since we can't guess at what the user intended, we simply ask them to be more specific and return. The code is as follows:</p><div class="informalexample"><pre class="programlisting">    if (summary !== '') {
+      bot.send(url, channel);</pre></div><p>Unfortunately, it is possible that an API request returns a summary that is empty. This is an issue on the Wikimedia API's end where a term returns a page, but the summary text is missing. In this case, we inform the user of the problem in the <code class="literal">else</code> conditional block of this <code class="literal">if</code> statement. The code is as follows:</p><div class="informalexample"><pre class="programlisting">      let paragraphs = summary.split('\n');</pre></div><p>The summary might stretch over several paragraphs, so for ease of use we convert the text block into an array of <a class="indexterm" id="id138"/>paragraphs by using the new line ASCII operator <code class="literal">\n</code> as our split criteria. The code is as follows:</p><div class="informalexample"><pre class="programlisting">paragraphs.forEach((paragraph) =&gt; {
+  if (paragraph !== '') {
+    bot.send(`&gt; ${paragraph}`, channel);
+  }
+});</pre></div><p>Like regular users, bots can use Slack's formatting options when sending messages. In this instance, we prepend the <code class="literal">&gt;</code> operator in front of our paragraph to indicate a quotation block. The code is as follows:</p><div class="informalexample"><pre class="programlisting">} else {
+      bot.send('I\'m sorry, I couldn\'t find anything on that subject. Try another one!', channel);
+    }
+  });
+}, true);</pre></div><p>As before, we pass the <code class="literal">true</code> Boolean to our <code class="literal">respondsTo</code> method of the <code class="literal">Bot</code> class to indicate that we want our keyword <code class="literal">wiki</code> to only trigger a response if it is placed at the beginning of a message.</p><p>Once you've entered all the code into <code class="literal">index.js</code>, run the program using Node and test it in your Slack client:</p><div class="mediaobject"><img alt="External API integration" src="graphics/B05384_03_08.jpg"/><div class="caption"><p>Wikibot is up and running</p></div></div><p>This is a basic example of how to incorporate external API calls into your bot. Before we move on to the next section, we should consider the ramifications of complex API requests. If an API request takes a sizeable amount of time (for example, a service needs to perform complex calculations), it would be useful for the user to see an indication that the bot is working on the command. To accomplish this, we can show a <span class="strong"><strong>typing indicator</strong></span> while the bot waits for a <a class="indexterm" id="id139"/>response. Typing indicators are shown <a class="indexterm" id="id140"/>when a human starts to type a message before hitting send. Add the following method to the <code class="literal">Bot</code> class in <code class="literal">bot.js</code>:</p><div class="informalexample"><pre class="programlisting">  setTypingIndicator(channel) {
+    this.slack.send({ type: 'typing', channel: channel.id });
+  }</pre></div><p>To test our indicator, add the following to <code class="literal">index.js</code>:</p><div class="informalexample"><pre class="programlisting">bot.respondTo('test', (message, channel) =&gt; {
+  bot.setTypingIndicator(message.channel);
+  setTimeout(() =&gt; {
+    bot.send('Not typing anymore!', channel);
+  }, 1000);
+}, true);</pre></div><p>Now, send the message <code class="literal">test</code> in your Slack channel and watch the indicator appear:</p><div class="mediaobject"><img alt="External API integration" src="graphics/B05384_03_09.jpg"/><div class="caption"><p>Wikibot is busy typing</p></div></div><p>1000 milliseconds <a class="indexterm" id="id141"/>later, we get the following result:</p><div class="mediaobject"><img alt="External API integration" src="graphics/B05384_03_10.jpg"/><div class="caption"><p>Bot is done with the action and the typing indicator has been removed</p></div></div><p>After the typing indicator is dispatched, it will automatically disappear once a message has been sent to the channel by the bot.</p><p>To use the typing indicator in <a class="indexterm" id="id142"/>our example bot, insert the following line above the <code class="literal">getWikiSummary</code> method call:</p><div class="informalexample"><pre class="programlisting">bot.setTypingIndicator(message.channel);</pre></div><p>Keep in mind that since the Wikimedia API call resolves very quickly, it's unlikely that you'll see the typing indicator for longer than a few milliseconds.</p><div class="section" title="Error handling"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec24"/>Error handling</h2></div></div></div><p>Continuing on from the <a class="indexterm" id="id143"/>last topic, a good way of making your bot appear more natural is for it to provide clear instructions on how to use it. Providing the wrong input for a command should <span class="emphasis"><em>never</em></span> cause the bot to crash.</p><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="note17"/>Note</h3><p>Bots should never crash due to user input. Either an error message should be sent or the request should silently fail.</p></div></div><p>You can eliminate 99 percent of all bugs in your bot commands by doing valid type and content checking against the user's input. Observe the following checklist when programming a new command:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">If arguments are required, are any of the arguments undefined?</li><li class="listitem" style="list-style-type: disc">Are the arguments of the type the bot is expecting? For example, are strings provided when a number is expected?</li><li class="listitem" style="list-style-type: disc">If targeting a member of the channel, does that member exist?</li><li class="listitem" style="list-style-type: disc">Was the command sent in a DM? If so should the command still be executed?</li><li class="listitem" style="list-style-type: disc">Does the command pass a "sanity" check? For example, does the data or action requested make sense?</li></ul></div><p>As an example of the preceding checklist, let's review the checks we made with the <code class="literal">roll</code> command earlier in this chapter:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Are there non-bot members in the channel to interact with?</li><li class="listitem" style="list-style-type: disc">Was an argument supplied?</li><li class="listitem" style="list-style-type: disc">Was the supplied argument valid?</li><li class="listitem" style="list-style-type: disc">Is the specified opponent in the channel the command was issued?</li></ul></div><p>Each point is a hurdle that <a class="indexterm" id="id144"/>the command's input had to overcome in order to return the desired result. If any of these questions is answered in the negative, then an error message is sent and the command process terminated.</p><p>These checks might appear lengthy and superfluous, but they are absolutely necessary to provide a natural experience with the bot.</p><p>As a final note, be aware that despite your best efforts, users have an uncanny ability to cause crashes, intentionally or otherwise.</p><p>The more complex your bot becomes, the more likely it is that loopholes and edge cases will appear. Testing your bot thoroughly will get you most of the way, but always make sure that you are catching and logging errors on the programmatic side. A good debug log will save you many hours of frustration trying to find a difficult-to-squash bug.</p></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec21"/>Summary</h1></div></div></div><p>In this chapter, we saw how to abstract away the core Slack API methods into a reusable module by using ES6's new class structures. The difference between a reactive and active bot was outlined as well as the distinction between keywords and bot commands. By applying the basic knowledge of external APIs outlined in this chapter, you should be able to create a bot that interfaces with any third-party application that provides RESTful APIs.</p><p>In the next chapter, we will learn about the Redis data storage service and how to write a bot that interfaces with a persistent data source.</p></div></body></html>
