@@ -1,0 +1,503 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer038">
+<h1 class="chapter-number" id="_idParaDest-90"><a id="_idTextAnchor098"/>3</h1>
+<h1 id="_idParaDest-91"><a id="_idTextAnchor099"/>Validating Models </h1>
+<p>It is important to maintain consistency and integrity within databases. Databases often use some form of constraint stipulation to ensure consistency. Typically, these constraints consist of checking for a range of values, such as minimum string length, uniqueness, or existence. Integrity for databases involves managing the associations and relations between symbiotic records. This involves cascading updates and deletions of referenced records (for example, setting the associated identity columns to <strong class="source-inline">NULL</strong> when the referenced record has been deleted). Consistency and integrity are not mutually exclusive to one another, but the two patterns help to ensure organization.</p>
+<p class="callout-heading">Note</p>
+<p class="callout">The term consistency refers to ensuring that only valid data will be written and read from the database (especially within the context of accessing data concurrently). Integrity refers to data that conforms to a set of rules, constraints, or triggers before it is inserted or read. </p>
+<p>While most database engines handle both consistency and integrity, there are some limitations as far as consistency is concerned. If you wanted to perform validations against a third-party source outside of the database’s scope, you would need to either build (or install) an extension for the database that adds support or use a central code base to help manage these validations.</p>
+<p>Sequelize offers built-in validation for various data types to help with the ergonomics of a project. Some validations require manual configuration, such as checking to see whether a text value matches an email pattern, or manual input for certain validations, such as numerical (or date) ranges. </p>
+<p>Validations can be performed using two methodologies within Sequelize: </p>
+<ul>
+<li>We can execute validations across the entire record involving multiple attributes</li>
+<li>We can invoke validations for each specific attribute</li>
+</ul>
+<p>We will explore how Sequelize performs validations in this chapter to maintain consistency and integrity within databases. This chapter will cover the following topics:</p>
+<ul>
+<li>Using validations as constraints</li>
+<li>Creating custom validation methods</li>
+<li>Executing validations while performing asynchronous operations</li>
+<li>Handling validation errors</li>
+</ul>
+<p class="callout-heading">Note</p>
+<p class="callout">Sequelize will <a id="_idIndexMarker325"/>internally use a validation library called <strong class="source-inline">validator.js</strong>. This chapter will go over the validations that Sequelize extends explicitly. For a complete list of validations that can be used, you may refer to the <strong class="source-inline">validator.js</strong> repository at <a href="https://github.com/validatorjs/validator.js">https://github.com/validatorjs/validator.js</a>.</p>
+<h1 id="_idParaDest-92"><a id="_idTextAnchor100"/>Technical requirements</h1>
+<p>You can find the code files for this chapter at: <a href="https://github.com/PacktPublishing/Supercharging-Node.js-Applications-with-Sequelize/tree/main/ch3">https://github.com/PacktPublishing/Supercharging-Node.js-Applications-with-Sequelize/tree/main/ch3</a></p>
+<h1 id="_idParaDest-93"><a id="_idTextAnchor101"/>Using validations as constraints</h1>
+<p>There are <a id="_idIndexMarker326"/>certain validations that Sequelize will use as both a validation and a constraint. These parameters are configurable in the attribute’s options as a sibling to the <strong class="source-inline">validate</strong> parameters. Constraints are defined and guarded by the database, whereas a validation will be handled by Sequelize and the Node.js runtime exclusively. Here is a list of constraints made available from Sequelize.</p>
+<h2 id="_idParaDest-94"><a id="_idTextAnchor102"/>allowNull</h2>
+<p>The <strong class="source-inline">allowNull</strong> option will <a id="_idIndexMarker327"/>determine whether to apply <strong class="source-inline">NOT NULL</strong> to the definitions of <a id="_idIndexMarker328"/>columns for the database. The default value is <strong class="source-inline">true</strong>, which will allow columns to have a value of <strong class="source-inline">null</strong>. There are a couple of caveats to keep in mind when using validations with the <strong class="source-inline">allowNull</strong> constraint:</p>
+<ul>
+<li>If the <strong class="source-inline">allowNull</strong> parameter is set to <strong class="source-inline">false</strong> and the attribute’s value is <strong class="source-inline">null</strong>, then the custom validations will not run. Instead, a <strong class="bold">ValidationError</strong> will be returned without making a request to the database.</li>
+<li>If the <strong class="source-inline">allowNull</strong> parameter is set to <strong class="source-inline">true</strong> and the attribute’s value is <strong class="source-inline">null</strong>, then the built-in validators will not be invoked, but the custom validators will still execute.</li>
+</ul>
+<p>The <a id="_idIndexMarker329"/>following is an illustration of the various validation states that <a id="_idIndexMarker330"/>will cause Sequelize to behave accordingly, depending on the <strong class="source-inline">allowNull</strong> parameter:</p>
+<pre class="source-code">
+User.init({
+  age: {
+    type: Sequelize.INTEGER,
+    allowNull: true,
+    <strong class="bold">// if the age value is null then this will be ignored</strong>
+    validate: {
+      min: 1
+    }
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    validate: {
+      <strong class="bold">// even if the name's value is null, the</strong>
+<strong class="bold">         customValidator will still be invoked</strong>
+      customValidator(value) {
+        if (value === null &amp;&amp; (this.age === null || 
+            this.age &lt; 18)) {
+          throw new Error("A name is required unless the 
+                           user is under 18 years old");
+        }
+      }
+    }
+  },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      <strong class="bold">// if the email value is null then this will not be </strong>
+<strong class="bold">         invoked</strong>
+      customValidator(value) {
+        // ...
+      }
+    }
+  }
+}, { sequelize });</pre>
+<p>In the <a id="_idIndexMarker331"/>previous example, in the first column, <strong class="source-inline">age</strong>, Sequelize will perform a validation check to make sure the numerical value is not <a id="_idIndexMarker332"/>less than one. The next column, <strong class="source-inline">name</strong>, will invoke a custom validation function that checks whether the attribute’s new value is <strong class="source-inline">null</strong> and checks for the user’s age if so. The last column, <strong class="source-inline">email</strong>, demonstrates that Sequelize will not invoke validations if the <strong class="source-inline">allowNull</strong> flag is set to <strong class="source-inline">false</strong> and the value itself is <strong class="source-inline">null</strong>.</p>
+<p>You can customize NOT NULL errors by adjusting the <strong class="source-inline">notNull</strong> parameter in the validate config of the attribute as follows:</p>
+<pre class="source-code">
+User.init({
+  email: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      notNull: {
+        msg: 'Please enter your e-mail address'
+      }
+    }
+  }
+}, { sequelize });</pre>
+<p>Otherwise, Sequelize <a id="_idIndexMarker333"/>will return the error <a id="_idIndexMarker334"/>message that was sent from the database. </p>
+<h2 id="_idParaDest-95"><a id="_idTextAnchor103"/>unique</h2>
+<p>Setting this <a id="_idIndexMarker335"/>parameter to <strong class="source-inline">true</strong> will have Sequelize build a unique constraint <a id="_idIndexMarker336"/>on the applicable column within the database if you are using Sequelize’s <strong class="source-inline">sync</strong> option. If there was a unique constraint violation, Sequelize will return an error type of <strong class="source-inline">SequelizeUniqueConstraintError</strong>. Here’s a quick example of how to use <strong class="source-inline">unique</strong> (you may allow nullable values for uniqueness as well):</p>
+<pre class="source-code">
+MyModel.init({
+  email: {
+    type: DataTypes.STRING,
+    <strong class="bold">// by default allowNull is true</strong>
+    allowNull: false,
+    unique: true
+  }
+}, { sequelize });</pre>
+<p>As a general rule of thumb, you should use constraints over validations, wherever applicable, since this option will be applied to the database as well. In cases where a constraint <a id="_idIndexMarker337"/>is not applicable, we can use one of Sequelize’s <a id="_idIndexMarker338"/>built-in validations.</p>
+<p class="callout-heading">Note</p>
+<p class="callout">When setting <strong class="source-inline">allowNull</strong> to <strong class="source-inline">true</strong> on a <strong class="source-inline">unique</strong> attribute, the database will allow multiple records with the same <strong class="source-inline">NULL</strong> value on that attribute. This is intentional from the DBMS’s side and can be mitigated by explicitly adding constraints to a <strong class="source-inline">unique</strong> index such as the following:</p>
+<p class="callout">CREATE UNIQUE INDEX idx_tbl_uniq ON tbl (a, (b IS NULL)) WHERE b IS NULL</p>
+<h2 id="_idParaDest-96"><a id="_idTextAnchor104"/>Built-in validations</h2>
+<p>These <a id="_idIndexMarker339"/>validations are performed within the Node.js runtime and not from the database. Sequelize will extend the functionality of <strong class="source-inline">validator.js</strong> with its own set of validators.</p>
+<h3>is (regex), not (notRegex), and equals</h3>
+<p>The <strong class="source-inline">is</strong> and <strong class="source-inline">not</strong> validation parameters can either be a literal regular <a id="_idIndexMarker340"/>expression or an array, with the first entry as a string literal for the regular <a id="_idIndexMarker341"/>expression and the second entry for regular <a id="_idIndexMarker342"/>expression flags. The <strong class="source-inline">equals</strong> parameter <a id="_idIndexMarker343"/>is a string <a id="_idIndexMarker344"/>value that performs a strict comparison <a id="_idIndexMarker345"/>check for exact matching.</p>
+<p>The following is an example of how to use all three for a model:</p>
+<pre class="source-code">
+MyModel.init({
+  foo: {
+    type: DataTypes.STRING,
+    validate: {
+      is: /^[a-z]+$/i
+      <strong class="bold">// can also be written as:</strong>
+      <strong class="bold">// is: ['^[a-z]+$', 'i']</strong>
+    }
+  },
+  bar: {
+    type: DataTypes.STRING,
+    validate: {
+      not: /^[a-z]+$/i
+      <strong class="bold">// can also be written as:</strong>
+      <strong class="bold">// not: ['^[a-z]+$', 'i']</strong>
+    } 
+  },
+  foobar: {
+    type: DataTypes.STRING,
+    validate: {
+      <strong class="bold">// ensure 'foobar' is always equaled to 'static</strong>
+<strong class="bold">         value'</strong>
+      equals: 'static value'
+    }
+  }
+}, { sequelize });</pre>
+<h3>isEmail</h3>
+<p>This <a id="_idIndexMarker346"/>validation will ensure that the attribute’s <a id="_idIndexMarker347"/>value matches the rules according to RFC 2822, which can be reviewed at <a href="https://datatracker.ietf.org/doc/html/rfc2822">https://datatracker.ietf.org/doc/html/rfc2822</a>.</p>
+<h3>isUrl</h3>
+<p>This will <a id="_idIndexMarker348"/>validate whether the attribute’s value is an actual URL <a id="_idIndexMarker349"/>with various protocols, hostnames (IP and FQDN), and a maximum length.</p>
+<h3>isIP, isIPv4, or isIPv6</h3>
+<p>This <a id="_idIndexMarker350"/>validates <a id="_idIndexMarker351"/>whether the <a id="_idIndexMarker352"/>attribute’s value matches how an IP <a id="_idIndexMarker353"/>value <a id="_idIndexMarker354"/>should look. The <strong class="source-inline">isIP</strong> validation accepts both v4 <a id="_idIndexMarker355"/>and v6 formats.</p>
+<h3>isAlphanumeric, isNumeric, isInt, isFloat, and isDecimal</h3>
+<p>All inputs <a id="_idIndexMarker356"/>for <a id="_idIndexMarker357"/>validations <a id="_idIndexMarker358"/>are <a id="_idIndexMarker359"/>sent to the <strong class="source-inline">validator.js</strong> library <a id="_idIndexMarker360"/>as <a id="_idIndexMarker361"/>a literal <a id="_idIndexMarker362"/>string. These validators <a id="_idIndexMarker363"/>will <a id="_idIndexMarker364"/>ensure the input <a id="_idIndexMarker365"/>can parse into the respective validation.</p>
+<h3>max or min</h3>
+<p>These <a id="_idIndexMarker366"/>apply <a id="_idIndexMarker367"/>to numerical <a id="_idIndexMarker368"/>attributes <a id="_idIndexMarker369"/>only. They add a maximum or minimum numerical value respectively for the attribute’s validations.</p>
+<h3>isLowercase or isUppercase</h3>
+<p>These <a id="_idIndexMarker370"/>check <a id="_idIndexMarker371"/>to see <a id="_idIndexMarker372"/>whether every letter in the attribute’s value <a id="_idIndexMarker373"/>uses the proper case.</p>
+<h3>isNull, notNull, or notEmpty</h3>
+<p>This <a id="_idIndexMarker374"/>validates <a id="_idIndexMarker375"/>whether <a id="_idIndexMarker376"/>the <a id="_idIndexMarker377"/>value <a id="_idIndexMarker378"/>is <strong class="source-inline">null</strong> or <a id="_idIndexMarker379"/>not. The <strong class="source-inline">notEmpty</strong> validator will validate whether there are any spaces, tabs, or newlines within the value.</p>
+<h3>contains, notContains, isIn, or notIn</h3>
+<p>These <a id="_idIndexMarker380"/>contain-related <a id="_idIndexMarker381"/>validators will perform a substring check <a id="_idIndexMarker382"/>on the <a id="_idIndexMarker383"/>value. The in-related <a id="_idIndexMarker384"/>validators accept <a id="_idIndexMarker385"/>any value within an array parameter. For example, see the following:</p>
+<pre class="source-code">
+MyModel.init({
+  foo: {
+    type: DataTypes.STRING,
+    validate: {
+      isIn: [['red', 'yellow', 'green']]
+    }
+  },
+  bar: {
+    type: DataTypes.STRING,
+    validate: {
+      contains: 'foo'
+    } 
+  }
+}, { sequelize });</pre>
+<h3>len</h3>
+<p>The <strong class="source-inline">len</strong> validator <a id="_idIndexMarker386"/>accepts an array with two parameters for its input. The parameters are for <a id="_idIndexMarker387"/>checking the value’s length against a minimum and maximum number respectively. To create a validation for a value’s length with a minimum length of <strong class="source-inline">1</strong> and a maximum length of <strong class="source-inline">40</strong>, it would look as follows:</p>
+<pre class="source-code">
+MyModel.init({
+  foo: {
+    type: DataTypes.STRING,
+    validate: {
+      len: [1, 40]
+    }
+  }
+}, { sequelize });</pre>
+<h3>isUUID</h3>
+<p>This validator <a id="_idIndexMarker388"/>can check whether a value is in accordance <a id="_idIndexMarker389"/>with being a unique identifier. You can specify the version (3, 4, or 5) as the input parameter or a literal string value of <strong class="source-inline">all</strong> to accept any UUID version.</p>
+<h3>isDate, isAfter, or isBefore</h3>
+<p>The <strong class="source-inline">isDate</strong> validator <a id="_idIndexMarker390"/>will determine whether <a id="_idIndexMarker391"/>a value is <em class="italic">date-like</em>. The <strong class="source-inline">isAfter</strong> and <strong class="source-inline">isBefore</strong> validators <a id="_idIndexMarker392"/>will perform <a id="_idIndexMarker393"/>a temporal comparison <a id="_idIndexMarker394"/>against the date that you are trying to validate against. The <a id="_idIndexMarker395"/>default input for comparison is <strong class="source-inline">new Date()</strong>. The following is a quick example:</p>
+<pre class="source-code">
+MyModel.init({
+  expiration: {
+    type: DataTypes.DATE,
+    validate: {
+      isAfter: '2060-01-01'
+      <strong class="bold">// for "now"</strong>
+      <strong class="bold">// isAfter: true</strong>
+    }
+  }
+}, { sequelize });</pre>
+<p class="callout-heading">Note</p>
+<p class="callout">The input for <strong class="source-inline">isBefore</strong> and <strong class="source-inline">isAfter</strong> is a string that conforms to any applicable date that can be parsed by JavaScript. For examples in compatible formats, you may refer to this link: <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/parse">https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/parse</a>.</p>
+<p>Now <a id="_idIndexMarker396"/>that we <a id="_idIndexMarker397"/>have gone through several <a id="_idIndexMarker398"/>examples <a id="_idIndexMarker399"/>of how <a id="_idIndexMarker400"/>validations are applied to a Sequelize model’s <a id="_idIndexMarker401"/>attributes, we can update several files within the Avalon Airlines project.</p>
+<h2 id="_idParaDest-97"><a id="_idTextAnchor105"/>Applying validations to our project</h2>
+<p>In the <a id="_idIndexMarker402"/>following example, we will add validations <a id="_idIndexMarker403"/>for our Airplane model’s <strong class="source-inline">planeModel</strong> and <strong class="source-inline">totalSeats</strong> attributes. We can begin by opening the <strong class="source-inline">models/airplane.js</strong> file and adding the following validations:</p>
+<ul>
+<li>For the <strong class="source-inline">planeModel</strong> attribute, add a <strong class="source-inline">notEmpty</strong> validation since all plane models require a value that is not <strong class="source-inline">null</strong> nor an empty string.</li>
+<li>On the <strong class="source-inline">totalSeats</strong> attribute, add a minimum validation of <strong class="source-inline">1</strong> as the argument’s value since every plane must have at least one seat available for customers.</li>
+</ul>
+<p>The updated file should look something similar to this:</p>
+<pre class="source-code">
+const { Model } = require('@sequelize/core');
+module.exports = (sequelize, DataTypes) =&gt; {
+  class Airplane extends Model {
+    static associate(models) {
+    }
+  };
+  Airplane.init({
+    planeModel: {
+      type: DataTypes.STRING,
+      validate: {
+        notEmpty: {
+          msg: 'Plane types should not be empty'
+        }
+      }
+    },
+    totalSeats: {
+      type: DataTypes.INTEGER,
+      validate: {
+        min: {
+          args: 1,
+          msg: 'A plane must have at least one seat'
+        }
+      }
+    }
+  }, {
+    sequelize,
+    modelName: 'Airplane',
+  });
+  return Airplane;
+};</pre>
+<p>Next, we <a id="_idIndexMarker404"/>will want to modify the <strong class="source-inline">models/boardingticket.js</strong> file, and <a id="_idIndexMarker405"/>add a <strong class="source-inline">notEmpty</strong> validator as follows:</p>
+<pre class="source-code">
+const { Model } = require('@sequelize/core');
+module.exports = (sequelize, DataTypes) =&gt; {
+  class BoardingTicket extends Model {
+    static associate(models) {
+    }
+  };
+  BoardingTicket.init({
+    seat: {
+      type: DataTypes.STRING,
+      validate: {
+        notEmpty: {
+          msg: 'Please enter in a valid seating arrangement'
+        }
+      }
+    }
+  }, {
+    sequelize,
+    modelName: 'BoardingTicket',
+  });
+  return BoardingTicket;
+};</pre>
+<p>The <a id="_idIndexMarker406"/>last file to edit within this section will be <a id="_idIndexMarker407"/>the <strong class="source-inline">models/customer.js</strong> file. The name attribute will require a <strong class="source-inline">notEmpty</strong> validator and the email attribute will need an <strong class="source-inline">isEmail</strong> validator as follows:</p>
+<pre class="source-code">
+const { Model } = require('@sequelize/core');
+module.exports = (sequelize, DataTypes) =&gt; {
+  class Customer extends Model {
+    static associate(models) {
+    }
+  };
+  Customer.init({
+    name: {
+      type: DataTypes.STRING,
+      validate: {
+        notEmpty: true,
+        msg: 'A name is required for the customer'
+      }
+    },
+    email: {
+      type: DataTypes.STRING,
+      validate: {
+        isEmail: true,
+        msg: 'Invalid email format for the customer'
+      }
+    }
+  }, {
+    sequelize,
+    modelName: 'Customer',
+  });
+  return Customer;
+};</pre>
+<p>After <a id="_idIndexMarker408"/>going through the list of built-in validations, we <a id="_idIndexMarker409"/>can now learn how to build our own validations, and how to use custom validations across the entire model. </p>
+<h1 id="_idParaDest-98"><a id="_idTextAnchor106"/>Creating custom validation methods</h1>
+<p>Sequelize <a id="_idIndexMarker410"/>gives us the ability to create our own validations simply by adding a function to the <strong class="source-inline">validate</strong> parameter on attributes or within the <strong class="source-inline">validate</strong> parameter on the model’s options (the second input parameter for the <strong class="source-inline">Model.init()</strong> function).</p>
+<p>If we wanted to create our own validation to restrict our users from using <strong class="source-inline">password</strong> as a password, we would write a solution similar to this:</p>
+<pre class="source-code">
+MyModel.init({
+  password: {
+    type: DataTypes.STRING,
+    validate: {
+      notLiteralPassword(value) {
+        if (value === 'password') {
+          throw new Error("Your password cannot be 
+                           'password'");
+        }
+      }
+    }
+  }
+}, { sequelize });</pre>
+<p>Even though <a id="_idIndexMarker411"/>you can check the value on other attributes within a custom attribute validator, it is considered good practice to declare a model custom validator, which we will demonstrate shortly, when involving more than one attribute for validation, which we will demonstrate shortly.</p>
+<p>We have one more model file to add validations for. The <strong class="source-inline">models/flightschedule.js</strong> file will need to validate that the origin airport is not the same as the destination airport. First, we will need to import Sequelize and add a list of available airports:</p>
+<pre class="source-code">
+const { Model } = require('@sequelize/core');
+const availableAirports = [
+  'MIA',
+  'JFK',
+  'LAX'
+];</pre>
+<p>Next, add <a id="_idIndexMarker412"/>in the module exports and model class extension lines:</p>
+<pre class="source-code">
+module.exports = (sequelize, DataTypes) =&gt; {
+  class FlightSchedule extends Model {
+    static associate(models) {
+    }
+  };</pre>
+<h2 id="_idParaDest-99"><a id="_idTextAnchor107"/>Creating custom attribute validators</h2>
+<p>Then, we <a id="_idIndexMarker413"/>can initialize our model with attribute definitions that have validations associated with them. We will want to add the <strong class="source-inline">isIn</strong> validator to the <strong class="source-inline">originAirport</strong> and <strong class="source-inline">destinationAirport</strong> attributes:</p>
+<pre class="source-code">
+  FlightSchedule.init({
+    originAirport: {
+      type: DataTypes.STRING,
+  <strong class="bold">// examples of custom attribute validators</strong>
+      validate: {
+        isIn: {
+          args: [availableAirports],
+          msg: 'Invalid origin airport'
+        }
+      }
+    },
+    destinationAirport: {
+      type: DataTypes.STRING,
+      validate: {
+        isIn: {
+          args: [availableAirports],
+          msg: 'Invalid destination airport'
+        }
+      }
+    },
+    departureTime: {
+      type: DataTypes.DATE,
+      validate: {
+        isDate: {
+          args: true,
+          msg: 'Invalid departure time'
+        }
+      }
+    }
+  }, {
+    sequelize,
+    modelName: 'FlightSchedule',
+    validate: {</pre>
+<h3>Adding a custom model validator</h3>
+<p>Now, we <a id="_idIndexMarker414"/>can add our custom <a id="_idIndexMarker415"/>model validator here. We will create a function that will check the values against the <strong class="source-inline">originAirport</strong> and <strong class="source-inline">destinationAirport</strong> attributes. If both of the values are identical, then we will mark the destination as invalid and throw an error:</p>
+<pre class="source-code">
+      validDestination() {
+        const hasAirportValues = this.originAirport !== 
+        null &amp;&amp; this.destinationAirport !== null;
+        const invalidDestination = this.originAirport === 
+        this.destinationAirport;;
+        if (hasAirportValues &amp;&amp; invalidDestination) {
+          throw new Error("The destination airport cannot 
+                           be the same as the origin");
+        }
+      }</pre>
+<p>For <a id="_idIndexMarker416"/>the last step, we will <a id="_idIndexMarker417"/>close any objects or functions, and return the class back to the export:</p>
+<pre class="source-code">
+    }
+  });
+  return FlightSchedule;
+};</pre>
+<p>You may have noticed that we pass through the <strong class="source-inline">validDestination</strong> validator if both values are <strong class="source-inline">null</strong>. The <strong class="source-inline">isIn</strong> validator will still execute and return an error due to there not being a valid value.</p>
+<h1 id="_idParaDest-100"><a id="_idTextAnchor108"/>Executing validations while performing asynchronous operations</h1>
+<p>Sometimes, your validations will require you to fetch an associated model’s record, call a third-party application, or some other form of request that waits for a response.</p>
+<p>Suppose <a id="_idIndexMarker418"/>we were in a situation where we have to ensure that there was a completed and active payment before creating or updating a customer’s membership points. As long as any payment was still considered in good standing, that customer should be able to update their membership. We would use the <strong class="source-inline">async</strong> and <strong class="source-inline">await</strong> keywords to help us execute these requests and wait for the responses for validation:</p>
+<pre class="source-code">
+Membership.init({
+  points: {
+    type: DataTypes.INTEGER,
+  }
+}, {
+  sequelize,
+  validate: {
+    <strong class="bold">async</strong> accountIsActive() {
+      const payments = <strong class="bold">await</strong> Payments.find({
+        where: { status: 'complete', expired: false }
+      });
+      if (payments.length &lt; 1) {
+        throw new Error("Invalid membership");
+      }
+    }
+  }
+});</pre>
+<p class="callout-heading">Note</p>
+<p class="callout">The <strong class="source-inline">async</strong> and <strong class="source-inline">await</strong> keywords work <a id="_idIndexMarker419"/>on custom attribute validators <a id="_idIndexMarker420"/>as well.</p>
+<p>It is <a id="_idIndexMarker421"/>important to note that if you run Sequelize queries within a life cycle event, then those queries will execute under a different transaction than the parent model. For instance, if we started a transaction and inside its scope, we created the payment entry and then tried to create the membership entry, the <strong class="source-inline">await Payments.find(…)</strong> line would not be able to see the recently created record. To remedy this issue, we can pass a Sequelize transaction to the <strong class="source-inline">transaction</strong> parameter when calling <strong class="source-inline">create</strong>. The following is a very generic but high-level example:</p>
+<pre class="source-code">
+const tx = await sequelize.transaction();
+try {
+  await Payment.create({ status: 'complete', expired: false });
+  await Membership.create({
+    points: 100,
+    <strong class="bold">// without the following line the `await    </strong>
+<strong class="bold">       Payments.find()` call in </strong>
+    <strong class="bold">// ...accountIsActive will not find the previously</strong>
+<strong class="bold">       </strong><strong class="bold">created entry</strong>
+    transaction: tx
+  });
+  await t.commit();
+} catch (err) {
+  await t.rollback();
+}</pre>
+<h1 id="_idParaDest-101"><a id="_idTextAnchor109"/>Handling validation errors</h1>
+<p>Using <strong class="source-inline">FlightSchedule</strong> from the <em class="italic">Creating custom validation methods</em> section, we will go <a id="_idIndexMarker422"/>over how to handle validation errors when invoking the <strong class="source-inline">validate</strong>, <strong class="source-inline">update</strong>, and <strong class="source-inline">create</strong> methods. Let’s presume that we called a <strong class="source-inline">createFlightSchedule</strong> method that looks as follows:</p>
+<pre class="source-code">
+const { ValidationError } = require('@sequelize/core');
+// other imports and code...
+async function createFlightSchedule() {
+  try {
+    await FlightSchedule.create({
+      originAirport: 'JAX',
+      destinationAirport: 'JFK',
+      departureTime: '2030-01-01T00:00:00.000+00:00'
+    });
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      console.log(err.errors);
+    } else {
+      console.log(err);
+    }
+  }
+}
+  return FlightSchedule;
+};</pre>
+<p>By default, the <a id="_idIndexMarker423"/>returned error from <strong class="source-inline">ValidationError</strong> should be similar to this (you may see additional fields listed):</p>
+<pre class="source-code">
+[
+  ValidationErrorItem {
+    message: 'Invalid origin airport',
+    type: 'Validation error',
+    path: 'originAirport',
+    value: 'JAX',
+    origin: 'FUNCTION',
+    instance: FlightSchedule {
+      dataValues: [Object],
+      _previousDataValues: [Object],
+      uniqno: 1,
+      _changed: [Set],
+      _options: [Object],
+      isNewRecord: true
+    },
+    validatorKey: 'isIn',
+    validatorName: 'isIn',
+    validatorArgs: [ [Array] ],
+    original: Error: Invalid origin airport {
+      validatorName: 'isIn',
+      validatorArgs: [Array]
+    }
+  }
+] 
+          origin airport'}
+]</pre>
+<p>Alternatively, we could manually check for validation before attempting to create or modify the record using the instance’s <strong class="source-inline">validate()</strong> method as follows:</p>
+<pre class="source-code">
+async function createFlightSchedule() {
+  try {
+    const schedule = FlightSchedule.build({
+      originAirport: 'JAX',
+      destinationAirport: 'JFK',
+      departureTime: '2030-01-01T00:00:00.000+00:00'
+    });
+    await schedule.validate();
+  } catch (err) {
+    console.log(err);
+  }
+}</pre>
+<p>The <a id="_idIndexMarker424"/>result would return an error object similar to this:</p>
+<pre class="source-code">
+{
+  errors: [
+    ValidationErrorItem {
+      message: 'Invalid origin airport',
+      type: 'Validation error',
+      path: 'originAirport',
+      value: 'JAX',
+      origin: 'FUNCTION',
+      instance: [FlightSchedule],
+      validatorKey: 'isIn',
+      validatorName: 'isIn',
+      validatorArgs: [Array],
+      original: [Error]
+    }
+  ]
+} 
+                          the same as the origin']
+}</pre>
+<p>So, now that our data is <em class="italic">consistent</em>, what about <em class="italic">integrity</em>? In the next chapter, we will go over what Sequelize has to offer us for creating (and manipulating) associations and the various ways of relating models.</p>
+<h1 id="_idParaDest-102"><a id="_idTextAnchor110"/>Summary</h1>
+<p>In this chapter, we added validations to our models using some of Sequelize’s built-in validators and adding our own custom validation methods. We then moved on to handling and performing asynchronous methods inside of custom validations. Once we were able to invoke validations properly, we were then able to practice handling errors for validations.</p>
+<p>In the next chapter, we will be covering another part of adding consistency and integrity to our database, which is handling relations and associations for our models. Validations will ensure integrity on a database row level and associations can be used to ensure integrity across tables and other rows.</p>
+</div>
+</div></body></html>
