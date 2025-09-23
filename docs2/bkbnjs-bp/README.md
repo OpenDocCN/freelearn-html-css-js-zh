@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Backbone,js 蓝图
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/130af1b9919578afdd01f95dce79856a`](https://zh.annas-archive.org/md5/130af1b9919578afdd01f95dce79856a)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

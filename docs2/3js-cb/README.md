@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Three.js 秘籍
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/a32c4684c670a5a9df0a19f7a142e3d7`](https://zh.annas-archive.org/md5/a32c4684c670a5a9df0a19f7a142e3d7)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# 谷歌地图 JavaScript API 秘籍
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/aa124f0c0d096942c0a2c1244b13065f`](https://zh.annas-archive.org/md5/aa124f0c0d096942c0a2c1244b13065f)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
