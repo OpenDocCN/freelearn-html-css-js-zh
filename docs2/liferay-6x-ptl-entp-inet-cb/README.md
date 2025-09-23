@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Liferay 6.x 门户企业内部网络秘籍
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/6ac18c5800f09361a0512e334a144b5f`](https://zh.annas-archive.org/md5/6ac18c5800f09361a0512e334a144b5f)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Leaflet.js 精要
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/59f23bc77d74e56547eaefa785fc89a1`](https://zh.annas-archive.org/md5/59f23bc77d74e56547eaefa785fc89a1)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

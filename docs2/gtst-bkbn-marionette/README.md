@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Backbone Marionette 入门指南
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/b7cef06d807e3b5011ac5e74f583df82`](https://zh.annas-archive.org/md5/b7cef06d807e3b5011ac5e74f583df82)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

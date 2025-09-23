@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Less.js 学习指南
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/de52e13e0bfb1bcb13725f55d8f07f79`](https://zh.annas-archive.org/md5/de52e13e0bfb1bcb13725f55d8f07f79)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
