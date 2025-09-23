@@ -1,4 +1,4 @@
-# 第十四章 服务器端 Highcharts
+# 第十四章：服务器端 Highcharts
 
 第一版《学习 Highcharts》涵盖了在服务器端运行 Highcharts 的多种方法。从那时起，这个领域已经取得了显著的发展。结果是，Highcharts 采用了 PhantomJS（无头 webkit）作为服务器解决方案，以及 PhantomJS/Batik 作为 Java 服务器实现。我们还将探讨如何使用 PhantomJS 创建我们自己的 Highcharts 服务器进程，以及如何使用 Highcharts 发布的官方服务器端脚本。
 

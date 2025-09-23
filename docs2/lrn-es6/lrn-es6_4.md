@@ -1,4 +1,4 @@
-# 第四章 异步编程
+# 第四章：异步编程
 
 ES6 引入了对知名编程模式的原生支持。其中一种模式是 Promise 模式，它使得异步代码的读写更加容易。在本章中，我们将学习如何使用 ES6 Promise API 编写异步代码。新的 JavaScript 和 HTML5 异步 API 现在正通过 Promise 实现，以简化代码的编写。因此，深入学习 Promise 非常重要。我们还将看到一些使用 Promise 公开的示例 API，例如**Web Cryptography API**和**Battery Status API**。
 

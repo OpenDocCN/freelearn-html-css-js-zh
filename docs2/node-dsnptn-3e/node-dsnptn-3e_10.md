@@ -1,4 +1,4 @@
-# 10
+
 
 # 通用 JavaScript 用于 Web 应用程序
 

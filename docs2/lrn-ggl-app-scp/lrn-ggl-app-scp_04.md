@@ -1,4 +1,4 @@
-# 第四章 创建交互式表单
+# 第四章：创建交互式表单
 
 在上一章中，您学习了`GmailApp`和`ContactApp`的许多功能，并构建了许多实际应用。在本章中，您将学习如何使用`FormApp`和`HtmlService`编程创建表单。您还将了解`doGet`和`doPost`函数。
 

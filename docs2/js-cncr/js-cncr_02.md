@@ -1,4 +1,4 @@
-# 第二章 JavaScript 执行模型
+# 第二章：JavaScript 执行模型
 
 本书的第一章探讨了 JavaScript 并发的状态。一般来说，处理 JavaScript 应用程序中的并发并不是一件简单的事情。在编写并发 JavaScript 代码时有很多事情要考虑，我们提出的解决方案通常是非正统的。有很多回调，浏览它们足以让人发疯。我们还瞥见了我们的并发 JavaScript 代码编写模式如何随着现有的并发组件而开始改变。Web Workers 已经开始成熟，而 JavaScript 语言的并发结构刚刚被引入。
 
