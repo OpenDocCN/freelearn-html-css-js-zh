@@ -1,4 +1,4 @@
-# *第一章*：了解 Google Classroom
+# 第一章：*第一章*：了解 Google Classroom
 
 **Google Classroom** 是由 Google 提供的 **学习管理系统**（通常缩写为 **LMS**）。它为学生提供了一个中心位置进行沟通、分享资源、提出问题和创建作业。在一个日益数字化的世界中，Google Classroom 有助于促进当今数字学习者的在线学习。与许多新应用程序一样，Google Classroom 具有独特的视觉和感觉。由于您设置物理教室的方法与您的教学方法一样独特，Google Classroom 开始时是一个空白画布。在我们能够将学生添加到 Google Classroom 之前，您需要为您的物理课程创建在线课程。
 

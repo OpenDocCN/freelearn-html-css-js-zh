@@ -1,6 +1,6 @@
 
 
-# 通用 JavaScript 用于 Web 应用程序
+# 第十章：通用 JavaScript 用于 Web 应用程序
 
 JavaScript 的诞生目标是赋予网络开发者直接在浏览器中执行代码并构建动态和交互式网站的能力。
 
