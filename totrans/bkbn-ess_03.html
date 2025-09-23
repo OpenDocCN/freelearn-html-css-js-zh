@@ -1,0 +1,341 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;3.&#xA0;Accessing Server Data with Models" id="aid-RL0A1"><div class="titlepage"><div><div><h1 class="title"><a id="ch03"/>Chapter 3. Accessing Server Data with Models</h1></div></div></div><p>In this chapter, you'll learn how to:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Use <code class="literal">Model</code>, Backbone's main class to work with data</li><li class="listitem">Create new <code class="literal">Model</code> subclasses</li><li class="listitem">Get and set <code class="literal">Model</code> attributes and trigger other code when these attributes change</li><li class="listitem">Store these attributes to a remote server and retrieve them from the server</li><li class="listitem">Use the several convenience methods that <code class="literal">Model</code> has borrowed from Underscore</li></ul></div><div class="section" title="The purpose of Models"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec23"/>The purpose of Models</h1></div></div></div><p>
+<span class="strong"><strong>Models</strong></span><a id="id63" class="indexterm"/> in Backbone are the core of all data interactions, both within the client code itself and when communicating with a remote server. While one can simply use a plain JavaScript object instead of a <code class="literal">Model</code>, Models offer three major advantages:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Models use<a id="id64" class="indexterm"/> Backbone's class system, making it easy to define methods, create subclasses, and so on</li><li class="listitem">Models allow other code to listen for and respond to changes in the <code class="literal">Model</code> attributes</li><li class="listitem">Models simplify and encapsulate the logic used to communicate with the server</li></ul></div><p>As discussed in the previous chapter, we can create our own subclass of Model using <code class="literal">extend</code>:</p><div class="informalexample"><pre class="programlisting">var Cat = Backbone.Model.extend({
+     // The properties and methods of our "Cat" class would go here
+});</pre></div><p>Once we've created that class, we can <a id="id65" class="indexterm"/>instantiate new <code class="literal">Model</code> instances using JavaScript's <code class="literal">new</code> keyword, and (optionally) we can pass in an initial set of attributes and options, as follows:</p><div class="informalexample"><pre class="programlisting">var garfield = new Cat({
+    name: 'Garfield',
+    owner: 'John'
+}, {
+    estimateWeight: true
+});</pre></div></div></div>
+<div class="section" title="Attributes, options, and properties" id="aid-SJGS1"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec24"/>Attributes, options, and properties</h1></div></div></div><p>When we talk about attributes<a id="id66" class="indexterm"/> in Backbone, they often sound similar to regular JavaScript <a id="id67" class="indexterm"/>properties. After all, both attributes and properties are key-value pairs <a id="id68" class="indexterm"/>stored on a <code class="literal">Model</code> object. The difference between the two is that attributes aren't (in a technical sense) actually properties of a Model at all; instead, they are the properties of a property of a <code class="literal">Model</code>. Each <code class="literal">Model</code> class has a property called <code class="literal">attributes</code>, and the attributes themselves are stored as properties of that <code class="literal">attributes</code> property. Take an example of the following code snippet:</p><div class="informalexample"><pre class="programlisting">var book = new Backbone.Model({pages: 200});
+book.renderBlackAndWhite = true;
+book.renderBlackAndWhite // is a property of book
+book.attributes.pages; // is an attribute of book
+book.attributes.currentPage = 1; // is also an attribute of book}</pre></div><div class="note" title="Note"><h3 class="title"><a id="note03"/>Note</h3><p>
+<span class="strong"><strong>Attributes versus Properties</strong></span>
+</p><p>As shown in the<a id="id69" class="indexterm"/> preceding code snippet, Backbone's <code class="literal">Models</code> class <a id="id70" class="indexterm"/>can also have regular, nonattribute properties. If you need to store a piece of data in a Model, you can choose between using a property or an attribute. In general, you should use an attribute only when the data is going to be synced to the server or when you want other parts of your code to be able to listen for data changes. If your data doesn't meet these requirements, it's best to store it as a regular JavaScript property instead of as an attribute, because storing such data as an attribute will create more work for you when you save the <code class="literal">Model</code> class.</p><p>On a purely conceptual level, any of the core persistent information that a <code class="literal">Model</code> class is designed to hold belongs in its attributes, while any information that is secondary or derived, or which is only designed to last until the user refreshes the page, should be stored as properties.</p></div><p>If you want to pass in attributes when you create a new <code class="literal">Model</code> class, you can simply provide them as the first argument and Backbone will automatically add them. You can also define default attributes, which all new <code class="literal">Models</code> of that class will have, using the defaults property when you<a id="id71" class="indexterm"/> extend <a id="id72" class="indexterm"/>your <code class="literal">Model</code> class, as <a id="id73" class="indexterm"/>shown here:</p><div class="informalexample"><pre class="programlisting">var Book = Backbone.Model.extend({
+
+    defaults: {publisher: 'Packt Publishing'}
+});
+var book = new Book();
+book.attributes.publisher; // 'Packt Publishing'</pre></div><p>It is important to remember, however, that in JavaScript, objects are passed by reference, which means that any object you provide in <code class="literal">defaults</code> will be shared with, not copied between, instances of your <code class="literal">Model</code> class. In other words, check out the following code snippet:</p><div class="informalexample"><pre class="programlisting">var Book = Backbone.Model.extend({
+    defaults: {publisher: {name: 'Packt Publishing'}}
+});
+var book1 = new Book();
+book1.attributes.publisher.name // == 'Packt Publishing'
+var book2 = new Book();
+book2.attributes.publisher.name = 'Wack Publishing';
+book1.attributes.publisher.name // == 'Wack Publishing'!</pre></div><p>Since you probably don't want changes to one Model affecting your other Models, you should avoid setting objects in defaults. If you really need to set an object as a default, you can do so in the Model's <code class="literal">initialize</code> method or by using a more advanced function-based form of defaults, which we'll cover later on in <a class="link" title="Chapter 7. Fitting Square Pegs in Round Holes – Advanced Backbone Techniques" href="part0069.xhtml#aid-21PMQ1">Chapter 7</a>, <span class="emphasis"><em>Fitting Square Pegs in Round Holes – Advanced Backbone Techniques</em></span>.</p><p>While setting default attributes for Models is easy, the same cannot be said about adding default direct properties to a Model when it is first created. The best way to set these properties is to use the Model's <code class="literal">initialize</code> method. For instance, if you want to set a <code class="literal">renderBlackAndWhite</code> property when you create a <code class="literal">Book</code> Model, you can do what is described in the following code snippet:</p><div class="informalexample"><pre class="programlisting">var Book = Backbone.Model.extend({
+    initialize: function(attributes, options) {
+        this.renderBlackAndWhite =  options.renderBlackAndWhite;
+    }
+});</pre></div><p>The preceding code sets the <code class="literal">renderBlackAndWhite</code> property of each newly created book to the <code class="literal">renderBlackAndWhite</code> option passed in when the book is created.</p></div>
+<div class="section" title="Getters and setters" id="aid-TI1E1"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec25"/>Getters and setters</h1></div></div></div><p>While the <code class="literal">attributes</code> property is (behind the scenes) just a JavaScript object, that doesn't mean that we should<a id="id74" class="indexterm"/> treat it as such. For instance, you should never set an attribute <a id="id75" class="indexterm"/>directly by changing the <span class="emphasis"><em>attributes</em></span> property of a <code class="literal">Model</code> class:</p><div class="informalexample"><pre class="programlisting">var book = new Book({pages: 200});
+book.attributes.pages = 100; // don't do this!</pre></div><p>Instead, the attributes of Backbone's <code class="literal">Models</code> should be set using the Model's <code class="literal">set</code> method:</p><div class="informalexample"><pre class="programlisting">book.set('pages', 100); // do this!</pre></div><p>The <code class="literal">set</code> method has two forms or <span class="emphasis"><em>signatures</em></span>. The first (shown previously) takes two arguments: one for the data's key and one for its value. This form is great if you only want to set one value at a time, but if you need to set multiple values, you can use the second form instead, which takes only a single argument containing all the values of <code class="literal">set</code>:</p><div class="informalexample"><pre class="programlisting">book.set({pages: 50, currentPage: 49});</pre></div><p>In addition, Models also have an <code class="literal">unset</code> method, which takes only a single <span class="emphasis"><em>key</em></span> argument and works in a similar way as JavaScript's <code class="literal">delete</code> statement, except that it also lets any code listening to the Model known about the change:</p><div class="informalexample"><pre class="programlisting">book.unset('currentPage');// book.attributes.currentPage == undefined
+delete book.attributes.currentPage; don't do this!</pre></div><p>As you might have guessed, retrieving attributes through Backbone is done using the <code class="literal">get</code> method, which takes only a single <span class="emphasis"><em>key</em></span> argument and returns the value for that key:</p><div class="informalexample"><pre class="programlisting">book.set({pages: 50});
+var bookPages = book.get('pages'); // == 50
+bookPages = book.attributes.pages;// same effect, but again don't do this!</pre></div><p>The <code class="literal">get</code> method is very simple; I'd actually like to show its entire source code here:</p><div class="informalexample"><pre class="programlisting">get: function(attr) {
+    return this.attributes[attr];
+}</pre></div><p>Now, you may be thinking, if that's all there is to get, why not just use the <code class="literal">attributes</code> object directly? After all, there's no difference, right?</p><div class="informalexample"><pre class="programlisting">book.get('pages'); // good
+book.attributes.pages; // bad?</pre></div><p>In fact, there are two benefits of using the <code class="literal">get</code> method, as follows:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">The first benefit is that using <code class="literal">get</code> makes your code slightly short and more readable as well as more consistent since your <code class="literal">get</code> calls will match your <code class="literal">set</code> calls.</li><li class="listitem">The second benefit, and only a programmatic advantage, is that using <code class="literal">get</code> offers the option of future extensibility. Like many Backbone methods, <code class="literal">get</code> is not just designed for out of the box use but also for extension by you, the Backbone developer.</li></ul></div><p>Let's imagine for a <a id="id76" class="indexterm"/>moment that you are building a Backbone application, and one day, you <a id="id77" class="indexterm"/>realize that you need to know when some piece of code accesses a certain attribute. Maybe, you find the need to do so as you're adding auditing or logging capabilities, or maybe you're just trying to debug a tricky problem.</p><p>If you've written your application to access attributes directly, you'll need to find every place in your code that gets an attribute and then update that code. However, if you have already been using the <code class="literal">get</code> method, you can simply override the <code class="literal">get</code> method on the relevant <code class="literal">Model</code> (or <code class="literal">Models</code>) to tap in to all of your existing <code class="literal">get</code> logic from a single place in the code.</p></div>
+<div class="section" title="Listening for events" id="aid-UGI01"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec26"/>Listening for events</h1></div></div></div><p>One of the primary <a id="id78" class="indexterm"/>advantages of using the <code class="literal">set</code> and <code class="literal">unset</code> methods, as we just described, is that they allow other parts of your code to listen for changes to a Model's attributes. This works similar to listening for a DOM event in jQuery and is done using the <code class="literal">on</code> and <code class="literal">off</code> methods of the <code class="literal">Model</code>:</p><div class="informalexample"><pre class="programlisting">var book = new Backbone.Model({pages: 50});
+book.on('change:pages', function() { // triggers when the "pages" of book  change
+    alert('the number of pages changed!');
+});
+book.set('pages', 51); // will alert "the number of pages has changed"
+book.off('changes:pages');
+book.set('pages', 52); // will no longer alert</pre></div><p>As you can see in the preceding code, the <code class="literal">on</code> method, just like jQuery's, takes two arguments: an <code class="literal">event</code> function and a <code class="literal">callback</code> function. When the event is triggered, Backbone invokes the <code class="literal">callback</code> function. The event listener can be removed using the <code class="literal">off</code> method. If you want your code to listen for multiple events, you can combine them with spaces, as shown here:</p><div class="informalexample"><pre class="programlisting">book.on('change destroy', function() {    // this callback will trigger after a change or a destroy
+});</pre></div><p>Backbone offers one significant improvement over jQuery however, in the form of an optional third <code class="literal">context</code> argument. If this argument is provided, the callback will be bound (as if you had used the <code class="literal">_.bind</code> method mentioned in the previous chapter) as it's registered:</p><div class="informalexample"><pre class="programlisting">var Author = Backbone.Model.extend({
+    listenForDeathOfRival: function(rival) {
+        rival.on('destroy', function celebrateRivalDeath() {
+            alert('Hurray!  I, ' + this.get('name') + ', hated ' + 
+                  rival.get('name') + '!');
+        }, this); // "this" is our "context" argument
+    }
+});
+var keats = new Author({name: 'John Keats');
+var byron = new Author({name; 'Lord Byron'});
+byron.listenForDeathOfRival(keats);
+keats.destroy(); // will alert "Hurray!  I, Lord Byron, hated  John Keats!"</pre></div><p>In the previous code, we<a id="id79" class="indexterm"/> define an <code class="literal">Author</code> class with a <code class="literal">listenForDeathOfRival</code> method, which takes a rival (another <code class="literal">Author</code> class) as an argument and sets up a listener for when the rival is destroyed. We pass the original author as the <code class="literal">context</code> argument, so when the callback resolves, its <code class="literal">this</code> method will be set to that author. We then call <code class="literal">listenForDeathOfRival</code> on <code class="literal">byron</code> and pass in <code class="literal">keats</code> so that <code class="literal">byron</code> listens for a destroy event on <code class="literal">keats</code>.</p><p>When we then trigger Keats' destruction in the final line, we trigger the event listener setup by <code class="literal">listenForDeathOfRival</code>, which gives the alert message. The message is able to include both the authors' names because when the callback resolves, Keats' name is available from the <code class="literal">rival</code> variable, while Byron's name is available as an attribute of the <code class="literal">Model</code> (because we passed his Model as the <code class="literal">context</code> argument when we set up the event listener).</p></div>
+<div class="section" title="Available events" id="aid-VF2I1"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec27"/>Available events</h1></div></div></div><p>
+<code class="literal">Models</code> have <a id="id80" class="indexterm"/>several<a id="id81" class="indexterm"/> different events available for you to listen to, as shown in the following table:</p><div class="informaltable"><table border="1"><colgroup><col/><col/></colgroup><thead><tr><th valign="bottom">
+<p>Event name</p>
+</th><th valign="bottom">
+<p>Trigger</p>
+</th></tr></thead><tbody><tr><td valign="top">
+<p>
+<code class="literal">change</code>
+</p>
+</td><td valign="top">
+<p>When<a id="id82" class="indexterm"/> any attribute of a Model changes</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">change:attribute</code>
+</p>
+</td><td valign="top">
+<p>When the <a id="id83" class="indexterm"/>specified attribute changes</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">destroy</code>
+</p>
+</td><td valign="top">
+<p>When the <a id="id84" class="indexterm"/>Model is destroyed</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">request</code>
+</p>
+</td><td valign="top">
+<p>When an <a id="id85" class="indexterm"/>AJAX method of the Model starts</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">sync</code>
+</p>
+</td><td valign="top">
+<p>When an <a id="id86" class="indexterm"/>AJAX method of the Model has completed</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">error</code>
+</p>
+</td><td valign="top">
+<p>When an <a id="id87" class="indexterm"/>AJAX method of the Model returns an error</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">invalid</code>
+</p>
+</td><td valign="top">
+<p>When<a id="id88" class="indexterm"/> validation triggered by a Model's <code class="literal">save</code>/<code class="literal">isValid</code> call fails</p>
+</td></tr></tbody></table></div><p>There are also several other <a id="id89" class="indexterm"/>events that are related to <span class="strong"><strong>Collection</strong></span>, which will<a id="id90" class="indexterm"/> be explained further in the next chapter:</p><div class="informaltable"><table border="1"><colgroup><col/><col/></colgroup><thead><tr><th valign="bottom">
+<p>Event name</p>
+</th><th valign="bottom">
+<p>Trigger</p>
+</th></tr></thead><tbody><tr><td valign="top">
+<p>
+<code class="literal">add</code>
+</p>
+</td><td valign="top">
+<p>When the <a id="id91" class="indexterm"/>Model is added to a Collection</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">remove</code>
+</p>
+</td><td valign="top">
+<p>When the <a id="id92" class="indexterm"/>Model is removed from a Collection</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">reset</code>
+</p>
+</td><td valign="top">
+<p>When a<a id="id93" class="indexterm"/> Collection that the Model belongs to is reset</p>
+</td></tr></tbody></table></div><p>Models also have one other, special, event called <code class="literal">all</code>. This event is triggered in response when any of the other <code class="literal">Model</code> events are triggered.</p><div class="section" title="Custom events"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec14"/>Custom events</h2></div></div></div><p>Although you are unlikely to<a id="id94" class="indexterm"/> use them very often, you may find it useful to create your own<a id="id95" class="indexterm"/> custom events on certain occasions. This can be done by using the Model's <code class="literal">trigger</code> method, which lets you simulate an event coming from the <code class="literal">Model</code>, as follows:</p><div class="informalexample"><pre class="programlisting">someModel.trigger('fakeEvent', 5);</pre></div><p>You can listen for these events in the way same as any other non-custom event, by using the <code class="literal">on</code> method. Any additional arguments passed to <code class="literal">trigger</code> (such as the <code class="literal">5</code> in the preceding example) will be passed as arguments to event handlers that listen for that event.</p></div></div>
+<div class="section" title="Server-side actions"><div class="titlepage" id="aid-10DJ42"><div><div><h1 class="title"><a id="ch03lvl1sec28"/>Server-side actions</h1></div></div></div><p>Once we've filled a <code class="literal">Model</code> class <a id="id96" class="indexterm"/>with data, we might not want to lose that data, and that's where the AJAX features of Model come into play. Every Model has three methods to interact with the server, which can be used to generate four types of HTTP requests, as shown in the following table:</p><div class="informaltable"><table border="1"><colgroup><col/><col/><col/><col/></colgroup><thead><tr><th valign="bottom">
+<p>Method</p>
+</th><th valign="bottom">
+<p>RESTful URL</p>
+</th><th valign="bottom">
+<p>HTTP method</p>
+</th><th valign="bottom">
+<p>Server action</p>
+</th></tr></thead><tbody><tr><td valign="top">
+<p>
+<code class="literal">fetch</code>
+</p>
+</td><td valign="top">
+<p>
+<code class="literal">/books/id</code>
+</p>
+</td><td valign="top">
+<p>
+<code class="literal">GET</code>
+</p>
+</td><td valign="top">
+<p>
+<code class="literal">retrieves data</code>
+</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">save</code> (for a new <code class="literal">Model</code>)</p>
+</td><td valign="top">
+<p>
+<code class="literal">/books</code>
+</p>
+</td><td valign="top">
+<p>
+<code class="literal">PUT</code>
+</p>
+</td><td valign="top">
+<p>
+<code class="literal">sends data</code>
+</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">save</code> (for an existing <code class="literal">Model</code>)</p>
+</td><td valign="top">
+<p>
+<code class="literal">/books/id</code>
+</p>
+</td><td valign="top">
+<p>
+<code class="literal">POST</code>
+</p>
+</td><td valign="top">
+<p>
+<code class="literal">sends data</code>
+</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">destroy</code>
+</p>
+</td><td valign="top">
+<p>
+<code class="literal">/books/id</code>
+</p>
+</td><td valign="top">
+<p>
+<code class="literal">DELETE</code>
+</p>
+</td><td valign="top">
+<p>
+<code class="literal">deletes data</code>
+</p>
+</td></tr></tbody></table></div><p>The sample URLs in the<a id="id97" class="indexterm"/> preceding table are what Backbone will generate by default when it tries to perform any of the three AJAX methods. Backbone works best with a set of server-side APIs that are organized using this RESTful architecture. The basic idea of a RESTful server-side API is that it is made up of URL endpoints that expose various resources for the client to consume.</p><p>The different HTTP methods are used in such an architecture to control which action the server should take with that resource. Thus, to delete a book with an ID of 7, a RESTful API will expect a <code class="literal">DELETE</code> request to <code class="literal">/books/7</code>.</p><p>Of course, Backbone won't know that the server-side endpoint for a Book <code class="literal">Model</code> will be <code class="literal">/books</code> unless you tell it, which you can do by specifying a <code class="literal">urlRoot</code> property:</p><div class="informalexample"><pre class="programlisting">var Book = new Backbone.Model.extend({
+    urlRoot: '/books'
+});
+new Book().save(); // will initiate a PUT request to "/books"</pre></div><p>If, for some reason, your server-side API is on a different domain, you can also use <code class="literal">urlRoot</code> method to specify an entirely different domain. For instance, to indicate that our <code class="literal">Book</code> class should use the papers endpoint of <a class="ulink" href="http://www.example.com/">http://www.example.com/</a>, we can set <code class="literal">urlRoot</code> of <a class="ulink" href="http://www.example.com/papers">http://www.example.com/papers</a>. This approach will not work on most sites, however, because of cross-site scripting limitations imposed by browsers; so, unless you employ special techniques (for instance, a server-side proxy), you will most likely want your server-side API to be on the same domain that serves your JavaScript files.</p><p>If your server-side API isn't RESTful, you can still use Backbone's AJAX capabilities by overwriting its built-in <code class="literal">url</code> method. While the default version of this method simply combines the Model's <code class="literal">urlRoot</code> method with its ID (if any), you can redefine it to specify any URL that you'd prefer Backbone to use.</p><p>For instance, let's say our book Models have a <code class="literal">fiction</code> attribute and we want to use two different endpoints to save our books: <code class="literal">/fiction</code> for fiction books and <code class="literal">/nonfiction</code> for nonfiction books. We can override our <code class="literal">url</code> method to tell Backbone as much, as shown here:</p><div class="informalexample"><pre class="programlisting">var Book = Backbone.extend({
+    url: function() {
+        if (this.get('fiction')) {
+            return '/fiction;
+        } else {
+            return  '/nonfiction';
+        }
+    }
+});
+var theHobbit = new Book({fiction: true});
+alert(theHobbit.url()); // alerts "/fiction"</pre></div><div class="section" title="Storing URLs on the client"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec15"/>Storing URLs on the client</h2></div></div></div><p>As we just covered, Backbone <a id="id98" class="indexterm"/>allows you to specify any URLs you want for your Models. If your site is fairly complex, however, it's a good idea to store the actual URL strings, or even URL-generating functions, in a separate <code class="literal">urls</code> object. Take an example of the following code snippet:</p><div class="informalexample"><pre class="programlisting">var urls = {
+    books: function() {
+        return this.get('fiction') ? '/fiction' : '/nonfiction';
+    },
+    magazines: '/magazines'
+};
+var Book = Backbone.Model.extend({url:  urls.books});
+var Magazine = Backbone.Model.extend({urlRoot:  urls.magazines});</pre></div><p>While this is not strictly necessary (and is may be overkill on smaller sites), this approach has several benefits on a larger site:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">You can easily share URLs between any of your Models</li><li class="listitem">You easily share URLs between your Models and non-Backbone AJAX calls</li><li class="listitem">Finding existing URLs is quick and easy</li><li class="listitem">If any URL changes, you only have to edit one file</li></ul></div></div><div class="section" title="Identification"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec16"/>Identification</h2></div></div></div><p>Up until now, we've avoided <a id="id99" class="indexterm"/>the question of how exactly Backbone determines what a Model's ID is. As it turns out, Backbone has a very simple mechanism: it uses whatever attribute you specify as the <code class="literal">idAttribute</code> property of the <code class="literal">Model</code> class. The default <code class="literal">idAttribute</code> property is simply <code class="literal">id</code>; so, if the JSON returned by your server includes an <code class="literal">id</code> attribute, you don't even need to specify an <code class="literal">idAttribute</code> property. However, since many APIs don't use <code class="literal">id</code> (for example, some use <code class="literal">_id</code> instead), Backbone watches for changes to its attributes, and when it sees an attribute that matches the <code class="literal">idAttribute</code> property, it will set the Model's special <code class="literal">id</code> property to that attribute's value, as shown here:</p><div class="informalexample"><pre class="programlisting">var Book = Backbone.Model.extend({idAttribute: 'deweyDecimalNumber'})
+var warAndPeace = new Book({{deweyDecimalNumber: '082 s 891.73/3'});
+warAndPeace.get('deweyDecimalNumber'); // '082 s 891.73/3'
+warAndPeace.id; // also '082 s 891.73/3'</pre></div><p>In addition to telling Backbone what URL to use when saving the Model, the <code class="literal">ID</code> attribute also has another function: its absence tells Backbone that the Model is new, which you can see if you use the <code class="literal">isNew</code> method:</p><div class="informalexample"><pre class="programlisting">var warAndPeace = new Book({deweyDecimalNumber: '082 s 891.73/3'});
+var fiftyShades = new Book();
+warAndPeace.isNew(); // false
+fiftyShades.isNew(); // true</pre></div><p>This method can also be overridden if you need to use some other mechanism to determine whether a <code class="literal">Model</code> class is new or not. There's one other issue with <code class="literal">isNew</code> though: if new Models don't have IDs, how will you identify them? For instance, if you were storing a set of <code class="literal">Models</code> by <code class="literal">ID</code>, what will you do with the new ones?</p><div class="informalexample"><pre class="programlisting">var warAndPeace = new Backbone.Model({{id: 55});
+var shades = new Backbone.Model();
+var bookGroup = {};
+bookGroup[warAndPeace.id] =  warAndPeace; // bookGroup = {55: warAndPeace}
+bookGroup[shades.id] = shades; // doesn't work because shades.id is undefined</pre></div><p>To get around this problem, Backbone<a id="id100" class="indexterm"/> provides a special client-side only <code class="literal">ID</code>, or <code class="literal">cid </code>property, on every Model. This <code class="literal">cid</code> property is guaranteed to be unique, but has no connection whatsoever with the Model's actual <code class="literal">ID</code> (if it even has one). It is also not guaranteed to be consistent; if you refresh the page, your Models' might have entirely different <code class="literal">cid</code> properties generated for them.</p><p>The presence of a <code class="literal">cid</code> property allows you to use a Model's ID for all server-related tasks and its <code class="literal">cid</code> for all client-side tasks, without the need to get a new ID from the server every time you create a new Model. By using the <code class="literal">cid</code> property, we can solve our previous problem and successfully index new books:</p><div class="informalexample"><pre class="programlisting">var bookGroup = {};
+bookGroup[warAndPeace.cid] = warAndPeace; // bookGroup = {c1: warAndPeace}
+bookGroup[fiftyShades .cid] = fiftyShades;
+// bookGroup = {c1: warAndPeace, c2: fiftyShades};</pre></div></div><div class="section" title="Fetching data from the server"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec17"/>Fetching data from the server</h2></div></div></div><p>The first of Backbone's <a id="id101" class="indexterm"/>three AJAX methods, <code class="literal">fetch</code>, is used to retrieve the data of a Model from the server. The <code class="literal">fetch</code> method doesn't require any arguments, but it takes a single optional <code class="literal">options</code> argument. This argument can take Backbone-specific options, such as silent (which will prevent the Model from triggering an event as a result of fetch), or any options that you will normally pass to <code class="literal">$.ajax</code>, such as <span class="emphasis"><em>async</em></span>.</p><p>You can specify what to do when the <code class="literal">fetch</code> request is finished in one of the two ways. First, you can specify a <code class="literal">success</code> or <code class="literal">error</code> callback in the options passed to <code class="literal">fetch</code>:</p><div class="informalexample"><pre class="programlisting">var book = new Book({id: 55});
+book.fetch({
+    success: function() {
+        alert('the fetch completed successfully');
+    },
+    error: function() {
+        alert('an error occurred during the fetch');
+    }
+});</pre></div><p>The <code class="literal">fetch</code> method also <a id="id102" class="indexterm"/>returns a jQuery promise, which is an object that lets you say <span class="emphasis"><em>when the fetch is done, do ___</em></span> or <span class="emphasis"><em>if the fetch fails, do ___</em></span>. We can use promises instead of a success callback to trigger logic after the AJAX operation finishes, and this approach even lets us chain multiple callbacks together:</p><div class="informalexample"><pre class="programlisting">var promise = book.fetch().done(function() {
+        alert('the fetch completed successfully');
+}).fail(function() {
+        alert('an error occurred during the fetch');
+});</pre></div><p>While both approaches work, the promise style is slightly more powerful because it allows you to easily trigger multiple callbacks from a single <code class="literal">fetch</code> or trigger a callback only after multiple <code class="literal">fetch</code> calls complete. For instance, let's say we wanted to fetch two different Models and display an alert only after they've both been returned from the server. Using the success/error approach, this can be awkward, but with the promise style (combined with jQuery's <code class="literal">when</code> function), the problem is simple to solve:</p><div class="informalexample"><pre class="programlisting">var warAndPeace = new Backbone.Model({{id: 55});
+var fiftyShades = new Backbone.Model({id: 56});
+var warAndPeacePromise = warAndPeace.fetch();
+var fiftyShadesPromise = fiftyShades.fetch();
+$.when( warAndPeacePromise, fiftyShadesPromise).then(function() {
+    alert('Both books have now been successfully fetched!');
+});</pre></div><p>Once a <code class="literal">fetch</code> method is complete, Backbone will take the server's response, assume that it's a JSON object representing the Model's attributes, and call <code class="literal">set</code> on that object. In other words, <code class="literal">fetch</code> is really just a <code class="literal">GET</code> request followed by a set of whatever comes back in the response. The <code class="literal">fetch</code> method is designed to work with a RESTful-style API that returns just the Model's JSON, so if your server returns something else, such as that same JSON wrapped inside an <code class="literal">envelope</code> object, you'll need to override a special <code class="literal">Model</code> method called <code class="literal">parse</code>.</p><p>When a <code class="literal">fetch</code> method finishes, Backbone passes the server's response through <code class="literal">parse</code> before it calls <code class="literal">set</code>, and the default implementation of the <code class="literal">parse</code> method simply returns the object given to it <a id="id103" class="indexterm"/>without modification. By overriding the <code class="literal">parse</code> method with your own logic, however, you can tell Backbone how to convert this response from whatever format the server sent it in into a Backbone attributes object.</p><p>For instance, let's say that instead of returning the data for a book directly, your server returned an object with the book's attributes contained inside a book key, as shown here:</p><div class="informalexample"><pre class="programlisting">{
+    book: {
+        pages: 300,
+        name: 'The Hobbit'
+    },
+    otherInfo: 'stuff we don't care about'
+}</pre></div><p>By overriding the <code class="literal">parse</code> method of our <code class="literal">Book</code> class, we can tell Backbone to throw out the <code class="literal">otherInfo</code> and just use the <code class="literal">Book</code> property as our book's attribute:</p><div class="informalexample"><pre class="programlisting">var Book = Backbone.Model.extend({
+    parse: function(response) {
+        return response.pages; // Backbone will call this.set(response.pages);
+    }
+});</pre></div></div><div class="section" title="Saving data to the server"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec18"/>Saving data to the server</h2></div></div></div><p>Once you've started<a id="id104" class="indexterm"/> creating Models, you'll no doubt find yourself wanting to save their data to your remote server, and that's where Backbone's <code class="literal">save</code> method comes in. As its name suggests, <code class="literal">save</code> allows you to send your Model's attributes to your server. It does so in the JSON format, at the URL specified by the <code class="literal">url</code> method of your Model, via an AJAX <code class="literal">POST</code> or <code class="literal">PUT</code> request. Like <code class="literal">fetch</code>, <code class="literal">save</code> allows you to provide <code class="literal">success</code> and <code class="literal">error</code> callback options and (also like <code class="literal">fetch</code>) it returns a promise, which can be used to trigger code once the <code class="literal">save</code> method is completed.</p><p>Here's an example of <code class="literal">save</code> used with a promise-based callback:</p><div class="informalexample"><pre class="programlisting">var book = new Book({
+    pages: 20,
+    title: 'Ideas for Great Book Titles'
+});
+book.save().done(function(response) {
+    alert(response); // alerts the the response's JSON
+});</pre></div><p>The preceding code reveals another problem: it will only work if our server is set up to receive all of the Model's attributes in the JSON format. If we want to save only some of those attributes or if we want to send other JSON, such as a wrapping <code class="literal">envelope</code> object, Backbone's <code class="literal">save</code> method won't work out of the box. Fortunately, Backbone provides a solution in the form of its <code class="literal">toJSON</code> method. When you save, Backbone passes your <code class="literal">Models</code> attributes through <code class="literal">toJSON</code>, which (like <code class="literal">parse</code>) normally does nothing, because by default <code class="literal">toJSON</code> simply returns whatever is passed in to it.</p><p>However, by <a id="id105" class="indexterm"/>overriding <code class="literal">toJSON</code>, you can gain complete control over what Backbone sends to your server. For instance, if we wanted to wrap our book JSON inside another object as a <code class="literal">book</code> property and then add some further information, we can override <code class="literal">toJSON</code> as follows:</p><div class="informalexample"><pre class="programlisting">var Book = Backbone.Model.extend({
+    toJSON: function(originalJson) {
+        return {
+            data:  originalJson,
+            otherInfo: 'stuff'
+        };
+    }
+});
+var book = new Book({pages: 100);
+book.save(); // will send: {book: {pages: 100}, otherInfo: 'stuff'}</pre></div></div><div class="section" title="Validation"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec19"/>Validation</h2></div></div></div><p>Before you send <a id="id106" class="indexterm"/>anything to the server, it's a good idea to make sure that the data you're sending is actually valid. To solve this problem, Backbone provides another method for you to optionally overwrite: <code class="literal">validate</code>. The <code class="literal">validate</code> method is called every time you save, but its default implementation simply returns <code class="literal">true</code>. If you overwrite it, however, you can add whatever validation logic you want, and if that logic returns <code class="literal">false</code>, then the whole <code class="literal">save</code> operation will fail and also return <code class="literal">false</code>. For instance, let's say we wanted to ensure that every new book has a minimum of 10 pages:</p><div class="informalexample"><pre class="programlisting">var Book = Backbone.Model.extend({
+    validate: function(attributes) {
+        var isValid = this.get('pages') &gt;= 10;
+        return isValid;
+    }
+});
+var tooShort = new Book({pages: 5});
+var wasAbleToSave = tooShort.save(); // == false</pre></div><div class="note" title="Note"><h3 class="title"><a id="note04"/>Note</h3><p>Note that if the validation fails, Backbone will not even return a promise; it will just return <code class="literal">false</code>.</p></div><p>As a result, if you<a id="id107" class="indexterm"/> add validation logic to your <code class="literal">Model</code> class, you will need to test for a failed validation case separately every time you <code class="literal">save</code>; you can't simply rely on the <code class="literal">fail</code> method of the returned promise since no such promise will be returned. In other words, the following won't work (and will cause an error since <code class="literal">false</code> has no <code class="literal">fail</code> method):</p><div class="informalexample"><pre class="programlisting">tooShort.save().fail(function() {
+    // this code will never be reached
+});</pre></div><p>Instead, you should use the following code snippet:</p><div class="informalexample"><pre class="programlisting">var savePromise = tooShort.save();
+if (savePromise) {
+    savePromise.done(function() {
+        // this code will be reached if both the validation and AJAX call succeed
+    }).fail(function() {
+        // this code will be reached if the validation passes but the AJAX fails
+    });
+} else {
+     // this code will be reached if the validation fails
+}</pre></div><div class="note" title="Note"><h3 class="title"><a id="note05"/>Note</h3><p>Note that you can also check the validity of your Models at any time by using the <span class="strong"><strong>isValid </strong></span>method, which will only return the validation result (and not <code class="literal">save</code>).</p></div></div></div>
+<div class="section" title="Return of Underscore" id="aid-11C3M1"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec29"/>Return of Underscore</h1></div></div></div><p>That covers all the <a id="id108" class="indexterm"/>core functionality of <code class="literal">Model</code>, but before we move on to explore <code class="literal">Collections</code>, some of the convenience methods of <code class="literal">Model</code> are worth mentioning. In addition to requiring Underscore, Backbone alo incorporates many <code class="literal">Underscore</code> methods into its classes as shortcut methods, and <code class="literal">Model</code> is a perfect example. The main advantage of using these built-in shortcut methods, besides being a bit more readable, is that they operate on the Model's attributes rather than the <code class="literal">Model</code> itself.</p><p>For instance, Underscore has a method called <code class="literal">keys</code>, which you can use to get all the keys on an object. You can use this method directly to get all the keys of a Model's attributes, as follows:</p><div class="informalexample"><pre class="programlisting">var book = new Backbone.Model({pages: 20, title: 'Short Title'};
+var attributeKeys = _.keys(book.attributes);
+alert(attributeKeys); // alerts ['pages', 'title']</pre></div><p>However, if you use Model's version of that same method instead, you can simplify your code slightly and make it slightly more readable:</p><div class="informalexample"><pre class="programlisting">var attributeKeys =  book.keys();
+alert(attributeKeys); // alerts ['pages', 'title'];</pre></div><p>There are a total of six <a id="id109" class="indexterm"/>of these methods on <code class="literal">Model</code>, and while we don't have time to explain all of them in this book, here's a brief summary of what each one does:</p><div class="informaltable"><table border="1"><colgroup><col/><col/></colgroup><thead><tr><th valign="bottom">
+<p>Name</p>
+</th><th valign="bottom">
+<p>What it does</p>
+</th></tr></thead><tbody><tr><td valign="top">
+<p>
+<code class="literal">keys</code>
+</p>
+</td><td valign="top">
+<p>This returns every attribute key</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">values</code>
+</p>
+</td><td valign="top">
+<p>This returns every attribute value</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">pairs</code>
+</p>
+</td><td valign="top">
+<p>This returns an array of attribute key/value pairs</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">invert</code>
+</p>
+</td><td valign="top">
+<p>This returns the attributes with keys and values switched; for instance, an attribute of <code class="literal">{'pages': 20}</code> will become <code class="literal">{'20': 'pages'}</code>
+</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">pick</code>
+</p>
+</td><td valign="top">
+<p>This returns both the keys and values of only the specified attributes; for instance, <code class="literal">book.pick('pages')</code> will return <code class="literal">{pages: 20}</code> without any title or other attributes</p>
+</td></tr><tr><td valign="top">
+<p>
+<code class="literal">omit</code>
+</p>
+</td><td valign="top">
+<p>This returns both the keys and values for every attribute except those specified; for instance, <code class="literal">book.omit('pages')</code> will return <code class="literal">{title: 'Short Title'}</code>
+</p>
+</td></tr></tbody></table></div></div>
+<div class="section" title="Summary" id="aid-12AK81"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec30"/>Summary</h1></div></div></div><p>In this chapter, we explored Backbone's <code class="literal">Model</code> class. You learned how to use <code class="literal">get</code> and <code class="literal">set</code> to change attributes, how to use <code class="literal">on</code> and <code class="literal">off</code> to listen for events, and how to use <code class="literal">fetch</code>, <code class="literal">save</code>, and <code class="literal">destroy</code> to exchange data with a remote server. You also learned how you can customize Backbone to handle your server's API by modifying the <code class="literal">url</code>, <code class="literal">urlRoot</code>, and <code class="literal">idAttribute</code> properties and how to handle differently structured data with <code class="literal">parse</code> and <code class="literal">toJSON</code>.</p><p>In the next chapter, we'll take a look at Backbone's other data class, <code class="literal">Collection</code>. Collections allow you to store groups of Models together, and (just like Models) they allow you to listen for changes and send or retrieve data to/from the server.</p></div></body></html>
