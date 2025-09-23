@@ -1,0 +1,373 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;5.&#xA0;Test Stubs and Mocks"><div class="titlepage"><div><div><h1 class="title"><a id="ch05"/>Chapter 5. Test Stubs and Mocks</h1></div></div></div><p>With the integration of Sinon.JS into our test infrastructure, we now have deeper insight into the methods and actions within our Backbone.js application. As we turn to testing the remaining application components, we will move beyond merely <span class="emphasis"><em>observing</em></span> methods during tests and actually <span class="emphasis"><em>replace</em></span> method behaviors.</p><p>Sinon.JS<a id="id382" class="indexterm"/> has us covered in this respect as well—the library provides solid support for functional behavior modifications. Specifically, we can leverage its powerful stub and mock abstractions to reduce Backbone.js component dependencies and cross-application side effects during testing. In this chapter, we will explore these and other Sinon.JS capabilities through the following topics:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Using Sinon.JS stubs to replace function behaviors and isolate Backbone.js components in tests</li><li class="listitem" style="list-style-type: disc">Introducing Sinon.JS mocks that spy, stub, and verify application behavior in a single abstraction</li><li class="listitem" style="list-style-type: disc">Writing tests for the remaining components of our Backbone.js application and deciding on the proper Sinon.JS tools for the given test scenarios</li><li class="listitem" style="list-style-type: disc">Investigating other contextually useful Sinon.JS test helpers</li><li class="listitem" style="list-style-type: disc">Faking a remote backend server in Backbone.js collection tests</li></ul></div><div class="section" title="Replacing method behaviors with Sinon.JS stubs"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec35"/>Replacing method behaviors with Sinon.JS stubs</h1></div></div></div><p>We have been able to <a id="id383" class="indexterm"/>handle our Backbone.js <a id="id384" class="indexterm"/>testing dependencies so far with a combination of clever class design and some manual faking. However, we are quickly approaching a point where we need a more reliable and consistent approach.</p><p>We will look to stubs to provide a straightforward and predictable means of substituting method behaviors in any Backbone.js component to reduce unintended application side effects and dependency issues. The ability to temporarily replace existing methods during tests offers an enormous amount of flexibility, particularly in situations where:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">A Backbone.js application is under early development and not all of the planned components exist. Stubs allow us to write a simulated equivalent of the missing functionality in tests that can later be removed when the real application code is written. Even after the application code has been implemented, stubs may still be appropriate for a subset of the original specs, depending on what type of behavior is being tested.</li><li class="listitem" style="list-style-type: disc">An<a id="id385" class="indexterm"/> application code is sensitive<a id="id386" class="indexterm"/> to the timing of the UI and/or other events.</li><li class="listitem" style="list-style-type: disc">An application depends on external resources such as a database or cloud service.</li><li class="listitem" style="list-style-type: disc">A Backbone.js component has application dependencies and/or interactions that are too complex to manually swap in tests and that must be faked internally.</li></ul></div><div class="section" title="Getting started with stubs"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec56"/>Getting started with stubs</h2></div></div></div><p>To kick things off, let's integrate<a id="id387" class="indexterm"/> some stubs into an object literal from the previous chapter:</p><div class="informalexample"><pre class="programlisting">var obj = {
+  multiply: function (a, b) { return a * b; },
+  error: function (msg) { throw new Error(msg); }
+};</pre></div><p>In the ensuing spec, we will show you two different ways to stub <code class="literal">obj.multiply()</code> with Sinon.JS. In the first call (<code class="literal">sinon.stub(obj, "multiply").returns(5)</code>), we use the <code class="literal">returns</code> method to always return a hardcoded value. The second stub takes an alternate approach that inserts a replacement function (that adds instead of multiplying). In both cases, we call <code class="literal">restore()</code> after the test finishes to keep <code class="literal">obj</code> from being permanently modified:</p><div class="informalexample"><pre class="programlisting">it("stubs multiply", function () {
+  // Stub with a hard-coded return value.
+  sinon.stub(obj, "multiply").returns(5);
+  expect(obj.multiply(1, 2)).to.equal(5);
+  obj.multiply.restore();
+
+  // Stub with a function.
+  sinon.stub(obj, "multiply", function (a, b) {
+    return a + b;
+  });
+  expect(obj.multiply(1, 2)).to.equal(3);
+  obj.multiply.restore();
+});</pre></div><p>Turning our attention to <code class="literal">obj.error()</code> in the ensuing code snippet, we create an empty stub on the object method to prevent the real function from throwing an exception. We don't need a replacement function or a <code class="literal">returns</code> value because we just want to <span class="emphasis"><em>avoid</em></span> the default behavior. Additionally, <a id="id388" class="indexterm"/>we use the <code class="literal">sinon.test</code> sandbox helper to automatically call <code class="literal">restore()</code> on any stubs that were created within the test function:</p><div class="informalexample"><pre class="programlisting">it("stubs error", sinon.test(function () {
+  this.stub(obj, "error");
+  expect(obj.error).to.not.throw();
+}));</pre></div><p>As illustrated in the previous code snippets, we can now easily replace arbitrary methods with different code and/or return values.</p></div><div class="section" title="The stub API"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec57"/>The stub API</h2></div></div></div><p>Sinon.JS stubs implement the entire spy<a id="id389" class="indexterm"/> API and provide additional methods that can swap existing application functions with new code and behaviors during our tests. The first step in stubbing is to create a stub object and potentially replace one or more object methods:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><code class="literal">sinon.stub()</code>: This<a id="id390" class="indexterm"/> creates an anonymous stub without any specified behavior.</li><li class="listitem" style="list-style-type: disc"><code class="literal">sinon.stub(obj, methodName)</code>: This stubs a single object's method with an empty function. This alone is sufficient<a id="id391" class="indexterm"/> to replace the underlying code's execution like we saw in the code with <code class="literal">obj.error()</code>. Alternatively, you can further call stub API methods to modify return, callback, or other behaviors of the stub.</li><li class="listitem" style="list-style-type: disc"><code class="literal">sinon.stub(obj, methodName, fn)</code>: This stubs <a id="id392" class="indexterm"/>a single object's method with the replacement function provided in the <code class="literal">fn</code> parameter.</li><li class="listitem" style="list-style-type: disc"><code class="literal">sinon.stub(obj)</code>: This replaces<a id="id393" class="indexterm"/> <span class="emphasis"><em>all</em></span> the methods in an object with stubs.</li></ul></div><p>Once we have a stub object, we can enhance it with fake behaviors and responses as applicable in a given testing situation. Some of these methods are appropriate for synchronous (non-callback) function responses:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><code class="literal">stub.returns(obj)</code>: This<a id="id394" class="indexterm"/> stub will return the value <code class="literal">obj</code> when called.</li><li class="listitem" style="list-style-type: disc"><code class="literal">stub.throws()</code>: This stub<a id="id395" class="indexterm"/> will throw an <code class="literal">Error object</code> exception when called. A specific error will be used if <code class="literal">throws()</code> is called with a type string (for example, <code class="literal">"TypeError"</code>) or an error object (for example, <code class="literal">new TypeError()</code>).</li></ul></div><p>Sinon.JS also<a id="id396" class="indexterm"/> supports asynchronous callbacks in stubbed methods:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><code class="literal">stub.yields(arg1, arg2, ...)</code>: The first <a id="id397" class="indexterm"/>parameter to the stubbed method must be a callback function that the stub will call with the parameters <code class="literal">arg1</code>, <code class="literal">arg2</code>, and so on. In the<a id="id398" class="indexterm"/> following code snippet, we'll stub <code class="literal">obj.async()</code> and use <code class="literal">yield()</code> to inject the fake arguments <code class="literal">1</code> and <code class="literal">2</code> into the callback:<div class="informalexample"><pre class="programlisting">it("stubs with yields", function (done) {
+  var obj = {
+    async: function (callback) { callback("a", "b"); }
+  };
+
+  sinon.stub(obj, "async").yields(1, 2);
+
+  // Verify stub calls with (1, 2), *not* ("a", "b").
+  obj.async(function (first, second) {
+    expect(first).to.equal(1);
+    expect(second).to.equal(2);
+
+    obj.async.restore();
+    done();
+  });
+});</pre></div></li><li class="listitem" style="list-style-type: disc"><code class="literal">stub.yieldsOn(context, arg1, arg2, ...)</code>: This<a id="id399" class="indexterm"/> is equivalent to <code class="literal">stub.yields()</code>, except that it also injects the <code class="literal">context</code> parameter as the special variable <code class="literal">this</code> when invoking the callback.</li><li class="listitem" style="list-style-type: disc"><code class="literal">stub.yieldsTo(property, arg1, arg2, ...)</code>: This is also similar to <code class="literal">stub.yields()</code>, except that the callback<a id="id400" class="indexterm"/> to the underlying method is expected to be an object with a property name matching the <code class="literal">property</code> parameter value.</li><li class="listitem" style="list-style-type: disc"><code class="literal">stub.yieldsToOn(property, context, arg1, arg2, ...)</code>: This is a combination of <code class="literal">stub.yieldsOn()</code> and <code class="literal">stub.yieldsTo()</code> that uses an object callback<a id="id401" class="indexterm"/> property and context variable.</li><li class="listitem" style="list-style-type: disc"><code class="literal">stub.callsArgWith(index, arg1, arg2, ...)</code>: The <code class="literal">stub.yields*</code> collection of methods utilizes the <span class="emphasis"><em>first</em></span> parameter of the stubbed method. However, asynchronous callbacks can <a id="id402" class="indexterm"/>occur in other parameter positions. The <code class="literal">stub.callsArgWith()</code> method allows us to specify the index of the callback parameter to be used and the arguments to be passed to the function.</li><li class="listitem" style="list-style-type: disc"><code class="literal">stub.callsArg*</code>: In addition<a id="id403" class="indexterm"/> to <code class="literal">stub.callsArgWith()</code>, the methods <code class="literal">stub.callsArg(index)</code>, <code class="literal">stub.callsArgOn(index, context)</code>, and <code class="literal">stub.callsArgOnWith(index, context, arg1, arg2, ...)</code> take a first parameter named <code class="literal">index</code> that specifies the index of the callback to be invoked in the <a id="id404" class="indexterm"/>wrapped method and work in a manner analogous to their <code class="literal">yields*</code> counterparts mentioned previously.</li></ul></div><p>This set of stub features is sufficient to cover most Backbone.js testing situations. At the same time, it is worthwhile to review the full Sinon.JS stub<a id="id405" class="indexterm"/> API documentation (<a class="ulink" href="http://sinonjs.org/docs/#stubs">http://sinonjs.org/docs/#stubs</a>) to learn about additional methods and helpers.</p></div></div></div>
+<div class="section" title="Faking and verifying behavior with Sinon.JS mocks"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec36"/>Faking and verifying behavior with Sinon.JS mocks</h1></div></div></div><p>The final test double abstraction<a id="id406" class="indexterm"/> that we will cover in this book is the test mock. <a id="id407" class="indexterm"/>Mocks replace function behaviors like stubs, observe method calls <a id="id408" class="indexterm"/>like spies and stubs, and additionally verify<a id="id409" class="indexterm"/> function behaviors. Essentially, mocks<a id="id410" class="indexterm"/> are a "one-stop shop" for faking and testing methods.</p><div class="section" title="Deciding when to mock"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec58"/>Deciding when to mock</h2></div></div></div><p>So, when should we use mocks? The Sinon.JS mock API documentation (<a class="ulink" href="http://sinonjs.org/docs/#mocks">http://sinonjs.org/docs/#mocks</a>) starts with the appropriate use cases for mocks:</p><div class="blockquote"><blockquote class="blockquote"><p>"Mocks<a id="id411" class="indexterm"/> should only be used for the method under test. In every unit test, there should be one unit under test. If you want to control how your unit is being used and like stating expectations upfront (as opposed to asserting after the fact), use a mock."</p></blockquote></div><p>The documentation cautions that mocks should be <span class="emphasis"><em>avoided</em></span> in many situations:</p><div class="blockquote"><blockquote class="blockquote"><p>"Mocks come with built-in expectations that may fail your test. Thus, they enforce implementation details. The rule of thumb is: if you wouldn't add an assertion for some call specific, don't mock it. Use a stub instead. In general you should never have more than one mock (possibly with several expectations) in a single test."</p></blockquote></div><p>We have a bias in this book towards Sinon.JS stubs for the reasons just discussed and because of the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The Chai and Sinon-Chai adapter libraries allow us to write test assertions on stubs that are concise, expressive, and readable</li><li class="listitem" style="list-style-type: disc">The Sinon.JS mock expectation API is less flexible than using Chai assertions against the stub API</li></ul></div><p>At the same time, <a id="id412" class="indexterm"/>mocks <span class="emphasis"><em>are</em></span> stubs. So, tests can mix and match preprogrammed<a id="id413" class="indexterm"/> Sinon.JS mock expectations with subsequent <a id="id414" class="indexterm"/>Chai stub assertions. Ultimately, after we <a id="id415" class="indexterm"/>have finished reviewing the details of stubs and mocks in this chapter, we leave the choice of abstraction up to the developer and the specific testing scenario at hand.</p></div><div class="section" title="The mock API"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec59"/>The mock API</h2></div></div></div><p>Sinon.JS <a id="id416" class="indexterm"/>mocks (<a class="ulink" href="http://sinonjs.org/docs/#mocks-api">http://sinonjs.org/docs/#mocks-api</a>) implement the spy and stub APIs and additionally provide expectations that verify application behavior. We'll begin with a brief discussion of the core mock methods:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><code class="literal">sinon.mock(obj)</code>: This <a id="id417" class="indexterm"/>method mocks all the methods of <code class="literal">obj</code> and returns a mock object</li><li class="listitem" style="list-style-type: disc"><code class="literal">mock.expects(methodName)</code>: This <a id="id418" class="indexterm"/>method creates an expectation for the specified method of the mocked object</li><li class="listitem" style="list-style-type: disc"><code class="literal">mock.verify()</code>: This <a id="id419" class="indexterm"/>method examines and verifies that all expectations were met and throws exceptions on assertion failures</li><li class="listitem" style="list-style-type: disc"><code class="literal">mock.restore()</code>: This <a id="id420" class="indexterm"/>method unwinds and removes all mocked modifications of the underlying object that is being tested</li></ul></div><p>After we have mocked an object, the usual workflow is to call <code class="literal">mock.expects()</code> on one or more methods and configure expectations for a <code class="literal">mock.verify()</code> call later. For the complete expectations list, see <a class="ulink" href="http://sinonjs.org/docs/#expectations">http://sinonjs.org/docs/#expectations</a>. A sampling of some useful expectation methods includes the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><code class="literal">expectation.atLeast(num)</code>, <code class="literal">expectation.atMost(num)</code>, <a id="id421" class="indexterm"/>and <code class="literal">expectation.exactly(num)</code>: These<a id="id422" class="indexterm"/> mocked <a id="id423" class="indexterm"/>methods should be called at least/at most/exactly <code class="literal">num</code> times respectively</li><li class="listitem" style="list-style-type: disc"><code class="literal">expectation.never()</code>, <code class="literal">expectation.once()</code>, <code class="literal">expectation.twice()</code>, and <code class="literal">expectation.thrice()</code>: These <a id="id424" class="indexterm"/>are the<a id="id425" class="indexterm"/> helpers<a id="id426" class="indexterm"/> specifying common assertions for <a id="id427" class="indexterm"/>the number of times the mocked method was called</li><li class="listitem" style="list-style-type: disc"><code class="literal">expectation.withArgs(arg1, arg2, ...)</code> and <code class="literal">expectation.withExactArgs(arg1, arg2, ...)</code>: Every call to the <a id="id428" class="indexterm"/>mocked<a id="id429" class="indexterm"/> method has at least/exactly the parameters specified in the expectation respectively</li><li class="listitem" style="list-style-type: disc"><code class="literal">expectation.on(obj)</code>: This<a id="id430" class="indexterm"/> mocked method should be called with <code class="literal">obj</code> as the context (<code class="literal">this</code>) variable</li><li class="listitem" style="list-style-type: disc"><code class="literal">expectation.verify()</code>: This method<a id="id431" class="indexterm"/> runs assertions on a specific expectation (as opposed to <code class="literal">mock.verify()</code> that confirms <span class="emphasis"><em>all</em></span> expectations)</li></ul></div><p>In the following code snippet, we create our <code class="literal">mock</code> object around <code class="literal">obj</code> and declare the expectation that <code class="literal">multiply</code> will be called two to four times and that the first argument to every call will be <code class="literal">2</code>. We then call <code class="literal">multiply</code> three times with the appropriate parameters. Finally, a single <code class="literal">mock.verify()</code> call checks if all of the mock expectations were met:</p><div class="informalexample"><pre class="programlisting">// Our (now very familiar) object under test.
+var obj = {
+  multiply: function (a, b) { return a * b; },
+  error: function (msg) { throw new Error(msg); }
+};
+
+it("mocks multiply", function () {
+  // Create the mock.
+  <span class="strong"><strong>var mock = sinon.mock(obj)</strong></span>;
+
+  // The multiply method is expected to be called:
+  <span class="strong"><strong>mock.expects("multiply")</strong></span>
+    <span class="strong"><strong>.atLeast(2)</strong></span>    <span class="strong"><strong>// 2+ times,</strong></span>
+    <span class="strong"><strong>.atMost(4)</strong></span>     <span class="strong"><strong>// no more than 4 times, and</strong></span>
+    <span class="strong"><strong>.withArgs(2);</strong></span>  <span class="strong"><strong>// 2 was first arg on *all* calls.</strong></span>
+
+  // Make 3 calls to `multiply()`.
+  obj.multiply(2, 1);
+  obj.multiply(2, 2);
+  obj.multiply(2, 3);
+
+  // Verify **all** of the previous expectations.
+  <span class="strong"><strong>mock.verify()</strong></span>;
+
+  // Restore the object.
+  mock.restore();
+});</pre></div></div></div>
+<div class="section" title="Testing Backbone.js components with stubs and mocks"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec37"/>Testing Backbone.js components with stubs and mocks</h1></div></div></div><p>With the addition of <a id="id432" class="indexterm"/>stubs and mocks to<a id="id433" class="indexterm"/> our test infrastructure, we<a id="id434" class="indexterm"/> are ready to tackle the remaining components <a id="id435" class="indexterm"/>of our Backbone.js application that we will cover in this book: the <code class="literal">App.Views.NotesItem</code> view and the <code class="literal">App.Routers.Router</code> router. For those following along in the code examples, we will integrate the specs for these application components into the test driver page <code class="literal">chapters/05/test/test.html</code>.</p><div class="section" title="Ensuring stubs and mocks are actually bound"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec60"/>Ensuring stubs and mocks are actually bound</h2></div></div></div><p>One preliminary Sinon.JS issue that can trip up developers is making sure that spies, stubs, and mocks are actually bound to the expected methods of a Backbone.js application object during a test.</p><p>Let's start with a simple Backbone.js view named <code class="literal">MyView</code>. The view has a custom method named <code class="literal">foo()</code> that is bound to two event listeners, <code class="literal">wrapped</code> and <code class="literal">unwrapped</code>. The listeners are functionally equivalent, except that <code class="literal">wrapped</code> wraps the call in a function (<code class="literal">function () { this.foo(); }</code>) while <code class="literal">unwrapped</code> binds the real (or "naked") <code class="literal">this.foo</code> method:</p><div class="informalexample"><pre class="programlisting">var MyView = Backbone.View.extend({
+
+  initialize: function () {
+    this.on("wrapped", function () { this.foo(); });
+    this.on("unwrapped", this.foo);
+  },
+
+  foo: function () {
+    return "I'm real";
+  }
+
+});</pre></div><p>Although quite similar, the event listeners have an important difference when using Sinon.JS fakes; once <code class="literal">initialize()</code> is called, naked method references, such as the one passed to <code class="literal">unwrapped</code>, cannot be faked by Sinon.JS later. The underlying reason is that Sinon.JS can only change properties on the view object and not on the direct method references.</p><p>Let's <a id="id436" class="indexterm"/>examine a test that <a id="id437" class="indexterm"/>instantiates a <code class="literal">MyView</code> object and then <a id="id438" class="indexterm"/>stubs <code class="literal">foo</code>. When we trigger the <code class="literal">wrapped</code> listener, <a id="id439" class="indexterm"/>our stub is called and returns the faked value <code class="literal">I'm fake</code>. However, triggering the <code class="literal">unwrapped</code> listener never calls the stub and invokes the <span class="emphasis"><em>real</em></span> <code class="literal">foo</code> method instead. Note that we use the Sinon.JS <code class="literal">reset()</code> method to clear out any recorded function call information and return a spy, stub, or mock to its original state:</p><div class="informalexample"><pre class="programlisting">it("stubs after initialization", sinon.test(function () {
+  var myView = new MyView();
+
+  // Stub prototype **after** initialization.
+  // Equivalent to:
+  // this.stub(myView, "foo").returns("I'm fake");
+  this.stub(MyView.prototype, "foo").returns("I'm fake");
+
+  // The wrapped version calls the **stub**.
+  myView.foo.reset();
+  myView.trigger("wrapped");
+  expect(myView.foo)
+    .to.be.calledOnce.and
+    .to.have.returned("I'm fake");
+
+  // However, the unwrapped version calls the **real** function.
+  myView.foo.reset();
+  myView.trigger("unwrapped");
+  expect(myView.foo).to.not.be.called;
+}));</pre></div><p>One solution to the issue is to stub <span class="emphasis"><em>before</em></span> the object is instantiated. In the following code snippet, creating the stub <span class="emphasis"><em>before</em></span> the call to <code class="literal">new MyView()</code> correctly hooks the stub into both the <code class="literal">wrapped</code> and <code class="literal">unwrapped</code> listeners:</p><div class="informalexample"><pre class="programlisting">it("stubs before initialization", sinon.test(function () {
+  // Stub prototype **before** initialization.
+  this.stub(MyView.prototype, "foo").returns("I'm fake");
+
+  var myView = new MyView();
+
+  // Now, both versions are correctly stubbed.
+  myView.foo.reset();
+  myView.trigger("wrapped");
+  expect(myView.foo)
+    .to.be.calledOnce.and
+    .to.have.returned("I'm fake");
+
+  myView.foo.reset();
+  myView.trigger("unwrapped");
+  expect(myView.foo)
+    .to.be.calledOnce.and
+    .to.have.returned("I'm fake");
+}));</pre></div><p>It is fairly <a id="id440" class="indexterm"/>straightforward to keep track of the order in <a id="id441" class="indexterm"/>which Backbone.js objects are <a id="id442" class="indexterm"/>initialized and stubbed for a<a id="id443" class="indexterm"/> single test, such as in the previous two code snippets. However, it is important to keep binding in mind for a test suite setup and teardown, especially when an object is instantiated in a different place from where it will later be mocked or stubbed. Additionally, the issue can manifest in various other places in Backbone.js applications, such as in the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>View events</strong></span>: Views can <a id="id444" class="indexterm"/>declare an <code class="literal">events</code> property that binds UI events to methods by the string name of the method. This internally behaves similar to a naked function reference when a new view object is initialized by Backbone.js. An example of this type of declaration is as follows:<div class="informalexample"><pre class="programlisting">events: {
+  "click #id": "foo"
+}</pre></div></li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Router routes</strong></span>: Similarly, routers typically<a id="id445" class="indexterm"/> declare a <code class="literal">routes</code> property that binds hash/URL fragments to named methods on the router object.</li></ul></div><p>The most important takeaway point is to always consider how a Sinon.JS fake will be bound to the Backbone.js component that is being tested. It is sometimes easier to avoid naked function references in a Backbone.js application component, and at other times, it is better to reformulate test code so that stubs can be bound before the component is initialized. In the Notes application, we will use both of the approaches for the remaining tests in this chapter.</p></div><div class="section" title="The Notes list item view"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec61"/>The Notes list item view</h2></div></div></div><p>The last Notes <a id="id446" class="indexterm"/>view that we will discuss and test in this book is the list item view. When a user navigates to the home page of the Notes application, they are presented with a list of notes identified by their titles. The <code class="literal">App.Views.NotesItem</code> view is responsible for rendering each individual note row and allowing a user to view, edit, or delete a note. The following screenshot illustrates the rendered output for a single list item view:</p><div class="mediaobject"><img src="graphics/5248OS_05_01.jpg" alt="The Notes list item view"/><div class="caption"><p>Notes list item view</p></div></div><p>The title text of a list item can be clicked on to view the rendered Markdown for a single note. A list item also contains two action buttons, one with a pencil icon for editing and the other with a trash can icon for deleting.</p><p>The list item template string is declared as the <code class="literal">template-notes-item</code> property of <code class="literal">App.Templates</code> in <code class="literal">notes/app/js/app/templates/templates.js</code>:</p><div class="informalexample"><pre class="programlisting">App.Templates["template-notes-item"] =
+  "&lt;td class=\"note-name\"&gt;" +
+  "  &lt;div class=\"note-title note-view\"&gt;&lt;%= title %&gt;&lt;/div&gt;" +
+  "&lt;/td&gt;" +
+  "&lt;td class=\"note-action\"&gt;" +
+  "  &lt;div class=\"btn-group pull-right\"&gt;" +
+  "    &lt;button class=\"btn note-edit\"&gt;" +
+  "      &lt;i class=\"icon-pencil\"&gt;&lt;/i&gt;" +
+  "    &lt;/button&gt;" +
+  "    &lt;button class=\"btn note-delete\"&gt;" +
+  "      &lt;i class=\"icon-trash\"&gt;&lt;/i&gt;" +
+  "    &lt;/button&gt;" +
+  "  &lt;/div&gt;" +
+  "&lt;/td&gt;";</pre></div><p>The template renders two <code class="literal">td</code> cells within a table row, one for the note title and the other for the edit/delete buttons.</p><div class="section" title="The list item view"><div class="titlepage"><div><div><h3 class="title"><a id="ch05lvl3sec12"/>The list item view</h3></div></div></div><p>The <code class="literal">App.Views.NotesItem</code> view<a id="id447" class="indexterm"/> is defined in <code class="literal">notes/app/js/app/views/notes-list.js</code>. The<a id="id448" class="indexterm"/> class definition starts with DOM <a id="id449" class="indexterm"/>attributes for rendering a <code class="literal">tr</code> tag, a <code class="literal">notes-item</code> class, and an <code class="literal">id</code> property that corresponds to the note model's identifier:</p><div class="informalexample"><pre class="programlisting">App.Views.NotesItem = Backbone.View.extend({
+
+  id: function () { return this.model.id; },
+
+  tagName: "tr",
+
+  className: "notes-item",
+
+  template: _.template(App.Templates["template-notes-item"]),</pre></div><p>Click events on a list item's title and edit/delete buttons are bound to their respective view methods, <code class="literal">viewNote</code>, <code class="literal">editNote</code>, and <code class="literal">deleteNote</code>. In terms of our earlier Sinon.JS binding discussion, note that all of the event callbacks have function wrappers that allow us to create <code class="literal">App.Views.NotesItem</code> objects that can be stubbed at any time during the tests:</p><div class="informalexample"><pre class="programlisting">  events: {
+    "click .note-view":   function () { this.viewNote(); },
+    "click .note-edit":   function () { this.editNote(); },
+    "click .note-delete": function () { this.deleteNote(); }
+  },</pre></div><p>In <code class="literal">initialize</code>, the view stores a router reference and sets listeners that re-render or remove the view in response to model events. The <code class="literal">render</code> method binds the model data to the template in a fairly conventional manner:</p><div class="informalexample"><pre class="programlisting">  initialize: function (attrs, opts) {
+    opts || (opts = {});
+    this.router = opts.router || app.router;
+
+    this.listenTo(this.model, {
+      "change":   function () { this.render(); },
+      "destroy":  function () { this.remove(); }
+    });
+  },
+
+  render: function () {
+    this.$el.html(this.template(this.model.toJSON()));
+    return this;
+  },</pre></div><p>Turning to the actions <a id="id450" class="indexterm"/>we can perform on a single list item, the <code class="literal">viewNote</code> and <code class="literal">editNote</code> methods navigate to a single-note view in viewing or editing mode. The <code class="literal">deleteNote</code> function deletes the underlying note model that then triggers events that will clean up and remove the view from the list of all notes:</p><div class="informalexample"><pre class="programlisting">  viewNote: function () {
+    var loc = ["note", this.model.id, "view"].join("/");
+    this.router.navigate(loc, { trigger: true });
+  },
+
+  editNote: function () {
+    var loc = ["note", this.model.id, "edit"].join("/");
+    this.router.navigate(loc, { trigger: true });
+  },
+
+  deleteNote: function () {
+    // Destroying model triggers view cleanup.
+    this.model.destroy();
+  }
+});</pre></div></div><div class="section" title="Testing the list item view"><div class="titlepage"><div><div><h3 class="title"><a id="ch05lvl3sec13"/>Testing the list item view</h3></div></div></div><p>The <code class="literal">App.Views.NotesItem</code> view behaviors that we wish to verify in our test suite file <code class="literal">chapters/05/test/js/spec/views/notes-item.spec.js</code> include the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The view<a id="id451" class="indexterm"/> renders HTML for a single row in the notes list table and shows the note's title and the action buttons</li><li class="listitem" style="list-style-type: disc">It binds click events to the appropriate note actions (for example, edit) and navigates to the appropriate single note page to read or edit a note</li><li class="listitem" style="list-style-type: disc">It correctly cleans up the object state when a user deletes a note</li></ul></div><p>The test suite starts with the <code class="literal">before()</code> setup method where we create an <code class="literal">App.Views.NotesItem</code> object with a fake router object literal (containing a <code class="literal">navigate</code> stub) and a real <code class="literal">App.Models.Note</code> model. In the <code class="literal">afterEach()</code> method, we reset the <code class="literal">navigate</code> stub so that each spec gets a stub that is free of any previously recorded function information. The <code class="literal">after()</code> teardown function removes the view under test.</p><p>Again, keeping the Sinon.JS method's binding issues in mind, we note that <code class="literal">this.view</code> is created in the <code class="literal">before()</code> setup for the entire test suite. This means that stubs, spies, and/or mocks will only work on wrapped <code class="literal">App.Views.NotesItem</code> view methods. At the same time, if the existing <code class="literal">App.Views.NotesItem</code> suite is not amenable to all of the test double bindings that we need, we can easily create an additional suite that fakes the class prototype before instantiation, to provide additional flexibility in testing the desired application behavior:</p><div class="informalexample"><pre class="programlisting">describe("App.Views.NotesItem", function () {
+
+  before(function () {
+    this.navigate = sinon.stub();
+    this.view = new App.Views.NotesItem({
+      model: new App.Models.Note({ id: "0", title: "title" })
+    }, {
+      router: { navigate: this.navigate }
+    });
+  });
+
+  afterEach(function () {
+    this.navigate.reset();
+  });
+
+  after(function () {
+    this.view.remove();
+  });</pre></div><p>The first nested test<a id="id452" class="indexterm"/> suite checks whether the underlying model's <code class="literal">destroy</code> event triggers the <code class="literal">view.remove()</code> method, cleaning up the view. We stub <code class="literal">view.remove()</code> to prevent the view from actually being removed from the test environment when called. Then, we trigger the desired model event so that we can verify that the stub was called once:</p><div class="informalexample"><pre class="programlisting">  describe("remove", function () {
+    it("is removed on model destroy", sinon.test(function () {
+      // Empty stub for view removal to prevent side effects.
+      this.stub(this.view, "remove");
+      this.view.model.trigger("destroy");
+      expect(this.view.remove).to.be.calledOnce;
+    }));
+  });</pre></div><p>In the next two specs, we tackle an analogous scenario, verifying that the note model's <code class="literal">change</code> event will trigger a <code class="literal">render()</code> call on the view. We make the same assertions in both the specs, using stubs in one and mocks in the other to demonstrate how to write the same functional spec using either abstraction. The spec <code class="literal">renders on model change w/ stub</code> uses a stub to verify the view's behavior:</p><div class="informalexample"><pre class="programlisting">  describe("render", function () {
+    // One way to verify is with a stub.
+    it("renders on model change w/ stub", sinon.test(function () {
+      this.stub(this.view);
+      this.view.model.trigger("change");
+      expect(this.view.render).to.have.been.calledOnce;
+    }));</pre></div><p>In the <code class="literal">renders on model change w/ mock</code> spec, we rely on a mock to make the same assertion using <a id="id453" class="indexterm"/>the Sinon.JS <code class="literal">once()</code> expectation modifier and <code class="literal">mock.verify()</code> instead of Chai assertions on a stub:</p><div class="informalexample"><pre class="programlisting">    // Here is another way to do the same check with a mock.
+    it("renders on model change w/ mock", sinon.test(function () {
+      var exp = this.mock(this.view).expects("render").once();
+      this.view.model.trigger("change");
+      exp.verify();
+    }));
+  });</pre></div><p>In the next two specs, we examine the scenarios in which a user clicks on the list item title (for viewing) or the pencil button (for editing). We need to check if both the clicks call an appropriate view function and cause the router to navigate us to the expected single-note page. In the ensuing code snippet, we verify this behavior by asserting that the router's <code class="literal">navigate</code> stub has been called with appropriate arguments:</p><div class="informalexample"><pre class="programlisting">  describe("actions", function () {
+    it("views on click", function () {
+      this.view.$(".note-view").click();
+
+      expect(this.navigate)
+        .to.be.calledOnce.and
+        .to.be.calledWith("note/0/view");
+    });
+
+    it("edits on click", function () {
+      this.view.$(".note-edit").click();
+
+      expect(this.navigate)
+        .to.be.calledOnce.and
+        .to.be.calledWith("note/0/edit");
+    });</pre></div><p>Finally, we ensure that clicking on the trash can button triggers the underlying note model to be destroyed. We stub the model's <code class="literal">destroy</code> method to verify that it was called and to prevent the model from actually being mutated:</p><div class="informalexample"><pre class="programlisting">    it("deletes on click", sinon.test(function () {
+      // Empty stub for model destroy to prevent side effects.
+      this.stub(this.view.model, "destroy");
+      this.view.$(".note-delete").click();
+
+      expect(this.view.model.destroy).to.be.calledOnce;
+    }));
+  });
+});</pre></div><p>All in all, <a id="id454" class="indexterm"/>our tests for <code class="literal">App.Views.NotesItem</code> demonstrate how replacing method behaviors with mocks and stubs can simplify our tests and limit the program method's side effects.</p></div></div><div class="section" title="The Notes application router"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec62"/>The Notes application router</h2></div></div></div><p>The final Backbone.js <a id="id455" class="indexterm"/>component that we will test in the Notes application is the<a id="id456" class="indexterm"/> router, <code class="literal">App.Routers.Router</code>. The router is responsible for managing client-side page locations (URLs or hash fragments) and binding routes to views, events, and actions.</p><p>For the purposes of this chapter, we will use a simplified version of the <code class="literal">App.Routers.Router</code> class, available at <code class="literal">chapters/05/test/js/spec/routers/router.js</code>, instead of the real Notes router file (found in the code samples at <code class="literal">notes/app/js/app/routers/router.js</code>).</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note20"/>Note</h3><p>While the real Backbone.js router is not the most complex beast, it has sufficiently complicated dependencies and application logic to warrant omitting the full implementation in the text of this chapter, particularly when we just need to introduce a few testing tips for routers.</p><p>At the same time, we don't shy away from tests just because we have component dependencies. Accordingly, we provide a comprehensive test suite for the real <code class="literal">App.Routers.Router</code> component in the code samples at <code class="literal">notes/test/js/spec/routers/router.spec.js</code>. You are encouraged to review the implementations of the full router and its corresponding test suite.</p></div></div><p>The Notes application contains two routes corresponding to the notes list page and the single-note page. We encompass this behavior in the simplified <code class="literal">App.Routers.Router</code> class:</p><div class="informalexample"><pre class="programlisting">App.Routers.Router = Backbone.Router.extend({
+
+  routes: {
+    "": "notes",
+    "note/:id/:action": "note",
+  },
+
+  // Show notes list.
+  notes: function () {
+    // ... omitted ...
+  },
+
+  // Common single note edit/view.
+  note: function (noteId, action) {
+    // ... omitted ...
+  }
+
+});</pre></div><p>Our tests <a id="id457" class="indexterm"/>should check if the route specifications bind to the correct <a id="id458" class="indexterm"/>router methods and if the URLs / hash fragments are correctly parsed into parameters for the router method. We verify this behavior in the test suite file <code class="literal">chapters/05/test/js/spec/routers/router.spec.js</code>.</p><p>Our setup logic begins by creating stubs around the router's <code class="literal">note</code> and <code class="literal">notes</code> methods. We then instantiate a router object and start history (which enables actual routing). Our setup concludes with binding an anonymous spy to every <code class="literal">route</code> event (fired any time a route is activated).</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note21"/>Note</h3><p>Always on the lookout for Sinon.JS binding issues, note that we have to stub the router prototype <span class="emphasis"><em>before</em></span> we instantiate a router object because the router object's <code class="literal">routes</code> property binds routes to method name strings and not to wrapped functions.</p></div></div><div class="informalexample"><pre class="programlisting">describe("App.Routers.Router", function () {
+
+  // Default option: Trigger and replace history.
+  var opts = { trigger: true, replace: true };
+
+  beforeEach(function () {
+    // Stub route methods.
+    sinon.stub(App.Routers.Router.prototype, "note");
+    sinon.stub(App.Routers.Router.prototype, "notes");
+
+    // Create router with stubs and manual fakes.
+    this.router = new App.Routers.Router();
+
+    // Start history to enable routes to fire.
+    Backbone.history.start();
+
+    // Spy on all route events.
+    this.routerSpy = sinon.spy();
+    this.router.on("route", this.routerSpy);
+  });</pre></div><p>Our teardown logic stops the history and unwinds the stubs:</p><div class="informalexample"><pre class="programlisting">  afterEach(function () {
+    Backbone.history.stop();
+
+    App.Routers.Router.prototype.note.restore();
+    App.Routers.Router.prototype.notes.restore();
+  });</pre></div><p>The first spec<a id="id459" class="indexterm"/> checks if we can navigate to a single note to edit it by<a id="id460" class="indexterm"/> calling the router's <code class="literal">navigate</code> method on the desired route <code class="literal">"note/1/edit"</code>. We assert that this calls the router's <code class="literal">note</code> method (which we have stubbed) with the extracted parameters <code class="literal">"1"</code> and <code class="literal">"edit"</code>. We also confirm the same type of information with the <code class="literal">routerSpy</code> event listener:</p><div class="informalexample"><pre class="programlisting">  it("can route to note", function () {
+    this.router.navigate("note/1/edit", opts);
+
+    // Check router method.
+    expect(App.Routers.Router.prototype.note)
+      .to.have.been.calledOnce.and
+      .to.have.been.calledWithExactly("1", "edit");
+
+    // Check route event.
+    expect(this.routerSpy)
+      .to.have.been.calledOnce.and
+      .to.have.been.calledWith("note", ["1", "edit"]);
+  });</pre></div><p>Our second spec verifies that we can navigate to the home page, then to a single-note page, and then back to the home page. We use similar verification logic as in the previous spec, relying on the <code class="literal">notes</code> stub (called twice on the <code class="literal">""</code> home page route) and the <code class="literal">routerSpy</code> spy (called on all three routes):</p><div class="informalexample"><pre class="programlisting">  it("can route around", function () {
+    // Bounce between routes.
+    this.router.navigate("", opts);
+    this.router.navigate("note/1/edit", opts);
+    this.router.navigate("", opts);
+
+    // Check router method.
+    expect(App.Routers.Router.prototype.notes)
+      .to.have.been.calledTwice.and
+      .to.have.been.calledWithExactly();
+
+    // Check route event.
+    expect(this.routerSpy)
+      .to.have.been.calledThrice.and
+      .to.have.been.calledWith("notes");
+  });
+
+});</pre></div><p>These router tests<a id="id461" class="indexterm"/> are not that different from Backbone.js view tests for <a id="id462" class="indexterm"/>events—both of them bind strings (a route or a UI event) to component methods (via a string name or function). All in all, the Sinon.JS mocking and stubbing methods we have learned in this chapter should generally apply to any type of Backbone.js component.</p></div><div class="section" title="Running the view and router tests"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec63"/>Running the view and router tests</h2></div></div></div><p>Now that we have<a id="id463" class="indexterm"/> test suites <a id="id464" class="indexterm"/>for <code class="literal">App.Views.NotesItem</code> and <code class="literal">App.Routers.Router</code>, we can integrate them into a test driver page. Building on the previous <code class="literal">chapters/04/test/test.html</code> driver page (with a few highlighted additions), our final driver page <code class="literal">chapters/05/test/test.html</code> includes the following relevant parts:</p><div class="informalexample"><pre class="programlisting">&lt;head&gt;
+  &lt;!-- ... snipped ... --&gt;
+
+  &lt;!-- JavaScript Application Libraries --&gt;
+  &lt;script src="../app/js/app/namespace.js"&gt;&lt;/script&gt;
+  &lt;script src="../app/js/app/config.js"&gt;&lt;/script&gt;
+  &lt;script&gt;
+    // Test overrides (before any app components).
+    App.Config = _.extend(App.Config, {
+      storeName: "notes-test" // localStorage for tests.
+    });
+  &lt;/script&gt;
+  &lt;script src="../app/js/app/models/note.js"&gt;&lt;/script&gt;
+  &lt;script src="../app/js/app/collections/notes.js"&gt;&lt;/script&gt;
+  &lt;script src="../app/js/app/templates/templates.js"&gt;&lt;/script&gt;
+  &lt;script src="../app/js/app/views/note-nav.js"&gt;&lt;/script&gt;
+  &lt;script src="../app/js/app/views/note-view.js"&gt;&lt;/script&gt;
+  &lt;script src="../app/js/app/views/note.js"&gt;&lt;/script&gt;
+  <span class="strong"><strong>&lt;script src="../app/js/app/views/notes-item.js"&gt;&lt;/script&gt;</strong></span>
+
+  <span class="strong"><strong>&lt;!-- The shortened, teaching router for Chapter 05 --&gt;</strong></span>
+  <span class="strong"><strong>&lt;script src="js/spec/routers/router.js"&gt;&lt;/script&gt;</strong></span>
+
+  &lt;!-- ... snipped ... --&gt;
+
+  &lt;!-- Tests. --&gt;
+  <span class="strong"><strong>&lt;script src="js/spec/views/notes-item.spec.js"&gt;&lt;/script&gt;</strong></span>
+  <span class="strong"><strong>&lt;script src="js/spec/routers/router.spec.js"&gt;&lt;/script&gt;</strong></span>
+&lt;/head&gt;</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip16"/>Tip</h3><p>At this point, we have accrued a large number of JavaScript files between the vendor libraries and our Backbone.js application components. While this is acceptable for tests (and sometimes even desired), it is good practice to concatenate and optimize your JavaScript files in production applications with a tool such as the Google Closure Compiler (<a class="ulink" href="https://developers.google.com/closure/compiler/">https://developers.google.com/closure/compiler/</a>) or UglifyJS (<a class="ulink" href="https://github.com/mishoo/UglifyJS2">https://github.com/mishoo/UglifyJS2</a>).</p></div></div><p>We can now <a id="id465" class="indexterm"/>navigate a browser window to <code class="literal">chapters/05/test/test.html</code> to run the tests.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note22"/>Note</h3><p>If you are running the report from the code samples, a few extra view specs that have not been discussed in this book will appear in the results.</p></div></div><p>One thing you may<a id="id466" class="indexterm"/> notice is that invocations of the <code class="literal">navigate</code> method in the router tests actually modify the browser location, adding hash fragments. While this doesn't affect the correctness of our tests, it is a bit unexpected. Taking an alternative approach, the Backbone.js library test suite gets around this issue by creating a fake <code class="literal">Location</code> object to substitute for the real browser navigation bar. See <a class="ulink" href="https://github.com/documentcloud/backbone/blob/master/test/router.js">https://github.com/documentcloud/backbone/blob/master/test/router.js</a> for further details.</p></div></div>
+<div class="section" title="Finding the rest of the Notes application components"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec38"/>Finding the rest of the Notes application components</h1></div></div></div><p>With the previous view and router<a id="id467" class="indexterm"/> tests completed, we are now finished with the application and test code that we will present in this book for the localStorage-based Notes application. There are, however, a few more parts of the Notes application that we simply do not have room to discuss within the confines of this book.</p><p>Fortunately, each of the components (as well as their relevant test files) are available as part of the downloadable code samples for this book. The remaining parts of the Notes application that you can find in the samples are as follows:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><code class="literal">App.Views.NotesFilter</code> (<code class="literal">notes/app/js/app/views/notes-filter.js</code>): This view controls the filter input box and the visibility of the note rows in the displayed list of notes. The test file for this view can be found at <code class="literal">notes/test/js/spec/views/notes-filter.spec.js</code>.</li><li class="listitem" style="list-style-type: disc"><code class="literal">App.Views.Notes</code> (<code class="literal">notes/app/js/app/views/notes.js</code>): The <code class="literal">App.Views.Notes</code> view contains the <code class="literal">App.Views.NotesItem</code> and <code class="literal">App.Views.NotesFilter</code> views and is responsible for getting note data from the collection and for rendering a full list of notes. The corresponding test file is located at <code class="literal">notes/test/js/spec/views/notes.spec.js</code>.</li><li class="listitem" style="list-style-type: disc"><code class="literal">App.Routers.Router</code> (<code class="literal">notes/app/js/app/routers/router.js</code>): This is the full implementation of the Backbone.js router for Notes. Its test file is available at <code class="literal">notes/test/js/spec/routers/router.spec.js</code>.</li><li class="listitem" style="list-style-type: disc"><code class="literal">app</code> (<code class="literal">notes/app/js/app/app.js</code>): The <code class="literal">app</code> object controls the overall Notes application. It instantiates all of the top-level application components; for example, the <code class="literal">App.Views.Notes</code> view, the <code class="literal">App.Routers.Router</code> router, and the <code class="literal">App.Collections.Notes</code> collection. It also kicks off an initial collection <code class="literal">fetch</code> to import existing notes data. We do not include specs for this file, as creating and starting an actual application is usually encompassed within the scope of full integration testing—an approach we mentioned in <a class="link" href="ch02.html" title="Chapter 2. Creating a Backbone.js Application Test Plan">Chapter 2</a>, <span class="emphasis"><em>Creating a Backbone.js Application Test Plan</em></span>, which you are encouraged to learn outside of this book.</li><li class="listitem" style="list-style-type: disc"><code class="literal">notes/test/test.html</code>: This is the test driver page for all the Notes application test suites and specs. This page aggregates all of the Notes specs we have discussed in this book as well as the specs for omitted views, and the full router implementation.</li></ul></div><p>These extra files apply the fundamental lessons we have learned throughout this book to different application code and scenarios. Thus, reviewing the remaining Notes application files will provide you with a much better picture of a full Backbone.js application and test infrastructure that follows the testing principles we suggest. All in all, we hope that the code samples will send home the topics we have covered in this book and possibly give you some ideas and next <a id="id468" class="indexterm"/>steps for your test development education.</p></div>
+<div class="section" title="A few more Sinon.JS test helpers"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec39"/>A few more Sinon.JS test helpers</h1></div></div></div><p>Sinon.JS provides many useful tools<a id="id469" class="indexterm"/> beyond the core test double abstractions of spies, stubs, and mocks. We have already been introduced to the <code class="literal">sinon.test</code> wrapper in <a class="link" href="ch04.html" title="Chapter 4. Test Spies">Chapter 4</a>, <span class="emphasis"><em>Test Spies</em></span>, and will examine a few more equally convenient helpers in this chapter.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip17"/>Tip</h3><p>Some test helpers such as timers and servers may require the use of IE-specific Sinon.JS libraries when used with the Internet Explorer web browser. See the relevant Sinon.JS documentation sections for more details.</p></div></div><div class="section" title="Fake timers"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec64"/>Fake timers</h2></div></div></div><p>Sinon.JS can <a id="id470" class="indexterm"/>patch time<a id="id471" class="indexterm"/> and date intervals to help manage asynchronous events and callbacks in tests. Sinon.JS fake timers override native JavaScript functions, such as <code class="literal">setTimeout</code> and the <code class="literal">Date</code> class. Once faked, test code must manually advance the time through the API <code class="literal">tick(ms)</code> function that simulates the passage of time for any time-based asynchronous event in the program. See <a class="ulink" href="http://sinonjs.org/docs/#clock">http://sinonjs.org/docs/#clock</a> for the full API reference.</p><p>Fake timers are quite useful for testing Backbone.js applications. For example, if some UI code has a delayed jQuery effect that is taking 200 milliseconds to complete, a test including this behavior would have to wait for that amount of time, slowing down the overall test suite. Additionally, timers in native JavaScript are not completely predictable. (See, for example, <span class="emphasis"><em>Accuracy of JavaScript Time</em></span> by <span class="emphasis"><em>John Resig</em></span> at <a class="ulink" href="http://ejohn.org/blog/accuracy-of-javascript-time">http://ejohn.org/blog/accuracy-of-javascript-time</a>.) Using Sinon.JS fake timers, we can <span class="emphasis"><em>synchronously</em></span> and <span class="emphasis"><em>predictably</em></span> simulate the advancement of 200 milliseconds for the jQuery effect without any delays in a test.</p></div><div class="section" title="Fake servers"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec65"/>Fake servers</h2></div></div></div><p>Sinon.JS can also <a id="id472" class="indexterm"/>patch some of the communication internals of a <a id="id473" class="indexterm"/>program and override the <span class="strong"><strong>XMLHttpRequest</strong></span> (<span class="strong"><strong>XHR</strong></span>)<a id="id474" class="indexterm"/> and other related mechanisms. A typical Backbone.js application uses XHR to synchronize models and collections to a backend datastore, such as a database or a cloud service, making this feature particularly relevant to our test infrastructure. The entire range of XHR faking capabilities provided by Sinon.JS are discussed at <a class="ulink" href="http://sinonjs.org/docs/#server">http://sinonjs.org/docs/#server</a>.</p><div class="section" title="The fake server API"><div class="titlepage"><div><div><h3 class="title"><a id="ch05lvl3sec14"/>The fake server API</h3></div></div></div><p>The first API <a id="id475" class="indexterm"/>that Sinon.JS provides is <code class="literal">FakeXMLHttpRequest</code>; this is a low-level abstraction around the XHR interface that provides fine-grained control over requests, responses, headers, and other details. See <a class="ulink" href="http://sinonjs.org/docs/#FakeXMLHttpRequest">http://sinonjs.org/docs/#FakeXMLHttpRequest</a> for a complete API listing.</p><p>Sinon.JS additionally provides a higher-level API in the form of a fake server that provides a much easier interface for common use cases in modern JavaScript web applications. We will use the latter interface in this chapter as the simpler interface is still well suited to our Backbone.js application testing needs.</p><p>The Sinon.JS fake server API documentation is available at <a class="ulink" href="http://sinonjs.org/docs/#fakeServer">http://sinonjs.org/docs/#fakeServer</a>. A useful subset of the API includes the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><code class="literal">sinon.fakeServer.create()</code>: This creates a <a id="id476" class="indexterm"/>fake server object and fakes the XHR interface for tests.</li><li class="listitem" style="list-style-type: disc"><code class="literal">server.respondWith(response)</code>: This <a id="id477" class="indexterm"/>configures the server to respond to all requests with a response object. A response can take various forms, but the one we will use is an array comprised of an HTTP status code, a dictionary of headers, and a JSON response string. The default response is <code class="literal">[404, {}, ""]</code>.</li><li class="listitem" style="list-style-type: disc"><code class="literal">server.respondWith(method, url, response)</code>: This configures the server to respond to requests matching<a id="id478" class="indexterm"/> the specified HTTP method and URL with a response object. There are further permutations of <code class="literal">respondWith</code> that can use regular expressions for URL matching.</li><li class="listitem" style="list-style-type: disc"><code class="literal">server.respond()</code>: After a server is configured<a id="id479" class="indexterm"/> and a test has started, any call to <code class="literal">respond()</code> will cause the fake server to immediately issue the prearranged response object.</li><li class="listitem" style="list-style-type: disc"><code class="literal">server.autoRespond = true</code>: The fake server will automatically respond to server requests without the need to call <code class="literal">respond()</code>. By default, the fake server will wait 10 milliseconds before responding. A different wait time can be assigned to the <code class="literal">server.autoRespondAfter</code> configuration variable.</li><li class="listitem" style="list-style-type: disc"><code class="literal">server.restore()</code>: This <a id="id480" class="indexterm"/>unwinds the fake XHR interface.</li></ul></div></div><div class="section" title="Faking the remote backend in a Backbone.js application"><div class="titlepage"><div><div><h3 class="title"><a id="ch05lvl3sec15"/>Faking the remote backend in a Backbone.js application</h3></div></div></div><p>The Notes <a id="id481" class="indexterm"/>application that we have <a id="id482" class="indexterm"/>presented in this book does not have an external backend and relies instead on HTML5 localStorage to store collection data. While it is a useful teaching tool, most real-world Backbone.js applications do have a remote backing store. Accordingly, the companion code examples for this book include a version of Notes that is served as a Node.js Express<a id="id483" class="indexterm"/> (<a class="ulink" href="http://expressjs.com">http://expressjs.com</a>) application with a MongoDB<a id="id484" class="indexterm"/> (<a class="ulink" href="http://www.mongodb.org">http://www.mongodb.org</a>) backend database. You can find the full application and its test suite in the <code class="literal">notes-rest/</code> directory of the code examples repository.</p><p>The main difference between the localStorage-backed <code class="literal">notes/app</code> and MongoDB-backed <code class="literal">notes-rest/app</code> Backbone.js applications is in the <code class="literal">App.Collections.Notes</code> collection implementation. The <code class="literal">notes-rest/app</code> version, available at <code class="literal">notes-rest/app/js/app-rest/collections/notes.js</code>, defines the collection class as follows:</p><div class="informalexample"><pre class="programlisting">App.Collections.Notes = Backbone.Collection.extend({
+
+  model: App.Models.Note,
+
+  url: "/api/notes"
+
+});</pre></div><p>The URL <code class="literal">/api/notes</code> points to a backend REST interface provided by the Node.js Express server (<code class="literal">notes-rest/server.js</code> in the code examples) that interacts with the MongoDB datastore.</p><p>Our tests for the new <code class="literal">App.Collections.Notes</code> collection will rely on a fake server to intercept all of the remote backend calls and replace the network responses with our desired test data.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip18"/>Tip</h3><p>The collection tests in this section fake the entire backend, meaning that the tests don't use Node.js or MongoDB servers at all. This provides the advantage of the tests running extremely fast and giving us predictable responses. However, testing scenarios that seek to exercise the entire application (for example, full integration tests) may require that the test infrastructure run live on backend servers and/or datastores.</p></div></div><p>Looking at the test suite file <code class="literal">notes-rest/test/js/spec-rest/collections/notes.spec.js</code> in the <code class="literal">beforeEach</code> setup call, we create an empty collection and a fake server that automatically responds to backend requests. The <code class="literal">afterEach</code> call restores the normal XHR operation:</p><div class="informalexample"><pre class="programlisting">describe("App.Collections.Notes", function () {
+
+  beforeEach(function () {
+    this.server = sinon.fakeServer.create();
+    this.server.autoRespond = true;
+    this.notes = new App.Collections.Notes();
+  });
+
+  afterEach(function () {
+    this.server.restore();
+  });</pre></div><p>The following<a id="id485" class="indexterm"/> spec checks if the collection can <a id="id486" class="indexterm"/>fetch and populate data from the backend. We configure the fake server to respond to GET requests with JSON-serialized data for a single note. We then set a callback on the <code class="literal">reset</code> event to verify that the collection has the expected length and has deserialized the data into a note model:</p><div class="informalexample"><pre class="programlisting">  describe("retrieval", function () {
+
+    it("has a single note", function (done) {
+      var notes = this.notes, note;
+
+      // Return a single model on GET.
+      this.server.respondWith("GET", "/api/notes", [
+        200,
+        { "Content-Type": "application/json" },
+        JSON.stringify([{
+          id: 1,
+          title: "Test note #1",
+          text: "A pre-existing note from beforeEach."
+        }])
+
+      ]);
+
+      // After fetch.
+      notes.once("reset", function () {
+        expect(notes).to.have.length(1);
+
+        // Check model attributes.
+        note = notes.at(0);
+        expect(note).to.be.ok;
+        expect(note.get("title")).to.contain("#1");
+        expect(note.get("text")).to.contain("pre-existing");
+
+        done();
+      });
+
+      notes.fetch({ reset: true });
+    });
+
+  });</pre></div><p>This spec illustrates the simple manner in which requests can be faked—we just make one <code class="literal">this.server.respondWith()</code> setup call for the specific faked URL and the Backbone.js collection <a id="id487" class="indexterm"/>is none the wiser that it is not really talking<a id="id488" class="indexterm"/> to a remote data store. For additional collection tests with Sinon.JS fake servers, see the rest of the <code class="literal">notes-rest/test/js/spec-rest/collections/notes.spec.js</code> file in the companion code samples for this book that can be run from the test driver page <code class="literal">notes-rest/test/test.html</code>.</p></div></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec40"/>Summary</h1></div></div></div><p>In this chapter, we learned how to apply Sinon.JS stubs, mocks, and other fakes to isolate Backbone.js components, reduce test complexity, and enhance predictable test behavior. We also finished all of the application tests that we will discuss in this book for the reference Notes application. Taking a moment to reflect upon our progress leading up to this point, we have now covered the basics of creating a test infrastructure and applying fundamental testing concepts to all of the various Backbone.js application components.</p><p>But, this is really just the beginning of the substantive testing journey; the tests presented in this book are a subset of those that would be desirable for a full production Backbone.js application. Our hope is that you now have the necessary tools, development techniques, and starting points to provide full test support for your Backbone.js applications.</p><p>In the next chapter, we will aim at extending our testing capabilities and use cases through test automation. We will move beyond manually running test suites in a local browser and introduce testing tools that can execute tests in different environments (such as the command line or a build server) and without a web browser.</p></div></body></html>
