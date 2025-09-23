@@ -1,55 +1,75 @@
 - en: Chapter 8. Evented IO with NodeJS
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第8章：使用Node.js的事件驱动I/O
 - en: NodeJS leverages V8, the Chrome JavaScript engine, to provide a high-performance
     server environment. Node isn't limited in scope to just web servers—this is just
     the original problem space in which it was conceived. In fact, it was created
     to solve some tough concurrency problems faced by web programmers everywhere.
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: Node.js利用Chrome JavaScript引擎V8，提供高性能的服务器环境。Node.js的适用范围不仅限于Web服务器——这只是它最初被构思的问题空间。实际上，它是为了解决全球Web程序员面临的某些复杂的并发问题而创建的。
 - en: The aim of this chapter is to explain how Node handles concurrency, and how
     we need to program our NodeJS code to take full advantage of this environment.
     The most obvious difference between Node and other web server environments is
     that it uses a single thread to handle processing requests and relies on evented
     IO for high levels of concurrency. We'll then dig into why the evented IO approach
     to concurrency makes sense in a web context.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章的目的是解释Node如何处理并发，以及我们需要如何编写Node.js代码以充分利用这个环境。Node与其他Web服务器环境最明显的区别是它使用单个线程来处理请求，并依赖于事件驱动的I/O以实现高并发。然后我们将深入探讨为什么在Web环境中采用事件驱动的I/O方法是有意义的。
 - en: Since the IO event loop is grounded in network and file operations, we'll spend
     the remainder of the chapter looking at various network and file IO examples.
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于I/O事件循环基于网络和文件操作，我们将在本章的剩余部分探讨各种网络和文件I/O示例。
 - en: Single threaded IO
+  id: totrans-4
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 单线程I/O
 - en: A common misconception of NodeJS is that it's actually restricted to one CPU
     and can't achieve true parallelism. The fact is that Node often does use multiple
     threads of control. We'll explore these concepts later on in the chapter. Perhaps
     it's the IO event loop that's misleading because it does run in a single thread,
     on a single CPU.
+  id: totrans-5
   prefs: []
   type: TYPE_NORMAL
+  zh: Node.js的一个常见误解是它实际上仅限于一个CPU，无法实现真正的并行处理。事实是Node经常使用多个控制线程。我们将在本章后面探讨这些概念。也许是因为I/O事件循环具有误导性，因为它确实是在单个线程、单个CPU上运行的。
 - en: The goal of this section is to introduce the concept of an IO loop, why it's
     a good idea for most web application back-ends, and how it overcomes challenges
     faced multithreading approaches to concurrency.
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 本节的目标是介绍I/O循环的概念，为什么它对大多数Web应用后端来说是个好主意，以及它是如何克服多线程方法在并发中面临的挑战的。
 - en: Note
+  id: totrans-7
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: The following chapter covers more advanced Node concurrency topics, including
     the ways in which the event loop can bite us. While the event loop is a novel
     idea, it's not perfect; every solution to a given concurrency problem has negative
     trade-offs.
+  id: totrans-8
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下章节涵盖了更高级的Node并发主题，包括事件循环可能对我们造成的影响。虽然事件循环是一个新颖的想法，但它并不完美；针对任何给定的并发问题，每个解决方案都有其负面的权衡。
 - en: IO is slow
+  id: totrans-9
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: I/O操作缓慢
 - en: The slowest parts of a given web application infrastructure are the network
     IO and the storage IO. These operations are reasonably fast, mostly thanks to
     physical hardware improvements over the past several years, but compared to the
@@ -57,8 +77,10 @@
     so challenging in terms of performance is that there's a lot of IO happening.
     We constantly read and write from databases and transfer data to a client browser.
     IO performance is a major headache in the web application arena.
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 某个Web应用基础设施中最慢的部分是网络I/O和存储I/O。这些操作相对较快，主要归功于过去几年物理硬件的改进，但与在CPU上进行的软件任务相比，I/O就像乌龟一样慢。从性能的角度来看，Web应用之所以具有挑战性，是因为有很多I/O操作发生。我们不断地从数据库中读取和写入，并将数据传输到客户端浏览器。I/O性能是Web应用领域的一个主要难题。
 - en: The fundamental breakthrough with evented IO is that it actually takes advantage
     of the fact that IO is slow. For example, let's say that we have 10 CPU tasks
     queued, but first, we need to write something to disk. If we had to wait for the
@@ -66,65 +88,88 @@
     longer than they need to. With evented IO, we issue the write command, but we
     don't wait for the low-level operating system IO write operation to complete.
     Instead, we continue executing our 10 CPU tasks while the IO is taking place.
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: 事件驱动I/O的基本突破在于它实际上利用了I/O操作缓慢的事实。例如，假设我们有10个CPU任务排队等待，但首先我们需要将某些内容写入磁盘。如果我们必须等待写入操作完成才能开始任务，那么这些任务将比实际需要的时间长得多。在事件驱动I/O中，我们发出写入命令，但不会等待低级操作系统的I/O写入操作完成。相反，我们在I/O进行的同时继续执行我们的10个CPU任务。
 - en: 'Here''s an illustration of CPU tasks running in a single thread, while the
     IO tasks happen in the background:'
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 下面是一个CPU任务在单个线程中运行，而I/O任务在后台发生的示意图：
 - en: '![IO is slow](img/B05133_08_01.jpg)'
+  id: totrans-13
   prefs: []
   type: TYPE_IMG
+  zh: '![IO很慢](img/B05133_08_01.jpg)'
 - en: It doesn't matter what type of IO operating a given task needs to perform; it
     will not block other tasks from running. This is how evented IO architectures
     can get away with running in a single thread. NodeJS excels at this type of concurrency—performing
     lots of IO work in parallel. However, we do need to know about the state of these
     IO operations taking place at the operating system level. Up next, we'll look
     at how Node uses these events to reconcile the state of a given file descriptor.
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 不论给定任务需要执行哪种类型的IO，它都不会阻止其他任务运行。这就是事件驱动IO架构能够在单线程中运行的原因。NodeJS擅长这种类型的并发——并行执行大量的IO工作。然而，我们确实需要了解在操作系统级别发生的这些IO操作的状态。接下来，我们将看看Node是如何使用这些事件来解决特定文件描述符的状态的。
 - en: IO events
+  id: totrans-15
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: IO事件
 - en: Our application code needs some way of knowing that an IO operation has completed.
     This is where the IO events come into play. For example, if an asynchronous read
     operation is started somewhere in our JavaScript code, the operating system handles
     the actual reading of the file. When it's done reading, and the contents are in
     memory, the operating system triggers an IO event that indicates the IO operation
     has completed.
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们的应用程序代码需要某种方式知道IO操作已完成。这就是IO事件发挥作用的地方。例如，如果在我们JavaScript代码的某个地方启动了一个异步读取操作，操作系统将处理实际的文件读取。当读取完成，内容在内存中时，操作系统触发一个IO事件，表示IO操作已完成。
 - en: 'All major operating systems support these types of IO events in one form or
     another. NodeJS uses low-level `C` libraries to manage these events, and it also
     accounts for the various platform differences. Here''s an illustration of the
     node IO event loop, sending various IO tasks to the operating system and listening
     to the corresponding IO events:'
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 所有主要操作系统都以某种形式支持这些类型的IO事件。NodeJS使用低级的`C`库来管理这些事件，并且它还考虑了各种平台差异。以下是node IO事件循环的示意图，将各种IO任务发送到操作系统并监听相应的IO事件：
 - en: '![IO events](img/B05133_08_02.jpg)'
+  id: totrans-18
   prefs: []
   type: TYPE_IMG
+  zh: '![IO事件](img/B05133_08_02.jpg)'
 - en: As this diagram shows, anything that's IO is handled outside of the event loop.
     The event loop itself is just a queue with JavaScript code tasks to run. These
     are generally IO-related tasks. As we can see, the result of an IO event is a
     callback function that gets pushed onto the queue. In Node, JavaScript doesn't
     wait for IO to complete. The front-end analog is the rendering engine not waiting
     for the slower computational tasks to complete in a web worker.
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 如此图表所示，任何IO操作都在事件循环之外处理。事件循环本身只是一个包含要运行的JavaScript代码任务的队列。这些通常是IO相关的任务。正如我们所见，IO事件的产物是一个被推入队列的回调函数。在Node中，JavaScript不会等待IO完成。前端类似的情况是渲染引擎不会等待在web
+    worker中完成较慢的计算任务。
 - en: Most of this happens transparently to us, within the NodeJS modules that are
     used to perform IO. We just need to concern ourselves with the callback functions.
     If callbacks don't sound appealing, it's a good thing that we just spent several
     chapters addressing concurrency issues related to callback hell. These ideas are
     mostly applicable in Node; additionally, we'll address some synchronization techniques
     that are unique to Node in the next chapter.
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 大部分这些操作对我们来说是透明的，发生在用于执行IO的NodeJS模块内部。我们只需要关注回调函数。如果回调函数听起来不吸引人，那么我们刚刚花费了几个章节来解决与回调地狱相关的并发问题是个好事。这些思想在Node中主要适用；此外，我们将在下一章中讨论一些Node特有的同步技术。
 - en: Multi-threading challenges
+  id: totrans-21
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 多线程挑战
 - en: For many years, if the predominant approach to serving web requests has been
     multithreading, then what's all the fuss about evented IO? Besides, running all
     our JavaScript code on a single CPU hardly takes advantage of the multi-core systems
@@ -133,16 +178,20 @@
     nothing wrong with either approach as they both solve similar problems using different
     tactics. We would want to rethink our approach when we move to the extreme in
     either direction; for example, we start handling a lot more IO or a lot more compute.
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 多年来，如果服务Web请求的主要方法一直是多线程，那么关于事件驱动IO的争议究竟是什么？此外，将所有JavaScript代码运行在单个CPU上几乎无法充分利用我们可能运行的具有多核的系统。即使我们在虚拟化环境中运行，我们也可能拥有并行化的虚拟硬件。简短的回答是，这两种方法都没有问题，因为它们都使用不同的策略来解决类似的问题。当我们向任一方向极端发展时，我们都需要重新思考我们的方法；例如，我们开始处理更多的IO或更多的计算。
 - en: In a web environment, the common case is to spend more time performing IO than
     expensive CPU-burning activities. When the users of our application interact with
     it, we generally need to make API calls over a network, and then we need to read
     or write to or from the file system. Then, we need to respond over the network.
     Unless these requests are doing some heavy number crunching in their computations,
     the majority of the time is spent doing IO operations.
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 在Web环境中，常见的情况是在执行IO操作上花费的时间比昂贵的CPU燃烧活动更多。当我们的应用程序的用户与之交互时，我们通常需要在网络上进行API调用，然后我们需要从文件系统读取或写入。然后，我们需要通过网络进行响应。除非这些请求在其计算中进行一些重数的计算，否则大部分时间都花在IO操作上。
 - en: So, what makes IO-intensive applications not well-suited for the multithreaded
     approach? Well, if we want to spawn new threads or use a pool of threads for that
     matter, there will be a lot of memory overhead involved. Think of a thread that
@@ -151,8 +200,10 @@
     to perform IO. It's a little trickier to do the IO synchronization without an
     event loop because we have to hold the thread open for the current request that
     we're servicing while we wait for the IO operation to complete.
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 那么，是什么使得IO密集型应用程序不适合多线程方法呢？好吧，如果我们想要生成新的线程或者使用线程池，将会涉及到大量的内存开销。想象一下，一个处理请求的线程就像是一个拥有自己内存块的过程。如果我们有很多传入的请求，那么我们可以并行处理它们。然而，我们仍然需要进行IO。在没有事件循环的情况下进行IO同步要复杂一些，因为我们必须在等待IO操作完成的同时保持当前正在服务的请求的线程打开。
 - en: This model is very difficult to scale once we start getting into very large
     volumes of IO. But, for the average application, there's no need to abandon it.
     Likewise, if our application morphs into something that requires a ton of CPU
@@ -160,12 +211,16 @@
     to cut it. Now that we have a basic understanding of what makes the IO event loop
     a powerful concept for IO-heavy web applications, it's time to look at some other
     characteristics of the event loop.
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们开始处理非常大的IO量时，这种模型很难进行扩展。但是，对于普通应用程序来说，没有必要放弃它。同样，如果我们的应用程序转变为需要大量CPU功率的任何请求，单线程的事件循环可能就不够了。现在我们已经基本了解了什么使得IO事件循环成为IO密集型Web应用程序的一个强大概念，是时候看看事件循环的其他特性了。
 - en: More connections, more problems
+  id: totrans-26
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 连接越多，问题越多
 - en: In this section, we'll address the challenges posed by building applications
     that run in an Internet-connected world. In this turbulent environment, unexpected
     things can happen; mainly, lots of user uptake translating to a lot of simultaneous
@@ -174,43 +229,57 @@
     look at the C10K problem—10,000 users connecting to an application with limited
     hardware resources. We'll close the section with a closer look at the event handlers
     that actually run within the NodeJS event loop.
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将探讨构建运行在互联网连接世界中的应用程序所面临的挑战。在这个动荡的环境中，意外的事情可能会发生；主要是，大量的用户使用导致大量的同时用户连接。在本节中，我们将探讨在部署到面向互联网的环境时需要关注的事物类型。然后我们将探讨C10K问题——10,000个用户连接到具有有限硬件资源的应用程序。我们将以更深入地查看实际在NodeJS事件循环中运行的的事件处理器来结束本节。
 - en: Deploying to the Internet
+  id: totrans-28
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 部署到互联网
 - en: The Internet is a rewarding and ruthless environment in which to deploy our
     applications. Our users need only a browser and a URL. If we deliver something
     people want, and the demand for this something continues to grow, we'll soon face
     a connectivity challenge. This could be a gradual increase in popularity, or a
     sudden spike. In either case, the onus on us to handle these scalability challenges.
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 互联网是一个部署我们应用程序的有利可图且残酷的环境。我们的用户只需要一个浏览器和一个URL。如果我们提供人们想要的东西，并且对这种东西的需求持续增长，我们很快就会面临连接挑战。这可能是一种逐渐增加的流行度，或者是一种突然的激增。在两种情况下，我们处理这些可扩展性挑战的责任。
 - en: Since our application faces the public, there's a strong likelihood that we
     have socially-focused features that are computationally remiss. On the other hand,
     this usually means that 'there are a high number of connections, each performing
     their own IO-intensive operations. This sounds like a good fit for an IO event
     loop, like the one found in NodeJS.
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于我们的应用程序面向公众，我们很可能有专注于社交的功能，这些功能在计算上有所疏漏。另一方面，这通常意味着“有大量的连接，每个都在执行自己的I/O密集型操作。”这似乎非常适合IO事件循环，就像在NodeJS中找到的那样。
 - en: The Internet is actually the perfect environment to test the versatility of
     our application. If ever there were an audience that wanted more for less, you'd
     find it here. Assuming our application is something useful and in-demand, we can
     see for ourselves how well we stand up to tens of thousands of connections. We
     probably don't have a gigantic infrastructure backing us either, so we have to
     be responsible with our hardware resources.
+  id: totrans-31
   prefs: []
   type: TYPE_NORMAL
+  zh: 互联网实际上是测试我们应用程序灵活性的完美环境。如果有一个想要更多而付出更少的观众群体，你就能在这里找到。假设我们的应用程序是有用且受欢迎的，我们可以亲自看到我们如何应对数万个连接。我们可能也没有庞大的基础设施作为后盾，因此我们必须对我们的硬件资源负责。
 - en: Can NodeJS concurrency efficiently cope with such an environment? It certainly
     can, but beware; this audience has zero-tolerance for failed requests or even
     sub-optimal performance.
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: NodeJS的并发能否高效地应对这样的环境？当然可以，但要注意；这个观众群体对失败的请求或甚至次优性能零容忍。
 - en: The C10K problem
+  id: totrans-33
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: C10K问题
 - en: Dan Kegel first started thinking about the C10K problem back in 1999 ([http://www.kegel.com/c10k.html](http://www.kegel.com/c10k.html)).
     So the initial idea is fast approaching 20 years of age; hardware has come a long
     way since then. However, the idea of connecting 10,000 concurrent users to an
@@ -218,67 +287,94 @@
     problem should be C25K because for what most would consider affordable server
     hardware or virtual hardware, we can squeeze out a lot more performance than we
     could have in 1999.
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 丹·凯格尔（Dan Kegel）首次思考C10K问题是在1999年（[http://www.kegel.com/c10k.html](http://www.kegel.com/c10k.html)）。因此，最初的构想已经接近20岁了；自那时以来，硬件已经取得了长足的进步。然而，将10,000个并发用户连接到应用程序的想法至今仍然相关。事实上，也许现代版本的问题应该是C25K，因为对于大多数人认为负担得起的服务器硬件或虚拟硬件来说，我们可以挤出比1999年更多的性能。
 - en: 'The second reason that the scope of the problem has grown is due to the growing
     population of the Internet. There''s an order of magnitude more connected people
     and devices than there were in 1999\. One thing that hasn''t changed is the nature
     of C10K—fast performance for a large number of connections without a vast infrastructure
     needed to support it. For example, here''s a diagram showing incoming requests
     being mapped to threads on the system:'
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 问题范围扩大的第二个原因是互联网用户群体的增长。与1999年相比，连接的人和设备数量增加了一个数量级。C10K的本质没有改变，那就是对于大量连接，不需要庞大的基础设施来支持它的高速性能。例如，这里有一个图表显示传入请求被映射到系统上的线程：
 - en: '![The C10K problem](img/B05133_08_03.jpg)'
+  id: totrans-36
   prefs: []
   type: TYPE_IMG
+  zh: '![C10K问题](img/B05133_08_03.jpg)'
 - en: 'As the numbers of connected users grows, the numbers of requests also grow.
     We''ll need to scale out our physical infrastructure fairly soon using this approach
     because it inherently relies on processing requests in parallel. The evented IO
     loop also processes requests in parallel, but using a different tactic, as is
     illustrated here:'
+  id: totrans-37
   prefs: []
   type: TYPE_NORMAL
+  zh: 随着连接用户数量的增加，请求的数量也在增加。我们很快就需要使用这种方法扩展我们的物理基础设施，因为它本质上依赖于并行处理请求。事件驱动的IO循环也并行处理请求，但使用不同的策略，如下所示：
 - en: '![The C10K problem](img/B05133_08_04.jpg)'
+  id: totrans-38
   prefs: []
   type: TYPE_IMG
+  zh: '![C10K问题](img/B05133_08_04.jpg)'
 - en: The point at which our application can't handle the number of connections due
     to the number of CPUs is much different here. This is because our JavaScript code
     runs linearly in one thread, on one CPU. However, the type of JavaScript code
     we write that runs within this IO loop plays an important role, as we'll see next.
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们的应用程序因为CPU数量无法处理连接数量时，这一点在这里有很大的不同。这是因为我们的JavaScript代码在一个线程、一个CPU上线性运行。然而，我们在IO循环中运行的JavaScript代码的类型起着重要作用，正如我们接下来将要看到的。
 - en: Lightweight event handlers
+  id: totrans-40
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 轻量级事件处理器
 - en: The assumption with NodeJS is that we don't spend much time, relatively speaking,
     executing JavaScript code. Put differently, when a request arrives at a Node application,
     the JavaScript code that handles the request is short-lived. It figures out the
     IO it needs to perform, perhaps by reading something from the file system and
     exits, yielding control back to the IO loop.
+  id: totrans-41
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于 NodeJS，我们的假设是，相对而言，我们不会花费太多时间执行 JavaScript 代码。换句话说，当一个请求到达 Node 应用程序时，处理该请求的
+    JavaScript 代码是短暂的。它确定所需的 I/O 操作，可能通过从文件系统中读取某些内容并退出，将控制权交还给 I/O 循环。
 - en: However, there's nothing to enforce that our JavaScript code be small and efficient.
     And sometimes, CPU-intensive code is unavoidable due to changes in how our application
     functions, or the introduction of a new feature that takes the product in another
     direction. If this does happen, it's imperative that we take the necessary corrective
     design steps because a runaway JavaScript handler can wreak havoc on all our connections.
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 然而，并没有什么可以强制我们的 JavaScript 代码小而高效。有时，由于应用程序功能的改变或引入了将产品引向另一个方向的新功能，CPU 密集型代码是不可避免的。如果这种情况发生，我们必须采取必要的纠正设计步骤，因为一个失控的
+    JavaScript 处理器可能会破坏我们所有的连接。
 - en: 'Let''s take a look at the Node event loop, the types of JavaScript tasks that
     work well, and the ones that can cause problems:'
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们来看看 Node 事件循环、适合 JavaScript 任务类型以及可能引起问题的类型：
 - en: '[PRE0]'
+  id: totrans-44
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: The `process.nextTick()` function is an entry point into the Node IO event loop.
     In fact, this function is used all over the place by the core Node modules. Each
     and every event loop iteration is called a tick. So all we're doing by calling
     this function with a callback is saying—add this function to the queue of functions
     to be called in the next loop iteration.
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: '`process.nextTick()` 函数是 Node I/O 事件循环的入口点。实际上，这个函数在核心 Node 模块中被广泛使用。每个事件循环迭代都被称为一个
+    tick。所以，通过调用这个函数并传递一个回调，我们实际上是在说——把这个函数添加到下一个循环迭代中要调用的函数队列中。'
 - en: There could be hundreds or even thousands of callbacks to process in a given
     loop iteration. This doesn't matter because there's no waiting on IO in any of
     these callbacks. So, a single thread is sufficient to handle web requests, except
@@ -287,36 +383,53 @@
     while this is going on, the event loop is stuck. The handler that we added after
     the CPU-expensive handler doesn't run. The consequences are disastrous when there
     are thousands of connected clients waiting for a response.
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 在给定的循环迭代中，可能会有数百甚至数千个回调需要处理。这并不重要，因为这些回调中没有任何一个是等待 I/O 的。因此，单个线程足以处理 Web 请求，除非我们开始执行消耗大量
+    CPU 周期的任务。前一个示例中的一个处理器就做了这件事。它需要几秒钟才能返回，而在这个过程中，事件循环会卡住。在 CPU 资源密集型处理器之后添加的处理程序不会运行。当有数千个连接的客户端正在等待响应时，后果是灾难性的。
 - en: Note
+  id: totrans-47
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: We'll tackle this issue in depth in the next chapter when we look at creating
     clusters of Node processes, each with their own event loops.
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将在下一章深入探讨这个问题，当我们查看创建具有各自事件循环的 Node 进程集群时。
 - en: Evented network IO
+  id: totrans-49
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 事件驱动的网络 I/O
 - en: NodeJS excels at serving HTTP requests. This is because a given request life-cycle
     spends much time in transit between the client and the server. During this time,
     Node processes other requests. In this section, we'll look at some of Node's HTTP
     networking capabilities, and how they fit into the IO event loop.
+  id: totrans-50
   prefs: []
   type: TYPE_NORMAL
+  zh: NodeJS 在处理 HTTP 请求方面表现出色。这是因为给定的请求生命周期在客户端和服务器之间传输的时间很长。在这段时间里，Node 处理其他请求。在本节中，我们将探讨
+    Node 的 HTTP 网络功能，以及它们如何适应 I/O 事件循环。
 - en: We'll start with a look at basic HTTP requests, and how they serve as the foundation
     for many Node modules and projects. Then, we'll move onto streaming responses
     to the client, instead of sending a giant blob of data all at once. Finally, we'll
     look at how Node servers can proxy requests to other services.
+  id: totrans-51
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将从基本 HTTP 请求开始，探讨它们如何成为许多 Node 模块和项目的基础。然后，我们将转向向客户端发送流式响应，而不是一次性发送大量数据。最后，我们将探讨
+    Node 服务器如何代理请求到其他服务。
 - en: Handling HTTP requests
+  id: totrans-52
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 处理 HTTP 请求
 - en: 'The `http` module in NodeJS takes care of all the nitty-gritty details with
     regard to creating and setting up HTTP servers. It should be no surprise that
     this module is heavily utilized by many Node projects that create web servers.
@@ -327,11 +440,15 @@
     contains information that''s sent back to the client, and we generally write to
     this object. Here''s a visualization that puts these two concepts into the context
     of the IO event loop:'
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: NodeJS中的`http`模块负责处理创建和设置HTTP服务器时所有琐碎的细节。毫不奇怪，这个模块被许多创建Web服务器的Node项目广泛使用。它甚至有一个辅助函数，可以为我们创建服务器，并设置用于响应传入请求的回调函数。这些回调函数接收一个`request`参数和一个`response`参数。请求包含从客户端发送的信息，我们通常从这个对象中读取。响应包含发送回客户端的信息，我们通常写入这个对象。以下是一个将这些概念放入IO事件循环上下文的可视化：
 - en: '![Handling HTTP requests](img/B05133_08_05.jpg)'
+  id: totrans-54
   prefs: []
   type: TYPE_IMG
+  zh: '![处理HTTP请求](img/B05133_08_05.jpg)'
 - en: 'It may seem counter-intuitive at first, that the client communicates directly
     with the event loop. Well, this is actually a close approximation of what''s really
     going on. The `request` and `response` objects are simply abstractions accessible
@@ -339,14 +456,20 @@
     socket data. These abstractions hand off the correct data to the socket or read
     the correct socket data. In both cases, our code deferrers to the event loop where
     the real client communication happens:'
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 起初，客户端直接与事件循环通信可能看起来有些不合常理。实际上，这实际上是对真正发生的事情的一个很好的近似。`request`和`response`对象只是我们JavaScript代码中可访问的抽象。它们的存在是为了帮助我们读取和写入正确的套接字数据。这些抽象将正确数据传递给套接字或读取正确的套接字数据。在两种情况下，我们的代码都推迟到事件循环，在那里真正的客户端通信发生：
 - en: Let's take a look at some basic HTTP server code now.
+  id: totrans-56
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们来看一些基本的HTTP服务器代码。
 - en: '[PRE1]'
+  id: totrans-57
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: In this example, we send back plain text to the browser. We run a quick check
     on the URL and adjust the content accordingly. There's something interesting in
     the default path though, we're using `setTimeout()` to delay the response by 5
@@ -355,30 +478,41 @@
     nature of the event loop. While this request waits for something to happen, all
     other requests get serviced immediately. We can test this by loading the `/hello`
     URL or the `/world` URL in another tab while this loads.
+  id: totrans-58
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这个例子中，我们向浏览器发送纯文本。我们对URL进行快速检查，并相应地调整内容。但是默认路径中有些有趣的地方，我们使用`setTimeout()`将响应延迟5秒。所以如果我们访问`http://localhost/`，页面会旋转5秒后才显示任何内容。这里的想法是展示事件循环的异步性。当这个请求等待发生某些事情时，所有其他请求都会立即得到服务。我们可以通过在另一个标签页中加载`/hello`
+    URL或`/world` URL来测试这一点。
 - en: Streaming responses
+  id: totrans-59
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 流式响应
 - en: The previous example, we wrote the entire HTTP response content with one call.
     This is generally fine, especially in our case because we were only writing a
     handful of characters to the connected socket. With some applications, the response
     to a given request is going to be much larger than this. For example, what if
     we implement an API call, and the client has asked for a collection of entities,
     and each entity has several properties?
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 在上一个例子中，我们通过一次调用就写完了整个HTTP响应内容。这通常是可行的，特别是在我们的情况下，因为我们只向连接的套接字写入了一小部分字符。对于某些应用程序，对给定请求的响应可能会比这大得多。例如，如果我们实现了一个API调用，并且客户端请求了一个实体集合，而每个实体都有几个属性呢？
 - en: 'When we transfer large amounts of data to the client from our request handler,
     we can get ourselves into trouble. Even though we''re not performing CPU-intensive
     computations, we''re still going to consume the CPU and block other request handlers
     while we write huge pieces of data to our responses. Here''s an illustration of
     the problem:'
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们从请求处理器向客户端传输大量数据时，我们可能会遇到麻烦。即使我们不是在进行CPU密集型计算，我们仍然会消耗CPU，并在将大量数据写入响应时阻塞其他请求处理器。以下是这个问题的说明：
 - en: '![Streaming responses](img/B05133_08_06.jpg)'
+  id: totrans-62
   prefs: []
   type: TYPE_IMG
+  zh: '![流式响应](img/B05133_08_06.jpg)'
 - en: The problem isn't necessarily responding with one of these large responses,
     but when there are lots of them. Earlier in the chapter, we discussed the problem
     of establishing and maintaining a large number of connected users because this
@@ -386,18 +520,24 @@
     relatively large amounts of data in each response is the performance degradation
     of the application overall. Each user will experience non-optimal performance,
     and this isn't what we want at all.
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: 问题不一定在于响应这些大型响应，而在于当有很多这样的响应时。在本章的早期，我们讨论了建立和维护大量连接用户的问题，因为这是我们应用程序一个非常可能的情况。所以，返回相对大量数据的问题在于应用程序整体性能的下降。每个用户都会体验到非最佳性能，这绝对不是我们想要的。
 - en: 'We can tackle this issue using streaming techniques. Rather than writing the
     whole response at once, we can write it in chunks. As a chunk of data is written
     to the response stream, the event loop is free to process queued requests. Overall,
     we can avoid any one request handler from taking more time from the event loop
     than what is absolutely necessary. Let''s take a look at an example:'
+  id: totrans-64
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们可以使用流技术来解决这个问题。我们不必一次性写出整个响应，而是可以分块写出。当数据块被写入响应流时，事件循环可以自由处理队列中的请求。总的来说，我们可以避免任何一个请求处理程序从事件循环中占用比绝对必要更长的时间。让我们看看一个例子：
 - en: '[PRE2]'
+  id: totrans-65
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: This example responds to the client request by returning a list of numbers in
     plain text. If we look at this page in a browser, we can actually see how the
     numbers are chunked because they're separated by new lines. This is only there
@@ -405,106 +545,150 @@
     one big list. The important thing is that our request handler is no longer greedy,
     as by using the streaming approach, we're sharing the event loop with other request
     handlers.
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个例子通过返回纯文本中的数字列表来响应用户请求。如果我们在这个浏览器中查看这个页面，我们实际上可以看到数字是如何分块的，因为它们由换行符分隔。这只是为了说明目的；在实践中，我们可能会将响应作为一个大列表使用。重要的是，我们的请求处理程序不再贪婪，因为通过使用流方法，我们与其他请求处理程序共享事件循环。
 - en: Proxy network requests
+  id: totrans-67
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 代理网络请求
 - en: Our main NodeJS web server doesn't need to fulfill every single aspect of every
     request. Instead, our handlers can reach out to other systems that form the backbone
     of our application and ask them for data. This is a form of microservices, and
     it's a topic that exceeds the scope of this discussion. Let's just think of these
     services as independent parts that help us compose a larger application whole.
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们的主要NodeJS网络服务器不需要满足每个请求的每一个方面。相反，我们的处理程序可以联系构成我们应用程序骨干的其他系统，并请求它们的数据。这是一种微服务的形式，这也是这个讨论范围之外的话题。让我们把这些服务视为帮助我们组合更大应用程序整体的独立部分。
 - en: 'Within a Node request handler, we can create other HTTP requests that talk
     to these external services. These requests utilize the same event loop as the
     handler that creates them. For example, when the service responds with data, it
     triggers an IO event, and a corresponding piece of JavaScript code runs. The following
     illustration shows how this type of setup works:'
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: 在Node请求处理程序中，我们可以创建其他HTTP请求，这些请求与这些外部服务进行通信。这些请求使用与创建它们的处理程序相同的事件循环。例如，当服务响应数据时，它触发一个IO事件，并运行相应的JavaScript代码。以下插图显示了这种设置是如何工作的：
 - en: '![Proxy network requests](img/B05133_08_07.jpg)'
+  id: totrans-70
   prefs: []
   type: TYPE_IMG
+  zh: '![代理网络请求](img/B05133_08_07.jpg)'
 - en: 'Let''s see if we can write a request handler that''s really a composition of
     other services that live on different servers. We''ll first implement a users
     service, which allows us to retrieve specific user information. Then, we''ll implement
     a preference service, which allows us to fetch preferences set by a specific user.
     Here''s the user service code:'
+  id: totrans-71
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们看看我们能否编写一个请求处理程序，它实际上是位于不同服务器上的其他服务的组合。我们首先实现一个用户服务，它允许我们检索特定用户信息。然后，我们将实现一个偏好服务，它允许我们获取特定用户设置的偏好。以下是用户服务代码：
 - en: '[PRE3]'
+  id: totrans-72
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: 'This is pretty straightforward. We have some sample user data stored in an
     array, and when a request arrives, we try to find a specific user object based
     on ID (the array index). Then, we respond with a JSON string. The preference service
     uses the exact same approach. Here''s the code:'
+  id: totrans-73
   prefs: []
   type: TYPE_NORMAL
+  zh: 这非常直接。我们有一些示例用户数据存储在数组中，当请求到达时，我们尝试根据ID（数组索引）找到特定的用户对象。然后，我们以JSON字符串的形式响应。偏好服务使用完全相同的方法。以下是代码：
 - en: Note
+  id: totrans-74
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: Note that each of these servers is started on different ports. If you're following
     along by running the code in this book, this example requires starting three web
     servers on the command line. It's probably easiest to open three terminal tabs
     (if supported, on OSX for instance) or open three terminal windows.
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，每个服务器都在不同的端口上启动。如果您通过在本书中运行代码来跟进，此示例需要在命令行上启动三个网络服务器。如果支持，例如在 OS X 上，打开三个终端标签页（或打开三个终端窗口）可能最容易。
 - en: '[PRE4]'
+  id: totrans-76
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'Now we can write our main server with request handlers that reach out to these
     services. Here''s what the code looks like:'
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们可以编写我们的主要服务器，其中包含请求处理器，这些处理器会调用这些服务。以下是代码的示例：
 - en: '[PRE5]'
+  id: totrans-78
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: Now, we need to make sure that all three services are running—the users service,
     the preference service, and the main service that users interact with directly.
     They're all on different ports because they're all running as a web server on
     the same machine. In practice, these services could be running anywhere—that's
     part of their appeal.
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们需要确保所有三个服务都在运行——用户服务、偏好服务以及用户直接交互的主服务。它们都在不同的端口上运行，因为它们都在同一台机器上作为网络服务器运行。在实践中，这些服务可以在任何地方运行——这是它们吸引力的一部分。
 - en: Evented file IO
+  id: totrans-80
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 事件驱动的文件输入/输出
 - en: Now that we have a fairly good handle on network IO in NodeJS, it's time to
     focus our attention on file system IO. After this section, we'll see how files
     and network sockets are treated the same inside the event loop. Node takes care
     of the subtle differences for us, which means we can write consistent code.
+  id: totrans-81
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们对 NodeJS 中的网络输入/输出有了相当好的了解，是时候将我们的注意力转向文件系统输入/输出了。在本节之后，我们将看到文件和网络套接字在事件循环中是如何被同等对待的。Node
+    会为我们处理这些细微的差异，这意味着我们可以编写一致的代码。
 - en: First, we'll look at reading form files, followed by writing to files. We'll
     close the section with a look at streaming from one file to another, performing
     data transformations in between.
+  id: totrans-82
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，我们将查看从文件中读取，然后是向文件写入。我们将通过查看从文件到文件的流式传输来结束本节，其中在之间进行数据转换。
 - en: Reading from files
+  id: totrans-83
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 从文件读取
 - en: 'Let''s start with a simple example that reads the entire contents of a file
     into memory. This will help us get a feel for doing asynchronous file IO:'
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从读取整个文件内容到内存中的简单示例开始。这将帮助我们了解如何进行异步文件输入/输出：
 - en: '[PRE6]'
+  id: totrans-85
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: In the callback function that we passed to `fs.readFile()`, we have access to
     the `Buffer` object that holds the file contents in memory. While the operating
     system does the actual file reading, and the buffer is populated with the result,
     other handlers in the IO event loop continue to run. This is just like reading
     from a network socket, and also why there's a callback that's added to the event
     queue, which gets called once the data has been read.
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们传递给 `fs.readFile()` 的回调函数中，我们可以访问包含文件内容的内存中的 `Buffer` 对象。当操作系统实际进行文件读取，并且缓冲区被填充结果时，IO
+    事件循环中的其他处理器会继续运行。这就像从网络套接字读取一样，也是为什么会有一个回调被添加到事件队列中，一旦数据被读取就会调用它。
 - en: 'The problem with reading files in one shot like this is that there could be
     ramifications outside of node at the OS level. The file that we will use here
     as an example is fairly modest in size, but what if we try to read from a much
@@ -512,20 +696,28 @@
     instead of reading the entire file at once, we only read chunks of data at a time?
     This would ease the resource contention if there were any. Let''s look at an alternative
     approach:'
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 以这种方式一次性读取文件的问题在于，这可能会在 Node 之外在操作系统级别产生影响。我们在这里用作示例的文件大小相当适中，但如果我们尝试从一个更大的文件中读取呢？如果有几个请求处理器尝试读取同一个文件呢？也许我们不应该一次性读取整个文件，而是每次只读取数据块？如果存在任何资源竞争，这将减轻竞争。让我们看看一种替代方法：
 - en: '[PRE7]'
+  id: totrans-88
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: Here, we get the exact same result, except that we've broken the single `fs.readFile()`
     call into several smaller `fs.read()`. We also use a promise here to make the
     callback handling a little more straightforward.
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里，我们得到完全相同的结果，只是我们将单个 `fs.readFile()` 调用分解为几个更小的 `fs.read()`。我们还在这里使用一个承诺来使回调处理更加直接。
 - en: Note
+  id: totrans-90
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: You may be wondering why we're not using a loop to iterate over the chunks and
     issue the `fs.read()` calls. Instead, we're scheduling the read calls using `process.nextTick()`.
     If we loop over the chunks, each `read()` call gets added to the event queue in
@@ -533,51 +725,69 @@
     handlers being called. This defeats the purpose of breaking up `fs.readFile()`.
     Instead, `process.nextTick()` allows other handlers to run in between our `read()`
     calls.
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: 你可能想知道为什么我们不使用循环来遍历块并发出`fs.read()`调用。相反，我们使用`process.nextTick()`来安排读取调用。如果我们遍历块，每个`read()`调用都会按顺序添加到事件队列中。因此，我们最终会有一系列连续的`read()`调用，没有任何其他处理程序被调用。这违背了拆分`fs.readFile()`的目的。相反，`process.nextTick()`允许在`read()`调用之间运行其他处理程序。
 - en: Writing to files
+  id: totrans-92
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 写入文件
 - en: 'Writing to files works a lot like reading from files. Actually, writing is
     slightly easier since we don''t have to maintain any data in memory; we just have
     to worry about writing data that''s already in memory to disk. Let''s start by
     looking at some code that writes a blob of data to a file with one call. This
     would be the equivalent of reading the entire file at once only in reverse:'
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 将数据写入文件的工作方式与从文件中读取非常相似。实际上，写入稍微容易一些，因为我们不需要在内存中维护任何数据；我们只需担心将内存中的数据写入磁盘即可。让我们先看看一些使用一次调用将数据块写入文件的代码。这在反向读取整个文件时是等效的：
 - en: '[PRE8]'
+  id: totrans-94
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: 'See, nothing to it. We write the string representation of our array to the
     file using `fs.writeFile()`. However, this has potential to block other things
     from happening at the OS level; especially if we''re writing a lot of data all
     at once. Let''s try breaking up the write operation into several smaller calls
     just like we did with the read example prior to this one:'
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: 看看，没什么难的。我们使用`fs.writeFile()`将我们数组的字符串表示写入文件。然而，这有可能在操作系统级别阻止其他事情发生；特别是如果我们一次写入大量数据。让我们尝试将写入操作分解成几个更小的调用，就像我们在之前的读取示例中所做的那样：
 - en: '[PRE9]'
+  id: totrans-96
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: This works the same as the approach we took with the chunked read. The main
     difference is that we write a file instead and that there's less moving parts.
     Also, the promise is resolved without a value, which is fine, because callers
     can treat this value as a `null` and still know that the file has been successfully
     written to disk. In the next section, we'll look at a more streamlined version
     of reading and writing files.
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
+  zh: 这与我们在分块读取中采取的方法相同。主要区别在于我们写入一个文件，并且涉及的组件更少。此外，承诺在没有值的情况下解决，这是可以接受的，因为调用者可以将此值视为`null`，并仍然知道文件已成功写入磁盘。在下一节中，我们将查看读取和写入文件的更简洁版本。
 - en: Streaming reads and writes
+  id: totrans-98
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 流式读取和写入
 - en: So far, we've addressed reading files in chunks, as well as splitting data into
     chunks, and writing them to disk one at a time. The advantage is that we yield
     control to other code, perhaps, other operating system calls during the time that
     we read or write. The advantage is that when we're working with large amounts
     of data, one hardware resource is never monopolized by a read or write operation.
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，我们已经讨论了分块读取文件以及将数据分成块并逐个写入磁盘。其优势在于，在读取或写入数据时，我们将控制权交给了其他代码，可能是其他操作系统调用。优势在于，当我们处理大量数据时，一个硬件资源永远不会被读取或写入操作所垄断。
 - en: 'In effect, we were implementing streaming reads and writes. In this section,
     we''ll look at the streaming interface that NodeJS implements for various components,
     including files. The code that we wrote in the preceding sections for streaming
@@ -585,42 +795,58 @@
     want boilerplate concurrency code where it can be avoided. We especially don''t
     want it sprinkled throughout our code base. Let''s look at a different approach
     to stream file reads and writes:'
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
+  zh: 实际上，我们正在实现流式读取和写入。在本节中，我们将查看NodeJS为各种组件（包括文件）实现的流式接口。我们之前编写的用于流式读取和写入的代码在某些地方有点冗长。正如我们所知，我们不想在可以避免的地方使用样板并发代码。我们尤其不想在代码库中到处散布。让我们看看一种不同的方法来流式读取和写入文件：
 - en: '[PRE10]'
+  id: totrans-101
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: 'We basically copy one file into another, making a small modification to the
     data along the way. Thankfully, NodeJS streaming facilities make performing this
     transformation easy without the need to write a lot of boilerplate code that reads
     input than writes to the output again. Almost all of this is abstracted away in
     the Transform class. Here''s an illustration of the pipeline that our previous
     code just created:'
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们基本上是将一个文件复制到另一个文件中，并在过程中对数据进行一些小的修改。幸运的是，NodeJS的流式处理功能使得执行这种转换变得容易，无需编写大量的样板代码来读取输入然后再写入输出。几乎所有这些操作都在Transform类中被抽象化。以下是我们之前代码创建的管道的示例：
 - en: '![Streaming reads and writes](img/B05133_08_08.jpg)'
+  id: totrans-103
   prefs: []
   type: TYPE_IMG
+  zh: '![流式读取和写入](img/B05133_08_08.jpg)'
 - en: Summary
+  id: totrans-104
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: This chapter introduced you to concurrency in NodeJS. The premise is that Node
     applications will perform a lot of IO, and that IO is slow, relative to other
     computations that take place in memory. Node implements an IO loop, a mechanism
     that notifies our code when a given IO resource is ready for input or output.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章向您介绍了NodeJS中的并发。前提是Node应用程序将执行大量的I/O操作，并且相对于内存中发生的其他计算，I/O操作较慢。Node实现了一个I/O循环，这是一种机制，当给定的I/O资源准备好输入或输出时，它会通知我们的代码。
 - en: We saw some of the advantages and disadvantages to this model. The alternative
     approach involves relying on parallelism at the CPU level, which can pose challenges
     when there's lots of slow IO taking place. Conversely, the IO loop approach isn't
     impacted the same when there's lots of IO, but suffers greatly when there are
     expensive CPU tasks to perform.
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们看到了这种模型的一些优缺点。另一种方法涉及在CPU级别依赖并行性，当存在大量慢速I/O操作时，这可能会带来挑战。相反，当存在大量I/O时，I/O循环方法不会受到相同的影响，但当有昂贵的CPU任务要执行时，它会受到很大的影响。
 - en: We spent the remainder of the chapter looking at various network and file IO
     examples. In the following chapter, we'll continue our exploration of NodeJS by
     looking at some more advanced topics, some of which can help us scale as our applications
     grow more computationally expensive.
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们在本章的剩余部分查看了一些网络和文件I/O示例。在下一章中，我们将继续探索NodeJS，通过查看一些更高级的主题，其中一些可以帮助我们在应用程序计算成本增加时进行扩展。
