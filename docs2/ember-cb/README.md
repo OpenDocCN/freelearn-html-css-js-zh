@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Ember.js 秘籍
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/c32a08b867c5f1547c510a2e64633fe0`](https://zh.annas-archive.org/md5/c32a08b867c5f1547c510a2e64633fe0)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

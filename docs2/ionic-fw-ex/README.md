@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Ionic 框架示例
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/487bbbb59d8576c4529a806b20878e36`](https://zh.annas-archive.org/md5/487bbbb59d8576c4529a806b20878e36)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

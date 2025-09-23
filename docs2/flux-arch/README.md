@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Flux 架构指南
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/178533a8bdc2a40c4892bffde0868094`](https://zh.annas-archive.org/md5/178533a8bdc2a40c4892bffde0868094)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
