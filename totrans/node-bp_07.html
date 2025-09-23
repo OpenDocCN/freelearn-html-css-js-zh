@@ -1,0 +1,260 @@
+<html><head></head><body>
+<div id="page" style="height:0pt"/><div class="book" title="Chapter&#xA0;7.&#xA0;Showing a Social Feed with Ember.js"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07" class="calibre1"/>Chapter 7. Showing a Social Feed with Ember.js</h1></div></div></div><p class="calibre7">In the previous chapter, we learned how to create a command-line tool that uploads photos to Flickr. In this chapter, we will communicate with one of the most popular social <a id="id276" class="calibre1"/>networks: <span class="strong"><strong class="calibre8">Twitter</strong></span>. We will create an application that gets the latest tweets based on a user handle and shows them on the screen. Node.js will be responsible for the communication with the Twitter API, and Ember.js will take care of the user interface. The following is a short list of the topics that we will cover in this chapter:</p><div class="book"><ul class="itemizedlist"><li class="listitem">Introduction to the Ember.js framework</li><li class="listitem">Communicating with Twitter's API</li><li class="listitem">Wiring Node.js with Ember.js to obtain tweets</li></ul></div></div>
+
+<div class="book" title="Chapter&#xA0;7.&#xA0;Showing a Social Feed with Ember.js">
+<div class="book" title="Preparing the application"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_1"><a id="ch07lvl1sec46" class="calibre1"/>Preparing the application</h1></div></div></div><p class="calibre7">We have worked on<a id="id277" class="calibre1"/> applications in the previous chapters. For this application, we need a Node.js server, which will deliver the necessary HTML, CSS, and JavaScript code. The following is the <code class="email">package.json</code> file, which we are starting from:</p><div class="informalexample"><pre class="programlisting">{
+  "name": "TwitterFeedShower",
+  "description": "Show Twitter feed",
+  "version": "0.0.1",
+  "dependencies": {
+    "twit": "*"
+  },
+  "main": "index.js"
+}</pre></div><p class="calibre7">There is only one dependency and that's the module that will connect to Twitter. After you run <code class="email">npm install</code> in the same folder as the <code class="email">package.json</code> file, the module will appear in the newly created <code class="email">node_modules</code> directory.</p><p class="calibre7">The next step is to<a id="id278" class="calibre1"/> create the folders for the HTML, CSS, and JavaScript and put the necessary files inside these folders. In addition, create the main <code class="email">index.js</code> file that will contain the code of our Node.js server. At the end, our project directory should look like the following diagram:</p><div class="mediaobject"><img src="../images/00021.jpeg" alt="Preparing the application" class="calibre10"/></div><p class="calibre11"> </p><p class="calibre7">The CSS styles of the project will go to <code class="email">css/styles.css</code>. The templates will be placed in the <code class="email">html/page</code>. html file and the custom JavaScript code will be written to <code class="email">js/scripts.js</code>. The other <code class="email">.js</code> files are Ember.js itself and its two dependencies: jQuery and Handlebars.</p></div></div>
+<div class="book" title="Running the server and delivering the assets"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec47" class="calibre1"/>Running the server and delivering the assets</h1></div></div></div><p class="calibre7">In <a class="calibre1" title="Chapter 5. Creating a To-do Application with Backbone.js" href="part0042_split_000.html#page">Chapter 5</a>, <span class="strong"><em class="calibre9">Creating a To-Do Application with Backbone.js</em></span>, we built an application with Backbone.js, and we used two<a id="id279" class="calibre1"/> helper functions: <code class="email">serveAssets</code> and <code class="email">respond</code>. The<a id="id280" class="calibre1"/> purpose of these functions was to read our HTML, CSS, and JavaScript files and send them as a response to the browser. We will use them again here.</p><p class="calibre7">Let's first start by defining the global variables, as follows:</p><div class="informalexample"><pre class="programlisting">var http = require('http'),
+  fs = require('fs'),
+  port = 3000,
+  files = [],
+  debug = true;</pre></div><p class="calibre7">The <code class="email">http</code> module provides methods to create and run the Node.js server, and the <code class="email">fs</code> module is responsible for reading the files from the filesystem. We are going to listen on port 3000 and the <code class="email">files</code> variable will cache the content of the read files. When <code class="email">debug</code> is set to <code class="email">true</code>, the assets will be read on every request. If it is <code class="email">false</code>, their content will be fetched only the first time, but every future response will contain the same code. We are doing this because while we are developing the application, we don't want to stop and run our server just to see the changes in the HTML script. Reading<a id="id281" class="calibre1"/> the file on every request guarantees that we are seeing the latest version. However, this is considered as a bad practice when we <a id="id282" class="calibre1"/>run the application in a production environment.</p><p class="calibre7">Let's continue and run the server using the following code:</p><div class="informalexample"><pre class="programlisting">var app = http.createServer(function (req, res) {
+  if(req.url.indexOf("/tweets/") === 0) {
+    // ... getting tweets
+  } else {
+    serveAssets(req, res);
+  }
+}).listen(port, '127.0.0.1');
+console.log("Server listening on port " + port);</pre></div><p class="calibre7">The callback function, which we passed to <code class="email">http.createServer</code>, accepts two arguments: the <code class="email">request</code> and <code class="email">response</code> objects. The Node.js part of our application will be responsible for two things. The first one is to provide the necessary HTML, CSS, and JavaScript, and the second one is to fetch tweets from Twitter. So, we are checking whether the URL starts with <code class="email">/tweets</code> and if it does, then we will process the request differently. Otherwise, <code class="email">serveAssets</code> will be called as follows:</p><div class="informalexample"><pre class="programlisting">var serveAssets = function(req, res) {
+  var file = req.url === '/' ? 'html/page.html' : req.url;
+  if(!files[file] || debug) {
+    try {
+      files[file] = {
+        content: fs.readFileSync(__dirname + "/" + file),
+        ext: file.split(".").pop().toLowerCase()
+      }
+    } catch(err) {
+      res.writeHead(404, {'Content-Type': 'plain/text'});
+      res.end('Missing resource: ' + file);
+      return;
+    }
+  }
+  respond(files[file], res);
+}</pre></div><p class="calibre7">In this <a id="id283" class="calibre1"/>function, we <a id="id284" class="calibre1"/>are getting the requested file path, and we will read the file from the filesystem. Along with the content of the file, we will also get its extension, which is needed to set the response header properly. This is done in the <code class="email">respond</code> method, as follows:</p><div class="informalexample"><pre class="programlisting">var respond = function(file, res) {
+  var contentType;
+  switch(file.ext) {
+    case "css": contentType = "text/css"; break;
+    case "html": contentType = "text/html"; break;
+    case "js": contentType = "application/javascript"; break;
+    case "ico": contentType = "image/ico"; break;
+    default: contentType = "text/plain";
+  }
+  res.writeHead(200, {'Content-Type': contentType});
+  res.end(file.content);
+}</pre></div><p class="calibre7">This is important because if we don't provide <code class="email">Content-Type</code>, the browser may not interpret the response correctly.</p><p class="calibre7">And that's everything about the serving of the assets. Let's continue and get information from Twitter.</p></div>
+<div class="book" title="Getting tweets based on a user handle"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec48" class="calibre1"/>Getting tweets based on a user handle</h1></div></div></div><p class="calibre7">Before we write the code that <a id="id285" class="calibre1"/>requests data from the Twitter's API, we <a id="id286" class="calibre1"/>need to register a new Twitter application. First, we should open <a class="calibre1" href="https://dev.twitter.com">https://dev.twitter.com</a>/ and log in with our Twitter <span class="strong"><strong class="calibre8">Name</strong></span> and <span class="strong"><strong class="calibre8">Password</strong></span>. After that, we need to load <a class="calibre1" href="https://dev.twitter.com/apps/new">https://dev.twitter.com/apps/new</a> and fill in the form. It should look like the following screenshot:</p><div class="mediaobject"><img src="../images/00022.jpeg" alt="Getting tweets based on a user handle" class="calibre10"/></div><p class="calibre11"> </p><p class="calibre7">We can leave the<a id="id287" class="calibre1"/> <span class="strong"><strong class="calibre8">Callback URL</strong></span> field empty. The <span class="strong"><strong class="calibre8">Website</strong></span> field can<a id="id288" class="calibre1"/> have the address of our personal or company site. We should accept the terms and conditions present below the form, and click on <span class="strong"><strong class="calibre8">Create your Twitter application</strong></span>. The next page, which we will see, should be similar to the following screenshot:</p><div class="mediaobject"><img src="../images/00023.jpeg" alt="Getting tweets based on a user handle" class="calibre10"/></div><p class="calibre11"> </p><p class="calibre7">The information <a id="id289" class="calibre1"/>that we need is located in the third tab: <span class="strong"><strong class="calibre8">API Keys</strong></span>. Once <a id="id290" class="calibre1"/>we click on it, Twitter will show us the <span class="strong"><strong class="calibre8">API key</strong></span> and <span class="strong"><strong class="calibre8">API secret</strong></span> fields, as shown in the following screenshot:</p><div class="mediaobject"><img src="../images/00024.jpeg" alt="Getting tweets based on a user handle" class="calibre10"/></div><p class="calibre11"> </p><p class="calibre7">Additionally, we will <a id="id291" class="calibre1"/>generate an access token and access secret by <a id="id292" class="calibre1"/>clicking on the <span class="strong"><strong class="calibre8">Create my access token</strong></span> button. Normally, the data doesn't show up immediately. So, we should wait a bit and refresh the page, if necessary. The resulted document should look like on the following screenshot:</p><div class="mediaobject"><img src="../images/00025.jpeg" alt="Getting tweets based on a user handle" class="calibre10"/></div><p class="calibre11"> </p><p class="calibre7">We will copy <a id="id293" class="calibre1"/>the <span class="strong"><strong class="calibre8">Access token</strong></span> and <span class="strong"><strong class="calibre8">Access token secret</strong></span> values. It's <a id="id294" class="calibre1"/>a good practice to keep such sensitive information out of the application's code because our program may be transferred from one place to another. Placing the data in an externally configured file will do the job in most cases.</p><p class="calibre7">Once we have these four strings, we are able to communicate with Twitter's API. The following variables go at the top of our <code class="email">index.js</code> file:</p><div class="informalexample"><pre class="programlisting">var Twit = require('twit');
+var T = new Twit({
+  consumer_key: '...',
+  consumer_secret: '...',
+  access_token: '...',
+  access_token_secret: '...'
+});
+var numOfTweets = 10;</pre></div><p class="calibre7">The <code class="email">T</code> variable is actually a Twitter client, which we will use to request the data. We left a place in our server to query the Twitter's API. Let's now put the necessary code in the <code class="email">index.js</code> file, which can be seen as follows:</p><div class="informalexample"><pre class="programlisting">var app = http.createServer(function (req, res) {
+  if(req.url.indexOf("/tweets/") === 0) {
+    var handle = req.url.replace("/tweets/", "");
+    T.get("statuses/user_timeline", { screen_name: handle, count: numOfTweets }, function(err, reply) {
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify(reply));
+    });
+  } else {
+    serveAssets(req, res);
+  }
+}).listen(port, '127.0.0.1');</pre></div><p class="calibre7">The <a id="id295" class="calibre1"/>request that we<a id="id296" class="calibre1"/> need to perform is <code class="email">http://localhost:3000/tweets/KrasimirTsonev</code>. The last part of the URL is the Twitter handle of the user. So, the <code class="email">if</code> statement becomes <code class="email">true</code> because the address starts with <code class="email">/tweets/</code>. We extract the username in a variable called <code class="email">handle</code>. After that, this variable is sent to the <code class="email">statuses/user_timeline</code> resource of the Twitter's API. The result of the request is directly sent to the browser via a stringified JSON.</p><p class="calibre7">On a concluding note, the Node.js part of our project provides all the HTML, CSS, and JavaScript code. Along with that, it accepts a Twitter handle and returns the most recent tweets of the user.</p></div>
+
+<div id="page" style="height:0pt"/><div class="book" title="Discovering Ember.js"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec49" class="calibre1"/>Discovering Ember.js</h1></div></div></div><p class="calibre7">Ember.js<a id="id297" class="calibre1"/> is one of the most popular client-side JavaScript frameworks today. It has a great community and its features are well-documented. Ember.js gathers an increasing number of fans because of its architecture. The library uses the Model-View-Controller design pattern, which makes it easy to understand because that pattern is widely used in almost every programming language. It also collaborates well with the REST APIs (we are going to build such an API in <a class="calibre1" title="Chapter 11. Writing a REST API" href="part0078_split_000.html#page">Chapter 11</a>, <span class="strong"><em class="calibre9">Writing a REST API</em></span>) and eliminates the task of writing the boilerplate code.</p></div>
+
+<div class="book" title="Discovering Ember.js">
+<div class="book" title="Knowing the dependencies of Ember.js"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch07lvl2sec41" class="calibre1"/>Knowing the dependencies of Ember.js</h2></div></div></div><p class="calibre7">The Ember.js framework has the following two dependencies:</p><div class="book"><ul class="itemizedlist"><li class="listitem"><span class="strong"><strong class="calibre8">jQuery</strong></span></li><li class="listitem"><span class="strong"><strong class="calibre8">Handlebars</strong></span></li></ul></div><p class="calibre7">The first one is the <a id="id298" class="calibre1"/>most used <a id="id299" class="calibre1"/>JavaScript tool on the Web today. It provides methods to select and manipulate the <code class="email">DOM</code> elements and a lot of helper functions such as <code class="email">forEach</code> or <code class="email">map</code>, which help us to work faster. The library also solves some <span class="strong"><strong class="calibre8">cross-browser</strong></span> issues<a id="id300" class="calibre1"/> by providing only one API. Like, for example, if we want to attach an event listener to an element, we need to use <code class="email">attachEvent</code> in Internet Explorer but <code class="email">addEventListener</code> in the other browsers. The simple <code class="email">.on</code> method is provided by jQuery, which wraps this functionality. It checks for the current browser and calls the correct function. Along with all these things, we are able to use the <code class="email">.get</code> or <code class="email">.post </code>functions, which perform AJAX requests.</p><p class="calibre7">
+<span class="strong"><strong class="calibre8">Handlebars</strong></span><a id="id301" class="calibre1"/> is a<a id="id302" class="calibre1"/> template engine library. It extends the HTML syntax by adding expressions and custom tags. It's similar to <a id="id303" class="calibre1"/>
+<span class="strong"><strong class="calibre8">Jade</strong></span>, another template language which we used in <a class="calibre1" title="Chapter 2. Developing a Basic Site with Node.js and Express" href="part0023_split_000.html#page">Chapter 2</a>, <span class="strong"><em class="calibre9">Developing a Basic Site with Node.js and Express</em></span>. The difference is that this time we will use templates at the client-side part of the application. For example:</p><div class="informalexample"><pre class="programlisting">&lt;script type="text/x-handlebars" data-template-name="say-hello"&gt;
+  &lt;div class="content"&gt;{{name}}&lt;/div&gt;
+&lt;/script&gt;</pre></div><p class="calibre7">This a template definition that Handlebar uses. It's defined in a <code class="email">&lt;script&gt;</code> tag because the content inside is ignored by the browser, and it is not rendered as a part of the <code class="email">DOM</code> tree. There is one expression: <code class="email">{{name}}</code>. Normally, the template is populated with information and such parts of the markup are replaced with the actual data. What a handlebar does is that it gets the value of the <code class="email">script</code> tag. Then, it will parse it. The expressions found are executed and the result is returned to the developer.</p></div></div>
+
+<div id="page" style="height:0pt"/><div class="book" title="Understanding Ember.js"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec50" class="calibre1"/>Understanding Ember.js</h1></div></div></div><p class="calibre7">Before we continue with the <a id="id304" class="calibre1"/>actual coding of our small application, we will go through the most important components of Ember.js.</p></div>
+
+<div class="book" title="Understanding Ember.js">
+<div class="book" title="Exploring classes and objects in Ember.js"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch07lvl2sec42" class="calibre1"/>Exploring classes and objects in Ember.js</h2></div></div></div><p class="calibre7">Like every framework, Ember.js has<a id="id305" class="calibre1"/> predefined objects and classes, which are at our <a id="id306" class="calibre1"/>disposal. In most cases, we will extend them and <a id="id307" class="calibre1"/>write only the custom logic, which is a part of your <a id="id308" class="calibre1"/>application. All the ready-to-use classes are under the <code class="email">Ember</code> namespace. This means that whenever we want to use some part of the framework, we need to go through the <code class="email">Ember.</code> notation. For example, in the class extending shown in the following code:</p><div class="informalexample"><pre class="programlisting">App.Person = Ember.Object.extend({
+  firstname: '',
+  lastname: '',
+  hi: function() {
+    var name = this.get("firstname") + " " + this.get("lastname");
+    alert("Hello, my name is " + name);
+  }
+});
+var person = App.Person.create();
+person.set("firstname", "John");
+person.set("lastname", "Black");
+person.hi();</pre></div><p class="calibre7">We defined a class<a id="id309" class="calibre1"/> called <code class="email">Person</code>. It has two properties and only one <a id="id310" class="calibre1"/>function, which shows a message on the screen. Just after<a id="id311" class="calibre1"/> that, we created an instance of that class and called the <a id="id312" class="calibre1"/>method. The properties of a class in Ember.js are accessed via <code class="email">.get</code> and <code class="email">.set</code> methods. In the previous example, we were still able to use <code class="email">this.firstname</code> instead of <code class="email">this.get("firstname")</code>, but this is not exactly right. In the <code class="email">.set</code> and <code class="email">.get</code> methods, Ember.js does some calculations, which are necessary to implement features such as data binding and computed properties. If we access the variable directly, the library may not have the chance to do its job.</p></div></div>
+
+<div class="book" title="Understanding Ember.js">
+<div class="book" title="Computed properties"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch07lvl2sec43" class="calibre1"/>Computed properties</h2></div></div></div><p class="calibre7">By definition, the <span class="strong"><strong class="calibre8">computed</strong></span> <span class="strong"><strong class="calibre8">properties</strong></span> are <a id="id313" class="calibre1"/>properties, which derive their value by <a id="id314" class="calibre1"/>executing a function. Let's continue and use the previous example. Instead of concatenating both <code class="email">firstname</code> and <code class="email">lastname</code> every time, we will create a computed property <code class="email">name</code>, which will return the needed string. We can see this in the following code:</p><div class="informalexample"><pre class="programlisting">App.Person = Ember.Object.extend({
+  firstname: '',
+  lastname: '',
+  hi: function() {
+    alert("Hello, my name is " + this.get("name"));
+  },
+    name: function() {
+        return this.get("firstname") + " " + this.get("lastname");
+    }.property("firstname", "lastname")
+});
+var person = App.Person.create();
+person.set("firstname", "John");
+person.set("lastname", "Black");
+person.hi();</pre></div><p class="calibre7">We will still access a property with the <code class="email">.get</code> method, but this time its value is calculated by a function. This can be extremely helpful if we need to format our data before displaying it. It's good to know that we can use computed properties to set a value. By default, they <a id="id315" class="calibre1"/>are read <a id="id316" class="calibre1"/>only, but we can transform them to accept and process data, as follows:</p><div class="informalexample"><pre class="programlisting">name: function(key, value) {
+  if (arguments.length &gt; 1) {
+        var nameParts = value.split(/\s+/);
+        this.set('firstname', nameParts[0]);
+        this.set('lastname',  nameParts[1]);
+    }
+    return this.get("firstname") + " " + this.get("lastname");
+}.property("firstname", "lastname")</pre></div></div></div>
+
+<div class="book" title="Understanding Ember.js">
+<div class="book" title="Router"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch07lvl2sec44" class="calibre1"/>Router</h2></div></div></div><p class="calibre7">The routing processes are<a id="id317" class="calibre1"/> more like extensions for the other client-side frameworks. However, in <a id="id318" class="calibre1"/>Ember.js, everything is built around them. The <span class="strong"><strong class="calibre8">Router</strong></span> is a class, which translates the page's URL to a series of nested templates. Each of these templates is connected to a model that delivers the data.</p><div class="informalexample"><pre class="programlisting">App = Ember.Application.create();
+App.Router.map(function() {
+  this.resource('post', { path: '/post/:post_id' }, function() {
+    this.route('edit', { path: '/edit' });
+    this.resource('comments', function() {
+      this.route('new');
+    });
+  });
+});</pre></div><p class="calibre7">The routes are grouped into resources. Let's say that we have a blog application. The previous example defines a route to every post, which has an option to edit and comment. We can nest resources if necessary. Every route has a <code class="email">path</code> parameter, which can be skipped if it matches the name of the route. In the previous snippet, we can skip the options for the <code class="email">edit</code> route. That's because the name of the path is the same as the route name.</p><p class="calibre7">We can think about the <a id="id319" class="calibre1"/>Router as a starting point of our logic. Every route and resource has its <a id="id320" class="calibre1"/>own class and controller linked to it. The good news is that we don't really need to define them because the framework does this for us. Very often, we will need to modify their implementation by setting some properties; however, in general, we are free to leave the default suggested versions. Once we start working with Ember.js, we will find out that there are a lot of classes that are automatically created. Sometimes, it is a bit difficult to follow them. There is a Google Chrome extension <a id="id321" class="calibre1"/>called <span class="strong"><strong class="calibre8">Ember Inspector</strong></span>. It's actually a new tab in the Developer Tools panel. The inspector can show us what is going on in our application. For example, the previous code produces the following result:</p><div class="mediaobject"><img src="../images/00026.jpeg" alt="Router" class="calibre10"/></div><p class="calibre11"> </p><p class="calibre7">As we can see, there are several routes and controllers available. There is a default route for the application and for the main <span class="strong"><strong class="calibre8">post</strong></span> resource. The extension is really helpful because it shows us the exact names of the classes. Ember.js has strict naming conventions, and we should be able to figure out the names by ourselves, but it is still a handy extension.</p><p class="calibre7">If we want to put some logic in the controller of the comments section, then we should use the following code:</p><div class="informalexample"><pre class="programlisting">App.CommentsController = Ember.ObjectController.extend({
+  // ...
+});</pre></div><p class="calibre7">We should remember that we are actually modifying the definition of the class. The instances of it are automatically created by the framework.</p></div></div>
+
+<div class="book" title="Understanding Ember.js">
+<div class="book" title="Views and templates"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_4"><a id="ch07lvl2sec45" class="calibre1"/>Views and templates</h2></div></div></div><p class="calibre7">We already <a id="id322" class="calibre1"/>mentioned that <a id="id323" class="calibre1"/>Ember.js uses Handlebars for its templating purposes. A simple definition of a template looks like the following code:</p><div class="informalexample"><pre class="programlisting">&lt;script type="text/x-handlebars" data-template-name="post/index"&gt;
+  &lt;section&gt;
+    &lt;h1&gt;{{title}}&lt;/h1&gt;
+    &lt;p&gt;{{text}}&lt;/p&gt;
+  &lt;/section&gt;
+&lt;/script&gt;</pre></div><p class="calibre7">It's a script tag along with the HTML markup. Every template has a <code class="email">view</code> class associated with itself. Usually, the developers don't extend the <code class="email">view</code> class. It is used in cases where we need to heavily handle user events or create custom components. Under the hood, the <code class="email">view</code> class translates the primitive browser events into events that mean something in the context of our application. For example, we may have the following template:</p><div class="informalexample"><pre class="programlisting">&lt;script type="text/x-handlebars" data-template-name="say-hello"&gt;
+  Hello, &lt;b&gt;{{view.name}}&lt;/b&gt;
+&lt;/script&gt;</pre></div><p class="calibre7">Its corresponding View instance is seen as follows:</p><div class="informalexample"><pre class="programlisting">var view = Ember.View.create({
+  templateName: "say-hello",
+  name: "user",
+  click: function(evt) {
+    alert("Clicked.");
+  }
+});
+view.append();</pre></div><p class="calibre7">We are handling the clicking of the text. By using the <code class="email">.append</code> method, the view is added to the <code class="email">&lt;body&gt;</code> element, but there is <code class="email">.appendTo</code>, which can add our custom HTML to whichever <code class="email">DOM</code> element we need.</p></div></div>
+
+<div class="book" title="Understanding Ember.js">
+<div class="book" title="Models"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_5"><a id="ch07lvl2sec46" class="calibre1"/>Models</h2></div></div></div><p class="calibre7">Every route in <a id="id324" class="calibre1"/>Ember.js <a id="id325" class="calibre1"/>has an associated model, which is an object that stores the persistent state. We set our models in the route's class. There is a hook called <code class="email">model</code>, which should return our data. Very often, we will get the application's data asynchronously. For such cases, we can return a JavaScript promise.</p><div class="informalexample"><pre class="programlisting">App.PostRoute = Ember.Route.extend({
+  model: function() {
+    return Ember.$.getJSON("/posts.json");
+  }
+});</pre></div><p class="calibre7">The template linked to a specific route renders its HTML based on the model. So, we are able to use expressions that represent properties from<a id="id326" class="calibre1"/> the result of that <code class="email">.model</code> method. For example, see <a id="id327" class="calibre1"/>the following code:</p><div class="informalexample"><pre class="programlisting">&lt;script type="text/x-handlebars" data-template-name="post/index"&gt;
+  &lt;section&gt;
+    &lt;h1&gt;{{title}}&lt;/h1&gt;
+    &lt;p&gt;{{text}}&lt;/p&gt;
+  &lt;/section&gt;
+&lt;/script&gt;
+
+App.PostIndexRoute = Ember.Route.extend({
+  model: function() {
+    return {
+      title: "Title of the post",
+      text: "Text of the post"
+    }
+  }
+})</pre></div></div></div>
+
+<div class="book" title="Understanding Ember.js">
+<div class="book" title="Controllers"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_6"><a id="ch07lvl2sec47" class="calibre1"/>Controllers</h2></div></div></div><p class="calibre7">In the context of Ember.js, the <span class="strong"><strong class="calibre8">controllers</strong></span><a id="id328" class="calibre1"/> are classes that decorate your models with the <a id="id329" class="calibre1"/>display logic. Ideally, they will store the data that doesn't need to be stored in a database. It's only needed when the information needs to be displayed. As with the models, the framework defines a different controller class for every route. Let's say that we are developing an online book store. We could have a route like the one in the following code:</p><div class="informalexample"><pre class="programlisting">App.Router.map(function() {
+  this.route("books");
+});</pre></div><p class="calibre7">We have only one route, but three controllers are defined. We are able to see them by using the Google Chrome's extension. Check out the following screenshot:</p><div class="mediaobject"><img src="../images/00027.jpeg" alt="Controllers" class="calibre10"/></div><p class="calibre11"> </p><p class="calibre7">In the <code class="email">BooksRoute</code> class, we will define our model, and in <code class="email">BooksController</code>, we will create computed properties to display the books in a better way. The <a id="id330" class="calibre1"/>controllers are also the place where we could <a id="id331" class="calibre1"/>process any events that come from the browser. Initially, such events are caught by the views, but if there is no defined <code class="email">View</code> or there is no handler for the event, then that is passed to the controller.</p><p class="calibre7">These are the most important components of every Ember.js application. Now, let's continue to build our small project—a single-page app for getting messages from Twitter.</p></div></div>
+
+<div id="page" style="height:0pt"/><div class="book" title="Writing Ember.js"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec51" class="calibre1"/>Writing Ember.js</h1></div></div></div><p class="calibre7">The client side of the project <a id="id332" class="calibre1"/>contains two screens. The first one displays an input field and a button where the user should type the Twitter handle. The second one shows the tweets. We can see this in the following screenshot:</p><div class="mediaobject"><img src="../images/00028.jpeg" alt="Writing Ember.js" class="calibre10"/><div class="caption"><p class="calibre14">The left part of the image shows the first page and the right one shows the tweets of the user.</p></div></div><p class="calibre11"> </p></div>
+
+<div class="book" title="Writing Ember.js">
+<div class="book" title="Defining the templates"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch07lvl2sec48" class="calibre1"/>Defining the templates</h2></div></div></div><p class="calibre7">The html/page.html file is our main file and is the base of our application and will be the first page that the user sees. It contains the following code:</p><div class="informalexample"><pre class="programlisting">&lt;!doctype html&gt;
+&lt;html&gt;
+    &lt;head&gt;
+        &lt;title&gt;Get Twitter Feed&lt;/title&gt;
+        &lt;link rel="stylesheet" type="text/css" href="css/styles.css"&gt;
+    &lt;/head&gt;
+    &lt;body&gt;
+
+        &lt;script src="js/jquery-1.10.2.js"&gt;&lt;/script&gt;
+        &lt;script src="js/handlebars-1.1.2.js"&gt;&lt;/script&gt;
+        &lt;script src="js/ember-1.3.1.js"&gt;&lt;/script&gt;
+        &lt;script src="js/scripts.js"&gt;&lt;/script&gt;
+    &lt;/body&gt;
+&lt;/html&gt;</pre></div><p class="calibre7">That's the basic <a id="id333" class="calibre1"/>HTML markup that we are starting from. The dependencies <a id="id334" class="calibre1"/>of Ember.js are included along with the <code class="email">js/scripts.js</code> file, which will contain our custom logic. The templates, which we will define afterwards, will be placed inside the <code class="email">&lt;body&gt;</code> tag. The following template is the first one. It's the main template of the application:</p><div class="informalexample"><pre class="programlisting">&lt;script type="text/x-handlebars" data-template-name="social-feed"&gt;
+    &lt;div class="wrapper"&gt;
+        &lt;h1&gt;Social feed&lt;/h1&gt;
+        &lt;section&gt;
+            {{outlet}}
+        &lt;/section&gt;
+    &lt;/div&gt;
+&lt;/script&gt;</pre></div><p class="calibre7">We have only one expression: <code class="email">{{outlet}}</code>. That's an Ember.js-specific expression and shows the framework where we want our subviews to be rendered. Note the name of the template: <code class="email">social-feed</code>. We will use the same name during the definition of the routes.</p><p class="calibre7">The HTML code that we will use for the first screen, the one with the input field, looks as follows:</p><div class="informalexample"><pre class="programlisting">&lt;script type="text/x-handlebars" data-template-name="social-feed/index"&gt;
+    {{input 
+        type="text" 
+        value=handle 
+        placeholder="type a Twitter handle"
+    }}
+    &lt;a href="javascript:void(0);" class="get-tweets-button" {{action getTweets}}&gt;Get Tweets&lt;/a&gt;
+&lt;/script&gt;</pre></div><p class="calibre7">The name of the template is <code class="email">social-feed/index</code>. With <code class="email">/index</code>, we are saying that this is the default template of the route with  the name <code class="email">social-feed</code>. The <code class="email">{{input}}</code> tag is an Ember.js helper, which is later transformed to an <code class="email">&lt;input&gt;</code> element. The <code class="email">type</code> and <code class="email">placeholder</code> attributes have the same meaning as in the regular HTML. However, <code class="email">value</code> here plays another role. Note that <code class="email">value</code> is not wrapped in double quotes. That's because the <code class="email">handle</code> keyword is actually a property of the Route's controller, and we have two-way data binding. There is another expression used: <code class="email">{{action}}</code>, which accepts the name of a method, which is again part of the controller. It will respond to a user's click event.</p><p class="calibre7">The latest template that we will define is the one that shows the tweets. We can see that template as follows:</p><div class="informalexample"><pre class="programlisting">&lt;script type="text/x-handlebars" data-template-name="social-feed/tweets"&gt;
+    &lt;h3&gt;Tweets of {{{formattedHandle}}}:&lt;/h3&gt;
+    &lt;hr /&gt;
+    &lt;ul&gt;
+    {{#each}}
+        &lt;li&gt;{{formatTweet text}}&lt;/li&gt;
+    {{/each}}
+    &lt;/ul&gt;
+    {{#link-to 'social-feed.index'}}back{{/link-to}}
+&lt;/script&gt;</pre></div><p class="calibre7">The<code class="email">{{{formattedHandle}}}</code> helper <a id="id335" class="calibre1"/>will be replaced with a link to the user's profile on Twitter. There are three brackets because the value of <code class="email">formatedHandle</code> will be in HTML. If we use only double brackets, handlebars will display the data as string and not as HTML markup. There is an<code class="email">{{#each}}</code> helper used. That's how we will loop through the fetched tweets and display their content. And at the end, we will use the <code class="email">{{#link-to}}</code> helper to generate a link to the first screen.</p></div></div>
+<div class="book" title="Defining the routes"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec52" class="calibre1"/>Defining the routes</h1></div></div></div><p class="calibre7">Normally, the <a id="id336" class="calibre1"/>Ember.js applications start with creating a global namespace followed by defining the routes. <code class="email">js/scripts.js</code> starts with the following code:</p><div class="informalexample"><pre class="programlisting">App = Ember.Application.create();
+App.Router.map(function() {
+  this.resource('social-feed', { path: '/' }, function() {
+    this.route("tweets", { path: '/tweets/:handle' });
+  });
+});</pre></div><p class="calibre7">There is one resource and one route created. The route responds on a URL that contains a dynamic segment. Let's check the names of the controllers and templates in Ember.js Chrome extension. The following screenshot displays the exact created classes:</p><div class="mediaobject"><img src="../images/00029.jpeg" alt="Defining the routes" class="calibre10"/></div><p class="calibre11"> </p><p class="calibre7">Ember.js defines<a id="id337" class="calibre1"/> several routes by default: <code class="email">application</code>, <code class="email">loading</code>, and <code class="email">error</code>. The first one is the main project route. <code class="email">LoadingRoute</code> and <code class="email">ErrorRoute</code> can be used if we have asynchronous transition between two routes. These substates are very useful if we load the model data from an external resource and want to indicate the process somehow.</p></div>
+<div class="book" title="Handling the user input and moving to the second screen"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec53" class="calibre1"/>Handling the user input and moving to the second screen</h1></div></div></div><p class="calibre7">We need to define a <a id="id338" class="calibre1"/>controller for the <code class="email">social-feed/index</code> template. It will transfer the user to the<a id="id339" class="calibre1"/> second screen if the button on the screen is clicked. Along with that, we will get the Twitter handle that is entered in the input element. We define a controller as follows:</p><div class="informalexample"><pre class="programlisting">App.SocialFeedIndexController = Ember.Controller.extend({
+  handle: '',
+  actions: {
+    getTweets: function() {
+      if(this.get('handle') !== '') {
+        window.location.href = "#/tweets/" + this.get('handle');
+        this.set('handle', '');
+      } else {
+        alert("Please type a Twitter handle.");
+      }
+    }
+  }
+});</pre></div><p class="calibre7">Note that we are<a id="id340" class="calibre1"/> clearing the value of the <code class="email">handle</code> property—<code class="email">this.set('handle', '')</code>. We are doing this because the user will later return to that view and will want to enter a new <a id="id341" class="calibre1"/>username. As an addition, we can extend the view that is responsible for that template, and we can bring the browser's focus to the field once the template is added to the DOM tree.</p><div class="informalexample"><pre class="programlisting">App.SocialFeedIndexView = Ember.View.extend({
+  didInsertElement: function() {
+    this.$('input').focus();
+  }
+});</pre></div></div>
+<div class="book" title="Displaying the tweets"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec54" class="calibre1"/>Displaying the tweets</h1></div></div></div><p class="calibre7">We have a URL address <a id="id342" class="calibre1"/>that responds with a JSON-formatted list of tweets. There are corresponding controllers and route classes, which are defined by default from Ember.js. However, we need to set a model and get the handle from the browser's address, so we will create our own classes. This can be seen as follows:</p><div class="informalexample"><pre class="programlisting">App.SocialFeedTweetsRoute = Ember.Route.extend({
+  model: function(params) {
+    this.set('handle', params.handle);
+    return Ember.$.getJSON('/tweets/' + params.handle);
+  },
+  setupController: function(controller, model) {
+    controller.set("model", model);
+         controller.set("handle", this.get('handle'));
+    }
+});
+
+App.SocialFeedTweetsController = Ember.ArrayController.extend({
+  handle: '',
+  formattedHandle: function() {
+    return "&lt;a href='http://twitter.com/" + this.handle + "'&gt;@" + this.handle + '&lt;/a&gt;';
+  }.property('handle')
+});</pre></div><p class="calibre7">The dynamic segment from the URL comes to the Route's <code class="email">model</code> function in the <code class="email">params</code> argument. We will get the string and set it as a property of the class. Later, when we set up the controller, we are able to pass it along with the model. The <code class="email">setupController</code> function is a hook, which is run during the route's initialization. As we said in the beginning of the chapter, the main role of the controller is to decorate the model. Ours does only one <a id="id343" class="calibre1"/>thing—it defines a computed property that prints the Twitter handle of the user in a <code class="email">&lt;a&gt;</code> tag. The controller also extends <code class="email">Ember.ArrayController</code>, which provides a way to publish a collection of objects.</p><p class="calibre7">If we go back a few pages and check out the <code class="email">social-feed/tweets</code> template, we will see that we can show the tweets with the following code:</p><div class="informalexample"><pre class="programlisting">{{#each}}
+  &lt;li&gt;{{formatTweet text}}&lt;/li&gt;
+{{/each}}</pre></div><p class="calibre7">Normally, we will use only <code class="email">{{text}}</code> and not <code class="email">{{formatTweet text}}</code>. What we did is used a custom-defined helper, which will format the text of the tweet. We need that because the tweet can contain URLs, and we want to transform them to valid HTML links. We can do that as part of the controller and define another computed property, but we will do it as a Handlebars helper. We can see it as follows:</p><div class="informalexample"><pre class="programlisting"> Ember.Handlebars.registerBoundHelper('formatTweet', function(value) {
+  var exp = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&amp;@#\/%?=~_|!:,.;]*[-A-Z0-9+&amp;@#\/%=~_|])/ig;
+    return new Handlebars.SafeString(value.replace(exp, "&lt;a href='$1'&gt;$1&lt;/a&gt;"));
+});</pre></div><p class="calibre7">We are using a regular expression to transform the URLs to the <code class="email">&lt;a&gt;</code> tags.</p><p class="calibre7">With the latest lines of the code, our <code class="email">js/script.js</code> file is finished, and we can use the application to fetch the latest tweets of any Twitter user.</p></div>
+<div class="book" title="Summary"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec55" class="calibre1"/>Summary</h1></div></div></div><p class="calibre7">In this chapter, we learned how to use Node.js with Ember.js. We successfully created a fully working application, which shows the messages posted on Twitter. Essential work was done by external modules, which again proves that the Node.js ecosystem is really flexible and provides everything we need to develop top-notch web applications. The modern client-side frameworks such as Ember.js, AngularJS, or Backbone.js are expected to receive JSON and Node.js is capable of delivering it.</p><p class="calibre7">In the next chapter, we will find out how to use Node.js to optimize our project tasks and boost our coding performance.</p></div></body></html>
