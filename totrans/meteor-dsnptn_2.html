@@ -1,0 +1,427 @@
+<html><head></head><body>
+<div id="page" style="height:0pt"/><div class="book" title="Chapter&#xA0;2.&#xA0;Publish and Subscribe Patterns"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch02" class="calibre1"/>Chapter 2. Publish and Subscribe Patterns</h1></div></div></div><p class="calibre7">This is by far the most important chapter in this book. The way we control our publishers and subscribers is going to define how quickly our application responds in production. Publishers and subscribers are the link between our database and the client. The server uses publishers to publish information to the client, while the client requests information from the publishers by subscribing to them. This is all managed via the <code class="email">Meteor.publish</code> and <code class="email">Meteor.subscribe</code> functions. We should be able to produce the data that the client wants to see with two objectives in mind:</p><div class="book"><ul class="itemizedlist"><li class="listitem">Reduce stress from the server</li><li class="listitem">Send only the information that the client needs</li></ul></div><p class="calibre7">This chapter will teach you the different patterns that you can use to attain these objectives for every template that you build. Here is an overview of the topics we will cover to understand these patterns:</p><div class="book"><ul class="itemizedlist"><li class="listitem">Template-level subscriptions</li><li class="listitem">Database relationships</li><li class="listitem">Publishing with relations</li><li class="listitem">Aggregation publishers</li><li class="listitem">External API publishers</li></ul></div></div>
+
+<div class="book" title="Chapter&#xA0;2.&#xA0;Publish and Subscribe Patterns">
+<div class="book" title="Template-level subscriptions"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_1"><a id="ch02lvl1sec15" class="calibre1"/>Template-level subscriptions</h1></div></div></div><p class="calibre7">This pattern <a id="id68" class="calibre1"/>attaches the <code class="email">Meteor.subscribe</code> functions to templates. The key advantage of subscribing from the template is the ability to isolate the template and know that it still works when it is rendered.</p><p class="calibre7">Many Meteor developers attach their subscription methods to their routes. This means that the template will only render with the correct data at that particular route.</p><p class="calibre7">With this pattern, we will be able to reuse templates anywhere without worrying about data.</p></div></div>
+
+<div class="book" title="Chapter&#xA0;2.&#xA0;Publish and Subscribe Patterns">
+<div class="book" title="Template-level subscriptions">
+<div class="book" title="Setting up products for the online shop"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch02lvl2sec24" class="calibre1"/>Setting up products for the online shop</h2></div></div></div><p class="calibre7">Let's start by setting<a id="id69" class="calibre1"/> up a <code class="email">Products</code> collection in MongoDB for our <code class="email">online_shop</code> project. In <a class="calibre1" title="Chapter 1. Getting Started with Meteor" href="part0014_split_000.html#page">Chapter 1</a>, <span class="strong"><em class="calibre11">Getting Started with Meteor</em></span> we learned that we need to place this definition under the <code class="email">/globals/lib/collections</code> directory:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /globals/lib/collections/products/products.coffee</strong></span>
+@Products = new Mongo.Collection "products"
+
+# fields:
+#  name
+#  description
+#  sku</pre></div><p class="calibre7">It's important to note that we are adding <code class="email">@</code> at the beginning of the <code class="email">Products</code> variable. This compiles into <code class="email">this.Products</code>. In CoffeeScript for Meteor, we do this to define a globally scoped variable. This means that the <code class="email">Products</code> variable now exists in every CoffeeScript file that we will create.</p><p class="calibre7">We need to add a permission file as well so that we can modify the collection from the console. The <code class="email">allow</code>/<code class="email">deny</code> functions are rules that add a layer of security to the collections. If an <code class="email">allow</code> rule returns <code class="email">true</code> for a given action, it will allow the change to pass. For now, we are going to set all the rules to allow everything. We will address permissions when we look at roles in <a class="calibre1" title="Chapter 4. Application Patterns" href="part0035_split_000.html#page">Chapter 4</a>, <span class="strong"><em class="calibre11">Application Patterns</em></span>.</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /globals</strong></span>
+<span class="strong"><strong class="calibre2"># ./lib/collections/products/server/products_permissions.coffee</strong></span>
+Meteor.startup -&gt;
+  Products.allow
+    insert: -&gt; true
+    update: -&gt; true
+    remove: -&gt; true</pre></div><p class="calibre7">We use the <code class="email">Meteor.startup</code> function to make sure that we have set up <code class="email">Products</code> as a collection before we set the <code class="email">allow</code>/<code class="email">deny</code> rules. Now that we have a collection, let's make the landing page to show us a list of products. Let's build the <span class="strong"><strong class="calibre2">view</strong></span> first in the <code class="email">/products/client</code> directory:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2">//- /products/client/products.jade</strong></span>
+template(name="products")
+  h3.text-center products</pre></div><p class="calibre7">This view is <a id="id70" class="calibre1"/>just a placeholder. We always need to create the template object before we can actually begin working with the publishers and subscribers.</p></div></div></div>
+
+<div class="book" title="Chapter&#xA0;2.&#xA0;Publish and Subscribe Patterns">
+<div class="book" title="Template-level subscriptions">
+<div class="book" title="Building the publisher"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch02lvl2sec25" class="calibre1"/>Building the publisher</h2></div></div></div><p class="calibre7">Let's construct a simple <a id="id71" class="calibre1"/>publisher for our view using the <code class="email">Meteor.publish</code> function. This publisher will send only 10 documents to the subscribed clients. We'll discuss pagination in <a class="calibre1" title="Chapter 4. Application Patterns" href="part0035_split_000.html#page">Chapter 4</a>, <span class="strong"><em class="calibre11">Application Patterns</em></span>.</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /products/server/products_pub.coffee</strong></span>
+Meteor.publish "products_pub", -&gt;
+  Products.find {},
+    limit:10</pre></div></div></div></div>
+
+<div class="book" title="Chapter&#xA0;2.&#xA0;Publish and Subscribe Patterns">
+<div class="book" title="Template-level subscriptions">
+<div class="book" title="Subscribing to the publisher"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_4"><a id="ch02lvl2sec26" class="calibre1"/>Subscribing to the publisher</h2></div></div></div><p class="calibre7">This is where <a id="id72" class="calibre1"/>the magic begins. We are going to use the <code class="email">Template.&lt;template&gt;.onCreated</code> function to subscribe to our publisher. The <code class="email">onCreated</code> function runs whenever an instance of the template is created in the DOM. So, if we place a <code class="email">Meteor.subscribe</code> function within this function, this will automatically resubscribe whenever the template is used. Let's give it a shot:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /products/client/products.coffee</strong></span>
+Template.products.onCreated -&gt;
+  @autorun =&gt;
+    @subscribe "products_pub"</pre></div><p class="calibre7">The <code class="email">this.autorun</code> function is, basically, a special version of the <code class="email">Tracker.autorun</code> function. What does this do? This is meant to rerun whenever its dependencies change. The difference with this special function is that it will automatically stop subscriptions. You'll notice that we are binding <code class="email">this.autorun</code> to the context by using <code class="email">=&gt;</code>, so we can use the special <code class="email">this.subscribe</code> function within the <code class="email">autorun</code> block. As expected, the <code class="email">this.subscribe</code> functions exactly as <code class="email">Meteor.subscribe</code> does. However, it plays a key part in automatically stopping subscriptions as well.</p><p class="calibre7">Wait! There's more. This snippet of code can be overwritten by other <code class="email">onCreated</code> hooks. This means that if we were to define a second <code class="email">onCreated</code> function, the first function will not run. We change this behavior using the <code class="email">xorax:multiple-callbacks</code> package. This package, basically, concatenates <code class="email">onCreated</code>, <code class="email">onRendered</code>, and <code class="email">onDestroyed</code> functions so that they cannot be overwritten. Let's take a look:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /products/client/products.coffee</strong></span>
+Template.created "products", -&gt;
+  @autorun =&gt;
+    @subscribe "products_pub"</pre></div><p class="calibre7">We only need to <a id="id73" class="calibre1"/>change the first line of the code. This is done so that we can attach multiple functions to the <code class="email">onCreated</code> template hook without overwriting any other functions.</p></div></div></div>
+
+<div id="page" style="height:0pt"/><div class="book" title="Database relationships"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch02lvl1sec16" class="calibre1"/>Database relationships</h1></div></div></div><p class="calibre7">Our collections will always be<a id="id74" class="calibre1"/> related in one way or another to other collections in our database. This topic is going to examine the three different types of relationships you should be thinking about when you are designing your database.</p><p class="calibre7">The shape that our database will take ultimately defines what our publishers are going to look like. If your data is all mashed up in just one or two different collections, you will very quickly find yourself struggling to filter data. If your data is spread too far between collections, the code will become difficult to maintain in the long run. So what is the solution to this problem?</p><p class="calibre7">The solution to database relationships is to understand how the data is going to be used in the client, how often it is going to be modified, and how large the set can be.</p><p class="calibre7">Let's build out the rest of our collections to get a notion of what good relationships look like.</p></div>
+
+<div class="book" title="Database relationships">
+<div class="book" title="One to one"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch02lvl2sec27" class="calibre1"/>One to one</h2></div></div></div><p class="calibre7">A <a id="id75" class="calibre1"/>one to one database relationship<a id="id76" class="calibre1"/> describes how one MongoDB document in a collection will be linked to only one other MongoDB document in another collection. You can think of this as a JavaScript object inside another object.</p><p class="calibre7">In Meteor, you should create a one to one relationship for a subset of fields that you will use sparingly, that will have unique interfaces, or that you will use without necessarily requiring access to the product. With this relationship, it is going to be very easy to build an image uploader and a collage of images showing only <code class="email">master_image</code>.</p><p class="calibre7">Start by adding a collection that will handle our products' images: <code class="email">ProductImages</code>. We are going to assume that our frontend is going to have multiple types of images, each one being presented in a different part of the interface that we are building:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /lib/collections/product_images/product_images_collection.coffee</strong></span>
+@ProductImages = new Mongo.Collection "product_images"
+
+# fields:
+#  product
+#  master_image
+#  side_image
+#  front_image
+#  top_image
+#  cart_image
+
+<span class="strong"><strong class="calibre2"># /lib/collections/</strong></span>
+<span class="strong"><strong class="calibre2"># ./product_images/server/product_images_permissions.coffee</strong></span>
+Meteor.startup -&gt;
+  ProductImages.allow
+    insert: -&gt; true
+    update: -&gt; true
+    remove: -&gt; true</pre></div><p class="calibre7">The <code class="email">ProductImages</code> collection is going to contain a field named <code class="email">product</code>. This field establishes our relationship by saving the unique <code class="email">_id</code> field from the <code class="email">Products</code> collection. This means that every time we want to publish a product with <code class="email">ProductImages</code>, we need to query the database as well by searching for <code class="email">Product_id</code> within <code class="email">ProductImages</code>. So a helper would look like this:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># COFFEESCRIPT</strong></span>
+Template.landing.helpers
+  "images": -&gt;
+    ProductImages.findOne product:@_id</pre></div></div></div>
+
+<div class="book" title="Database relationships">
+<div class="book" title="One to many"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch02lvl2sec28" class="calibre1"/>One to many</h2></div></div></div><p class="calibre7">A<a id="id77" class="calibre1"/> one to many <a id="id78" class="calibre1"/>database relationship describes how one MongoDB document in one collection will be linked to many MongoDB documents in another collection. You can think of this as an array of JavaScript objects that exists under a particular field but the data is so complex that you need to separate it.</p><p class="calibre7">Now let's create an <code class="email">Orders</code> collection. This collection is going to function as a cart. While your first instinct may be to create a <code class="email">Carts</code> collection, you will quickly find that you are duplicating the order information (one for the cart and one for the order, once it is placed). We can easily identify whether an order is new or not by adding a <code class="email">status</code> field:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /lib/collections/</strong></span>
+<span class="strong"><strong class="calibre2"># ./orders/orders_collection.coffee</strong></span>
+@Orders = new Mongo.Collection "orders"
+
+# fields
+  # status ("new","pending","complete")
+  # total_products
+  # subtotal
+  # tax
+  #   rate
+  #   amount
+  # discounts
+  #   discount
+  #   amount
+  # total
+  # date_created</pre></div><p class="calibre7">Let's not forget to add permissions for the collection as well. We need to do this every time we create a new collection to secure the collection from hackers and ensure that the client can modify the collection accordingly. We will cover more on this in the <span class="strong"><em class="calibre11">Security</em></span> section of <a class="calibre1" title="Chapter 4. Application Patterns" href="part0035_split_000.html#page">Chapter 4</a>, <span class="strong"><em class="calibre11">Application Patterns</em></span>.</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /lib/collections/</strong></span>
+<span class="strong"><strong class="calibre2"># ./orders/server/orders_permissions.coffee</strong></span>
+Meteor.startup -&gt;
+  Orders.allow
+    insert: -&gt; true
+    update: -&gt; true
+    remove: -&gt; true</pre></div><p class="calibre7">Something is <a id="id79" class="calibre1"/>wrong with this, the products are not defined in the <a id="id80" class="calibre1"/>collection! We intentionally created an order summary collection that is going to have a one to many relationship with order details. We do not know how extensive the order actually might be. If we include a field that holds an array of products, this list will not only be difficult to manage, but also could potentially become large enough that it will crash the database.</p><p class="calibre7">Let's put the details of our order in a separate collection called <code class="email">OrderDetails</code>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /lib/collections/</strong></span>
+<span class="strong"><strong class="calibre2"># ./order_details/order_details_collection.coffee</strong></span>
+@OrderDetails = new Mongo.Collection "order_details"
+
+# fields
+  # order
+  # product
+  # price
+  # quantity
+  # subtotal
+  # tax
+  #   rate
+  #   amount
+  # total
+  # discounts
+  #   discount
+  #   amount
+
+<span class="strong"><strong class="calibre2"># /lib/collections/</strong></span>
+<span class="strong"><strong class="calibre2"># ./order_details/server/order_details_permissions.coffee</strong></span>
+Meteor.startup -&gt;
+  OrderDetails.allow
+    insert: -&gt; true
+    update: -&gt; true
+    remove: -&gt; true</pre></div><p class="calibre7">Perfect! Now we can say one <code class="email">Order</code> has many <code class="email">OrderDetails</code>. In this scenario, each document in the <code class="email">OrderDetails</code> collection represents a single product and the details about that product within the order. We have added the <code class="email">order</code> field to identify to which specific order the details (or in this case, the products) belong to.</p><p class="calibre7">This is excellent design. By separating the details from the order, we are capable of controlling exactly which data the server sends down to the client. Remember, the goal here is to send <a id="id81" class="calibre1"/>the least amount of data possible to the client <a id="id82" class="calibre1"/>so that the site loads quickly and stress on the server is reduced. Managing inserts and updates as well becomes easier. As we do not need to deal with indexing a details array, we can simply use IDs to find and manipulate data. Now when the shop admin subscribes to the <code class="email">Orders</code> collection, we can do this in such a way that the server only sends the data the admin needs to see the orders. Clicking on an order would then lead to subscribing to only that orders' details.</p></div></div>
+
+<div class="book" title="Database relationships">
+<div class="book" title="Many to many"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch02lvl2sec29" class="calibre1"/>Many to many</h2></div></div></div><p class="calibre7">A<a id="id83" class="calibre1"/> many to many<a id="id84" class="calibre1"/> database relationship describes how many MongoDB documents in one collection will be linked to many MongoDB documents in another collection. You can think of this as a table where you repeat information and only change the information of one field for every row so that you can filter the information by that row.</p><p class="calibre7">These types of relationships require a <a id="id85" class="calibre1"/><span class="strong"><strong class="calibre2">mapping table</strong></span>. In the case of MongoDB, a mapping table is a separate collection. A mapping table is the part that repeats information in every row without actually duplicating entries; it simply makes pairs between each collection ID.</p><p class="calibre7">In the example that we are going to program, we want to create a many to many relationship between products and tags because a product can have many tags and a tag can have many products. The mapping table in this case is going to save each ID pair. So if a product has two tags, there will be two entries in the mapping table with the same product ID but each with a different tag ID. If a tag is a part of two products, then the mapping table will have two entries with the same tag ID but each one with a different product ID.</p><p class="calibre7">It's important to note that these types of relationships are often overlooked because of their complexity. If for some reason you find yourself trying to match two collections with arrays from each collection, you are definitely attempting a "many to many" relationship.</p><p class="calibre7">To explain this relationship, we are going to create a <code class="email">Tags</code> collection for our products:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /lib/collections/</strong></span>
+<span class="strong"><strong class="calibre2"># ./tags/tags_collection.coffee</strong></span>
+@Tags = new Mongo.Collection "tags"
+
+# fields
+#  name
+
+<span class="strong"><strong class="calibre2"># /lib/collections/</strong></span>
+<span class="strong"><strong class="calibre2"># ./tags/server/tags_permissions.coffee</strong></span>
+Meteor.startup -&gt;
+  Tags.allow
+    insert: -&gt; true
+    update: -&gt; true
+    remove: -&gt; true</pre></div><p class="calibre7">You will notice that in<a id="id86" class="calibre1"/> this type of relationship the <code class="email">Tags</code> collection <a id="id87" class="calibre1"/>has nothing to associate to a product, but if it did, it would have to be an array of products to which the tag belongs to. To establish the relationship, we will create the mapping table, that is, the <code class="email">ProductsTags</code> collection:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /lib/collections/</strong></span>
+<span class="strong"><strong class="calibre2"># ./products_tags/products_tags_collection.coffee</strong></span>
+@ProductsTags = new Mongo.Collection "products_tags"
+
+# fields
+#  product
+#  tag
+
+<span class="strong"><strong class="calibre2"># /lib/collections/</strong></span>
+<span class="strong"><strong class="calibre2"># ./tags/server/products_tags_permissions.coffee</strong></span>
+Meteor.startup -&gt;
+  ProductsTags.allow
+    insert: -&gt; true
+    update: -&gt; true
+    remove: -&gt; true</pre></div><p class="calibre7">This collection allows us to have any combination of relations between <code class="email">Products</code> and <code class="email">Tags</code>. Suppose we want to see all the products related to one tag. In this case, we will first query the mapping table for that tag and then query the tags using the result.</p><p class="calibre7">Beware! Many to <a id="id88" class="calibre1"/>many relationships can be difficult to spot. If you<a id="id89" class="calibre1"/> are stuck at any point during your database design process, do not forget to consider this possibility.</p></div></div>
+
+<div id="page" style="height:0pt"/><div class="book" title="Publishing with relations"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch02lvl1sec17" class="calibre1"/>Publishing with relations</h1></div></div></div><p class="calibre7">We understand how our<a id="id90" class="calibre1"/> collections are related, but how can we make it easy to publish data with these relationships?</p><p class="calibre7">In Meteor, it can be problematic to publish relationships because of reactivity and the way publishers work. You would expect that by simply making two queries to two related collections and returning an array will publish a perfectly reactive collection. This is not the case. A <code class="email">Meteor.publish</code> function does not rerun when dependencies change. This means that if a relationship is broken, the related document will remain published, or worse if a new relationship is made by another client, the related data will not publish.</p><p class="calibre7">To take care of database relationships and reactivity in Meteor, we use the <code class="email">lepozepo:publish-with-relations</code> package. This package automatically takes care of subscribing to new data in the most efficient way possible when relationships are broken. If you are familiar with MySQL, this package makes JOINs a breeze.</p></div>
+
+<div class="book" title="Publishing with relations">
+<div class="book" title="Publishing products with images (one to one)"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch02lvl2sec30" class="calibre1"/>Publishing products with images (one to one)</h2></div></div></div><p class="calibre7">We will be working <a id="id91" class="calibre1"/>with the <code class="email">/products</code> directory, this <a id="id92" class="calibre1"/>module will be our landing page. First, let's set up a route for our view:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /products/products_route.coffee</strong></span>
+FlowRouter.route "/",
+  name:"products"
+  action: -&gt;
+    FlowLayout.render "layout",
+      content:"products"</pre></div><p class="calibre7">We are using the <code class="email">FlowRouter.route</code> function to define the path of our landing page and the <code class="email">FlowLayout.render</code> function to define which layout template to use. You will notice that the <code class="email">FlowLayout.render</code> function is taking in two parameters: the first one defines which layout template to render, and the second one defines where to render within that layout template.</p><p class="calibre7">Now we can work on the publisher. The goal is to publish 10 products paired with only their <code class="email">master_image</code>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /products/server/products_pub.coffee</strong></span>
+Meteor.publish "products", -&gt;
+  @relations
+    collection:Products
+    options:
+      limit:10
+    mappings:[
+      {
+        key:"product"
+        collection:ProductImages
+      }
+    ]
+
+  @ready()</pre></div><p class="calibre7">Notice<a id="id93" class="calibre1"/> the <code class="email">mappings</code> key of the object that <a id="id94" class="calibre1"/>we are passing through the <code class="email">@relations</code> function. All the objects inside the array must have at least a <code class="email">collection</code> key. Optionally, they can take <code class="email">key</code> and <code class="email">foreign_key</code>. In this case, we use <code class="email">key</code> to express that the <code class="email">_id</code> field in the <code class="email">Products</code> collection is equal to the string of the <code class="email">product</code> field in the <code class="email">ProductImages</code> collection. This is the most efficient way to publish data. The package will automatically make sure that all changes to the collections are reflected in real time.</p><p class="calibre7">The <code class="email">Meteor.publish</code> function has one peculiarity: when data changes, the cursor will react accordingly, but the function holding the cursor will not. The impact of this is obvious when it comes to creating relationships. Let's look at what our code would look like without using a package to handle our relationships:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># DO NOT CODE THIS INTO YOUR PROJECT</strong></span>
+products_cursor = Products.find {},limit:10
+
+# Make products an array with all the _ids
+products = products_cursor.map (product) -&gt;
+  product._id
+
+# Find their images
+images_cursor = ProductImages.find
+  product:
+    $in:products
+
+# Return the cursors in an array
+[products_cursor,images_cursor]</pre></div><p class="calibre7">In this case, suppose that for some reason the order of the <code class="email">Products</code> collection changes. This will make <code class="email">products_cursor</code> change reactively as you would expect on the client, but because there were <a id="id95" class="calibre1"/>no changes to the <code class="email">ProductImages</code> <a id="id96" class="calibre1"/>collection and <code class="email">Meteor.publish</code> does not rerun when there is a change in one of its dependencies, the images of the newly published products will not be published reactively!</p></div></div>
+
+<div class="book" title="Publishing with relations">
+<div class="book" title="Publishing orders with details (one to many)"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch02lvl2sec31" class="calibre1"/>Publishing orders with details (one to many)</h2></div></div></div><p class="calibre7">Now we will work on <a id="id97" class="calibre1"/>our <code class="email">Orders</code> and <code class="email">OrderDetails</code> <a id="id98" class="calibre1"/>collections. Let's set up our template, route, and subscriber for the function that creates orders. We can name this module as <code class="email">cart</code> and store it under the <code class="email">orders</code> directory:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /orders/cart/client/cart.jade</strong></span>
+template(name="cart")
+  h3.text-center cart
+
+<span class="strong"><strong class="calibre2"># /orders/cart/client/cart.coffee</strong></span>
+Template.created "cart", -&gt;
+  @autorun =&gt;
+    order = Session.get "cart.order"
+    @subscribe "cart",
+      order:order</pre></div><p class="calibre7">Notice that the <code class="email">order</code> variable is going to get our order <code class="email">_id</code> by using the <code class="email">Session</code> variables. We do this because the <code class="email">Session</code> variables are reactive; if for some reason the value changes, this makes sure that the subscriber reruns. The subscriber reruns because the variable is defined within the <code class="email">@autorun</code> function.</p><p class="calibre7">Also, we are passing an object as an argument to the <code class="email">@subscribe</code> function so that the publisher knows what order we are talking about:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /orders/cart/cart_route.coffee</strong></span>
+FlowRouter.route "/cart",
+  name:"cart"
+  action: -&gt;
+    FlowLayout.render "layout",
+      content:"cart"</pre></div><p class="calibre7">We need to publish<a id="id99" class="calibre1"/> three different collections to have all <a id="id100" class="calibre1"/>the information that our cart needs: <code class="email">Orders</code>, <code class="email">OrderDetails</code>, and <code class="email">Products</code>. This publisher can follow the same logic that we found in the first publisher:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /orders/cart/server/cart_pub.coffee</strong></span>
+Meteor.publish "cart", (ops={}) -&gt;
+  if ops.order and not _.isEmpty ops.order
+    @relations
+      collection:Orders
+      filter:
+        _id:ops.order
+        status:"new"
+      mappings:[
+        {
+          key:"order"
+          collection:OrderDetails
+          options:
+            limit:25
+          mappings:[
+            {
+              foreign_key:"product"
+              collection:Products
+            }
+          ]
+        }
+      ]
+
+  @ready()</pre></div><p class="calibre7">This publisher is predefining defaults for the function by passing <code class="email">ops={}</code> within the parameters (another useful shortcut that CoffeeScript provides). After making sure that <code class="email">ops.order</code> exists and is not a blank string, we establish our relationships. We need to make sure that the status of <code class="email">Order</code> has the <code class="email">"new"</code> value for security, so we hardcode it in the <code class="email">filter</code> key.</p><p class="calibre7">Notice that in this case, we are making use of <code class="email">foreign_key</code>. This indicates that the <code class="email">OrderDetails</code> collection has a <code class="email">product</code> field that contains a string equal to the <code class="email">_id</code> field of the <code class="email">Products</code> collection.</p><p class="calibre7">For now, we are<a id="id101" class="calibre1"/> going to limit <code class="email">OrderDetails</code> to<a id="id102" class="calibre1"/> <code class="email">25</code>.</p></div></div>
+
+<div class="book" title="Publishing with relations">
+<div class="book" title="Publishing a tag with products (many to many)"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch02lvl2sec32" class="calibre1"/>Publishing a tag with products (many to many)</h2></div></div></div><p class="calibre7">We definitely want<a id="id103" class="calibre1"/> to be able to filter our products via tags. We <a id="id104" class="calibre1"/>can follow the same pattern from the previous topic. Let's modify our <code class="email">products</code> module.</p><p class="calibre7">First, our subscriber needs to reactively change to an array of tags _ids. We can use a <code class="email">Session</code> variable for now to set an array of tag _ids so that we can easily modify this directly from the console:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /products/client/products.coffee</strong></span>
+Template.created "products", -&gt;
+  @autorun =&gt;
+    # tags is an array of tag _ids
+    tags = Session.get "products.tags"
+    filter = {}
+
+    if tags and not _.isEmpty tags
+      _.extend filter,
+        tags:tags
+
+    @subscribe "products", filter</pre></div><p class="calibre7">We use underscore's <code class="email">_.extend</code> function to make sure that the <code class="email">filter</code> variable has a <code class="email">tags</code> key, if <code class="email">tags</code> exist. Now our publisher is going to get a bit more complex:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /products/server/products_pub.coffee</strong></span>
+Meteor.publish "products", (ops = {}) -&gt;
+  limit = 10
+
+  if ops.tags and not _.isEmpty ops.tags
+    @relations
+      collection:Tags
+      filter:
+        _id:
+          $in:ops.tags
+      mappings:[
+        {
+          collection:ProductsTags
+          key:"tag"
+          mappings:[
+            {
+              collection:Products
+              foreign_key:"product"
+              options:
+                limit:limit
+              mappings:[
+                {
+                  collection:ProductImages
+                  key:"product"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+
+  else
+    @relations
+      collection:Products
+      options:
+        limit:limit
+      mappings:[
+        {
+          key:"product"
+          collection:ProductImages
+        }
+      ]
+
+  @ready()</pre></div><p class="calibre7">While the code may <a id="id105" class="calibre1"/>seem long, the logic is easy to <a id="id106" class="calibre1"/>understand. First, we filtered our <code class="email">Tags</code> collection by using the <code class="email">tags</code> array that we had defined in our subscriber. Then we chained the relations using a combination of <code class="email">key</code> and <code class="email">foreign_key</code>. The function that the mapping table (<code class="email">ProductsTags</code>) serves is clear in this scenario.</p></div></div>
+
+<div class="book" title="Publishing with relations">
+<div class="book" title="Key, foreign key, options, and filter"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_4"><a id="ch02lvl2sec33" class="calibre1"/>Key, foreign key, options, and filter</h2></div></div></div><p class="calibre7">The core concepts to <a id="id107" class="calibre1"/>understand from the <code class="email">lepozepo:publish-with-relations</code> package<a id="id108" class="calibre1"/> are simply the options provided within the <code class="email">@relations</code> function.</p><p class="calibre7">Both <code class="email">key</code> and <code class="email">foreign_key</code> default to the <code class="email">_id</code> field. The <code class="email">key</code> always makes reference to a field within the collection while the <code class="email">foreign_key</code> always makes reference to a field of the parent collection.</p><p class="calibre7">The <code class="email">options</code> and <code class="email">filter</code> options<a id="id109" class="calibre1"/> are equivalent to the second and first arguments (respectively) of a Meteor - MongoDB query: <code class="email">Products.find(filter,options)</code>.</p><p class="calibre7">There are many packages that work <a id="id110" class="calibre1"/>similar to <code class="email">lepozepo:publish-with-relations</code>, and we are not exploring them in this book, but they are certainly worth keeping an eye on: <code class="email">reywood:publish-composite</code>, <code class="email">lepozepo:reactive-publish</code>, and <code class="email">cottz:publish-relations</code>. I have found the last package to be the best of the bunch because it is simple to use and forces the developer to create smarter database relationships.</p></div></div>
+
+<div id="page" style="height:0pt"/><div class="book" title="Aggregation publishers"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch02lvl1sec18" class="calibre1"/>Aggregation publishers</h1></div></div></div><p class="calibre7">Sometimes our database<a id="id111" class="calibre1"/> has a considerable amount of information that we want to synthesize. Some developers choose to publish all the information to the client and have the client synthesize it. This, as we have learned so far, can have a negative impact on performance. Other developers might use <code class="email">Meteor.method</code> to return the synthesized data. This is definitely better for the client, but it will take a toll on our server if the computation is large.</p><p class="calibre7">The best way to handle a problem like this is to use MongoDB's aggregation framework to take the hard work of the calculation to our database, and then we can pair the results with the <code class="email">Meteor.publish</code> special functions: <code class="email">@added</code>, <code class="email">@changed</code>, and <code class="email">@removed</code>.</p></div>
+
+<div class="book" title="Aggregation publishers">
+<div class="book" title="The aggregation framework"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch02lvl2sec34" class="calibre1"/>The aggregation framework</h2></div></div></div><p class="calibre7">MongoDB's aggregation framework<a id="id112" class="calibre1"/> uses the concept of a pipeline to process data. A pipeline is, basically, a series of steps that Mongo is going to follow to produce the data you need.</p><p class="calibre7">We have installed support for the aggregation framework by adding <code class="email">meteorhacks:aggregate</code>. This gives us access to all of the framework's server-side commands. The most common commands that you will end up using are <code class="email">$match</code>, <code class="email">$group</code>, and <code class="email">$project</code>.</p><p class="calibre7">Let's build a publisher for our <code class="email">dashboard</code> module and start by building the template:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /dashboard/client/dashboard.jade</strong></span>
+template(name="dashboard")
+  h3.text-center dashboard
+
+# /dashboard/client/dashboard.coffee
+Template.created "dashboard", -&gt;
+  @autorun =&gt;
+    @subscribe "dashboard"
+
+<span class="strong"><strong class="calibre2"># /dashboard/dashboard_route.coffee</strong></span>
+FlowRouter.route "/dashboard",
+  name:"dashboard"
+  action: -&gt;
+    FlowLayout.render "layout",
+      content:"dashboard"</pre></div><p class="calibre7">Now we need to build a collection that exists only on the client. Our server will communicate with this collection manually. We specifically place this collection on the client side because we do not want the server to record data onto the database. We can append the collection to the (<code class="email">/dashboard/client/dashboard.coffee</code>) client controller file:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /dashboard/client/dashboard.coffee</strong></span>
+@_dashboard = new Mongo.Collection "_dashboard"
+
+Template.created "dashboard", -&gt;
+  @autorun =&gt;
+    @subscribe "dashboard"</pre></div><p class="calibre7">As this collection is client-side, we have differentiated it with an underscore at the beginning of the name. This, of course, is not required, but it helps prevent duplicate collection names.</p><p class="calibre7">Our goal is to publish the <a id="id113" class="calibre1"/>sum of the total and subtotal for the <code class="email">"pending"</code> orders. The steps for our pipeline are simple:</p><div class="book"><ol class="orderedlist"><li class="listitem" value="1">Filter the collection to show orders with status equal to <code class="email">"pending"</code>.</li><li class="listitem" value="2">Sum the totals of every filtered order:<div class="informalexample"><pre class="programlisting"># /dashboard/server/dashboard_pub.coffee
+Meteor.publish "dashboard", -&gt;
+  totals = Orders.aggregate [
+      {
+        $match:
+          status:"pending"
+      }
+      {
+        $group:
+          _id:null
+          total:
+            $sum:"$total"
+          subtotal:
+            $sum:"$subtotal"
+          discount:
+            $sum:"$discount.amount"
+      }
+    ]
+
+  console.log totals</pre></div></li></ol><div class="calibre21"/></div><p class="calibre7">To use the aggregation framework, you use the <code class="email">.aggregate</code> function that is attached to the collection object; <code class="email">Orders</code>, in this case. This function only takes an array as a parameter—this is because the array is the ordered set of steps that the framework is going to follow. Each step is represented by an object within the array and always begins with an operator.</p><p class="calibre7">Here we have decided to use <code class="email">$match</code> to filter the orders to find the pending orders, and then we have used <code class="email">$group</code> to accumulate the values of <code class="email">total</code> and <code class="email">subtotal</code>. Notice that the <code class="email">$group</code> expression has a mandatory <code class="email">_id</code> key. This key defines how we want to group the collection. By setting the <code class="email">_id</code> key to <code class="email">null</code>, we are stating that we want all the documents in the collection grouped into one single object.</p><p class="calibre7">
+<code class="email">$sum</code> is an accumulator operator. When you use an operator like this, you can access a document property by using the money sign (<code class="email">$</code>) followed by the name of the field within a string. Also, you can access objects within objects using the dot notation (<code class="email">"$discount.amount"</code>).</p><p class="calibre7">The result of <code class="email">totals</code> is an <a id="id114" class="calibre1"/>array containing a single object with the keys: <code class="email">total</code>, <code class="email">subtotal</code>, and <code class="email">discount</code>.</p></div></div>
+
+<div class="book" title="Aggregation publishers">
+<div class="book" title="Publishing the results"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch02lvl2sec35" class="calibre1"/>Publishing the results</h2></div></div></div><p class="calibre7">Publishing the<a id="id115" class="calibre1"/> results is much easier than it seems. We only need to use the <code class="email">@added</code> function that is bound to <code class="email">Meteor.publish</code>. The <code class="email">@added</code> function, basically, informs the subscriber that data has been added to the published set:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /dashboard/server/dashboard_pub.coffee</strong></span>
+Meteor.publish "dashboard", -&gt;
+  totals = Orders.aggregate [
+      {
+        $match:
+          status:"pending"
+      }
+      {
+        $group:
+          _id:null
+          total:
+            $sum:"$total"
+          subtotal:
+            $sum:"$subtotal"
+          discount:
+            $sum:"$discount.amount"
+      }
+    ]
+
+  if totals and totals.length &gt; 0 and totals[0]
+    @added "_dashboard","totals",totals[0]</pre></div><p class="calibre7">The last two lines make sure that the <code class="email">totals</code> array exists, and if it does not, then we publish the first object within the array to our <code class="email">_dashboard</code> collection. The <code class="email">@added</code> function has three required parameters. The first parameter is the name of the collection, the second is the <code class="email">_id</code> of the document, and the third is the document.</p><p class="calibre7">Notice that these kinds <a id="id116" class="calibre1"/>of publishers are not reactive, which means that we do not need to add a <code class="email">@changed</code> or <code class="email">@removed</code> function. We can take this a step further though. Instead of creating a collection for every module that needs an aggregation publisher, we can create one master collection that manages all our aggregation publishers.</p><p class="calibre7">First, we remove our <code class="email">_dashboard</code> collection and create a new <code class="email">Aggregate</code> collection:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /dashboard/client/dashboard.coffee</strong></span>
+Template.created "dashboard", -&gt;
+  @autorun =&gt;
+    @subscribe "dashboard"
+
+<span class="strong"><strong class="calibre2"># /globals/lib/collections/aggregate/client/aggregate.coffee</strong></span>
+@Aggregate = new Mongo.Collection "aggregate"</pre></div><p class="calibre7">Now, we need to modify our publisher:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /dashboard/server/dashboard_pub.coffee</strong></span>
+Meteor.publish "dashboard", -&gt;
+  totals = Orders.aggregate [
+      {
+        $match:
+          status:"pending"
+      }
+      {
+        $group:
+          _id:null
+          total:
+            $sum:"$total"
+          subtotal:
+            $sum:"$subtotal"
+          discount:
+            $sum:"$discount.amount"
+      }
+    ]
+
+  if totals and totals.length &gt; 0 and totals[0]
+    @added "aggregate","dashboard.totals",totals[0]</pre></div><p class="calibre7">With this, we can now access our values by calling the following function on our client-side console:</p><div class="informalexample"><pre class="programlisting">Aggregate.findOne "dashboard.totals"</pre></div><p class="calibre7">It's important to understand that as soon as we leave the route, the subscriber will be stopped and the <code class="email">aggregate</code> collection will be cleared. This default behavior gives this collection a lot of flexibility.</p><p class="calibre7">Why is using the <a id="id117" class="calibre1"/>aggregation framework with a publisher more effective than with <code class="email">Meteor.method</code>? The Meteor methods are designed to trigger critical functions within our server and respond with a simple message. On the other hand, publishers are designed to control data sets. You will very quickly find that publishers are easier to control and optimize than methods.</p></div></div>
+
+<div id="page" style="height:0pt"/><div class="book" title="External API publishers"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch02lvl1sec19" class="calibre1"/>External API publishers</h1></div></div></div><p class="calibre7">These types of<a id="id118" class="calibre1"/> publishers should be avoided. They are great to get raw data from external services such as <span class="strong"><strong class="calibre2">Stripe</strong></span>
+<a id="id119" class="calibre1"/> or <a id="id120" class="calibre1"/>
+<span class="strong"><strong class="calibre2">Square</strong></span>, but they tend to be little bit slower because this involves actively communicating with another server. When we are integrating with other servers, we should always build a separate synchronization server. We will talk about APIs in another chapter.</p><p class="calibre7">Still, this publishing pattern can be useful in edge cases, so it is important to know that this option exists.</p></div>
+
+<div class="book" title="External API publishers">
+<div class="book" title="The HTTP package"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch02lvl2sec36" class="calibre1"/>The HTTP package</h2></div></div></div><p class="calibre7">HTTP is a<a id="id121" class="calibre1"/> protocol for <a id="id122" class="calibre1"/>collaborative systems; it is the protocol that allows users to connect to web pages. The HTTP protocol can be used to access data from other servers from our own server.</p><p class="calibre7">We are going to use Meteor's integrated HTTP <code class="email">Request</code> module to communicate with Stripe's servers. We chose to integrate with Stripe because it is a payment processor that is easy to integrate and more reliable than most other payment processors in the market. We have added this package when we ran <code class="email">meteor add http</code>. This module has all the functions that you would expect: <code class="email">.get</code>, <code class="email">.post</code>, <code class="email">.put</code>, and <code class="email">.del</code>. For this topic, we are only going to cover the <code class="email">.get</code> function.</p><p class="calibre7">Our goal is to get data from Stripe. Start by creating a free account in Stripe. After you have created your account, go to your dashboard and set it to <code class="email">"test"</code>.</p><p class="calibre7">Now create a payment by clicking on <span class="strong"><strong class="calibre2">+ Create Payment</strong></span>. Use the following data for the payment:</p><div class="book"><ul class="itemizedlist"><li class="listitem"><span class="strong"><strong class="calibre2">Amount</strong></span>: <code class="email">10</code></li><li class="listitem"><span class="strong"><strong class="calibre2">Card Number</strong></span>: <code class="email">4242 4242 4242 4242</code></li></ul></div><p class="calibre7">In our test environment, we do not need to add CVC, and Stripe automatically sets the expiration date to a year from today.</p><p class="calibre7">Click on <span class="strong"><strong class="calibre2">Account Settings</strong></span> and copy your test secret key. We are going to use this to authorize our request.</p><p class="calibre7">We can start<a id="id123" class="calibre1"/> by creating a new publisher under <code class="email">/dashboard_pub.coffee</code>; we are only <a id="id124" class="calibre1"/>going to get the last three charges—we will modify this later:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /dashboard/server/dashboard_pub.coffee</strong></span>
+Meteor.publish "dashboard", -&gt;
+  ...
+
+Meteor.publish "latest_sales", -&gt;
+  @unblock()
+
+  HTTP.get "https://api.stripe.com/v1/charges?limit=3",
+    headers:
+      "Authorization":"Bearer &lt;TEST SECRET KEY&gt;"
+    (error,result) =&gt;
+      if not error
+        _.each result.data.data, (payment) =&gt;
+          @added "aggregate", "dashboard.sales.#{Meteor.uuid()}",payment
+      else
+        console.log error</pre></div><p class="calibre7">The <code class="email">@unblock</code> function that we are using here has been made available via the <code class="email">meteorhacks:unblock</code> package. It works the same way as the <code class="email">@unblock</code> function does in <code class="email">Meteor.methods</code>; this makes sure that the publisher does not block the server while it is waiting for information from Stripe to arrive. Unblocking the aggregation publishers is crucial! If we do not unblock the publisher, then we risk the client becoming unresponsive when the user navigates away from the page.</p><p class="calibre7">You might be asking yourself: can't we just make the HTTP request on the client and not worry about blocking the server? No, we cannot. If you were to run this function on the client, you would have to expose your secret key, and this is a major security flaw.</p><p class="calibre7">The <code class="email">HTTP.get</code> function has three important fields: the URL, the <code class="email">options</code> object, and the callback function. The URL is the address that Stripe provides in their API documentation—in this case, we have used the <code class="email">/charges</code> URL and passed a parameter <code class="email">limit</code> to get the last three sales. The options object is used to pass all the information that the request needs. In this case, we will use the <code class="email">headers</code> key to set our <code class="email">Authorization</code> header. There are several keys that the options object can take; you can find these at <a class="calibre1" href="http://docs.meteor.com">docs.meteor.com</a>. Our callback function receives the result from the request. As with most functions in Meteor, it returns two arguments; the first one is an error object that is <a id="id125" class="calibre1"/>undefined if there is no error, while the second one is the actual result.</p><p class="calibre7">In this case, the data that <a id="id126" class="calibre1"/>we are looking for is contained within <code class="email">result.data.data</code> as an array. We can then easily publish the data with our <code class="email">@added</code> function. Notice that we are binding both the callback and the <code class="email">_.each</code> function, so we can have access to <code class="email">@added</code>.</p><p class="calibre7">Let's subscribe to our new publisher to see our data:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /dashboard/client/dashboard.coffee</strong></span>
+Template.created "dashboard", -&gt;
+  @autorun =&gt;
+    @subscribe "dashboard"
+    @subscribe "latest_sales"</pre></div><p class="calibre7">Try running <code class="email">Aggregate.find().fetch()</code> in your console to see the results.</p></div></div>
+<div class="book" title="Summary"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch02lvl1sec20" class="calibre1"/>Summary</h1></div></div></div><p class="calibre7">In this chapter, we learned how to isolate subscribers from templates using template hooks. Also, we learned how to optimize the structure of our database depending on how we are going to use it. When it comes to publishers, we learned how to return every possible data structure without breaking reactivity. We covered aggregation publishers and learned how to synthesize data before we publish it, without hurting the performance of the server.</p><p class="calibre7">In the next chapter, we will cover a handful of frontend techniques that will help us to keep our code flexible and our frontend looking great.</p></div></body></html>

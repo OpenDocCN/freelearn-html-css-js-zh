@@ -1,0 +1,448 @@
+<html><head></head><body>
+<div id="page" style="height:0pt"/><div class="book" title="Chapter&#xA0;2.&#xA0;Extending Knockout with Custom Binding Handlers"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch02" class="calibre1"/>Chapter 2. Extending Knockout with Custom Binding Handlers</h1></div></div></div><p class="calibre8">Knockout's standard bindings are great. They solve most of the general problems you are likely to encounter when developing web apps. But there is always the need to provide something special, whether you are working on your own library or just trying to add a bit of style to your app. When that happens, you will want to provide that functionality through the same binding system you are using everywhere else. Luckily, Knockout makes extending this system easy. In this chapter, we will be looking at how to make our own binding handlers. We will be covering the following topics:</p><div class="book"><ul class="itemizedlist"><li class="listitem">What a binding handler contains</li><li class="listitem">Creating new binding handlers</li><li class="listitem">Using custom binding handlers to integrate with third-party libraries</li><li class="listitem">Managing binding contexts</li><li class="listitem">Using the containerless control flow syntax with custom bindings</li></ul></div><p class="calibre8">Creating custom binding handlers for new and more complex HTML interactions is a key to developing feature-rich applications. While the basics are easy to learn, there are enough extension points to support just about any use case. We are going to be looking at plenty of examples to get a solid idea of what binding handlers are capable of and how we can make the best use of them.</p></div>
+
+<div class="book" title="Chapter&#xA0;2.&#xA0;Extending Knockout with Custom Binding Handlers">
+<div class="book" title="The data binding pattern"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_1"><a id="ch02lvl1sec20" class="calibre1"/>The data binding pattern</h1></div></div></div><p class="calibre8">This section <a id="id120" class="calibre1"/>is primarily philosophical. If you feel like you already have a solid understanding of the <span class="strong"><em class="calibre12">what</em></span> and <span class="strong"><em class="calibre12">why</em></span> behind the <span class="strong"><strong class="calibre9">Model-View-ViewModel</strong></span> (<span class="strong"><strong class="calibre9">MVVM</strong></span>)<a id="id121" class="calibre1"/> pattern and binding handlers, then you might want to skip to the next section, <span class="strong"><em class="calibre12">Components of a binding handler</em></span>.</p><p class="calibre8">Okay, let's talk about patterns and practices. If you haven't worked with WPF before, then the MVVM pattern is probably the most confusing thing about Knockout. MVVM is a pattern that came out of Microsoft. It doesn't get a lot of attention outside the .NET community, and it's similar enough to the far more popular MVC pattern because of which confusion is nearly guaranteed.</p><p class="calibre8">In MVVM, the<a id="id122" class="calibre1"/> viewmodel is supposed to represent an abstraction of the view. Consider these two lists of message threads in iOS:</p><div class="mediaobject"><img src="../images/00004.jpeg" alt="The data binding pattern" class="calibre10"/></div><p class="calibre11"> </p><p class="calibre8">They both show a list<a id="id123" class="calibre1"/> of threads, and each thread contains a title showing the person it is with, an excerpt from the most recent message, and a timestamp. A thread can be selected or deleted. To select a message, you can touch it. To delete a message, you can slide left to bring up the <span class="strong"><strong class="calibre9">Delete</strong></span> button, and then press the <span class="strong"><strong class="calibre9">Delete</strong></span> button to delete the thread. You might be able to spot a difference in behavior already though. The list on the left slides the entire thread left to reveal the <span class="strong"><strong class="calibre9">Delete</strong></span> button, pushing the thread partially off the screen. The list on the right superimposes the button on top of the thread, hiding the timestamp.</p><p class="calibre8">These differences are entirely part of the presentation of the data. Both of these views could, and should, be supported by the same viewmodel. They are both showing the same data and allow the same actions.</p><p class="calibre8">To be able to consume <a id="id124" class="calibre1"/>this data using the intended behavior (slide-reveal or slide-superimpose), the view needs support from something besides the viewmodel. In the MVVM pattern, this is the domain of the binding handler, and even though the binding handler doesn't get a letter in the acronym, it's still a critical piece of the puzzle. As the viewmodel is not supposed to know about view-related concepts such as buttons, clicks, or finger-taps, and the view is supposed to be entirely declarative; a binding handler is required to glue the two together.</p><p class="calibre8">The underlying principle here is <a id="id125" class="calibre1"/>the separation of concerns. The view is concerned with UI elements and interactions. The viewmodel is concerned with code objects and actions, and binding handlers are concerned with generically translating between specific UI elements or actions to and from the viewmodel.</p><p class="calibre8">As that's out of the way, time to get started with creating some custom binding handlers!</p></div></div>
+
+<div id="page" style="height:0pt"/><div class="book" title="Components of a binding handler"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch02lvl1sec21" class="calibre1"/>Components of a binding handler</h1></div></div></div><p class="calibre8">Binding handlers<a id="id126" class="calibre1"/> are defined by adding objects to the <code class="literal">ko.bindingHandlers</code> object, just like extenders. They are composed of an <code class="literal">init</code> and an <code class="literal">update</code> function.</p><p class="calibre8">The <code class="literal">init</code> function runs when the binding is first applied to the element either when <code class="literal">ko.applyBindings</code> is called or when the element is created by a control flow binding, such as <code class="literal">template</code> or <code class="literal">foreach</code>. It should be used for all one-time work such as attaching event handlers or disposal callbacks to the element.</p><p class="calibre8">The <code class="literal">update</code> function <a id="id127" class="calibre1"/>runs just after <code class="literal">init</code> does, when the binding is first applied. It <a id="id128" class="calibre1"/>runs again anytime when any observable dependencies are changed. The <code class="literal">update</code> function determines its dependencies just like a computed observable does. If an observable is accessed when an update runs, it subscribes to that observable. The <code class="literal">update</code> function should be used to keep the UI in sync with changes from the viewmodel:</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.yourBindingName = {
+    init: function(element, valueAccessor, allBindings, viewModel, bindingContext) {
+        // This will be called when the binding is first applied
+        // Set up any initial state, event handlers, etc. here
+    },
+    update: function(element, valueAccessor, allBindings, viewModel, bindingContext) {
+        // This will be called once when the binding is first applied
+        // and again whenever dependant observables change.
+        // Update the DOM element based on the supplied values here.
+    }
+};</pre></div><p class="calibre8">Both functions receive the following parameters:</p><div class="book"><ul class="itemizedlist"><li class="listitem"><code class="literal">Element</code>: This is the DOM <a id="id129" class="calibre1"/>element the binding was applied to.</li><li class="listitem"><code class="literal">valueAccessor</code>: This is a <a id="id130" class="calibre1"/>function that will return the result of the binding expression. For example, if the binding was <code class="literal">value: name</code>, then <code class="literal">valueAccessor</code> would return the <code class="literal">name</code> property. If <code class="literal">name</code> was an observable, you would still need to either call it or pass it to <code class="literal">ko.unwrap</code> (this function will be covered in the next section) to get the value. If the binding was <code class="literal">value: name() + '!'</code>, then <code class="literal">valueAccessor</code> would return the resulting string.</li><li class="listitem"><code class="literal">allBindings</code>: This is an<a id="id131" class="calibre1"/> object with a <code class="literal">get</code> and <code class="literal">has</code> function for accessing other bindings on the element.</li><li class="listitem"><code class="literal">Viewmodel</code>: In <a id="id132" class="calibre1"/>previous versions of Knockout, this gave access to the viewmodel, but it has been deprecated in favor of <code class="literal">bindingContext.$data</code> or <code class="literal">bindingContext.$rawData</code> as of Knockout 3.0.</li><li class="listitem"><code class="literal">bindingContext</code>: This is<a id="id133" class="calibre1"/> an object with the current binding context for the binding. This has the special binding context properties such as <code class="literal">$parent</code> and <code class="literal">$root</code>. This parameter was introduced in Knockout 3.0.</li></ul></div></div>
+
+<div class="book" title="Components of a binding handler">
+<div class="book" title="Using custom binding handlers"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch02lvl2sec35" class="calibre1"/>Using custom binding handlers</h2></div></div></div><p class="calibre8">Once added <a id="id134" class="calibre1"/>to the <code class="literal">ko.bindingHandler</code> object, custom bindings are no different from normal bindings. If you add a binding handler named <code class="literal">flash</code>, you could use it on an HTML element with a standard <code class="literal">data-bind</code> attribute:</p><div class="informalexample"><pre class="programlisting">&lt;p data-bind="flash: vmProperty"&gt;Flashy! (bum dum tish)&lt;/p&gt;</pre></div></div></div>
+
+<div id="page" style="height:0pt"/><div class="book" title="Simple binding handlers"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch02lvl1sec22" class="calibre1"/>Simple binding handlers</h1></div></div></div><p class="calibre8">Binding handlers<a id="id135" class="calibre1"/> can range from very simple to whole applications by themselves. As the purpose of binding handlers is to translate between the presentation layer (HTML) and the viewmodel (JavaScript), the binding handler's complexity is directly related to the complexity of the UI interaction and the bound data. Simple tasks such as hiding or showing an element with animation will have very thin handlers, while data binding on an interactive map element will require much more logic.</p></div>
+
+<div class="book" title="Simple binding handlers">
+<div class="book" title="Animated binding handlers"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch02lvl2sec36" class="calibre1"/>Animated binding handlers</h2></div></div></div><p class="calibre8">As DOM interaction in <a id="id136" class="calibre1"/>the primary use case for jQuery, and given its <a id="id137" class="calibre1"/>popularity, it is not uncommon to use jQuery inside Knockout binding handlers. The canonical custom binding handler example from the Knockout documentation is a binding to hide and show elements, with the jQuery's <code class="literal">slideUp</code> and <code class="literal">slideDown</code> methods, instead of using the standard <code class="literal">visible</code> binding to switch them on and off:</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.slideVisible = {
+    init: function(element, valueAccessor) {
+        var value = ko.unwrap(valueAccessor());
+        $(element).toggle(value);
+    },
+    update: function(element, valueAccessor, allBindings) {
+        var value = ko.unwrap(valueAccessor());
+        var duration = allBindings.get('slideDuration') || 400;
+
+        if (value === true)
+            $(element).slideDown(duration); //show
+        else
+            $(element).slideUp(duration); //hide
+    }
+};</pre></div><p class="calibre8">This example uses both an <code class="literal">init</code> and <code class="literal">update</code> function. The <code class="literal">init</code> function here is necessary to ensure that a value starting out as false doesn't cause the element to slide up when bindings are first applied, or vice versa. Without it, the <code class="literal">update</code> function would run right away and try to hide the element by sliding it up. The <code class="literal">init</code> function ensures that the element is already in the correct visible state, so that an animation doesn't occur when the binding first runs.</p><p class="calibre8">
+<code class="literal">ko.unwrap</code> is a utility method<a id="id138" class="calibre1"/> that will return the value of an observable if called with one; otherwise it will just return the first argument directly. It's perfect if you don't know whether you have an observable or not as it's safe to call it with anything. Most custom bindings should be able to support observable and nonobservable values, so you should always unwrap the <code class="literal">valueAccessor</code> parameter, unless you have a good reason not to.</p><p class="calibre8">The check for <code class="literal">allBindings.get('slideDuration')</code> allows a configurable value to be used for the slide timing. The <code class="literal">allBinding</code> object gives us access to other bindings that were used on the same element and is commonly used to collect optional configuration values:</p><div class="informalexample"><pre class="programlisting">&lt;p data-bind="slideVisible: isShowing, slideDuration: 200"&gt;Quick&lt;/p&gt;</pre></div><p class="calibre8">This lets the <a id="id139" class="calibre1"/>view determine how fast or slow to hide and <a id="id140" class="calibre1"/>show the element. As the animation speed is a part of the presentation, it makes sense for it to be configured from the view. If you want to use a viewmodel observable for <code class="literal">slideDuration</code>, you can modify that line to unwrap the value:</p><div class="informalexample"><pre class="programlisting">var duration = ko.unwrap(allBindings.get('slideDuration')) || 400;</pre></div><p class="calibre8">An example of this binding is in the <code class="literal">cp2-slide</code> branch.</p></div></div>
+
+<div class="book" title="Simple binding handlers">
+<div class="book" title="Working with third-party controls"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch02lvl2sec37" class="calibre1"/>Working with third-party controls</h2></div></div></div><p class="calibre8">The <code class="literal">slideVisible</code> binding<a id="id141" class="calibre1"/> is a perfectly simple binding; it has a basic <code class="literal">init</code> function to start the binding and has an <code class="literal">update</code> function that modifies the DOM when the <a id="id142" class="calibre1"/>viewmodel changes. It is a <span class="strong"><strong class="calibre9">one way binding</strong></span>
+<a id="id143" class="calibre1"/> though, only watching the viewmodel for changes. <span class="strong"><strong class="calibre9">Two way bindings</strong></span> <a id="id144" class="calibre1"/>also need to watch the DOM element for changes and send it back to the viewmodel. Generally, this is accomplished by attaching an event handler in the <code class="literal">init</code> function; remember that the <code class="literal">update</code> function runs every time dependencies change, so attaching an event handler there would result in the event handler being attached multiple times.</p><p class="calibre8">Binding handlers can also be used to integrate with third-party controls. Though HTML5 has a native <code class="literal">datepicker</code> control, you might need one that is more backwards-compatible. The <code class="literal">datepicker</code> control of <a id="id145" class="calibre1"/>jQuery is a nice out-of-the-box control, but it requires a call to <code class="literal">$(element). datepicker()</code> to convert a standard input element. A binding handler is the perfect place to run this initialization logic for the view:</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.datepicker = {
+    init: function(element, valueAccessor, allBindingsAccessor) {
+        var options = allBindingsAccessor().datepickerOptions || {},
+            $el = $(element);
+
+        //initialize datepicker with some optional options
+        $el.datepicker(options);
+
+        //handle the field changing
+        ko.utils.registerEventHandler(element, "change", function() {
+            var observable = valueAccessor();
+            observable($el.datepicker("getDate"));
+        });
+
+        //handle disposal (if KO removes by the template binding)
+        ko.utils.domNodeDisposal.addDisposeCallback(element, function() {
+            $el.datepicker("destroy");
+        });
+
+    },
+    update: function(element, valueAccessor) {
+        var value = ko.unwrap(valueAccessor()),
+            $el = $(element),
+            current = $el.datepicker("getDate");
+
+        if (value - current !== 0) {
+            $el.datepicker("setDate", value);   
+        }
+    }
+};</pre></div><p class="calibre8">To use this <a id="id146" class="calibre1"/>binding in HTML, apply it to an input element:</p><div class="informalexample"><pre class="programlisting">&lt;input data-bind="datepicker: myDate, datepickerOptions: { mandate: new Date() }" /&gt;</pre></div><div class="informalexample" title="Note"><h3 class="title2"><a id="note09" class="calibre1"/>Note</h3><p class="calibre8">This example comes from a Stack Overflow<a id="id147" class="calibre1"/> answer by R. P. Niemeyer that can be found at <a class="calibre1" href="http://stackoverflow.com/a/6400701/788260">http://stackoverflow.com/a/6400701/788260</a>.</p></div><p class="calibre8">This binding's <code class="literal">init</code> function starts out by storing the jQuery wrapped element, followed by a check for options. The UI datepicker for <a id="id148" class="calibre1"/>jQuery (<a class="calibre1" href="http://jqueryui.com/datepicker">http://jqueryui.com/datepicker</a>) has a lot of them, and letting the binding control the configuration is standard.</p><p class="calibre8">Next is the jQuery-ficiation of the element with <code class="literal">$el.datepicker(options)</code>. This attaches the event handlers that allow jQuery to hide and show the pop-up datepicker control and route its selection to the input element's <code class="literal">value</code>. Then, using Knockout's <code class="literal">ko.utils.registerEventHandler</code>, it attaches an event handler that takes the new <code class="literal">value</code> and writes it to the supplied observable.</p><p class="calibre8">In some cases, we <a id="id149" class="calibre1"/>might want to see whether the <code class="literal">valueAccessor</code> parameter is an observable, so that binding against a static value can still be used to set the element's initial value. You will want to use your best judgment here; in this case, the whole purpose of the binding is to collect user input, so it doesn't make sense in this case to work with nonobservable values. If you do want to make the check, you could change the event handler portion in the following manner:</p><div class="informalexample"><pre class="programlisting">if (ko.isObservable(valueAccessor())) {
+  ko.utils.registerEventHandler(element, "change", function () {
+        var observable = valueAccessor();
+        observable($el.datepicker("getDate"));
+    });
+}</pre></div><p class="calibre8">The <code class="literal">ko.isObservable</code> function<a id="id150" class="calibre1"/> is a utility method that returns <code class="literal">true</code> if the first argument is an <code class="literal">observable</code>, <code class="literal">observableArray</code>, or <code class="literal">computed</code> observable. When the <code class="literal">valueAccessor</code> parameter isn't an observable, there is no need to attach the change handler at all, because there is nothing we would do with the new value.</p><p class="calibre8">The last piece in the <code class="literal">init</code> function is a <a id="id151" class="calibre1"/>
+<span class="strong"><strong class="calibre9">disposal handler</strong></span>. Disposal of bindings occurs when the element is removed from the DOM, which happens when control flow bindings such as <code class="literal">template</code> or <code class="literal">foreach</code> update themselves. The <code class="literal">datepicker</code> control of jQuery expects <code class="literal">$el.datepicker("destroy")</code> to be called to clean up the event handlers if attached, and remove the pop-up element from the DOM. Remember, the pop-up element was added by jQuery from inside this binding handler, so Knockout's template system is not aware of them. The <code class="literal">ko.utils.domNodeDisposal.addDisposeCallback</code> registers handlers that will be called by the template system when it removes a node from the DOM. This is an important step anytime your binding handler has modified the DOM.</p><p class="calibre8">The <code class="literal">update</code> function handles observable changes, but as it is translating between strings for the element's value and JavaScript <code class="literal">Dates</code> for the code, it has to perform its own equality check. Instead of looking at the element's value, it uses <code class="literal">$el.datepicker("getDate")</code>, which returns a real JavaScript date.</p><p class="calibre8">To see this binding in action, you can check out the <code class="literal">cp2-datepicker</code> branch. I've added a <code class="literal">span</code> bound by the same viewmodel property as the datepicker so that you can easily see the value update.</p></div></div>
+
+<div class="book" title="Simple binding handlers">
+<div class="book" title="Modifying the DOM with bindings"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch02lvl2sec38" class="calibre1"/>Modifying the DOM with bindings</h2></div></div></div><p class="calibre8">The previous two bindings<a id="id152" class="calibre1"/> were mostly translators between the data <a id="id153" class="calibre1"/>and presentation logic, but binding handlers <a id="id154" class="calibre1"/>can do much more. Bindings can also be used to add new elements to the page. If you want to provide a UI for a 1-5 rating system, you should think about using a <code class="literal">select</code> element with an <code class="literal">options</code> and <code class="literal">value</code> binding. While this would work, a much more common way would be to provide a series of stars for the user to click on, with a click activating the clicked star and every previous star. The <a id="id155" class="calibre1"/>Knockout tutorial site (<a class="calibre1" href="http://learn.knockoutjs.com/#/?tutorial=custombindings">http://learn.knockoutjs.com/#/?tutorial=custombindings</a>) provides a neat solution to this, which replaces a node's content with a list of styled <code class="literal">span</code> elements:</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.starRating = {
+    init: function(element, valueAccessor) {
+        $(element).addClass("starRating");
+        for (var i = 0; i &lt; 5; i++) {
+           $("&lt;span&gt;").appendTo(element);
+}
+       
+        // Handle mouse events on the stars
+        $("span", element).each(function(index) {
+            $(this).hover(
+                function() { 
+                  $(this).prevAll().add(this)
+                    .addClass("hoverChosen");
+                }, 
+                function() { 
+                  $(this).prevAll().add(this)
+                    .removeClass("hoverChosen");
+                }                
+            ).click(function() { 
+                var observable = valueAccessor();
+                observable(index + 1); 
+            });
+        });            
+    },
+    update: function(element, valueAccessor) {
+        // Give the first x stars the "chosen" class
+        // where x &lt;= rating
+        var observable = valueAccessor();
+        $("span", element).each(function(index) {
+            $(this).toggleClass("chosen", index &lt; observable());
+        });
+    }
+};</pre></div><p class="calibre8">You could use this binding on an element in the following manner:</p><div class="informalexample"><pre class="programlisting">&lt;span data-bind="text: name"&gt;&lt;/span&gt;
+&lt;span data-bind="starRating: rating"&gt;&lt;/span&gt;</pre></div><p class="calibre8">The result is a nice looking <a id="id156" class="calibre1"/>control that will be familiar to anyone who has filled out an online survey before:</p><div class="mediaobject"><img src="../images/00005.jpeg" alt="Modifying the DOM with bindings" class="calibre10"/></div><p class="calibre11"> </p><p class="calibre8">The <code class="literal">init</code> function<a id="id157" class="calibre1"/> for this binding sets up <a id="id158" class="calibre1"/>three things. First, it adds five span elements as children of the bound node, which will serve as the stars for the rating. Second, it adds hover handlers to apply and remove the <code class="literal">hoverChosen</code> class to the star under the cursor, as well as all the previous stars. The stars are cumulative, so if we hover over the third star, we should see the first three stars fill in. Finally, it adds a click handler to each star that updates the <code class="literal">bound</code> property with the number the star represents. As its using the index of the loop, which starts at <code class="literal">0</code>, it adds <code class="literal">1</code> to the value. Again, we see that the binding assumes that the property being used is observable. If we wanted to support a read-only display, we would modify the binding to check that the property is observable before trying to update it.</p><p class="calibre8">The <code class="literal">update</code> function for this binding is different from the ones we've looked at so far. Instead of using the new value from the <code class="literal">valueAccesor</code> property to set an attribute of the original bound element, it loops through the stars and uses jQuery's <code class="literal">toggleClass</code> to set or remove the chosen class, applying it to only the stars whose index is at or below the new value. The viewmodel is still only aware of an integer value, and the view is only aware that the bound element is using <code class="literal">starRating</code> to present that number. The binding handler abstracts away star elements and also handles the translation between the numeric value and selected stars.</p><p class="calibre8">This binding <a id="id159" class="calibre1"/>assumes the existence of the CSS classes that it <a id="id160" class="calibre1"/>applies to the star spans. You can see an <a id="id161" class="calibre1"/>interactive sample of this binding and the CSS in the <code class="literal">cp2-stars</code> branch.</p></div></div>
+
+<div class="book" title="Simple binding handlers">
+<div class="book" title="Applying new bindings to new children elements"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_4"><a id="ch02lvl2sec39" class="calibre1"/>Applying new bindings to new children elements</h2></div></div></div><p class="calibre8">In the previous example, we <a id="id162" class="calibre1"/>looked at creating children elements to present our data with some style. It was using jQuery to manage the<a id="id163" class="calibre1"/> classes of the children elements that it had added during the binding's initialization. However, when using Knockout bindings, sometimes it makes more sense to use the built-in binding handlers for this sort of thing. Luckily it's possible to add Knockout bindings to elements after they've been created.</p><p class="calibre8">Knockout provides a utility function, <code class="literal">ko.applyBindingsToNode</code>, to manually apply bindings to elements. The function takes an element to bind an object. Each property on the object will be used to look up a binding handler, and the property's value will be passed to the binding. It also takes an optional viewmodel or binding context as the third parameter; if left out, it will use the current binding context:</p><div class="informalexample"><pre class="programlisting">init: function(element, valueAccessor) {
+    var childElementToBind = document.createElement('input');
+  element.appendChild(childElementToBind);
+  
+  ko.applyBindingsToNode(childElementToBind, {
+    value: valueAccessor()
+  });
+}</pre></div><p class="calibre8">This will add a new input element after the original element and apply a <code class="literal">value</code> binding to the original observable. The <code class="literal">applyBindingsToNode</code> call takes the new input element and an object that will apply the <code class="literal">value</code> binding. The <code class="literal">valueAccessor</code> property returns the original property and passes it to the binding, essentially binding the new input to the same property as the original binding.</p><p class="calibre8">If we want to create a binding that adds an input with a new label, it might look like this:</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.labelInput = {
+      init: function(element, valueAccessor) {
+          var input = document.createElement('input'),
+            label = document.createElement('label'),
+            labelText = valueAccessor().label,
+            inputValue = valueAccessor().value;
+
+          label.innerHTML = labelText;
+          label.appendChild(input);
+
+      element.appendChild(label);
+
+      ko.applyBindingsToNode(input, {
+        value: inputValue,
+        valueUpdate: 'afterkeydown'
+      });
+      }</pre></div><p class="calibre8">Its binding could be used as follows:</p><div class="informalexample"><pre class="programlisting">&lt;div data-bind="labelInput: { label: 'Custom', value: name }"&gt;&lt;/div&gt;</pre></div><p class="calibre8">This binding<a id="id164" class="calibre1"/> creates a new<a id="id165" class="calibre1"/> label and input that it appends as children to the original binding. The label's text is set to the binding's <code class="literal">label</code> property, and the binding's <code class="literal">value</code> is bound to the input node. Hopefully, you can start to see how a binding handler could be used to create not only your own behavior, but your own custom elements as well.</p><p class="calibre8">An example of this binding can be seen in the <code class="literal">cp2-applynode</code> branch.</p><div class="book" title="Applying accessors"><div class="book"><div class="book"><div class="book"><h3 class="title2"><a id="ch02lvl3sec06" class="calibre1"/>Applying accessors</h3></div></div></div><p class="calibre8">The <code class="literal">applyBindingsToNode</code> method<a id="id166" class="calibre1"/> is available in all versions of Knockout, but another method is available if you are using Knockout 3.0 or higher. The <code class="literal">applyBindingAccessorsToNode</code> method<a id="id167" class="calibre1"/> works in a way similar to <code class="literal">applyBindingsToNode</code>, taking <a id="id168" class="calibre1"/>an object to<a id="id169" class="calibre1"/> bind as the first parameter and an optional binding context as the third parameter. However, instead of taking the values of the second parameter's properties directly, it takes a function that supplies the <code class="literal">valueAccessor</code> property. The previous <code class="literal">apply</code> call would look like this after being converted:</p><div class="informalexample"><pre class="programlisting">ko. applyBindingAccessorsToNode (input, {
+  value: function() { return inputValue },
+  valueUpdate: function() { return 'afterkeydown' }
+});</pre></div><p class="calibre8">This method is actually what <code class="literal">applyBindingsToNode</code> calls internally after the values given to it are converted into value accessor functions such as the previous ones. The one fewer step of indirection gained by using <code class="literal">applyBindingAccessorsToNode</code> gives marginally improved performance. However, the larger benefit comes when the value being bound against it is an <a id="id170" class="calibre1"/>expression instead <a id="id171" class="calibre1"/>of just a simple property. An expression can only establish a dependency if it is evaluated from inside the binding that uses it. The value accessor functions will be evaluated later, allowing them to work correctly with expressions.</p></div></div></div>
+
+<div class="book" title="Simple binding handlers">
+<div class="book" title="Controlling the order of binding handlers"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_5"><a id="ch02lvl2sec40" class="calibre1"/>Controlling the order of binding handlers</h2></div></div></div><p class="calibre8">In rare cases, you may need to <a id="id172" class="calibre1"/>ensure that the <a id="id173" class="calibre1"/>binding handlers occur in a certain order. As of Knockout 3.0, this is possible by setting the <code class="literal">after</code> property on a binding handler to an array of bindings that must be processed first. For example, you can define a binding that require values and options to be processed first:</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.valuePlus = {
+    'after': ['options', 'value'],
+    'init': function (element, valueAccessor, allBindings) {
+        /* some code /*
+     }
+}</pre></div><p class="calibre8">Several of the default bindings take advantage of this. The <code class="literal">value</code> binding depends on <code class="literal">options</code> and <code class="literal">foreach</code>; the <code class="literal">checked</code> binding depends on <code class="literal">value</code> and <code class="literal">attr</code>.</p><p class="calibre8">It should be noted that if you create two bindings with an <code class="literal">after</code> reference to each other, Knockout will throw a cyclic dependency exception if it ever tries to apply both bindings to the same element.</p></div></div>
+
+<div id="page" style="height:0pt"/><div class="book" title="Advanced binding handlers"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch02lvl1sec23" class="calibre1"/>Advanced binding handlers</h1></div></div></div><p class="calibre8">So far, we've been looking at<a id="id174" class="calibre1"/> binding handlers that handle one or two properties and result in a fairly simple single-purpose control. In the previous example, we started looking at binding handlers that created new child elements, and this technique allows us to create much more complex binding behaviors. Bindings can also interact with complex elements such as charts or map controls (for example, a Google Maps widget), providing a clean API that the viewmodel can interact with.</p></div>
+
+<div class="book" title="Advanced binding handlers">
+<div class="book" title="Binding complex data with charts"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch02lvl2sec41" class="calibre1"/>Binding complex data with charts</h2></div></div></div><p class="calibre8">The first time we looked<a id="id175" class="calibre1"/> at integrating with a<a id="id176" class="calibre1"/> third-party control was with a single-property<a id="id177" class="calibre1"/> two-way binding to a datepicker. Any time we are working with third-party UI tools, the goal is to abstract them away from the view and the viewmodel through bindings; even when those tools are for complex structures such as charts.</p><p class="calibre8">Charts.js (<a class="calibre1" href="http://www.chartjs.org">http://www.chartjs.org</a>) is a<a id="id178" class="calibre1"/> popular JavaScript library built to display data in, you<a id="id179" class="calibre1"/> guessed it right, graphical charts. Without going too deep into the details of how charts work, one challenge presented by a binding handler is that the chart doesn't have an API for making incremental updates. The whole chart needs to be re-rendered for updates. This requires access to the <code class="literal">canvas</code> element as well as the 2D context for the canvas. If we create the canvas in the <code class="literal">init</code> function, getting that element in the <code class="literal">update</code> function can be tricky. Let's take a look at an example of this (this is dummy code):</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.doughnutChart = {
+    init: function(element, valueAccessor) {
+        var canvas = document.createElement('canvas'),
+            options = ko.utils.extend(defaultChartOptions, valueAccessor());
+        
+        element.appendChild(canvas);
+    },
+    update: function(element, valueAccessor) {
+        var chartContext = canvas.getContext('2d')
+
+        /* Drawing code */
+
+        new Chart(chartContext).Doughnut(data, options);
+    }
+};
+//HTML
+&lt;div data-bind="doughnutChart: {data: chartSeries}"&gt;&lt;/div&gt;</pre></div><p class="calibre8">You can see in the <code class="literal">init</code> function that a new canvas element has been made and appended to the bound element. However, the variable (<code class="literal">canvas</code>) needs to be used in the <code class="literal">update</code> function to draw, and it isn't actually available there.</p><p class="calibre8">Knockout provides two utility methods, <code class="literal">ko.utils.domData.set(element,</code> <code class="literal">key, value)</code> and <code class="literal">ko.utils.domData.get(element,</code> <code class="literal">key)</code>, which can be used to set values on the bound element. They can store any JavaScript value, including DOM node references, and so we could <a id="id180" class="calibre1"/>certainly use them here:</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.doughnutChart = {
+    init: function(element, valueAccessor) {
+        var canvas = document.createElement('canvas'),
+            options = ko.utils.extend(defaultChartOptions, valueAccessor());
+
+        ko.utils.domData.set(element, 'canvas', canvas);
+        
+        element.appendChild(canvas);
+    },
+    update: function(element, valueAccessor) {
+        var canvas = ko.utils.domData.get(element, 'canvas'),
+            chartContext = canvas.getContext('2d');
+
+        /* Drawing code */
+
+        new Chart(chartContext).Doughnut(data, options);
+    }
+};</pre></div><p class="calibre8">This will work. However, it <a id="id181" class="calibre1"/>does mean that the element not only contains the <a id="id182" class="calibre1"/>canvas as a child, but also as a property; it also means the retrieval of the element every time an update runs.</p><p class="calibre8">Another method would be to create a computed observable in the <code class="literal">init</code> function that had a closure for the canvas, or even the context. This might sound like it's creating an extra object, but remember, the <code class="literal">update</code> function in bindings is actually wrapped in a computed to take advantage of the dependency detection. Using this method, our binding would look like this:</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.doughnutChart = {
+    init: function(element, valueAccessor) {
+        var canvas = document.createElement('canvas'),
+            options = ko.utils.extend(defaultChartOptions, valueAccessor()),
+            chartContext = canvas.getContext('2d');
+        
+        element.appendChild(canvas);        
+
+        ko.computed(function() { 
+  canvas.height = ko.unwrap(options.height);
+          canvas.width = ko.unwrap(options.width);
+
+          var data = ko.toJS(options.data).map(function(x) {
+            return {
+              value: parseFloat(x.value),
+              color: x.color.indexOf('#') === 0 ? "#" + x.color : x.color
+            }
+          });
+
+            new Chart(chartContext).Doughnut(data, options);
+        }, null, {disposeWhenNodeIsRemoved: element});
+    }
+};</pre></div><p class="calibre8">One thing to consider when using this method is the disposal of the computed. The third argument to the computed constructor is an <code class="literal">options</code> object, and with it, we can specify that the computed should be disposed off with a DOM node's removal by specifying the element. This option can be seen in the previous example.</p><p class="calibre8">Another thing to note in the example is the <code class="literal">options</code> variable in the <code class="literal">init</code> function. You should be familiar with the concept of extending objects, but just in case, remember that extending (also called merging) is the process of choosing a target and updating it with a source object by copying all of its properties. The result is an object with the combination of both values, with the values of the source being used in any cases where the target also had a value. Knockout<a id="id183" class="calibre1"/> provides an <code class="literal">extend</code> method<a id="id184" class="calibre1"/> on <code class="literal">ko.utils.extend</code>. I am using it<a id="id185" class="calibre1"/> here to make all of the chart <code class="literal">options</code> optional, by supplying these default values before the binding:</p><div class="informalexample"><pre class="programlisting">var defaultChartOptions = { 
+    height: 300, 
+    width: 300,
+    animation: false
+  };</pre></div><p class="calibre8">The only thing that must be supplied is the data for the chart to display. Chart.js requires Doughnut charts to supply an array of objects with a value and color. To provide a humane binding, we can let the binding be responsible for ensuring the data is sanitized, which includes parsing the value as a number and ensuring our color value starts with the hash (<code class="literal">#</code>) for hex codes. Along with some options for height and width, our final computed would look something like this:</p><div class="informalexample"><pre class="programlisting">ko.computed(function() {
+
+  canvas.height = ko.unwrap(options.height);
+  canvas.width = ko.unwrap(options.width);
+
+  var data = ko.toJS(options.data).map(function(x) {
+    return {
+      value: parseFloat(x.value),
+      color: x.color.indexOf('#') === 0 ? x.color : "#" + x.color
+    };
+  });
+
+  new Chart(chartContext).Doughnut(data, options);
+}, null, {disposeWhenNodeIsRemoved: element});</pre></div><p class="calibre8">An example of this <a id="id186" class="calibre1"/>binding, including<a id="id187" class="calibre1"/> some bindings to change the data, is <a id="id188" class="calibre1"/>in the <code class="literal">cp2-charts</code> branch.</p><div class="book" title="Dynamically adjusting the chart type"><div class="book"><div class="book"><div class="book"><h3 class="title2"><a id="ch02lvl3sec07" class="calibre1"/>Dynamically adjusting the chart type</h3></div></div></div><p class="calibre8">Three of the charts in <a id="id189" class="calibre1"/>Chart.js—Doughnut, Pie, and Polar Area—use the same data structure of value/color pairs. If you want to<a id="id190" class="calibre1"/> support switching between compatible charts, you can add the type as a binding option. The bottom of our computed would look like this instead:</p><div class="informalexample"><pre class="programlisting">var chart = new Chart(chartContext),
+  chartType = ko.unwrap(options.type);
+
+if (circularChartTypes.indexOf(chartType) === -1) {
+  throw new Error('Chart Type ' + chartType + 'is not a Circular Chart Type');
+}
+
+chart[chartType](data, options);</pre></div><p class="calibre8">To indicate that this new binding supports multiple types, we could update the name and then use it like this:</p><div class="informalexample"><pre class="programlisting">&lt;div data-bind="circularChart: { 
+            data: chartSeries, 
+            width: chartWidth, 
+            height: chartHeight, 
+            type: selectedChartType 
+}"&gt;&lt;/div&gt;</pre></div><p class="calibre8">This modified example can be seen in the <code class="literal">cp2-charts2</code> branch.</p></div></div></div>
+
+<div class="book" title="Advanced binding handlers">
+<div class="book" title="Exposing APIs through bindings"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch02lvl2sec42" class="calibre1"/>Exposing APIs through bindings</h2></div></div></div><p class="calibre8">The Chart.js example<a id="id191" class="calibre1"/> demonstrated binding against <a id="id192" class="calibre1"/>multiple properties. While we were able to<a id="id193" class="calibre1"/> control the chart by modifying bound observables for height, width, and type, it didn't allow us to <span class="strong"><em class="calibre12">interact</em></span> with the chart. We could not click or drag the chart to update the observable for its data. The last custom binding technique we are going to look at is working with complex interactive controls; controls that bind multiple or complex data and allow user input. By doing this, we can consume APIs for a control either through the UI or programmatically. The example we will use is a binding for the Google Maps API.</p><p class="calibre8">One of our abstraction goals is to keep how the UI gets things done out of the declaration of the UI. It doesn't matter to us that the <code class="literal">visible</code> binding accomplishes its hiding by adding <code class="literal">style="display: none;"</code> to an element; all we care about is that the element will be visible only when the property we bind to is <code class="literal">truthy</code>.</p><p class="calibre8">Another goal of abstraction is to keep third-party data structures out of our viewmodel code, especially if that third-party code is only used by a binding handler. Our viewmodel doesn't care that its latitude and longitude are being used by a map, let alone a map from Google. That's the UI's business. However, it is still a fact of life that our data needs to be massaged into the correct format if we want it to play nicely with our third-party API. Here, again binding handlers come to the rescue!</p><p class="calibre8">The Google Maps JavaScript API is powerful and full of features. We are going to look at a simple binding that lets us control the center point of a map (latitude and longitude), as well as the zoom level of the map. We are going to hide all of the details of the Google Maps API inside our binding. Our viewmodel will be simple, just these three properties:</p><div class="informalexample"><pre class="programlisting">var BindingSample = function() {
+  var self = this;
+
+  self.zoom = ko.observable(8);
+  self.latitude = ko.observable(45.51312335271636);
+  self.longitude = ko.observable(-122.67063820362091);
+};</pre></div><p class="calibre8">Hopefully, any reasonable mapping API would let us work with these properties, which allows our viewmodel to be reused for any of them. We want our HTML to be reusable as well, so it should use a map-provider agnostic syntax as well:</p><div class="informalexample"><pre class="programlisting">&lt;div data-bind="map: { lat: latitude, long: longitude, zoom:zoom }"  &gt;&lt;/div&gt;</pre></div><p class="calibre8">So far so good; nothing new here. Let's take a look at that map binding handler:</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.map = {
+   init: function(element, valueAccessor) {
+      var data = valueAccessor(),
+         options = ko.utils.extend(ko.maps.defaults, data),
+         //just get the relevant options
+         mapOptions = {
+            zoom: ko.unwrap(options.zoom),
+            center: new google.maps.LatLng(ko.unwrap(options.lat), 
+              ko.unwrap(options.long)),
+            mapTypeId: options.mapType
+         },
+         map = new google.maps.Map(element, mapOptions);
+
+      ko.computed(function() {
+         map.setZoom(parseFloat(ko.unwrap(options.zoom)));
+      }, null, { disposeWhenNodeIsRemoved: element });
+
+      ko.computed(function() {
+         map.panTo(new google.maps.LatLng(ko.unwrap(options.lat), ko.unwrap(options.long)));
+      }, null, { disposeWhenNodeIsRemoved: element });
+
+      google.maps.event.addListener(map, 'center_changed', function() {
+         var center = map.getCenter();
+         if (ko.isObservable(data.lat)) {
+            data.lat(center.lat());
+    }
+         if (ko.isObservable(data.long)) {
+            data.long(center.lng());
+    }
+      });
+
+      if (ko.isObservable(data.zoom)) {
+         google.maps.event.addListener(map, 'zoom_changed', function() {
+            data.zoom(map.getZoom());
+         });
+      }
+   }
+};</pre></div><p class="calibre8">The beginning<a id="id194" class="calibre1"/> should be familiar <a id="id195" class="calibre1"/>by <a id="id196" class="calibre1"/>now; we are getting our <code class="literal">valueAccessor</code> parameter out, using some default values (see the previous sample) and extending them with the bound data. The next line creates a new map using the Google Maps API and supplies the element and our options.</p><p class="calibre8">Next, we set up two computed values to update the map when the zoom or latitude/longitude values change. Another advantage of using the computed method instead of the binding handlers <code class="literal">update</code> method is that the <code class="literal">update</code> method will fire when any part of the <code class="literal">valueAccessor</code> property changes. If only one value changes, such as zoom, we wouldn't want to update the map position. We would have to figure out which value changed, which would mean tracking it in the binding. Here, the two computed values will rerun only when their dependencies change, ensuring that we don't make unnecessary calls to update the map.</p><p class="calibre8">Finally, we have a pair of event listeners on the map to update our observable values when the user interacts with the map. These use the Google Maps API's <code class="literal">addListener</code> to get updates<a id="id197" class="calibre1"/> whenever the map is moved, which can happen by mouse <a id="id198" class="calibre1"/>dragging or with the keyboard arrows, and whenever the zoom is changed. The <code class="literal">panTo</code> function<a id="id199" class="calibre1"/> is just an animated <code class="literal">move</code> command; if the new position is close enough, <code class="literal">panTo</code> will ease into it.</p><p class="calibre8">That's it! If our code updates these values, the map will be moved. If the user moves the map, the bound observables will be updated. We have a two-way binding with multiple properties on a third-party UI control!</p><p class="calibre8">Obviously, this binding could get a lot bigger if we wanted to support more of the Google Maps APIs, but this should give you an idea of how that would be done. Don't be afraid to making larger bindings. The examples in this book are all small out of necessity—they tell me this will be printed on dead trees—but you should feel free to make bindings as large as you need to in order to accomplish the task at hand. I would take a larger, more flexible binding over a smaller inflexible binding any day.</p><p class="calibre8">If you want to see<a id="id200" class="calibre1"/> an example of this binding, check out the <code class="literal">cp2-maps</code> branch. It has several inputs bound to the map so that you can see things update in both directions. It's pretty fun to play with.</p><div class="mediaobject"><img src="../images/00006.jpeg" alt="Exposing APIs through bindings" class="calibre10"/></div><p class="calibre11"> </p></div></div>
+
+<div class="book" title="Advanced binding handlers">
+<div class="book" title="Binding contexts and descendant bindings"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch02lvl2sec43" class="calibre1"/>Binding contexts and descendant bindings</h2></div></div></div><p class="calibre8">All of the <a id="id201" class="calibre1"/>binding handlers we have<a id="id202" class="calibre1"/> created so far have respected the standard binding context. In this section, we are going to look at techniques to modify the binding context. This allows fine-grained control over how elements are bound and data they are bound with.</p><div class="informalexample" title="Note"><h3 class="title2"><a id="note10" class="calibre1"/>Note</h3><p class="calibre8">As per the Knockout documentation notes (<a class="calibre1" href="http://knockoutjs.com/documentation/custom-bindings-controlling-descendant-bindings.html">http://knockoutjs.com/documentation/custom-bindings-controlling-descendant-bindings.html</a>), these methods are not normally used in application<a id="id203" class="calibre1"/> development. They are probably only useful to library or framework developers building on top of Knockout.</p></div><div class="book" title="Controlling descendant bindings"><div class="book"><div class="book"><div class="book"><h3 class="title2"><a id="ch02lvl3sec08" class="calibre1"/>Controlling descendant bindings</h3></div></div></div><p class="calibre8">You can indicate to <a id="id204" class="calibre1"/>Knockout that your binding handler is responsible for all of the bindings on descendant nodes by returning <code class="literal">controlsDescendantBindings</code> from the <code class="literal">init</code> function of a binding. The canonical example of this is the <code class="literal">stopBinding</code> handler:</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.stopBinding = {
+    init: function(element, valueAccessor) {
+        return { controlsDescendantBindings: ko.unwrap(valueAccessor()) };
+    }
+};</pre></div><p class="calibre8">This will stop the current binding context from continuing to traverse these element descendants, leaving them in their initial unbound state unless another binding context is started:</p><div class="informalexample"><pre class="programlisting">&lt;div data-bind="stopBinding: true"&gt;
+  &lt;h4 data-bind="text: 'Bound'"&gt;Unbound&lt;/h4&gt;
+&lt;/div&gt;</pre></div><p class="calibre8">The heading in this <code class="literal">div</code> element will <a id="id205" class="calibre1"/>still say <code class="literal">Unbound</code> after bindings are applied because <code class="literal">stopBinding</code> has stopped all descendant bindings. You can see an example of this binding in the <code class="literal">cp2-stopbinding</code> branch. Notice that if you change the <code class="literal">stopBinding</code> to <code class="literal">false</code>, the heading will say <code class="literal">Bound</code>.</p><p class="calibre8">So that's the basic idea, but what can we do with this? Well, after interrupting the current binding context, we can replace it with a different one!</p></div><div class="book" title="Child binding contexts"><div class="book"><div class="book"><div class="book"><h3 class="title2"><a id="ch02lvl3sec09" class="calibre1"/>Child binding contexts</h3></div></div></div><p class="calibre8">Probably the most common<a id="id206" class="calibre1"/> binding context operation is creating a child context, a context whose <code class="literal">$parent</code> is the current context. The <code class="literal">template</code>, <code class="literal">with</code>, and <code class="literal">foreach</code> bindings do this for the data they bind. A child context can access its parent using the special <code class="literal">$parent</code> property, and it can access the top-level viewmodel (the one passed to <code class="literal">ko.applyBindings</code>) by using <code class="literal">$root</code>. You can create your own child contexts by calling <code class="literal">createChildContext</code> on the <code class="literal">bindingContext</code> parameter passed to a binding handler.</p><p class="calibre8">Here is a binding that creates a child context by merging together two objects:</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.merge = {
+    init: function(element, valueAccessor, allBindings, viewmodel, bindingContext) {
+        
+        var value = valueAccessor(),
+          merge = ko.utils.extend(value.target, value.source);
+          child = bindingContext.createChildContext(merge);
+
+    ko.applyBindingsToDescendants(child, element);          
+
+        // Don't bind the descendants
+      return { controlsDescendantBindings: true };
+    }
+};</pre></div><p class="calibre8">This binding takes two properties, <code class="literal">target</code> and <code class="literal">source</code>, and uses the Knockout utility method <code class="literal">extend</code> to merge them together. Notice that because we are applying bindings to descendants, we have to return the <code class="literal">controlsDescendantBindings</code> flag. Consider the following viewmodel:</p><div class="informalexample"><pre class="programlisting">var BindingSample = function() {
+   var self = this;
+   self.name = 'Scout Retreat';
+   self.springCourse = { knots: true, woodworking: true, metalworking: true };
+   self.summerCourse = { rafting: true, diving: true, tracking: false };
+};</pre></div><p class="calibre8">We could use the <code class="literal">merge</code> binding to bind a template against the combined properties of the spring and summer courses:</p><div class="informalexample"><pre class="programlisting">&lt;div data-bind="merge: { source: springCourse, target: summerCourse }"&gt;
+  &lt;h3 data-bind="text: $parent.name"&gt;&lt;/h3&gt;
+  &lt;div&gt;
+    &lt;label for="knots"&gt;Knots&lt;/label&gt;
+    &lt;input type="checkbox" id="knots" disabled data-bind="checked: knots"&gt;
+  &lt;/div&gt;
+  &lt;div&gt;
+    &lt;label for="woodworking"&gt;Woodworking&lt;/label&gt;
+    &lt;input type="checkbox" id="woodworking" disabled data-bind="checked: woodworking"&gt;
+&lt;div&gt;
+    &lt;label for="tracking"&gt;Tracking&lt;/label&gt;
+    &lt;input type="checkbox" id="tracking" disabled data-bind="checked: tracking"&gt;
+  &lt;/div&gt;
+  &lt;/div&gt;
+  &lt;!-- More inputs --&gt;
+&lt;/div&gt; </pre></div><p class="calibre8">Notice that inside the<a id="id207" class="calibre1"/> merge binding, we can use <code class="literal">$parent.name</code> to get the viewmodel's name. Because the child binding was created from the binding context inside the merge binding handler, the original hierarchy is still accessible. You can see a working sample of this in the <code class="literal">cp2-mergecontext</code> branch.</p></div><div class="book" title="Extending binding contexts"><div class="book"><div class="book"><div class="book"><h3 class="title2"><a id="ch02lvl3sec10" class="calibre1"/>Extending binding contexts</h3></div></div></div><p class="calibre8">It's possible to modify the<a id="id208" class="calibre1"/> current binding context without creating a new child in the hierarchy. Well, sort of. Extending the binding context clones the current context while adding properties at the same time. Other binding handlers, siblings or parents, won't be affected by this sort of change.</p><p class="calibre8">If we modify the previous example slightly, you can easily see the difference between extending and creating a child:</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.merge = {
+    init: function(element, valueAccessor, allBindings, viewmodel, bindingContext) {
+        
+        var value = valueAccessor(),
+         merge = ko.utils.extend(value.target, value.source);
+         context = bindingContext.extend(merge);
+
+      ko.applyBindingsToDescendants(context, element);         
+
+        // Also tell KO *not* to bind the descendants itself, otherwise they will be bound twice
+      return { controlsDescendantBindings: true };
+    }
+};</pre></div><p class="calibre8">The only impact this has on the HTML binding is that the name no longer needs to call <code class="literal">$parent</code> first:</p><div class="informalexample"><pre class="programlisting">&lt;div data-bind="merge: { source: springCourse, target: summerCourse }"&gt;
+  &lt;h3 data-bind="text: name"&gt;&lt;/h3&gt;</pre></div><p class="calibre8">You can see this example in the <code class="literal">cp2-mergecontext2</code> branch.</p><p class="calibre8">Extending and creating child contexts are very similar as far as potential use cases go. It's all going to depend on what you are doing, and whether or not adding layers is going to help. However, there is one <a id="id209" class="calibre1"/>more way of modifying the binding context, and it's a whole different beast.</p></div><div class="book" title="Setting a new $root context"><div class="book"><div class="book"><div class="book"><h3 class="title2"><a id="ch02lvl3sec11" class="calibre1"/>Setting a new $root context</h3></div></div></div><p class="calibre8">In some situations, it <a id="id210" class="calibre1"/>may be desirable to create a new binding context hierarchy instead of adding a layer to the existing one. This would allow a binding handler to provide itself, or a context that it managed, as the <code class="literal">$root</code> binding context to any descendant bindings.</p><p class="calibre8">One use case for this would be a binding handler that used a recursive template:</p><div class="informalexample"><pre class="programlisting">var treeTemplate = '&lt;div&gt;Name: &lt;span data-bind="text:name"&gt;&lt;/span&gt;&lt;br&gt;'
+   +'Root: &lt;span data-bind="text: isRoot ? \'Self\' : $root.name"&gt;&lt;/span&gt;&lt;br&gt;'
+   +'&lt;ul data-bind="foreach: { data: children, as: \'child\' }"&gt;'
+      +'&lt;li data-bind="tree: { data: child, children: $root.__children, name: $root.__name, isRoot: false }"&gt;&lt;/li&gt;'
+   +'&lt;/ul&gt;&lt;/div&gt;';
+
+ko.bindingHandlers.tree = {
+    init: function(element, valueAccessor, allBindings, viewmodel, bindingContext) {
+        
+      var value = valueAccessor();
+      var context =  { 
+         __name: value.name,
+         __children: value.children,
+         //Default to true since template specifies
+         isRoot: value.isRoot === undefined || value.isRoot,
+         name: value.data[value.name],
+         children: value.data[value.children],
+      };
+
+      element.innerHTML = treeTemplate;
+
+      if (context.isRoot) {
+         ko.applyBindings(context, element.firstChild);
+    }
+      else {
+      ko.applyBindingsToDescendants(bindingContext.extend(context), element);   
+    }       
+
+      // Also tell KO *not* to bind the descendants itself, otherwise they will be bound twice
+      return { controlsDescendantBindings: true };
+    }
+};</pre></div><p class="calibre8">This binding uses a<a id="id211" class="calibre1"/> recursive template to show an object and all of its children, while allowing the original binding to define the properties that will be used to populate this data. The root node's name is used on every descendant node using the <code class="literal">$root</code> binding context property, instead of having to walk back up the tree by counting the current depth. This is done with the call to <code class="literal">ko.applyBindings</code>, which unlike the other <code class="literal">apply</code> calls, creates an entirely new binding context using the first argument. Normally, this call is used to start applications, and when no second parameter is given, it applies to the entire window. The second parameter scopes this new context to the supplied element. The <code class="literal">tree</code> binding uses <code class="literal">firstChild</code> of the current element. Even though the <code class="literal">controlsDescendantBindings</code> flag stops Knockout from binding descendants, the current element is still bound, and applying bindings to it would cause the double-binding error to occur.</p><p class="calibre8">To use this binding, a <a id="id212" class="calibre1"/>viewmodel could start out with any self-same object, such as a person with children:</p><div class="informalexample"><pre class="programlisting">var BindingSample = function() {
+   var self = this;
+
+   self.person = { 
+      fullName: 'Alexander Hamilton',
+      descendants: [ /* self-same children */]
+   };
+};</pre></div><p class="calibre8">Then, use the <code class="literal">tree</code> binding to show this information without having to use a special viewmodel to match the properties:</p><div class="informalexample"><pre class="programlisting">&lt;div data-bind="tree: { 
+               data: person, 
+               children: 'descendants', 
+               name: 'fullName'
+}"&gt;&lt;/div&gt;</pre></div><p class="calibre8">This allows our <code class="literal">tree</code> binding to handle any recursive structure. You can see an example of this binding in the <code class="literal">cp2-rootcontext</code> branch.</p></div></div></div>
+
+<div id="page" style="height:0pt"/><div class="book" title="Containerless syntax with custom bindings"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch02lvl1sec24" class="calibre1"/>Containerless syntax with custom bindings</h1></div></div></div><p class="calibre8">In the first chapter, we spoke<a id="id213" class="calibre1"/> about containerless bindings; bindings applied through comments that created a virtual container around their "child" nodes. Now that we have a good understanding of how to create our own binding handlers, it's time to learn how to make them containerless bindings.</p><p class="calibre8">First, we are going to make a normal binding and then look at what we need to do to allow it to support the virtual elements. Let's say you want a binding that sorts its children elements. It would need to loop through them, check some property, and then rearrange the DOM so they were in order. Normally, sorting would be achieved by using a <code class="literal">foreach</code> binding against a sorted <code class="literal">observableArray</code> property, but we're going to make a sort binding that sorts on the width of the DOM node, which takes into account any CSS that may have affected it. The viewmodel would have a hard time getting this information to determine the proper sort order, and HTML elements and widths don't belong in the viewmodel logic:</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.widthSort = {
+    init: function(element, valueAccessor) {
+      // Pull out each of the child elements into an array
+      var children = [];
+      for (var i = element.children.length - 1; i &gt;= 0; i--) {
+         var child = element.children[i];
+         //Don't take empty text nodes, they are not real nodes
+         if (!isWhitespaceNode(child))
+            children.push(child);
+      };
+
+      //Width calc must be done while the node is still in the DOM
+      children.sort(function(a, b) {
+         return $(a).width() &lt;= $(b).width() ? -1 : 1;
+      });
+
+      while(children.length) {
+         //Append will remove the node if it's already in the DOM
+         element.appendChild(children.shift());
+      }
+   }
+};</pre></div><p class="calibre8">This binding would get used with a dummy property, as we aren't actually checking it:</p><div class="informalexample"><pre class="programlisting">&lt;ul data-bind="widthSort: true"&gt;</pre></div><p class="calibre8">The binding starts out by grabbing all the real child nodes from the bound element. The <code class="literal">isWhitespaceNode</code> check is just looking for the whitespace in the HTML from line breaks in between tags. We want to ignore these nodes because they will break the <code class="literal">with</code> check:</p><div class="informalexample"><pre class="programlisting">function isWhitespaceNode(node) {
+  return !(/[^\t\n\r ]/.test(node.textContent)) 
+          &amp;&amp; node.nodeType == 3;
+}</pre></div><p class="calibre8">After grabbing the usable<a id="id214" class="calibre1"/> children from the element, it sorts them based on their width in the ascending order. Then, it loops through the sorted children and appends them to the bound element. Removal of nodes is automatic, as the DOM only allows a node to exist once. This produces our width-sorted list. You can see an example of this in the <code class="literal">cp2-sort</code> branch. It is used to sort the following list:</p><div class="informalexample"><pre class="programlisting">&lt;ul data-bind="widthSort: true"&gt;
+   &lt;li&gt;Jimmy Dean&lt;/li&gt;
+   &lt;li&gt;Sara Lee&lt;/li&gt;
+   &lt;li&gt;Famous Amos&lt;/li&gt;
+   &lt;li&gt;Orville Redenbacher&lt;/li&gt;
+   &lt;li&gt;Dr. Pepper&lt;/li&gt;
+&lt;/ul&gt;</pre></div><div class="informalexample" title="Note"><h3 class="title2"><a id="note11" class="calibre1"/>Note</h3><p class="calibre8">Because the width sort uses the actual width in pixels, Orville Redenbacher ended up after The Kellogg brothers despite them being the same number of characters. Unless, of course, you are using a monospaced font.</p></div></div>
+
+<div class="book" title="Containerless syntax with custom bindings">
+<div class="book" title="Using the virtual elements API"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch02lvl2sec44" class="calibre1"/>Using the virtual elements API</h2></div></div></div><p class="calibre8">If you tried to use this <a id="id215" class="calibre1"/>binding as a virtual element binding right now, you would get an error telling you that it won't work. Knockout requires a flag to be set before bindings can be used in this way:</p><div class="informalexample"><pre class="programlisting">ko.virtualElements.allowedBindings.widthSort = true;</pre></div><p class="calibre8">This flag tells Knockout that <code class="literal">widthSort</code> will work with virtual elements, so Knockout won't stop you from trying. It still won't work though, because our binding is making calls to the elements children. Comment nodes don't work with the normal JavaScript API, but Knockout provides a virtual element API that <a id="id216" class="calibre1"/>will work. These functions exist on the <code class="literal">ko.virtualElements</code> object:</p><div class="book"><ul class="itemizedlist"><li class="listitem"><code class="literal">childNodes(containerElement)</code>: This <a id="id217" class="calibre1"/>returns the children of <code class="literal">containerElement</code> as an array.</li><li class="listitem"><code class="literal">emptyNode(containerElement)</code>: This <a id="id218" class="calibre1"/>removes all children from <code class="literal">containerElement</code>. This also cleans any data attached to the node to prevent memory leaks.</li><li class="listitem"><code class="literal">firstChild(containerElement)</code>: This<a id="id219" class="calibre1"/> returns the first child element, or null if the <code class="literal">containerElement</code> has no children.</li><li class="listitem"><code class="literal">insertAfter(containerElement</code>, <code class="literal">nodeToInsert</code>, <code class="literal">insertAfter)</code>: This<a id="id220" class="calibre1"/> adds <code class="literal">nodeToInsert</code> to <code class="literal">containerElement</code> after the <code class="literal">insertAfter</code> node.</li><li class="listitem"><code class="literal">nextSibling(node)</code>: This <a id="id221" class="calibre1"/>returns the next sibling of the node, or null if none exist.</li><li class="listitem"><code class="literal">prepend(containerElement</code>, <code class="literal">nodeToPrepend)</code>: This<a id="id222" class="calibre1"/> inserts <code class="literal">nodeToPrepend</code> as the first child of <code class="literal">containerElement</code>.</li><li class="listitem"><code class="literal">setDomNodeChildren(containerElement</code>, <code class="literal">arrayOfNodes)</code>: This removes any children from <code class="literal">containerElement</code> (cleaning attached data) before<a id="id223" class="calibre1"/> inserting <code class="literal">arrayOfNodes</code> as children.</li></ul></div><p class="calibre8">All of these functions <a id="id224" class="calibre1"/>will treat a virtual element as if it were a real DOM node with children. They are also compatible with regular DOM nodes, so the same functions will work for regular and containerless bindings.</p><p class="calibre8">Updating the <code class="literal">widthSort</code> binding handlers to use this API would look like this:</p><div class="informalexample"><pre class="programlisting">ko.bindingHandlers.widthSort = {
+   init: function(element, valueAccessor) {
+      // Pull out each of the child elements into an array
+      var children = [],
+         childNodes = ko.virtualElements.childNodes(element);
+      for (var i = childNodes.length - 1; i &gt;= 0; i--) {
+         var child = childNodes[i];
+         //Don't take empty text nodes, they are not real nodes
+         if (!isWhitespaceNode(child)) {
+             children.push(child);
+    }
+      };
+
+      //Width calc must be done while the node is still in the DOM
+      children.sort(function(a, b) {
+         return $(a).width() &lt;= $(b).width() ? -1 : 1;
+      });
+
+      ko.virtualElements.setDomNodeChildren(element, children);
+   }
+};</pre></div><p class="calibre8">The only two <a id="id225" class="calibre1"/>changes are using <code class="literal">childNodes</code> to get the children for sorting, and <code class="literal">setDomNodeChildren</code> to set the contents instead of looping through the sorted children. Our binding should now support the containerless syntax.</p><p class="calibre8">An example of the virtual elements version is in the <code class="literal">cp2-sort2</code> branch. For demonstration, the HTML has been updated so that the first element is not inside the sorting, something we couldn't have done without virtual element support:</p><div class="informalexample"><pre class="programlisting">&lt;ul class="oddball clearfix"&gt;
+   &lt;li&gt;Jimmy Dean&lt;/li&gt;
+   &lt;!-- ko widthSort: true --&gt;
+   &lt;li&gt;Sara Lee&lt;/li&gt;
+   &lt;li&gt;Famous Amos&lt;/li&gt;
+   &lt;li&gt;Orville Redenbacher&lt;/li&gt;
+   &lt;li&gt;Johnny Appleseed&lt;/li&gt;
+   &lt;li&gt;The Kellog Brothers&lt;/li&gt;
+   &lt;!-- /ko --&gt;
+&lt;/ul&gt;</pre></div></div></div>
+<div class="book" title="Summary"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch02lvl1sec25" class="calibre1"/>Summary</h1></div></div></div><p class="calibre8">If you take away one thing from all these examples, it should be that binding handlers are solely responsible for interaction with the DOM. In our first example, we made the <code class="literal">slideVisible</code> binding as an animated replacement for the standard <code class="literal">visible</code> binding. This change from the normal "instant" hide and show to the "animated" hide and show was completely decoupled by our viewmodel. This is beneficial because it keeps these two pieces completely separated, allowing them to develop and evolve independently.</p><p class="calibre8">In this chapter, we covered simple and complex binding handlers, binding context management, and using the virtual elements API to support containerless bindings. In the next chapter, we will be looking at preprocessors for bindings and nodes.</p></div></body></html>

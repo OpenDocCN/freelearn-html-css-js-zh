@@ -1,0 +1,1133 @@
+<html><head></head><body>
+<div id="page" style="height:0pt"/><div class="book" title="Chapter&#xA0;4.&#xA0;Application Patterns"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch04" class="calibre1"/>Chapter 4. Application Patterns</h1></div></div></div><p class="calibre7">This chapter will cover application-wide patterns that share server- and client- side code. With these patterns, your code will become more secure and easier to manage. You will learn the following topics:</p><div class="book"><ul class="itemizedlist"><li class="listitem">Filtering and paging collections</li><li class="listitem">Security</li><li class="listitem">External API</li></ul></div></div>
+
+<div class="book" title="Chapter&#xA0;4.&#xA0;Application Patterns">
+<div class="book" title="Filtering and paging collections"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_1"><a id="ch04lvl1sec29" class="calibre1"/>Filtering and paging collections</h1></div></div></div><p class="calibre7">So far, we have been<a id="id226" class="calibre1"/> publishing collections without thinking much about how many documents we are pushing to the client. The more documents we publish, the longer it will take the web page to load. To solve this issue, we are going to learn <a id="id227" class="calibre1"/>how to show only a set number of documents and allow the user to navigate through the documents in the collection by either filtering or paging through them.</p><p class="calibre7">Filters and pagination are easy to build with Meteor's reactivity.</p></div></div>
+
+<div class="book" title="Chapter&#xA0;4.&#xA0;Application Patterns">
+<div class="book" title="Filtering and paging collections">
+<div class="book" title="Router gotchas"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch04lvl2sec55" class="calibre1"/>Router gotchas</h2></div></div></div><p class="calibre7">Routers will always<a id="id228" class="calibre1"/> have two types of parameters that they can accept: query parameters, and normal parameters. Query parameters are the objects that you will commonly see in site URLs followed by a question mark (<code class="email">&lt;url-path&gt;?page=1</code>), while normal parameters are the type that you define within the route URL (<code class="email">&lt;url&gt;/&lt;normal-parameter&gt;/named_route/&lt;normal-parameter-2&gt;</code>). It is a common practice to set query parameters on things such as pagination to keep your routes from creating URL conflicts.</p><p class="calibre7">A URL conflict happens when two routes look the same but have different parameters. A products route such as <code class="email">/products/:page</code> collides with a product detail route such as <code class="email">/products/:product-id</code>. While both the routes are differently expressed because of the differences in their normal parameter, you arrive at both the routes using the same URL. This means that the only way the router can tell them apart is by routing to them <a id="id229" class="calibre1"/>programmatically. So the user would have to know that the <code class="email">FlowRouter.go()</code> command has to be run in the console to reach either one of the products pages instead of simply using the URL.</p><p class="calibre7">This is why we are going to use query parameters to keep our filtering and pagination stateful.</p></div></div></div>
+
+<div class="book" title="Chapter&#xA0;4.&#xA0;Application Patterns">
+<div class="book" title="Filtering and paging collections">
+<div class="book" title="Stateful pagination"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch04lvl2sec56" class="calibre1"/>Stateful pagination</h2></div></div></div><p class="calibre7">Stateful pagination<a id="id230" class="calibre1"/> is simply giving the user the option to copy and paste the URL to a different client and see the exact same section of the collection. This is important to make the site easy to share.</p><p class="calibre7">In <a class="calibre1" title="Chapter 2. Publish and Subscribe Patterns" href="part0021_split_000.html#page">Chapter 2</a>, <span class="strong"><em class="calibre11">Publish and Subscribe Patterns</em></span> we had created a products publisher and subscriber to elaborate on our publishers. Now we are going to understand how to control our subscription reactively so that the user can navigate through the entire collection.</p><p class="calibre7">First, we need to set up our router to accept a page number. Then we will take this number and use it on our subscriber to pull in the data that we need. To set up the router, we will use a <code class="email">FlowRouter</code> query parameter (the parameter that places a question mark next to the URL).</p><p class="calibre7">Let's set up our query parameter:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /products/client/products.coffee</strong></span>
+
+Template.created "products", -&gt;
+  @autorun =&gt;
+    tags = Session.get "products.tags"
+<span class="strong"><strong class="calibre2">    filter =</strong></span>
+<span class="strong"><strong class="calibre2">      page: Number(FlowRouter.getQueryParam("page")) or 0</strong></span>
+
+    if tags and not _.isEmpty tags
+      _.extend filter,
+        tags:tags
+
+    order = Session.get "global.order"
+    if order and not _.isEmpty order
+      _.extend filter,
+        order:order
+
+    @subscribe "products", filter
+
+Template.products.helpers
+  ...
+
+<span class="strong"><strong class="calibre2">  pages:</strong></span>
+<span class="strong"><strong class="calibre2">    current: -&gt;</strong></span>
+<span class="strong"><strong class="calibre2">      FlowRouter.getQueryParam("page") or 0</strong></span>
+
+
+<span class="strong"><strong class="calibre2">Template.products.events</strong></span>
+<span class="strong"><strong class="calibre2">  "click .next-page": -&gt;</strong></span>
+<span class="strong"><strong class="calibre2">    FlowRouter.setQueryParams</strong></span>
+<span class="strong"><strong class="calibre2">      page: Number(FlowRouter.getQueryParam("page")) + 1</strong></span>
+
+<span class="strong"><strong class="calibre2">  "click .previous-page": -&gt;</strong></span>
+<span class="strong"><strong class="calibre2">    if Number(FlowRouter.getQueryParam("page")) - 1 &lt; 0</strong></span>
+<span class="strong"><strong class="calibre2">      page = 0</strong></span>
+<span class="strong"><strong class="calibre2">    else</strong></span>
+<span class="strong"><strong class="calibre2">      page = Number(FlowRouter.getQueryParam("page")) - 1</strong></span>
+
+<span class="strong"><strong class="calibre2">    FlowRouter.setQueryParams</strong></span>
+<span class="strong"><strong class="calibre2">      page: page</strong></span>
+</pre></div><p class="calibre7">What we are doing here is straightforward. First, we extend the filter object with a <code class="email">page</code> key that gets the <a id="id231" class="calibre1"/>current value of the page query parameter, and if this value does not exist, then it is set to <code class="email">0</code>. <code class="email">getQueryParam</code> is a reactive data source, the <code class="email">autorun</code> function will resubscribe when the value changes. Then we will create a helper for our view so that we can see what page we are on and the two events that set the page query parameter.</p><p class="calibre7">But wait. How do we know when the limit to pagination has been reached? This is where the <code class="email">tmeasday:publish-counts</code> package is very useful. It uses a publisher's special function to count exactly how many documents are being published.</p><p class="calibre7">Let's set up our <a id="id232" class="calibre1"/>publisher:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /products/server/products_pub.coffee</strong></span>
+
+Meteor.publish "products", (ops={}) -&gt;
+  limit = 10
+<span class="strong"><strong class="calibre2">  product_options =</strong></span>
+<span class="strong"><strong class="calibre2">    skip:ops.page * limit</strong></span>
+<span class="strong"><strong class="calibre2">    limit:limit</strong></span>
+<span class="strong"><strong class="calibre2">    sort:</strong></span>
+<span class="strong"><strong class="calibre2">      name:1</strong></span>
+
+  if ops.tags and not _.isEmpty ops.tags
+    @relations
+      collection:Tags
+      ... 
+          collection:ProductsTags
+          ...
+              collection:Products
+              foreign_key:"product"
+<span class="strong"><strong class="calibre2">              options:product_options</strong></span>
+              mappings:[
+                ...
+              ]
+
+  else
+<span class="strong"><strong class="calibre2">    Counts.publish this,"products",</strong></span>
+<span class="strong"><strong class="calibre2">      Products.find()</strong></span>
+<span class="strong"><strong class="calibre2">      noReady:true</strong></span>
+
+    @relations
+      collection:Products
+<span class="strong"><strong class="calibre2">      options:product_options</strong></span>
+      mappings:[
+        ...
+      ]
+
+  if ops.order and not _.isEmpty ops.order
+    ...
+
+  @ready()</pre></div><p class="calibre7">To publish our counts, we used the <code class="email">Counts.publish</code> function. This function takes in <a id="id233" class="calibre1"/>a few parameters:</p><div class="informalexample"><pre class="programlisting">Counts.publish &lt;always this&gt;,&lt;name of count&gt;, &lt;collection to count&gt;, &lt;parameters&gt;</pre></div><p class="calibre7">Note that we used the <code class="email">noReady</code> parameter to prevent the <code class="email">ready</code> function from running prematurely. By doing this, we generate a counter that can be accessed on the client side by running <code class="email">Counts.get "products"</code>. Now you might be thinking, why not use <code class="email">Products.find().count()</code> instead? In this particular scenario, this would be an excellent idea, but you absolutely have to use the <code class="email">Counts</code> function to make the count reactive, so if any dependencies change, they will be accounted for.</p><p class="calibre7">Let's modify our view and helpers to reflect our counter:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /products/client/products.coffee</strong></span>
+
+...
+
+Template.products.helpers
+  pages:
+    current: -&gt;
+      FlowRouter.getQueryParam("page") or 0
+
+    is_last_page: -&gt;
+      current_page = Number(FlowRouter.getQueryParam("page")) or 0
+
+      max_allowed = 10 + current_page * 10
+      max_products = Counts.get "products"
+
+      max_allowed &gt; max_products
+
+<span class="strong"><strong class="calibre2">//- /products/client/products.jade</strong></span>
+
+template(name="products")
+  div#products.template
+    ...
+      section#featured_products
+        div.container
+          div.row
+            br.visible-xs
+            //- PAGINATION
+            div.col-xs-4
+              button.btn.btn-block.btn-primary.previous-page
+                i.fa.fa-chevron-left
+
+            div.col-xs-4
+              button.btn.btn-block.btn-info {{pages.current}}
+
+            div.col-xs-4
+              unless pages.is_last_page
+                button.btn.btn-block.btn-primary.next-page
+                  i.fa.fa-chevron-right
+
+            div.clearfix
+            br
+
+            //- PRODUCTS
+            +momentum(plugin="fade-fast")
+                         ...</pre></div><p class="calibre7">Great! Users can now copy and paste the URL to obtain the same results they had before. This is exactly what we<a id="id234" class="calibre1"/> need to make sure our customers can share links. If we had kept our page variable confined to a <code class="email">Session</code> or a <code class="email">ReactiveVar</code>, it would have been impossible to share the state of the webapp.</p></div></div></div>
+
+<div class="book" title="Chapter&#xA0;4.&#xA0;Application Patterns">
+<div class="book" title="Filtering and paging collections">
+<div class="book" title="Filtering"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_4"><a id="ch04lvl2sec57" class="calibre1"/>Filtering</h2></div></div></div><p class="calibre7">Filtering and searching, too, are critical aspects of any web app. Filtering works similar to pagination; the<a id="id235" class="calibre1"/> publisher takes additional variables that control the filter. We want to make sure that this is stateful, so we need to integrate this into our routes, and we need to program our publishers to react to this. Also, the filter needs to be compatible with the pager. Let's start by modifying the publisher:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /products/server/products_pub.coffee</strong></span>
+
+Meteor.publish "products", (ops={}) -&gt;
+  limit = 10
+  product_options =
+    skip:ops.page * limit
+    limit:limit
+    sort:
+      name:1
+
+<span class="strong"><strong class="calibre2">  filter = {}</strong></span>
+
+<span class="strong"><strong class="calibre2">  if ops.search and not _.isEmpty ops.search</strong></span>
+<span class="strong"><strong class="calibre2">    _.extend filter,</strong></span>
+<span class="strong"><strong class="calibre2">      name:</strong></span>
+<span class="strong"><strong class="calibre2">        $regex: ops.search</strong></span>
+<span class="strong"><strong class="calibre2">        $options:"i"</strong></span>
+
+  if ops.tags and not _.isEmpty ops.tags
+    @relations
+      collection:Tags
+      mappings:[
+          ...
+          collection:ProductsTags
+          mappings:[ 
+              collection:Products
+<span class="strong"><strong class="calibre2">              filter:filter</strong></span>
+              ...
+      ]
+
+  else
+    Counts.publish this,"products",
+<span class="strong"><strong class="calibre2">      Products.find filter</strong></span>
+      noReady:true
+
+    @relations
+      collection:Products
+<span class="strong"><strong class="calibre2">      filter:filter</strong></span>
+      ...
+
+  if ops.order and not _.isEmpty ops.order
+    ...
+
+  @ready()</pre></div><p class="calibre7">To build any filter, we have to make sure that the property that creates the filter exists and <code class="email">_.extend</code> our <code class="email">filter</code> object based on this. This makes our code easier to maintain. Notice that we can easily add the filter to every section that includes the <code class="email">Products</code> collection. With<a id="id236" class="calibre1"/> this, we have ensured that the filter is always used even if tags have filtered the data. By adding the filter to the <code class="email">Counts.publish</code> function, we have ensured that the publisher is compatible with pagination as well.</p><p class="calibre7">Let's build our controller:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /products/client/products.coffee</strong></span>
+
+Template.created "products", -&gt;
+  @autorun =&gt;
+    ops =
+      page: Number(FlowRouter.getQueryParam("page")) or 0
+      search: FlowRouter.getQueryParam "search"
+    ...
+
+    @subscribe "products", ops
+
+Template.products.helpers
+  ...
+
+  pages:
+    search: -&gt;
+      FlowRouter.getQueryParam "search"
+
+    ...
+
+
+Template.products.events
+  ...
+
+  "change .search": (event) -&gt;
+    search = $(event.currentTarget).val()
+
+    if _.isEmpty search
+      search = null
+
+    FlowRouter.setQueryParams
+      search:search
+      page:null</pre></div><p class="calibre7">First, we have renamed our <code class="email">filter</code> object to <code class="email">ops</code> to keep things consistent between the publisher and subscriber. Then we have attached a <code class="email">search</code> key to the <code class="email">ops</code> object that takes the value of the search query parameter. Notice that we can pass an undefined value for <code class="email">search</code>, and our subscriber will not fail, since the publisher already checks whether the value exists or not and extends filters based on this. It is always better to verify variables on the server side to ensure that the client doesn't accidentally break things. Also, we need to make sure that we know the value of that parameter so that we can create a new <code class="email">search</code> helper under the <code class="email">pages</code> helper. Finally, we have built an event for the search bar. Notice that we are setting query parameters to <code class="email">null</code> whenever they do not apply. This <a id="id237" class="calibre1"/>makes sure that they do not appear in our URL if we do not need them.</p><p class="calibre7">To finish, we need to create the search bar:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2">//- /products/client/products.jade</strong></span>
+
+template(name="products")
+  div#products.template
+    header#promoter
+      ...
+
+    div#content
+      section#features
+        ...
+
+      section#featured_products
+        div.container
+          div.row
+            //- SEARCH
+            div.col-xs-12
+              div.form-group.has-feedback
+                input.input-lg.search.form-control(type="text" placeholder="Search products" autocapitalize="off" autocorrect="off" autocomplete="off" value="{{pages.search}}")
+                span(style="pointer-events:auto; cursor:pointer;").form-control-feedback.fa.fa-search.fa-2x
+
+            ...</pre></div><p class="calibre7">Notice that our search input is somewhat cluttered with special attributes. All these attributes ensure that our input is not doing the things that we do not want it to for iOS Safari. It is<a id="id238" class="calibre1"/> important to keep up with nonstandard attributes such as these to<a id="id239" class="calibre1"/> ensure that the site is mobile-friendly. You can find an updated list of these attributes here at <a class="calibre1" href="https://developer.apple.com/library/safari/documentation/AppleApplications/Reference/SafariHTMLRef/Articles/Attributes.html">https://developer.apple.com/library/safari/documentation/AppleApplications/Reference/SafariHTMLRef/Articles/Attributes.html</a>.</p></div></div></div>
+
+<div id="page" style="height:0pt"/><div class="book" title="Security"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch04lvl1sec30" class="calibre1"/>Security</h1></div></div></div><p class="calibre7">Many packages secure certain parts of the Meteor stack, but even then, you cannot rely on these packages completely. Also, you have to be very careful about the packages you choose! Some packages might intercept core functions to funnel information out of your application. This means<a id="id240" class="calibre1"/> that you should always have a look at the source code of the package before you install it.</p><p class="calibre7">This topic is usually an oversight to novice Meteor developers, and yet it is one of the most important topics to know about. To secure our webapp we need to:</p><div class="book"><ul class="itemizedlist"><li class="listitem">Define roles (set distinctions between users)</li><li class="listitem">Define schemas for every collection (limit how they can modify fields)</li><li class="listitem">Define deny rules (limit who can modify fields)</li><li class="listitem">Use methods, when necessary, to check parameters (ensure complex security when needed)</li><li class="listitem">Set browser policies</li></ul></div></div>
+
+<div class="book" title="Security">
+<div class="book" title="Roles"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch04lvl2sec58" class="calibre1"/>Roles</h2></div></div></div><p class="calibre7">Using roles, just about every<a id="id241" class="calibre1"/> web application creates a distinction between users and what they are allowed to do. To help us manage roles easily, we have installed the <code class="email">alanning:roles</code> package. With this package, we are going to control who hits our routes and who may modify our collections.</p><p class="calibre7">This package makes the <code class="email">Roles.userIsInRole</code> function available, which uses a <code class="email">roles</code> collection to make sure that the user is in the correct role:</p><div class="informalexample"><pre class="programlisting">Roles.userIsInRole &lt;user-id OR user-object&gt;, [&lt;list of allowed roles&gt;], &lt;group&gt;</pre></div><p class="calibre7">Suppose you need to check whether a user is an <code class="email">admin</code> or a <code class="email">manager</code> before they access a certain function. For this, you will simply do the following:</p><div class="informalexample"><pre class="programlisting">if Roles.userIsInRole Meteor.userId(), ["admin","manager"]
+  # allow</pre></div><p class="calibre7">Let's add an <code class="email">admin</code> role to our application. We can start by creating an initialization file that will<a id="id242" class="calibre1"/> automatically build our admin user:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /_globals/server/initial_setup.coffee</strong></span>
+
+Meteor.startup -&gt;
+  # Users
+  if Meteor.users.find().count() is 0
+    user = Accounts.createUser
+      email:"you@email.com"
+      password:"1234"
+
+    Roles.addUsersToRoles user,["admin"]</pre></div><p class="calibre7">Notice that we are using the <code class="email">Roles.addUsersToRoles</code> function to set the new user's role to <code class="email">admin</code>, and this takes place on the server side. Always set user roles on the server side. Next, let's build a login route that can be accessed only if you are not already logged in:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /login/login_route.coffee</strong></span>
+
+FlowRouter.route "/login",
+  name:"login"
+  triggersEnter:[RT.non_user_only]
+  action: -&gt;
+    BlazeLayout.render "layout",
+      content:"login"</pre></div><p class="calibre7">To make sure roles run at the right moment when our user first hits the site, we need to make sure that <code class="email">FlowRouter</code> activates after roles have been loaded. To do this we use <code class="email">FlowRouter.initialize()</code> and <code class="email">FlowRouter.wait()</code>.</p><div class="informalexample"><pre class="programlisting"># /_globals/router/config.coffee
+
+if Meteor.isClient
+  BlazeLayout.setRoot 'body'
+
+  FlowRouter.wait()
+  Meteor.startup -&gt;
+    # Initialize roles before FlowRouter
+    Tracker.autorun (computation) -&gt;
+      if Roles.subscription.ready() and not FlowRouter._initialized
+        FlowRouter.initialize()
+        computation.stop()</pre></div><p class="calibre7">The <code class="email">FlowRouter.route</code> function accepts a <code class="email">triggersEnter</code> parameter and a <code class="email">triggersExit</code> parameter. This can be used to redirect the user based on roles. Both these parameters are arrays of functions so that many triggers can be added to each route. To make it easier for us, we are going to create a dictionary of triggers under a global <code class="email">RT</code> object. Notice that we do not execute the function within the triggers array, so we do not include parentheses.</p><p class="calibre7">Let's start by moving the <code class="email">/router</code> folder to the <code class="email">/_globals</code> folder. This will make sure that the <code class="email">RT</code> object is the first thing that is defined. After doing this, we should define two triggers:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /_globals/router/triggers.coffee</strong></span>
+
+@RT =
+  non_user_only: (context,redirect) -&gt;
+    if Meteor.userId()
+      if context and context.oldRoute
+        redirect context.oldRoute.path
+      else
+        redirect "/"
+
+  admin_only: (context,redirect) -&gt;
+    if not Roles.userIsInRole Meteor.userId(),["admin"]
+      if context and context.oldRoute
+        redirect context.oldRoute.path
+      else
+        redirect "/"</pre></div><p class="calibre7">Notice that when <code class="email">FlowRouter</code> calls these functions, it will include a <code class="email">context</code> object and a <code class="email">redirect</code> function. The <code class="email">context</code> object has information about the route that we are trying to<a id="id243" class="calibre1"/> connect to and our previous route, while the <code class="email">redirect</code> function is used to redirect a user. In this case, we have attempted to redirect to the previous route if it exists, if it does not exist, then we redirect to root.</p><p class="calibre7">Now, let's add the <code class="email">admin_only</code> trigger to every route except <code class="email">products</code> and <code class="email">login</code>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /_globals/router/triggers.coffee</strong></span>
+
+@RT =
+  non_user_only: (context,redirect) -&gt;
+    ...
+
+  admin_only: (context,redirect) -&gt;
+    ...
+
+FlowRouter.triggers.enter [RT.admin_only], except:["products","login","cart","order_quantity"]</pre></div><p class="calibre7">We can easily create a global trigger that does not apply to the <code class="email">products</code> nor the <code class="email">login</code> routes using the <code class="email">FlowRouter.triggers.&lt;enter or exit&gt;</code> function. We don't have to worry about<a id="id244" class="calibre1"/> including our <code class="email">404</code> route since by default; it does not run triggers.</p><p class="calibre7">To finish up, let's build a custom login page:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2">//- /login/client/login.jade</strong></span>
+
+template(name="login")
+  div#login.template
+    div.vertical-align.container
+      div.row
+        div.col-xs-12.col-sm-6.col-sm-offset-3
+          form.login
+            div.form-group
+              label Email
+              input.email.input-lg.form-control.text-center(type="text" placeholder="email" value="{{email}}" autocapitalize="off" autocorrect="off" autocomplete="off")
+
+            div.form-group
+              label Password
+              input.password.input-lg.form-control.text-center(type="password" placeholder="password")
+
+            if error
+              div.row
+                div.col-xs-12
+                  div.alert.alert-warning {{error}}
+
+            button.login.btn.btn-block.btn-primary.btn-lg Log In
+
+<span class="strong"><strong class="calibre2"># /login/client/login.coffee</strong></span>
+
+Template.created "login", -&gt;
+  @error = new ReactiveVar false
+
+Template.login.events
+  "submit .login": (event,i) -&gt;
+    event.preventDefault()
+    email = $(".email").val()
+    pw = $(".password").val()
+
+    # Check Email
+    if email and not _.isEmpty email.trim()
+      email = email.replace /\s/g,""
+      email = email.trim().toLowerCase()
+    else
+      i.error.set "Email is invalid"
+      return
+
+    # Check Password
+    if not pw or _.isEmpty pw
+      i.error.set "Password is invalid"
+      return
+
+    i.error.set false
+
+    Meteor.loginWithPassword email, pw, (error) -&gt;
+      if not error
+        i.error.set false
+        $("input").val ""
+        FlowRouter.go "dashboard"
+      else
+        i.error.set error.reason
+
+Template.login.helpers
+  "error": -&gt;
+    Template.instance().error.get()</pre></div><p class="calibre7">Here, we have used Meteor's core <code class="email">Meteor.loginWithPassword</code> function to log in, and we have kept a<a id="id245" class="calibre1"/> track of the errors using a <code class="email">ReactiveVar</code> variable.</p></div></div>
+
+<div class="book" title="Security">
+<div class="book" title="Collection2"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch04lvl2sec59" class="calibre1"/>Collection2</h2></div></div></div><p class="calibre7">Suppose a malicious user<a id="id246" class="calibre1"/> visits the site and quickly identifies one of our collections in the browser console. They are going to update one of the products by calling the <code class="email">Products.update</code> function. Because our site is insecure, they can successfully call something like this:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># Malicious User</strong></span>
+Products.update("productid",{$set:{you:"have been modified"}})</pre></div><p class="calibre7">This will successfully create a field that should not exist for that particular product!</p><p class="calibre7">With the <code class="email">aldeed:collection2</code> package, we are going to secure our collections by white-listing fields. This makes sure that the allowed users can only set acceptable values on our collections <a id="id247" class="calibre1"/>and that these values meet certain criteria.</p><p class="calibre7">A <code class="email">collection</code> field can take the following parameters:</p><div class="informalexample"><table border="1" class="calibre12"><colgroup class="calibre13"><col class="calibre14"/><col class="calibre14"/></colgroup><thead class="calibre15"><tr class="calibre16"><th valign="bottom" class="calibre17">
+<p class="calibre18">Parameter</p>
+</th><th valign="bottom" class="calibre17">
+<p class="calibre18">Use</p>
+</th></tr></thead><tbody class="calibre19"><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">type</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This defines the type of the value. This can be any<a id="id248" class="indexterm"/> JavaScript primitive: <code class="literal">String</code>, <code class="literal">Number</code>, <code class="literal">Boolean</code>, <code class="literal">Date</code>,<code class="literal"> Object</code>, or an array of primitives such as <code class="literal">[Object]</code>, <code class="literal">[String]</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">decimal</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This is <a id="id249" class="indexterm"/>only available if <code class="literal">type:Number</code>. This defines whether a number is a decimal. This can be <code class="literal">true</code> or <code class="literal">false</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">optional</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This <a id="id250" class="indexterm"/>defines whether the field is required on insert. This can be <code class="literal">true</code> or <code class="literal">false</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">regEx</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This<a id="id251" class="indexterm"/> checks whether the string matches the defined <code class="literal">regEx</code> expression. This can be any <code class="literal">regEx</code> expression such as <code class="literal">/^[A-Z]$/</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">allowedValues</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This<a id="id252" class="indexterm"/> checks whether the string matches any of the values in an array. This can be only an array of strings such as <code class="literal">["Green","Blue"]</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">blackbox</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This<a id="id253" class="indexterm"/> allows any combination of values and objects to be placed as values. This can be only <code class="literal">true</code> or <code class="literal">false</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">denyUpdate</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This <a id="id254" class="indexterm"/>defines whether the field can be updated. This can be only <code class="literal">true</code> or <code class="literal">false</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">denyInsert</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This defines <a id="id255" class="indexterm"/>whether the field can be inserted. If this field is set to <code class="literal">true</code>, <code class="literal">optional:true</code> must be set as well. This can be only <code class="literal">true</code> or <code class="literal">false</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">autoValue</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This<a id="id256" class="indexterm"/> defines the value that the field will take during an operation. This can be a <code class="literal">function</code> only.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">custom</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This <a id="id257" class="indexterm"/>defines the custom function that will validate the field. This can be a <code class="literal">function</code> only.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">unique</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This <a id="id258" class="indexterm"/>defines whether the value of the field should be unique. This can be only <code class="literal">true</code> or <code class="literal">false</code>.</p>
+</td></tr></tbody></table></div><p class="calibre7">With these parameters, it is easy to lock down every collection including the <code class="email">Meteor.users</code> collection and increase the security of our app drastically.</p><p class="calibre7">As we will save all our numerical data in hundreds, we will never use the <code class="email">decimal</code> parameter. You<a id="id259" class="calibre1"/> should always avoid decimals regardless of whether you are dealing with money or not.</p><p class="calibre7">Both the <code class="email">autoValue</code> and <code class="email">custom</code> parameters expose variables and functions within their context that are critical to understand:</p><div class="informalexample"><table border="1" class="calibre12"><colgroup class="calibre13"><col class="calibre14"/><col class="calibre14"/></colgroup><thead class="calibre15"><tr class="calibre16"><th valign="bottom" class="calibre17">
+<p class="calibre18">Context variables and functions</p>
+</th><th valign="bottom" class="calibre17">
+<p class="calibre18">Use</p>
+</th></tr></thead><tbody class="calibre19"><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.isInsert</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">Boolean. This checks <a id="id260" class="indexterm"/>whether the field is being inserted.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.isUpdate</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">Boolean. This checks  <a id="id261" class="indexterm"/>whether the field is being updated.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.upsert</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">Boolean. Check<a id="id262" class="indexterm"/> whether the field is being upserted.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.userId</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">String. This checks<a id="id263" class="indexterm"/> the current <code class="literal">userId</code>. Returns <code class="literal">undefined,</code> if it does not exist and is <code class="literal">null</code> for all server-initiated functions.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.isFromTrustedCode</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">Boolean. This checks<a id="id264" class="indexterm"/> whether the field is being modified by the server-side code.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.isSet</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">Boolean. This checks<a id="id265" class="indexterm"/> whether the field is being modified.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.value</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">Anything. If <code class="literal">this.isSet,</code> then this will be the value<a id="id266" class="indexterm"/> of the field.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.operator</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">String. If <code class="literal">this.isSet</code> and <code class="literal">this.isUpdate,</code> then this will be the operator that <a id="id267" class="indexterm"/>modifies the value (<code class="literal">$pull</code>, <code class="literal">$push</code>, <code class="literal">$addToSet</code>, <code class="literal">$set</code>, and so on).</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.field("&lt;field-name&gt;")</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This is a function that returns an object. This gets the object representation<a id="id268" class="indexterm"/> of a field that is being modified. From this object, you can use <code class="literal">isSet</code>, <code class="literal">value</code>, and <code class="literal">operator</code> to get more information. For example, <code class="literal">this.field("name").value</code> will return the value of the field name, if it is set.</p>
+</td></tr></tbody></table></div><p class="calibre7">With these functions, we can add custom validators and custom automatic values depending on the state of the modification. Also, we can check what the values of other fields are and react to them if we need to. If your validation requires complex queries with other collections, DO NOT RELY ON THIS PACKAGE!. This tool is strictly to control collection-specific values and not relationships. Remember that not all our collections are available on the client side, and therefore, are incapable of being validated properly. We will<a id="id269" class="calibre1"/> address these kinds of validations in the next topic.</p><p class="calibre7">Let's secure all our collections. We will only show the <code class="email">Orders</code> and <code class="email">OrderDetails</code> collections schemas:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /_globals/lib/collections/orders/orders_collection.coffee</strong></span>
+
+@Orders = new Mongo.Collection "orders"
+
+Orders.attachSchema new SimpleSchema
+  status:
+    type:String
+    allowedValues:["new","pending","complete"]
+
+  total_products:
+    type:Number
+
+  subtotal:
+    type:Number
+
+  tax_total:
+    type:Number
+    optional:true
+
+  total:
+    type:Number
+
+  date_created:
+    type:Number
+    autoValue: -&gt;
+      if @isInsert
+        return Date.now()
+      if @isUpsert
+        $setOnInsert:Date.now()
+
+<span class="strong"><strong class="calibre2">@OrderDetails = new Mongo.Collection "order_details"</strong></span>
+
+OrderDetails.attachSchema new SimpleSchema
+  order:
+    type:String
+
+  product:
+    type:String
+
+  price:
+    type:Number
+
+  quantity:
+    type:Number
+
+  subtotal:
+    type:Number
+
+  tax:
+    type:Object
+    optional:true
+
+  "tax.rate":
+    type:Number
+
+  "tax.amount":
+    type:Number
+
+  total:
+    type:Number</pre></div><p class="calibre7">As you can see, the pattern for white-listing a field within our collection is a simple object that contains the <code class="email">Collection2</code> parameters. Notice that we can define rules for subobjects using<a id="id270" class="calibre1"/> MongoDB's dot notation. This means that we can set rules for arrays and object arrays in the same fashion as well:</p><div class="informalexample"><pre class="programlisting">people:
+  type:[Object]
+
+"people.$.name":
+  type:String
+
+"people.$.age":
+  type:Number</pre></div><p class="calibre7">Still, you do not have to set complex rules often since they are clear indicators that a new collection should be created.</p><p class="calibre7">Notice that we are not using any complex custom validation in our schema besides <code class="email">name</code> and <code class="email">type</code>. Why? Should we check whether the user is an admin, or whether the modification originated<a id="id271" class="calibre1"/> from the server-side code, or whether the order belongs to the customer?</p><p class="calibre7">While we could start adding a few lists of checks for each field, the true source of the problem stems from allowing users to modify our collection directly from the console. To fully secure our orders, we need to modify the allow/deny rules and use trusted code.</p><p class="calibre7">It is important to understand that these schemas are used by server-side code too. This makes sure that neither the client nor the server can mess up our keys.</p></div></div>
+
+<div class="book" title="Security">
+<div class="book" title="Deny rules"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch04lvl2sec60" class="calibre1"/>Deny rules</h2></div></div></div><p class="calibre7">Now that we know the fields that will be in our collections, we need to make sure that the server allows the right <a id="id272" class="calibre1"/>people to modify these collections. To do this, we first need to understand exactly how the allow/deny rules work.</p><p class="calibre7">Meteor has two core functions that control whether a collection modification is allowed or not: <code class="email">Meteor.allow</code> and <code class="email">Meteor.deny</code>.</p><p class="calibre7">The <code class="email">Meteor.allow</code> functions allow a collection to be modified as soon as one of the rules resolves to <code class="email">true</code>. Also, this means that the other allow rules are not evaluated! Knowing this, some developers cram logic into a single allow rule that could easily fail. This is bad practice because the code will be difficult to maintain.</p><p class="calibre7">On the other hand, the <code class="email">Meteor.deny</code> functions will always run and trump a <code class="email">Meteor.allow</code> rule that resolves to <code class="email">true</code>. To manage our deny rules effectively, we are going to use<a id="id273" class="calibre1"/> the <code class="email">ongoworks:security</code> package. With this package, we can easily build reusable and readable rules to be set on our collections.</p><p class="calibre7">Let's begin by removing all the allow rules from our project. Then we can set some rules for our <code class="email">Orders</code> collection:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2">/_globals/lib/collections/orders/server/orders_permissions.coffee</strong></span>
+
+Meteor.startup -&gt;
+  # Admin may only modify status
+  Orders.permit "update"
+    .ifLoggedIn()
+    .ifHasRole "admin"
+    .onlyProps "status"
+    .apply()</pre></div><p class="calibre7">With this simple rule, we have denied anything that does not match this rule. This package integrates directly with our <code class="email">roles</code> package, so we can easily use the <code class="email">ifHasRole</code> function. This rule makes sure that only an admin user can update an order's <code class="email">status</code> field via the console. To make sure that the rule is applied, we have used the <code class="email">apply</code> function.</p><p class="calibre7">There are three things that we need to understand about the deny rules: logic, integrated functions, and custom functions.</p><p class="calibre7">Logic in rules decides whether they act as ANDs or ORs. If we have multiple functions inside a rule, then we define AND rules. The function that we have defined for our orders is an AND rule because this checks <code class="email">ifLoggedIn</code> AND <code class="email">ifHasRole</code> AND <code class="email">onlyProp</code> before allowing a modification to pass. If we want to create an OR rule, we simply create a new rule. Let's try this:</p><div class="informalexample"><pre class="programlisting">  Orders.permit "update"
+    .ifLoggedIn()
+    .ifHasRole "admin"
+    .onlyProps "status"
+    .apply()
+
+  Orders.permit ["insert","remove"]
+    .never()
+    .apply()</pre></div><p class="calibre7">Here, we are stating that a user may <code class="email">update</code> <code class="email">ifLoggedIn</code> AND <code class="email">ifHasRole</code> AND <code class="email">onlyProp</code> OR never <code class="email">insert</code>/<code class="email">remove</code>.</p><p class="calibre7">The package<a id="id274" class="calibre1"/> comes with a handful of integrated functions to help in applying the rules:</p><div class="informalexample"><table border="1" class="calibre12"><colgroup class="calibre13"><col class="calibre14"/><col class="calibre14"/></colgroup><thead class="calibre15"><tr class="calibre16"><th valign="bottom" class="calibre17">
+<p class="calibre18">Function</p>
+</th><th valign="bottom" class="calibre17">
+<p class="calibre18">Use</p>
+</th></tr></thead><tbody class="calibre19"><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">never()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This prevents<a id="id275" class="indexterm"/> DB operations</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">ifLoggedIn()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This allows DB <a id="id276" class="indexterm"/>operations if logged in</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">ifHasUserId(&lt;user-id&gt;)</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This allows DB <a id="id277" class="indexterm"/>operations if user ID is a particular string</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">ifHasRole(&lt;role string&gt;)</code>
+</p>
+<p class="calibre18">
+<code class="literal">ifHasRole({role:&lt;role string&gt;,group:&lt;group&gt;})</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This allows DB <a id="id278" class="indexterm"/>operations if user belongs to a particular role</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">onlyProps(&lt;string or array of strings&gt;)</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This allows DB <a id="id279" class="indexterm"/>operations on certain top-level fields only (this will not identify arrays and subobjects)</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">exceptProps(&lt;string or array of strings&gt;)</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This allows DB <a id="id280" class="indexterm"/>operations on all top-level fields except these (this will not identify arrays and subobjects)</p>
+</td></tr></tbody></table></div></div></div>
+
+<div class="book" title="Security">
+<div class="book" title="Custom deny rules"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_4"><a id="ch04lvl2sec61" class="calibre1"/>Custom deny rules</h2></div></div></div><p class="calibre7">While the <code class="email">security</code> <a id="id281" class="calibre1"/>package functions are useful, you may find yourself needing custom functions for more precise handling of your security. To build a custom function, you need to use the <code class="email">Security.defineMethod</code> function:</p><div class="informalexample"><pre class="programlisting">Security.defineMethod &lt;function name&gt;,
+  transform:&lt;function&gt;
+  deny: &lt;function (type, args, userid, doc, fields, modifier)&gt;</pre></div><p class="calibre7">This function accepts two parameters: <code class="email">transform</code> and <code class="email">deny</code>. The <code class="email">transform</code> function allows the modification of fields before they enter the <code class="email">deny</code> function, while the <code class="email">deny</code> function is an extended version of <code class="email">Meteor.deny</code>. The <a id="id282" class="calibre1"/>
+<code class="email">deny</code> function passes several arguments that include information about the document being modified and the user. These arguments are: <code class="email">type</code>, <code class="email">arguments</code>, <code class="email">userId</code>, <code class="email">document</code>, <code class="email">fields</code>, and <code class="email">modifier</code>. The last two arguments (<code class="email">fields</code> and <code class="email">modifier</code>) are only passed if <code class="email">type</code> is equal to <code class="email">update</code>.</p><p class="calibre7">Let's add a custom function:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /_globals/server/security.coffee</strong></span>
+
+Security.defineMethod "ifUserIsOwner",
+  deny: (type,args,user,doc) -&gt;
+    user isnt (doc.user or doc._id)</pre></div><p class="calibre7">Here, we are defining an <code class="email">ifUserIsOwner</code> function that checks whether the ID of the currently logged in user is equal to the <code class="email">user</code> field or the <code class="email">_id</code> field on the modified document.</p><div class="informalexample" title="Note"><h3 class="title2"><a id="tip05" class="calibre1"/>Tip</h3><p class="calibre7">Notice that the logic of the rule denies a database operation if the user is not the owner of the document.</p></div><p class="calibre7">Now we can use this rule to secure our <code class="email">users</code> collection:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /_globals/server/security.coffee</strong></span>
+
+Security.defineMethod "ifUserIsOwner",
+  ...
+
+Security.permit(["update"]).collections([Meteor.users])
+  .ifUserIsOwner()
+  .onlyProps ["emails"]
+  .apply()
+
+Security.permit(["insert","update","remove"]).collections([Meteor.users])
+  .ifHasRole "admin"
+  .apply()</pre></div><p class="calibre7">Notice that we are attaching rules to the <code class="email">Meteor.users</code> collection in a different way. We do this because the <code class="email">Meteor.users</code> collection is a special collection that is initialized in a different way than<a id="id283" class="calibre1"/> the rest of our collections, with this we have ensured that the rules are properly attached.</p><p class="calibre7">In this example, we are allowing our users freely to modify the <code class="email">email</code> field from the console, and only the admin user can modify all users from the console.</p><p class="calibre7">However, now that we have locked the code from the client, how are we supposed to make things work? Running code directly from an event on the client will fail because the code is untrusted. We need to build a trusted code that will handle changes to the database. The solution is simple: Meteor methods.</p></div></div>
+
+<div class="book" title="Security">
+<div class="book" title="The Meteor methods – round 2"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_5"><a id="ch04lvl2sec62" class="calibre1"/>The Meteor methods – round 2</h2></div></div></div><p class="calibre7">We have already covered how <code class="email">Meteor.methods</code> work, but we have not discussed the difference between trusted and untrusted code.</p><p class="calibre7">Trusted code can modify multiple documents at once by setting <code class="email">multi</code> to <code class="email">true</code> and can use an arbitrary Mongo<a id="id284" class="calibre1"/> selector to find the documents to modify. It bypasses any access control rules set up by allow and deny. Trusted code includes all server code and <code class="email">Meteor.methods</code>.</p><p class="calibre7">Untrusted code <a id="id285" class="calibre1"/>can modify only a single document at once that is specified by its <code class="email">_id</code>. The modification is allowed only after checking any applicable allow and deny rules. Untrusted code cannot perform upserts. Untrusted code includes client code such as event handlers and the console.</p><p class="calibre7">This means that whenever we directly modify a collection on the client, we are running untrusted code that is limited by our deny rules. Knowing this, it becomes obvious that most code, especially complex code with relationships, should run on a Meteor method.</p><p class="calibre7">But wait. Can a user modify the code of the method on the client side? They most certainly can, but remember that the code runs in a stub. The stub makes sure that the correct code runs on the server, while the client-side code updates the collections temporarily until the server responds. This is what Meteor <a id="id286" class="calibre1"/>calls <span class="strong"><strong class="calibre2">Optimistic UI</strong></span>.</p><p class="calibre7">So, if someone tampers with the client-side version of our Meteor method, the server-side version will still run normally and the UI will update correctly.</p><p class="calibre7">It's important to understand though that <code class="email">Meteor.methods</code> will still be bound to the rules we had set on <code class="email">Collection2</code>, which is a great feature inside a team environment where not everyone understands the structure of all data models.</p><p class="calibre7">So where should we use untrusted code? The answer depends greatly on your application, but for the most part, you will want everything to run on trusted code because it is easier to maintain and safer. Untrusted code should be used mostly to control things that the database is not connected to, or information that is allowed to be just about anything that the user wants.</p><p class="calibre7">In order to use <code class="email">Meteor.methods</code> properly, we need to run validation on <code class="email">Meteor.methods</code> <a id="id287" class="calibre1"/>as well. We do this using Meteor's core <code class="email">check</code> package. Let's upgrade our <code class="email">cart.add-to-cart</code> method:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /orders/cart/cart_methods.coffee</strong></span>
+
+Meteor.methods
+  "cart.add-to-cart": (ops={}) -&gt;
+    # Validate data
+    check ops,
+      order:Match.Optional(Match.OneOf(String,null))
+      product:String
+      quantity:Number
+
+    ...
+
+    # Insert Order if it doesn't exist
+    unless order
+      ...
+    else
+      # Validate order status
+      if order.status isnt "new"
+        throw new Meteor.Error 405, "Not Allowed"
+
+      order_id = order._id
+
+    ...</pre></div><p class="calibre7">First, we have used the <code class="email">check</code> function to validate the structure of the <code class="email">ops</code> object and to ensure that each key inside the object<a id="id288" class="calibre1"/> matches the correct type of data primitive. When the validation fails, the function will automatically stop and return a <span class="strong"><strong class="calibre2">404 Match Failed</strong></span> error to the client.</p><p class="calibre7">Next, we have checked the status of the order. If the order is not new, then we throw a <code class="email">Meteor.Error</code>. This will short circuit the function as well and return the <code class="email">error</code> object to the client. When you are settings errors inside the Meteor methods, you will always use <code class="email">throw new Meteor.Error(&lt;error message&gt;)</code> to communicate the error.</p><p class="calibre7">We do not need to worry about doing anything else with our errors. We will see how to keep track of our application errors in a different topic.</p><p class="calibre7">The <code class="email">check</code> function takes only two variables:</p><div class="informalexample"><pre class="programlisting">check &lt;value&gt;, &lt;pattern&gt;</pre></div><p class="calibre7">The <code class="email">value</code> parameter takes the variable that will be analyzed, while the <code class="email">pattern</code> parameter takes the validator. The pattern can be as simple as a JavaScript primitive such as <code class="email">String</code>, <code class="email">Number</code>, and <code class="email">Boolean</code>, an array of validators, an object of validators, or as complex as a<a id="id289" class="calibre1"/> function. The pattern simply needs to return <code class="email">true</code> for the validation to pass.</p><p class="calibre7">Meteor includes a handful of useful <code class="email">pattern</code> functions through the <code class="email">Match</code> object:</p><div class="informalexample"><table border="1" class="calibre12"><colgroup class="calibre13"><col class="calibre14"/><col class="calibre14"/></colgroup><thead class="calibre15"><tr class="calibre16"><th valign="bottom" class="calibre17">
+<p class="calibre18">Pattern function</p>
+</th><th valign="bottom" class="calibre17">
+<p class="calibre18">Use</p>
+</th></tr></thead><tbody class="calibre19"><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">Match.Any()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This allows <a id="id290" class="indexterm"/>any value to pass validation.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">Match.Integer()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This<a id="id291" class="indexterm"/> allows any 32-bit integer. <code class="literal">Infinity</code> and <code class="literal">NaN</code> are not allowed.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">Match.ObjectIncluding(&lt;object&gt;:&lt;pattern&gt;)</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This <a id="id292" class="indexterm"/>allows an object to include key/value pairs that are not defined in the object. The example that we used does not allow other key/value pairs from entering the method.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">Match.Optional(&lt;second-pattern&gt;)</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This <a id="id293" class="indexterm"/>allows a value to be <code class="literal">undefined</code>. If the value is defined, then the <code class="literal">second-pattern</code> will be evaluated instead.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">Match.OneOf(&lt;pattern1&gt;, &lt;pattern2&gt;,...)</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This allows<a id="id294" class="indexterm"/> a value to pass if it matches any of the defined patterns.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">Match.Where(&lt;function(value){}&gt;)</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This<a id="id295" class="indexterm"/> runs <code class="literal">function</code> and passes the defined value as the first parameter. If the function returns <code class="literal">true</code>, then validation passes.</p>
+</td></tr></tbody></table></div><p class="calibre7">Now this is all grand and makes us feel much more secure, but the fact of the matter is that we are sharing our server-side logic on the client. This means that we absolutely cannot include sensitive data inside a Meteor method. If we do want to pass sensitive data, it is best to store it in a server-side variable and call it, or if you want to go an extra mile, you can <a id="id296" class="calibre1"/>separate the client-side method from the server using folders.</p></div></div>
+
+<div class="book" title="Security">
+<div class="book" title="Managing the wait time"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_6"><a id="ch04lvl2sec63" class="calibre1"/>Managing the wait time</h2></div></div></div><p class="calibre7">The first chapter gave us a brief explanation of the impact that blocking can have on our client. To summarize this, if a function is waiting for a third-party or doing something that takes<a id="id297" class="calibre1"/> long, you should unblock the function. However, what impact can this have?</p><p class="calibre7">Remember that methods are placed on a conveyor belt. When we unblock a function, we place the method in a different conveyor belt where we cannot put other methods. This means that if another method depends on the unblocked method to complete, there can be a serious issue because the method can run before, during, or after the unblocked method.</p><p class="calibre7">Notice that our <code class="email">cart.add-to-cart</code> method does not have an unblock function. This is to make sure that the server adds items to the cart in the same order as the client. So what do we do if we have something inside the method that can be placed in a separate conveyor belt? Can there be something that can happen in parallel and the user does not have to wait to continue?</p><p class="calibre7">
+<code class="email">Meteor.defer(&lt;function&gt;)</code> is a special, undocumented function that can take a particular snippet<a id="id298" class="calibre1"/> of code and run it in a separate conveyor without blocking the function from which it was called. Suppose we want to notify the admin every time a new order has been created, as shown here:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /orders/cart/cart_methods.coffee</strong></span>
+
+Meteor.methods
+  "cart.add-to-cart": (ops={}) -&gt;
+    # Validate data
+    ...
+
+    # Insert Order if it doesn't exist
+    unless order
+      ...
+      if Meteor.isServer
+        Meteor.defer -&gt;
+          Email.send
+            to:"you@email.com"
+            from:"me@email.com"
+            subject:"New Customer!"
+            text:"Someone has created a new order"
+
+    ...</pre></div><p class="calibre7">In this example, we have wrapped the <code class="email">Email.send</code> function in a <code class="email">Meteor.defer</code> function to make the e-mail run in parallel. This benefits the performance of your code by running deferred<a id="id299" class="calibre1"/> functions in parallel and focusing on producing only the results that matter to the user. By doing this, we ensure that the e-mail, a process that we know takes a long time to finish, does not block the server as well.</p></div></div>
+
+<div class="book" title="Security">
+<div class="book" title="Browser policy"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_7"><a id="ch04lvl2sec64" class="calibre1"/>Browser policy</h2></div></div></div><p class="calibre7">Now that we can secure our collections and functions, we need to protect our application as a whole. We can<a id="id300" class="calibre1"/> achieve this protection using the <code class="email">browser-policy</code> package. Let's install it now:</p><div class="informalexample"><pre class="programlisting">meteor add browser-policy</pre></div><p class="calibre7">So what exactly does this package do? By adding this, we are opening an access to a series of configuration options that will help us to set our application headers and content security policies to protect from cross-site scripting and data injection attacks.</p><p class="calibre7">These kinds of attacks are often used to steal your data (data theft), change the way your site looks (website defacement), and distribute malware. We definitely want to avoid all these attacks.</p><p class="calibre7">So how does this work? By adding the package, we have already protected our application against many attacks by default, but we need to be able to control this. To do this, the package exposes two objects each with a particular set of functions: <code class="email">BrowserPolicy.framing</code> and <code class="email">BrowserPolicy.content</code>. Both these functions must be set in the server.</p></div></div>
+
+<div class="book" title="Security">
+<div class="book" title="Framing"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_8"><a id="ch04lvl2sec65" class="calibre1"/>Framing</h2></div></div></div><p class="calibre7">With <code class="email">BrowserPolicy.framing</code>, we can control whether our web application can be rendered inside<a id="id301" class="calibre1"/> an iframe or not. We have three functions to control this:</p><div class="informalexample"><table border="1" class="calibre12"><colgroup class="calibre13"><col class="calibre14"/><col class="calibre14"/></colgroup><thead class="calibre15"><tr class="calibre16"><th valign="bottom" class="calibre17">
+<p class="calibre18">Function</p>
+</th><th valign="bottom" class="calibre17">
+<p class="calibre18">Use</p>
+</th></tr></thead><tbody class="calibre19"><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.framing.disallow()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This <a id="id302" class="indexterm"/>will never render in an iframe regardless of the origin.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.framing.restrictToOrigin(origin)</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This <a id="id303" class="indexterm"/>will only render in iframes created by the specified origin. This may take only one <code class="literal">origin</code> string and may be called only once. Also, it is not fully supported in WebKit.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*framing.allowAll()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This<a id="id304" class="indexterm"/> will render in any iframe.</p>
+</td></tr></tbody></table></div><p class="calibre7">You will find yourself using <code class="email">BrowserPolicy.framing.disallow()</code> most of the time, but it is important to understand that you will still be able to iframe your app if origins are the same.</p></div></div>
+
+<div class="book" title="Security">
+<div class="book" title="Content"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_9"><a id="ch04lvl2sec66" class="calibre1"/>Content</h2></div></div></div><p class="calibre7">With <code class="email">BrowserPolicy.content</code>, we can control exactly how the content will be loaded into our <a id="id305" class="calibre1"/>web application. We have many functions for this. However, we will actually end up using only a few. The functions are:</p><div class="informalexample"><table border="1" class="calibre12"><colgroup class="calibre13"><col class="calibre14"/><col class="calibre14"/></colgroup><thead class="calibre15"><tr class="calibre16"><th valign="bottom" class="calibre17">
+<p class="calibre18">Function</p>
+</th><th valign="bottom" class="calibre17">
+<p class="calibre18">Use</p>
+</th></tr></thead><tbody class="calibre19"><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.content.allowInlineScripts()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This allows DOM <a id="id306" class="indexterm"/>script tags to run.</p>
+<p class="calibre18">
+<code class="literal">DEFAULT</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.content.disallowInlineScripts()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This does not allow<a id="id307" class="indexterm"/> DOM script tags to run.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.content.allowEval()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This allows the building of JavaScript from strings by using the <a id="id308" class="indexterm"/>
+<code class="literal">eval</code> function.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.content.disallowEval()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This does not allow the building of JavaScript from strings by using<a id="id309" class="indexterm"/> the <code class="literal">eval</code> function.</p>
+<p class="calibre18">
+<code class="literal">DEFAULT</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.content.allowInlineStyles()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This allows inline<a id="id310" class="indexterm"/> styles and style DOM elements to run.</p>
+<p class="calibre18">
+<code class="literal">DEFAULT</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.content.disallowInlineStyles()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This does not allow inline styles and style DOM elements<a id="id311" class="indexterm"/> to run.</p>
+</td></tr></tbody></table></div><p class="calibre7">There are more! The next set of functions defines a white-list of content types and how they are allowed to<a id="id312" class="calibre1"/> load. <code class="email">ContentType</code> can take the value of: <code class="email">Script</code>, <code class="email">Object</code>, <code class="email">Image</code>, <code class="email">Media</code>, <code class="email">Font</code>, <code class="email">Frame</code>, and <code class="email">Connect</code>.</p><div class="informalexample"><table border="1" class="calibre12"><colgroup class="calibre13"><col class="calibre14"/><col class="calibre14"/></colgroup><thead class="calibre15"><tr class="calibre16"><th valign="bottom" class="calibre17">
+<p class="calibre18">Function</p>
+</th><th valign="bottom" class="calibre17">
+<p class="calibre18">Use</p>
+</th></tr></thead><tbody class="calibre19"><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.allow&lt;ContentType&gt;Origin(origin)</code>
+</p>
+<p class="calibre18">
+<code class="literal">*.allowScriptOrigin(origin)</code>
+</p>
+<p class="calibre18">
+<code class="literal">*.allowObjectOrigin(origin)</code>
+</p>
+<p class="calibre18">
+<code class="literal">*.allowImageOrigin(origin)</code>
+</p>
+<p class="calibre18">
+<code class="literal">*.allowMediaOrigin(origin)</code>
+</p>
+<p class="calibre18">
+<code class="literal">*.allowFontOrigin(origin)</code>
+</p>
+<p class="calibre18">
+<code class="literal">*.allowFrameOrigin(origin)</code>
+</p>
+<p class="calibre18">
+<code class="literal">*.allowConnectOrigin(origin)</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This allows the <code class="literal">ContentType</code> to be loaded from the <code class="literal">origin</code> string. This function can be called <a id="id313" class="indexterm"/>multiple times and has a support for wildcards. If a protocol (<code class="literal">http</code> / <code class="literal">https</code>) is not specified, then BOTH are allowed.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.allow&lt;ContentType&gt;DataUrl()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This allows<a id="id314" class="indexterm"/> the <code class="literal">ContentType</code> to be loaded from a <code class="literal">data:</code> URL. This will allow base64-encoded images to render.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.allow&lt;ContentType&gt;SameOrigin()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This <a id="id315" class="indexterm"/>allows the <code class="literal">ContentType</code> to be loaded from the same origin as the webapp.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.disallow&lt;ContentType&gt;()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This does<a id="id316" class="indexterm"/> not allow <code class="literal">ContentType</code> to be loaded.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.allowSameOriginForAll()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This allows all<a id="id317" class="indexterm"/> types of content to be loaded from the same origin as the webapp.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.allowDataUrlForAll()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This <a id="id318" class="indexterm"/>allows all types of content to be loaded from a <code class="literal">data:</code> URL.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.allowOriginForAll(origin)</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This<a id="id319" class="indexterm"/> allows all types of content to be loaded from the specified <code class="literal">origin</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">*.disallowAll()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This <a id="id320" class="indexterm"/>does not allow any type of content to be loaded from anywhere.</p>
+</td></tr></tbody></table></div><p class="calibre7">Depending on what we want our application to achieve, we may have to tweak our rules. Let's configure our security policy to the recommended options:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /_globals/server/security.coffee</strong></span>
+
+Meteor.startup -&gt;
+  # Prevent webapp from loading on an iframe
+  BrowserPolicy.framing.disallow()
+
+  # Prevent inline scripting
+  BrowserPolicy.content.disallowInlineScripts()
+
+  trusted_sites = [
+    '*.google-analytics.com'
+    '*.mxpnl.com'
+    'placehold.it'
+    'placeholdit.imgix.net'
+  ]
+
+  _.each trusted_sites, (trusted_site) -&gt;
+    BrowserPolicy.content.allowOriginForAll "https://#{trusted_site}"</pre></div></div></div>
+
+<div id="page" style="height:0pt"/><div class="book" title="External APIs"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch04lvl1sec31" class="calibre1"/>External APIs</h1></div></div></div><p class="calibre7">Now that we know how to secure our application, we need to understand how to keep external data <a id="id321" class="calibre1"/>sources up to date. There are two patterns that we can use to<a id="id322" class="calibre1"/> ensure that the information on our server is recent: <span class="strong"><strong class="calibre2">synchronization</strong></span> and <span class="strong"><strong class="calibre2">webhooks</strong></span>.</p></div>
+
+<div class="book" title="External APIs">
+<div class="book" title="Synchronization"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch04lvl2sec67" class="calibre1"/>Synchronization</h2></div></div></div><p class="calibre7">Synchronization will, basically, get data from our source continuously and refresh the database. This<a id="id323" class="calibre1"/> type of technique is useful when we need to save information from our data source and use that information to produce analytical data via the aggregation framework.</p><p class="calibre7">To keep our<a id="id324" class="calibre1"/> servers synchronized, we need to make sure that the process that fetches information does not block the server. We can ensure that this happens using nonblocking functions like <code class="email">Meteor.setInterval</code>.</p><p class="calibre7">Let's synchronize with Stripe. First, we will need to create a collection to capture payments, then we will have to set permissions and our Stripe secret, and finally, we will build the HTTP <code class="email">GET</code> function:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /_globals/lib/collections/stripe/payments_collection.coffee</strong></span>
+
+@Payments = new Mongo.Collection "payments"
+
+<span class="strong"><strong class="calibre2"># /_globals/lib/collections/stripe/server/payments_permissions.coffee</strong></span>
+
+Meteor.startup -&gt;
+  # Nobody may modify
+  Payments.permit ["insert","remove","update"]
+    .never()
+    .apply()
+
+<span class="strong"><strong class="calibre2"># /_globals/server/stripe.coffee</strong></span>
+
+@Stripe =
+  secret:"secret-key"
+  publishable:"publishable-key"
+
+<span class="strong"><strong class="calibre2"># /stripe/server/payments.coffee</strong></span>
+
+_.extend Stripe,
+  get_payments: (ops={}) -&gt;
+    params =
+      limit:100
+
+    if ops.starting_after_id
+      _.extend params,
+        starting_after:ops.starting_after_id
+
+    HTTP.get "https://api.stripe.com/v1/charges",
+      headers:
+        "Authorization":"Bearer #{Stripe.secret}"
+      params:params
+      (error,result) -&gt;
+        if not error
+          _.each result.data?.data, (charge) -&gt;
+            Payments.upsert _id:charge.id,
+              $set:charge
+
+          if result.data.has_more
+            last = _.last result.data.data
+            Stripe.get_payments
+              starting_after_id:last.id
+
+        else
+          throw new Meteor.Error error
+
+Meteor.setInterval Stripe.get_payments,3600000</pre></div><p class="calibre7">Notice that when we created our collection, we did not give it a schema. We did this because we<a id="id325" class="calibre1"/> wanted to make sure that our collection is flexible in case the data from our endpoint changes. To secure our collection, we need to make sure that nobody can modify this in any way except for trusted code. Then we have created a configuration object that is going to hold our Stripe secret and public key.</p><p class="calibre7">Also, we have<a id="id326" class="calibre1"/> created a <code class="email">/stripe/server/payments.coffee</code> directory. Here, we have added the <code class="email">get_payments</code> function to the <code class="email">Stripe</code> object that we had defined in our _<code class="email">globals</code> directory. To have this work properly, we had to pass a <code class="email">params</code> object to control the way we are requesting data from Stripe's servers. Expect to pass <code class="email">params</code> for every <code class="email">GET</code> request you build since this controls the endpoints' <code class="email">pagination</code>. Stripe explains in their documentation that we can get the next page of data by first checking whether there is more data via the <code class="email">has_more</code> key and then passing in the last object ID from which to start via the <code class="email">starting_after</code> parameter.</p><p class="calibre7">At the end of this all, we have used the <code class="email">Meteor.setInterval(&lt;function&gt;,&lt;delay in milliseconds&gt;)</code> function to make sure that the function runs every hour. Are we done yet? Not quite. While this code will definitely populate our <code class="email">Payments</code> collection, it could potentially crash our server as well. Why? The request always queries from the beginning of time up to today, which makes the server progressively take longer. Another important issue is that if there is one <code class="email">GET</code> request being processed and it has not finished within the hour, another request could start in parallel and consume even more resources.</p><p class="calibre7">We can prevent this by controlling our intervals and limiting the time frame our interval uses to get the data.</p><p class="calibre7">First, let's make sure that we only have one interval running at a time:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /stripe/server/payments.coffee</strong></span>
+
+_.extend Stripe,
+<span class="strong"><strong class="calibre2">  payments:</strong></span>
+    get: (ops={}) -&gt;
+<span class="strong"><strong class="calibre2">      if not Stripe.payments.is_running</strong></span>
+<span class="strong"><strong class="calibre2">        Stripe.payments.is_running = true</strong></span>
+
+        params =
+          limit:100
+
+        if ops.starting_after_id
+          _.extend params,
+            starting_after:ops.starting_after_id
+
+        HTTP.get "https://api.stripe.com/v1/charges",
+          headers:
+            "Authorization":"Bearer #{Stripe.secret}"
+          params:params
+          (error,result) -&gt;
+            if not error
+              _.each result.data?.data, (charge) -&gt;
+                Payments.upsert _id:charge.id,
+                  $set:charge
+
+              if result.data.has_more
+                last = _.last result.data.data
+                Stripe.payments.get
+                  starting_after_id:last.id
+<span class="strong"><strong class="calibre2">              else</strong></span>
+<span class="strong"><strong class="calibre2">                Stripe.payments.is_running = false</strong></span>
+
+            else
+<span class="strong"><strong class="calibre2">              Stripe.payments.is_running = false</strong></span>
+              throw new Meteor.Error error
+
+<span class="strong"><strong class="calibre2">    set_interval: -&gt;</strong></span>
+<span class="strong"><strong class="calibre2">      Meteor.setInterval Stripe.payments.get,360000</strong></span>
+
+<span class="strong"><strong class="calibre2">    is_running:false</strong></span>
+
+
+Stripe.payments.set_interval()</pre></div><p class="calibre7">Notice that we are keeping payments together under a <code class="email">payments</code> object now. Then we have simply set and checked a <code class="email">is_running</code> Boolean key to see whether the process is running or not. Now if we were to reduce the interval to 1 millisecond, it would only GET from the external API after the previous request is done processing.</p><p class="calibre7">Now, we can use<a id="id327" class="calibre1"/> the <code class="email">starting_after</code> parameter to ensure that <a id="id328" class="calibre1"/>we only get the latest information. To do this, we will have to use the <code class="email">moment</code> function to filter data by time and get the latest payment information:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /stripe/server/payments.coffee</strong></span>
+
+_.extend Stripe,
+  payments:
+    get: (ops={}) -&gt;
+      if not Stripe.payments.is_running
+        Stripe.payments.is_running = true
+
+        params =
+          limit:100
+
+        if ops.starting_after_id
+          _.extend params,
+            starting_after:ops.starting_after_id
+<span class="strong"><strong class="calibre2">        else</strong></span>
+<span class="strong"><strong class="calibre2">          date_after = moment().utc().startOf("day").subtract(10,"days").unix()</strong></span>
+<span class="strong"><strong class="calibre2">          latest_payment = Payments.findOne created:$gte:date_after,</strong></span>
+<span class="strong"><strong class="calibre2">            sort:</strong></span>
+<span class="strong"><strong class="calibre2">              created:1</strong></span>
+
+<span class="strong"><strong class="calibre2">          if latest_payment</strong></span>
+<span class="strong"><strong class="calibre2">            _.extend params</strong></span>
+<span class="strong"><strong class="calibre2">              starting_after:latest_payment.id</strong></span>
+        ...</pre></div><p class="calibre7">In this example, we have simply used <code class="email">moment</code> to identify a Unix timestamp from 10 days ago. The <code class="email">moment</code> object is made available using the <code class="email">momentjs:moment</code> package. Notice that we are using the<a id="id329" class="calibre1"/> <code class="email">utc()</code> function to set <code class="email">startOf("day")</code> consistently between our development and production environments. Then we have queried the server, and if the payment exists, we will use the ID of the payment as our <code class="email">starting_after</code> parameter.</p><p class="calibre7">It is important to understand that we can make this query easily only because the information that Stripe sends includes a Unix timestamp. Not every API has a Unix timestamp. Most likely, you will end up inserting or transforming their data to fit your own. This can be <a id="id330" class="calibre1"/>easily addressed by extending their response <a id="id331" class="calibre1"/>when needed.</p></div></div>
+
+<div class="book" title="External APIs">
+<div class="book" title="Webhooks"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch04lvl2sec68" class="calibre1"/>Webhooks</h2></div></div></div><p class="calibre7">Webhooks<a id="id332" class="calibre1"/> are the way through which other servers can communicate directly with ours. They, basically, make a <code class="email">POST</code> request to one of our endpoints to inform our server that something has<a id="id333" class="calibre1"/> happened.</p><p class="calibre7">In the case of Stripe, we are going to add an endpoint that will catch all of Stripe's charge webhooks. To do this, we will use the <code class="email">nimble:restivus</code> package.</p><p class="calibre7">
+<code class="email">Restivus</code> is an excellent package that makes it easy to maintain a RESTful API with version control and user authentication. It runs only on the server side for security.</p><p class="calibre7">First, we need to create an instance of <code class="email">Restivus</code>. This instance will hold the routes for the first version of our endpoint:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /_globals/server/stripe.coffee</strong></span>
+
+@Stripe =
+  secret:"secret"
+  publishable:"public"
+  hooks:
+    v1:new Restivus
+      apiPath:"stripe"
+      version:"v1"</pre></div><p class="calibre7">Here, we have attached our new server-side endpoint to the global <code class="email">Stripe</code> object under the <code class="email">hooks</code> and <code class="email">v1</code> keys. This will make it easy to create new routes for version 1 anywhere in our server. The <code class="email">Restivus</code> instance takes in a handful of parameters, the ones that you will end up using the most are:</p><div class="informalexample"><table border="1" class="calibre12"><colgroup class="calibre13"><col class="calibre14"/><col class="calibre14"/></colgroup><thead class="calibre15"><tr class="calibre16"><th valign="bottom" class="calibre17">
+<p class="calibre18">Parameter</p>
+</th><th valign="bottom" class="calibre17">
+<p class="calibre18">Use</p>
+</th></tr></thead><tbody class="calibre19"><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">apiPath</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">String<a id="id334" class="indexterm"/> defines the parent route of all the endpoints. If we define <code class="literal">apiPath</code> as <code class="literal">"stripe"</code> and a route as <code class="literal">"charge"</code>, then the path for the route will be <code class="literal">ROOT_URL/stripe/charge</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">version</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">String defines the version number of the API and <a id="id335" class="indexterm"/>adds it to the parent route. If we define <code class="literal">version</code> as <code class="literal">"v1"</code>, then all the routes will take this form: <code class="literal">ROOT_URL/&lt;apiPath&gt;/v1/&lt;route&gt;</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">enableCors</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">Boolean sets whether the route is accessible from<a id="id336" class="indexterm"/> external domains. Default: <code class="literal">true</code>.</p>
+</td></tr></tbody></table></div><p class="calibre7">Now let's create an <a id="id337" class="calibre1"/>endpoint that updates the <code class="email">Payments</code> collection. To create an endpoint, we need to define a route on our <code class="email">Restivus</code> instance. To do this, we simply call the global object that we<a id="id338" class="calibre1"/> had defined and use the <code class="email">addRoute</code> function:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2"># /stripe/server/endpoints/charges.coffee</strong></span>
+
+Meteor.startup -&gt;
+  Stripe.hooks.v1.addRoute "charge",
+    post: -&gt;
+      payment = @request.body.data?.object
+      if payment
+        Payments.upsert _id:payment.id,
+          $set:payment
+
+      @done()</pre></div><p class="calibre7">Now our endpoint can catch Stripe's webhook notifications. Notice that the information that the <code class="email">POST</code> request contains is located in the <code class="email">@request.body</code> object. After analyzing this object, we can see that the object that Stripe is sending. In this case, Stripe sends an object with a <code class="email">data</code> key, which in turn contains an <code class="email">object</code> key that holds the information of the payment. If you want to see the information that Stripe is responding with, simply log in to the console.</p><p class="calibre7">Also, we are returning a <code class="email">@done()</code> function, which notifies Stripe that the request was processed. This makes sure that Stripe does not have to make a second attempt to notify our server.</p><p class="calibre7">The <code class="email">addRoute</code> function can handle all types of HTTP requests including <code class="email">get</code>, <code class="email">put</code>, <code class="email">delete</code>, <code class="email">patch</code>, and <code class="email">options</code>. The<a id="id339" class="calibre1"/> endpoints have these variables in their context to help handle requests:</p><div class="informalexample"><table border="1" class="calibre12"><colgroup class="calibre13"><col class="calibre14"/><col class="calibre14"/></colgroup><thead class="calibre15"><tr class="calibre16"><th valign="bottom" class="calibre17">
+<p class="calibre18">Context variable</p>
+</th><th valign="bottom" class="calibre17">
+<p class="calibre18">Use</p>
+</th></tr></thead><tbody class="calibre19"><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.user</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">The <code class="literal">Meteor.user</code> object <a id="id340" class="indexterm"/>after authentication passes.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.userId</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">The <code class="literal">Meteor.userId</code> <a id="id341" class="indexterm"/>string after authentication passes.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.urlParams</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">Parameters<a id="id342" class="indexterm"/> defined in the URL string:</p>
+<p class="calibre18">
+<code class="literal">ROOT_URL/stripe/v1/charge/:more</code>
+</p>
+<p class="calibre18">To access the <code class="literal">more</code> parameter, you would call <code class="literal">@urlParams.more</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.queryParams</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">Query <a id="id343" class="indexterm"/>parameters defined in the URL string:</p>
+<p class="calibre18">
+<code class="literal">ROOT_URL/stripe/v1/charge?more=data</code>
+</p>
+<p class="calibre18">To access the <code class="literal">more</code> parameter, you would call <code class="literal">@urlQueryParams.more</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.bodyParams</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">The body<a id="id344" class="indexterm"/> of the request. This is the equivalent to <code class="literal">@request.body</code>.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.request</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">A <a id="id345" class="indexterm"/>NodeJS request object.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.response</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">A NodeJS response <a id="id346" class="indexterm"/>object.</p>
+</td></tr><tr class="calibre16"><td valign="top" class="calibre20">
+<p class="calibre18">
+<code class="literal">this.done()</code>
+</p>
+</td><td valign="top" class="calibre20">
+<p class="calibre18">This<a id="id347" class="indexterm"/> function must be called after handling a response.</p>
+</td></tr></tbody></table></div><p class="calibre7">Now, we can set<a id="id348" class="calibre1"/> up webhooks from Stripe by going to their settings page and creating a webhook. Make sure to point their URL to the one that we built.</p><div class="mediaobject"><img src="../images/00002.jpeg" alt="Webhooks" class="calibre8"/></div><p class="calibre9"> </p><p class="calibre7">We can send a couple of test hooks, too, to make sure that everything works as intended. By using both the synchronization<a id="id349" class="calibre1"/> pattern and the webhooks pattern, we are able to<a id="id350" class="calibre1"/> keep our data up to date. You should always use both patterns if the API allows you to. Why? This is because their webhooks server could potentially fail.</p></div></div>
+<div class="book" title="Summary"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch04lvl1sec32" class="calibre1"/>Summary</h1></div></div></div><p class="calibre7">This chapter covered three important things: how to control the amount of data that we publish, how to secure our app, and how to better integrate with an external API. We learned a pattern to build pagination that functions with filters as well. Then we learned how to build user roles and schemas to secure access to our application better. Next, we understood the limitations of allow/deny rules and addressed these limitations by writing effective deny rules. We quickly realized these deny rules were blocking functions from all the event handlers because they are insecure. To get around this limitation, we learned how to build trusted code. Towards the end, integrating Stripe taught us how to create a nonblocking synchronization function and how to use <code class="email">restivus</code> to catch incoming messages from external servers.</p><p class="calibre7">The next chapter is going to cover the basics of how to test and maintain our code. With the next chapter, we will be able to share our code without fearing that someone else will break it.</p></div></body></html>
