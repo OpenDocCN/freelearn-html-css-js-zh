@@ -1,0 +1,358 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;6.&#xA0;Scaling"><div class="titlepage"><div><div><h1 class="title"><a id="ch06"/>Chapter 6. Scaling</h1></div></div></div><p>In this chapter we will look at options for scaling Express. Our current solution will not scale beyond a single process/server; introducing a few simple changes will allow us to scale Vision both horizontally and vertically. We will also take a look at an alternative web architecture, and examine how decoupling our application can improve our application and help us scale Express further.</p><div class="section" title="Scaling Express sessions with Redis"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec63"/>Scaling Express sessions with Redis</h1></div></div></div><p>Running our Express <a id="id188" class="indexterm"/>application with the <code class="literal">NODE_ENV</code> set to <code class="literal">production</code> will<a id="id189" class="indexterm"/> output the following message:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>NODE_ENV=production npm start</strong></span>
+
+<span class="strong"><strong>Warning: connection.session() MemoryStore is not</strong></span>
+<span class="strong"><strong>designed for a production environment, as it will leak</strong></span>
+<span class="strong"><strong>memory, and obviously only work within a single process.</strong></span>
+</pre></div><p>The default session store for Express is an in-memory store; tying sessions to a single process does not scale.</p><p>Also, if the server crashes then we lose those sessions. If we want to scale the Express application to more than one server, we will need a memory store that is decoupled from the Express application. Express has a couple of optional stores; here we will use Redis via <code class="literal">connect-redis</code>. Let's configure the vision application to use Redis as a session store.</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm install connect-redis ––save</strong></span>
+</pre></div><p>We will now make a couple of changes to the Express server <code class="literal">./lib/express/index.js</code>. We start by bringing in the <code class="literal">Redis</code> module we previously created, that configures and connects to a Redis server. We instantiate one of these into <code class="literal">redis</code>. We then require <code class="literal">connect-redis</code> which returns <code class="literal">RedisStore</code>.</p><div class="informalexample"><pre class="programlisting">, Redis = require('../cache/redis')
+, redis = new Redis()
+, RedisStore = require('connect-redis')(express);</pre></div><p>We have in place an existing <code class="literal">sessionStore</code> which is configured to use <code class="literal">MemoryStore</code>:</p><div class="informalexample"><pre class="programlisting">var sessionStore = new express.session.MemoryStore();</pre></div><p>Let's replace this with our new <code class="literal">RedisStore</code>:</p><div class="informalexample"><pre class="programlisting">var sessionStore = new RedisStore({client: redis.client});</pre></div><p>Our application is <a id="id190" class="indexterm"/>now ready to use Redis to store sessions. We can <a id="id191" class="indexterm"/>monitor Redis session activity via <code class="literal">redis-cli</code> by running the following commands:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>redis-cli</strong></span>
+<span class="strong"><strong>monitor</strong></span>
+</pre></div></div></div>
+<div class="section" title="Scaling Socket.IO with Redis"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec64"/>Scaling Socket.IO with Redis</h1></div></div></div><p>Socket.IO <a id="id192" class="indexterm"/>also<a id="id193" class="indexterm"/> uses an in-memory store to store its events. There are a<a id="id194" class="indexterm"/> couple of issues with this; the first being that if the server fails we lose those messages stored in memory. The second is if we attempt to scale our application by adding more servers, the Socket.IO in-memory store will be tied to a single server; the servers we add will not know which Socket.IO connections are open on other servers.</p><p>We can solve these problems by using the Socket.IO <code class="literal">RedisStore</code>. We start by requiring a <code class="literal">RedisStore</code>, which is a <code class="literal">redis</code> module from the Socket.IO namespace. We can also use the vision <code class="literal">Redis</code> module to create three redis clients: <code class="literal">pub</code>, <code class="literal">sub</code>, and <code class="literal">client</code>. In order to configure Socket.IO to use the <code class="literal">RedisStore</code>, we set the Socket.IO <code class="literal">'store'</code> to a <code class="literal">RedisStore</code>, which passes <code class="literal">redis</code>, <code class="literal">pub</code>, <code class="literal">sub</code>, and <code class="literal">client</code> as the arguments.</p><div class="informalexample"><pre class="programlisting">var config = require('../configuration')
+, RedisStore = require('socket.io/lib/stores/redis')
+, redis  = require('socket.io/node_modules/redis')
+, Redis = require('../cache/redis')
+, pub    = new Redis().client
+, sub    = new Redis().client
+, client = new Redis().client;
+
+function Socket(server) {
+    /....
+
+<span class="strong"><strong>    socketio.set('store', new RedisStore({</strong></span>
+<span class="strong"><strong>      redis    : redis</strong></span>
+<span class="strong"><strong>    , redisPub : pub</strong></span>
+<span class="strong"><strong>    , redisSub : sub</strong></span>
+<span class="strong"><strong>    , redisClient : client</strong></span>
+<span class="strong"><strong>    }));</strong></span>
+
+    return socketio;
+};</pre></div></div>
+<div class="section" title="Scaling Express horizontally"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec65"/>Scaling Express horizontally</h1></div></div></div><p>Our current <a id="id195" class="indexterm"/>application architecture has coupled together an API; a consuming web client and a worker which populates a Redis cache. This approach works for many applications and will allow it to scale horizontally with the help of a load balancer.</p><p>But let's say for example, we would like our API to support clients other than web, say for example, we introduced a mobile client that used our API; ideally we would like to scale our API in isolation and remove anything related to the web client.</p><p>Scaling our worker horizontally would simply mean replicating the same work over and over again, which would be pointless. Later, we will discuss how to scale the worker.</p><p>In the rest of this chapter we will outline how to split apart our application in order to scale horizontally. We will use the source code from the <code class="literal">chapter-6</code> version of the vision application. We will, of course, document anything of interest which is required to achieve our goal. We will create four new projects: <code class="literal">vision-core</code>, <code class="literal">vision-web</code>, <code class="literal">vision-api</code>, and <code class="literal">vision-worker</code>.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip05"/>Tip</h3><p>Download the source code for this chapter here:</p><p>
+<a class="ulink" href="https://github.com/AndrewKeig/vision-core">https://github.com/AndrewKeig/vision-core</a>
+</p><p>
+<a class="ulink" href="https://github.com/AndrewKeig/vision-web">https://github.com/AndrewKeig/vision-web</a>
+</p><p>
+<a class="ulink" href="https://github.com/AndrewKeig/vision-api">https://github.com/AndrewKeig/vision-api</a>
+</p><p>
+<a class="ulink" href="https://github.com/AndrewKeig/vision-worker">https://github.com/AndrewKeig/vision-worker</a>
+</p></div></div><div class="section" title="vision-core"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec08"/>vision-core</h2></div></div></div><p>Our first<a id="id196" class="indexterm"/> task is to extract everything that can be shared between the <code class="literal">vision-web</code>, <code class="literal">vision-api</code>, and <code class="literal">vision-worker</code> projects into a new <code class="literal">vision-core</code> project.</p><p>This includes the following sections: <code class="literal">./cache</code>, <code class="literal">./lib/configuration</code>, <code class="literal">./lib/db</code>, <code class="literal">./lib/github</code>, <code class="literal">./lib/logger</code>, <code class="literal">./lib/models</code>, and <code class="literal">./lib/project</code>.</p><p>The <code class="literal">vision-core</code> project is not an application so we remove everything in the root of the project, including <code class="literal">./app.js</code> and our <code class="literal">./gruntfile.js</code>, and add a <code class="literal">./index.js</code> file, which simply exports all of the functionalities shown:</p><div class="informalexample"><pre class="programlisting">module.exports.redis = require('./lib/cache/redis');
+module.exports.publisher = require('./lib/cache/publisher');
+module.exports.subscriber = require('./lib/cache/subscriber');
+module.exports.configuration = require('./lib/configuration');
+module.exports.db = require('./lib/db');
+module.exports.github = require('./lib/github');
+module.exports.project = require('./lib/project');
+module.exports.logger = require('./lib/logger');
+module.exports.models = require('./lib/models');</pre></div><p>In order to share<a id="id197" class="indexterm"/> the private <code class="literal">vision-core</code> project with visions other private projects, we add a GitHub dependency to config: <code class="literal">./config/packge.json</code>:</p><div class="informalexample"><pre class="programlisting">  "dependencies": {
+    "vision-core": "git+ssh://git@github.com:AndrewKeig/vision-core.git#master",</pre></div></div><div class="section" title="vision-api"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec09"/>vision-api</h2></div></div></div><p>Let's create a <code class="literal">vision-api</code> project which<a id="id198" class="indexterm"/> contains the web API. Here we need to reuse  everything related to the API that includes the following middleware: <code class="literal">./lib/middleware/id</code>, <code class="literal">./lib/middleware/notFound</code>, the routes for <code class="literal">./lib/routes/project</code>, <code class="literal">./lib/routes/github</code>, and <code class="literal">./lib/routes/heartbeat</code>. We also include the config files <code class="literal">./config</code> and all the tests <code class="literal">./test</code>.</p><p>In order to secure <code class="literal">vision-api</code>, we will use basic authentication, which uses a username and password to authenticate a user. These credentials are transported in plain text, so you are advised to use HTTPS. We have already shown you how to setup HTTPS, hence, this part will not be repeated. In order to set up basic authentication, we can use the <code class="literal">passport-http</code>; let's install it:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm install passport-http ––save</strong></span>
+</pre></div><p>We start by adding a username and password to <code class="literal">./config/*.json</code>:</p><div class="informalexample"><pre class="programlisting">  "api": {
+    "username": "airasoul",
+    "password": "1234567890"
+  }</pre></div><p>We are now ready to implement an <code class="literal">ApiAuth</code> strategy into <code class="literal">./lib/auth/index.js</code>. We start by defining a function, <code class="literal">ApiAuth</code>, then we import the <code class="literal">passport</code> and <code class="literal">passport-http</code> modules. We instantiate a <code class="literal">BasicStrategy</code> function and add it to <code class="literal">passport</code>, passing a verify function. Inside this verify function, we have the option of rejecting the user by passing false out of the callback. We call <code class="literal">findUser</code> and check if <code class="literal">username</code> and <code class="literal">password</code> are the same as those stored in <code class="literal">./config/*.json</code>.</p><div class="informalexample"><pre class="programlisting">var config = require('vision-core').configuration;
+
+function ApiAuth() {
+  this.passport = require('passport');
+  var BasicStrategy = require('passport-http').BasicStrategy;
+
+  this.passport.use(new BasicStrategy({
+  },
+    function(username, password, done) {
+      findUser(username, password, function(err, status) {
+        return done(null, status);
+      })
+    }  
+  ));
+
+  var findUser = function(username, password, callback){
+    var usernameOk = config.get('api:username') === username;
+    var passwordOk = config.get('api:password') === password;
+    callback(null, usernameOk === passwordOk);
+  }
+};
+module.exports = new ApiAuth();</pre></div><p>The <code class="literal">vision-api</code> project will need a new <a id="id199" class="indexterm"/>Express server <code class="literal">./express/index.js</code>. We start by requiring <code class="literal">config</code> via <code class="literal">vision-core</code>. We require the <code class="literal">apiAuth</code> module which handles authentication, then we apply the passport basic middleware to all of the routes using <code class="literal">app.all</code>. We set <code class="literal">session:false</code> as basic authentication is stateless.</p><div class="informalexample"><pre class="programlisting">var express = require('express')
+  , http = require('http')
+  , config = require('vision-core').configuration
+  , db = require('vision-core').db
+  , apiAuth = require('../auth')
+  , middleware = require('../middleware')
+  , routes = require('../routes')
+  , app = express();
+
+app.set('port', config.get('express:port'));
+app.use(express.logger({ immediate: true, format: 'dev' }));
+app.use(express.bodyParser());
+app.use(apiAuth.passport.initialize());
+app.use(app.router);
+
+app.all('*', apiAuth.passport.
+  authenticate('basic', { session: false }));
+app.param('id', middleware.id.validate);
+app.get('/heartbeat', routes.heartbeat.index);
+app.get('/project/:id', routes.project.get);
+app.get('/project', routes.project.all);
+app.post('/project', routes.project.post);
+app.put('/project/:id', routes.project.put);
+app.del('/project/:id', routes.project.del);
+app.get('/project/:id/repos', routes.github.repos);
+app.get('/project/:id/commits', routes.github.commits);
+app.get('/project/:id/issues', routes.github.issues);
+app.use(middleware.notFound.index);
+
+http.createServer(app).listen(app.get('port'));
+module.exports = app;</pre></div><p>As we are moving to multiple Express servers to support our application, we will move <code class="literal">vision-api</code> onto port <code class="literal">3001</code>. Let's configure this into <code class="literal">./config/*.json</code>, as shown in the following code:</p><div class="informalexample"><pre class="programlisting"> "express": {
+    "port": 3001
+  }</pre></div></div><div class="section" title="vision-worker"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec10"/>vision-worker</h2></div></div></div><p>Let's continue and create a new project called <code class="literal">vision-worker</code>, which consists of two scripts <code class="literal">./populate.js</code> script and <code class="literal">./lib/cache/populate.js</code>.</p><p>Of course we could scale this worker with something such as<a id="id200" class="indexterm"/> <span class="strong"><strong>RabbitMQ.</strong></span> This would allow us to spawn multiple producers and consumers, and from this respect, the solution we have is not optimum. If you are interested in improving this part of the application, please refer to Packt's <span class="emphasis"><em>Instant RabbitMQ Message Application Development</em></span>. This book explains how you can implement a worker pattern with RabbitMQ.</p></div><div class="section" title="vision-web"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec11"/>vision-web</h2></div></div></div><p>Finally, we create a new project <a id="id201" class="indexterm"/>called <code class="literal">vision-web</code> which will include everything related to the web client ; simply include everything from <code class="literal">chapter 6</code> and remove everything we moved to <code class="literal">core</code> and reference core from <code class="literal">./package.json</code>. Our current set of <code class="literal">routes</code> require some significant changes; now that we have decoupled our service layer into its own repository called <code class="literal">vision-api</code>. vision-web will no longer make service calls directly into the project and github services; these services now exist in the vision-api project, instead we will call the API services exposed on vision-api.</p><p>Let's add the configuration to <code class="literal">./config/*.json</code> for our <code class="literal">vision-api</code> project. The <code class="literal">vision-api</code> project has been configured to run on port <code class="literal">3001</code> and uses basic authentication for security, so we include the <code class="literal">username</code> and <code class="literal">password</code> in the <code class="literal">url</code>.</p><div class="informalexample"><pre class="programlisting">  "api": {
+    "url":  "http://airasoul:1234567890@127.0.0.1:3001"
+  }</pre></div><p>In order to call services on  our <code class="literal">vision-api</code> project , we will simplify things by using <code class="literal">Request</code> module. Request is a simple client that allows us to make HTTP requests; lets install it:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm install request --save</strong></span>
+</pre></div><p>With our configuration in place, we move onto our project route <code class="literal">./lib/routes/project.js</code>. Here we simply replace all calls to  our Project service with the corresponding calls in vision-api. We start by pulling in the configuration we  defined in the code snippet above. Each route constructs a URL using this configuration,  we use the Request module  to call into the API. We return a response which consists of the <code class="literal">response.statusCode</code> and <a id="id202" class="indexterm"/>the body of the response:</p><div class="informalexample"><pre class="programlisting">var logger = require('vision-core').logger
+, S = require('string')
+, config = require('vision-core').configuration
+, request = require('request')
+, api = config.get('api:url');
+
+exports.all = function(req, res){
+  logger.info('Request.' + req.url);
+
+  var userId = req.query.user || req.user.id;
+  var url = api + '/project?user=' + userId ;
+
+  request.get(url, function (error, response, body) {
+    return res.json(response.statusCode, JSON.parse(body));
+  });
+};
+exports.get = function(req, res){
+  logger.info('Request.' + req.url);
+
+  var url = api + '/project/' + req.params.id;
+
+  request.get(url, function (error, response, body) {
+    return res.json(response.statusCode, JSON.parse(body));
+  });
+};
+
+exports.put = function(req, res){
+  logger.info('Put.' + req.params.id);
+
+  if (S(req.body.name).isEmpty() )
+  return res.json(400, 'Bad Request');
+
+  var url = api + '/project/' + req.params.id;
+
+  request.put(url, { form: req.body },
+  function (error, response, body) {
+    return res.json(response.statusCode, body);
+  });
+};
+
+exports.post = function(req, res){
+  logger.info('Post.' + req.body.name);
+
+  if (S(req.body.name).isEmpty() )
+  return res.json(400, 'Bad Request');
+
+  var url = api + '/project/';
+
+  request.post(url, { form: req.body },
+  function (error, response, body) {   
+    var parsed = JSON.parse(body);
+    res.location('/project/' +  parsed._id);
+    return res.json(response.statusCode, parsed);
+  });
+};
+
+exports.del = function(req, res){
+  logger.info('Delete.' + req.params.id);
+
+  var url = api + '/project/' + req.params.id;
+
+  request.del(url, function (error, response, body) {
+    return res.json(response.statusCode, body);
+  });
+};</pre></div><p>Let's repeat the <a id="id203" class="indexterm"/>same process for our GitHub route  <code class="literal">./lib/routes/github.js</code>; removing calls to the GitHub service with calls to the corresponding endpoints on our <code class="literal">vision-api</code> project:</p><div class="informalexample"><pre class="programlisting">var logger = require('vision-core').logger
+, config = require('vision-core').configuration
+, request = require('request')
+, api = config.get('api:url');
+
+exports.repos = function(req, res){
+  logger.info('Request.' + req.url);
+
+  var url = api + '/project/' + req.params.id + "/repos";
+
+  request.get(url, function (error, response, body) {
+    return res.json(response.statusCode, JSON.parse(body));
+  });
+};
+
+exports.commits = function(req, res){
+  logger.info('Request.' + req.url);
+
+  var url = api + '/project/' + req.params.id + "/commits";
+
+  request.get(url, function (error, response, body) {
+    return res.json(response.statusCode, JSON.parse(body));
+  });
+};
+
+exports.issues = function(req, res){
+  logger.info('Request.' + req.url);
+
+  var url = api + '/project/' + req.params.id + "/issues";
+
+  request.get(url, function (error, response, body) {
+    return res.json(response.statusCode, JSON.parse(body));
+  });
+};</pre></div><p>Lets update our <a id="id204" class="indexterm"/>tests <code class="literal">./test/project.js</code>, <code class="literal">./test/github.js</code>. We now remove anything Mongoose related with direct calls using <code class="literal">Request</code> module to vision-api in order to seed test data to MongoDB:</p><div class="informalexample"><pre class="programlisting">beforeEach(function(done){
+  var proj = {
+    name: "test name"
+    , user: login.user  
+    , token: login.token
+    , image: "/img/"
+    , repositories    : [ "node-plates" ]
+  };
+  var url = api + '/project';
+
+  req.post(url, { form: proj },
+    function (error, response, body) {
+      id = JSON.parse(body)._id;
+      done()
+  });    
+});
+
+afterEach(function(done){
+  var url = api + '/project/' + id;
+
+  req.del(url, function (error, response, body) {   
+    done()
+  });    
+});</pre></div></div></div>
+<div class="section" title="Vertical scale with Cluster"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec66"/>Vertical scale with Cluster</h1></div></div></div><p>Our <code class="literal">vision-web</code> <a id="id205" class="indexterm"/>and <code class="literal">vision-api</code> Express applications currently run in a single thread. <a id="id206" class="indexterm"/>In order to scale our application vertically, in order to take advantage of multi-core systems, and provide redundancy in case of failure, we can use the cluster module and spread the load over multiple processes. Lets add the Cluster module to vision-core <code class="literal">./lib/cluster/index.js</code>:</p><div class="informalexample"><pre class="programlisting">var cluster = require('cluster')
+, http = require('http')
+, numCPUs = require('os').cpus().length
+, logger = require('../logger');
+
+function Cluster() {}
+
+Cluster.prototype.run = function(module){
+  if (cluster.isMaster) {
+    for (var i = 0; i &lt; numCPUs; i++) {
+      cluster.fork();
+    }
+
+    cluster.on('exit', function(worker, code, signal) {
+      logger.info('Worker ' + worker.process.pid + ' died');
+    });
+  } else {
+   require(module);
+  }
+}
+
+module.exports = Cluster;</pre></div><p>Let's export the cluster module out of <code class="literal">vision-core</code>; by adding the following to <code class="literal">./index.js</code>:</p><div class="informalexample"><pre class="programlisting">module.exports.cluster = require('./lib/cluster');  </pre></div><p>Let's change our Express application in <code class="literal">vision-web</code> and <code class="literal">vision-api ./app.js</code>, and add a third option for running our application, that is, running with cluster support:</p><div class="informalexample"><pre class="programlisting">switch (process.env['NODE_ENV']) {
+  case 'COVERAGE':
+    module.exports = require('./lib-cov/express');
+    break;
+  case 'TEST':
+    module.exports = require('./lib/express');
+    break;
+  default:
+<span class="strong"><strong>    var Cluster = require('vision-core').cluster</strong></span>
+<span class="strong"><strong>    , cluster = new Cluster();</strong></span>
+<span class="strong"><strong>    cluster.run(__dirname + '/lib/express');</strong></span>
+    break;
+}</pre></div></div>
+<div class="section" title="Balancing load with Hipache"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec67"/>Balancing load with Hipache</h1></div></div></div><p>
+<span class="strong"><strong>Hipache</strong></span>
+<a id="id207" class="indexterm"/> is a distributed proxy designed to route high volumes of HTTP and WebSocket traffic. Hipache supports dynamic configuration via Redis, so changing the configuration and<a id="id208" class="indexterm"/> adding vhosts does not require a restart. Based on the <a id="id209" class="indexterm"/>node-http-proxy library, Hipache provides support for load balancing websockets, SSL, dead backend detection, and is clustered for failover. Let's install it:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm install hipache -g</strong></span>
+</pre></div><p>Let's setup a host for both <code class="literal">vision-web</code> and <code class="literal">vision-api</code> by editing the <code class="literal">hosts</code> file:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>sudo nano /private/etc/hosts</strong></span>
+</pre></div><p>Add two new entries:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>127.0.0.1  web.vision.net</strong></span>
+<span class="strong"><strong>127.0.0.1  api.vision.net</strong></span>
+</pre></div><p>And then flush the cache for these changes to take effect:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>dscacheutil -flushcache</strong></span>
+</pre></div><p>In order to configure a server, we will need a configuration file for each application we want to load balance. In our case, it is <code class="literal">vision-web</code> and <code class="literal">vision-api</code>. Here is the configuration file for <code class="literal">vision-api</code>, <code class="literal">./config/server.json</code>. Importantly, we are running <code class="literal">vision-api</code> on port <code class="literal">8443</code>. We configure an SSL certificate under the HTTPS section as Hipache will terminate SSL not our Express server:</p><div class="informalexample"><pre class="programlisting">{
+    "server": {
+        "accessLog": "hipache_access.log",
+        "port": 8443,
+        "workers": 5,
+        "maxSockets": 100,
+        "deadBackendTTL": 30,
+        "address": ["127.0.0.1"],
+        "address6": ["::1"],
+        "https": {
+            "port": 8443,
+            "key": "lib/secure/key.pem",
+            "cert": "lib/secure/cert.pem"
+        }
+    },
+    "redisHost": "127.0.0.1",
+    "redisPort": 6379,
+    "redisDatabase": 0
+}</pre></div><p>Let's make a change to the Express server <code class="literal">./lib/express/server.js</code>, and return a standard HTTP server when running in production; Hipache will now terminate SSL.</p><div class="informalexample"><pre class="programlisting">function Server(app){
+<span class="strong"><strong>  if (process.env['NODE_ENV'] === "PRODUCTION")</strong></span>
+<span class="strong"><strong>    return http.createServer(app).listen(app.get('port'));</strong></span>
+
+  var httpsOptions = {
+    key: fs.readFileSync('./lib/secure/key.pem'),
+    cert: fs.readFileSync('./lib/secure/cert.pem')
+  };
+
+  return https.createServer(httpsOptions,app).listen(app.get('port'));
+}</pre></div><p>We now add Hipache<a id="id210" class="indexterm"/> configuration for the <code class="literal">vision-api ./config/server.json</code>. Please <a id="id211" class="indexterm"/>note that we are running <code class="literal">vision-api</code> on port <code class="literal">3001</code>.</p><div class="informalexample"><pre class="programlisting">{
+    "server": {
+        "accessLog": "hipache_access.log",
+        "port": 3001,
+        "workers": 5, 
+        "maxSockets": 100,
+        "deadBackendTTL": 30,
+        "address": ["127.0.0.1"],
+        "address6": ["::1"]
+    },
+    "redisHost": "127.0.0.1",
+    "redisPort": 6379,
+    "redisDatabase": 0
+}</pre></div><p>We will need to revisit GitHub and change the urls under <code class="literal">settings/applications/developer applications/vision</code> to <code class="literal">https://web.vision.net:8443</code>.</p><p>Let's update the <code class="literal">vision-web</code> configuration <code class="literal">./config/*.json</code>, and change the GitHub authentication urls to <code class="literal">web.vision.net</code>.</p><div class="informalexample"><pre class="programlisting">  "auth": {
+    "homepage": "https://web.vision.net:8443"
+  , "callback": "https://web.vision.net:8443/auth/github/callback"
+  , "clientId": "5bb691b4ebb5417f4ab9"
+  , "clientSecret": "44c16f4d81c99e1ff5f694a532833298cae10473"
+  }</pre></div><p>Let's also update the API <code class="literal">url</code> configuration in the same set of config files:</p><div class="informalexample"><pre class="programlisting">  "api": {
+    "url":  "http://airasoul:1234567890@api.vision.net:3001"
+  }</pre></div><p>Our final change will allow us to <a id="id212" class="indexterm"/>support multiple ports for each application; we will change the port setting in the Express server <code class="literal">./lib/express/index.js</code>, so that it checks <code class="literal">process.env.PORT</code> for a port number:</p><div class="informalexample"><pre class="programlisting">app.set('port', process.env.PORT || config.get('express:port'));</pre></div><p>We now start the <a id="id213" class="indexterm"/>process of running our application under a load balancer. In order to start the Hipache load balancer for <code class="literal">vision-api</code>, run the following commands:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>cd vision-web</strong></span>
+<span class="strong"><strong>hipache --config ./config/server.json</strong></span>
+</pre></div><p>In order to start the Hipache load balancer for <code class="literal">vision-web</code>, we run the following commands:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>cd vision-api</strong></span>
+<span class="strong"><strong>hipache --config ./config/server.json</strong></span>
+</pre></div><p>So, we now have a running Hipache instance for <code class="literal">vision-api</code> and another for <code class="literal">vision-web</code>. Let's create a vhost in Redis and associate the Hipache instance with a series of servers. Now run the redis command line interface:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>redis-cli</strong></span>
+</pre></div><p>First off, let's get the <code class="literal">vision-web</code> application up and running and assign a backend running on port <code class="literal">3003</code> to <code class="literal">web.vision</code>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>rpush frontend:web.vision.net web.vision</strong></span>
+<span class="strong"><strong>rpush frontend:web.vision.net http://127.0.0.1:3003</strong></span>
+</pre></div><p>Let's review the configuration for <code class="literal">web.vision</code>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>lrange frontend:web.vision.net 0 -1</strong></span>
+</pre></div><p>Let's get the <code class="literal">vision-api</code> application up and running and assign a backend running on port <code class="literal">3005</code> to <code class="literal">api.vision</code>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>rpush frontend:api.vision.net api.vision</strong></span>
+<span class="strong"><strong>rpush frontend:api.vision.net http://127.0.0.1:3005</strong></span>
+</pre></div><p>Let's review the configuration for <code class="literal">api.vision</code>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>lrange frontend:api.vision.net 0 -1</strong></span>
+</pre></div><p>Let's run the application under a load balancer, set the <code class="literal">PORT</code> environment variable and set NODE_ENV to <code class="literal">production</code> when running <code class="literal">npm start</code>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>/vision-web/NODE_ENV=production PORT=3003 npm start</strong></span>
+<span class="strong"><strong>/vision-api/NODE_ENV=production PORT=3005 npm start</strong></span>
+<span class="strong"><strong>/vision-worker/npm start</strong></span>
+</pre></div><p>We now have a vision application running under a load balancer, go visit <code class="literal">https://web.vision.net:844</code>
+<code class="literal">3</code>. In order to add more backends to our load balancer, let's start <code class="literal">vision-api</code> and <code class="literal">vision-web</code> under another port:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>/vision-web/NODE_ENV=production PORT=3004 npm start</strong></span>
+<span class="strong"><strong>/vision-api/NODE_ENV=production PORT=3006 npm start</strong></span>
+</pre></div><p>When we run the <a id="id214" class="indexterm"/>following commands, the backends running on ports <code class="literal">3004</code> and <code class="literal">3006</code> <a id="id215" class="indexterm"/>will be added to the load balancer:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>rpush frontend:web.vision.net http://127.0.0.1:3004</strong></span>
+<span class="strong"><strong>rpush frontend:api.vision.net http://127.0.0.1:3006</strong></span>
+</pre></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec68"/>Summary</h1></div></div></div><p>Scaling a Web application is nontrivial. Node; using the cluster module allows us to scale it vertically. Scaling horizontally requires us to reach out to the wider community. In our application we have chosen Hipache; a node based load balancer. In the next chapter we will discuss production-level improvements that we can make to our application when we look at performance and reliability issues.</p></div></body></html>

@@ -1,0 +1,408 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;9.&#xA0;Workbook: Using the Camera"><div class="titlepage"><div><div><h1 class="title"><a id="ch09"/>Chapter 9. Workbook: Using the Camera</h1></div></div></div><p>By far, the most common feature of mobile devices today is the camera. It is difficult to imagine a mobile device without one. A quality application needs to be able to take advantage of this feature and in this chapter, we will show you how it's done.</p><p>In this chapter we will build a basic workbook application where you can:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Create notebooks</li><li class="listitem" style="list-style-type: disc">Add notes to each notebook</li><li class="listitem" style="list-style-type: disc">Add an image to each note</li></ul></div><p>We will also use a tiled layout data view to spice up the appearance of the application, and talk about ways to send an image to another application such as WordPress or the Sencha.io storage system.</p><div class="section" title="Designing the basic application"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec54"/>Designing the basic application</h1></div></div></div><p>For this application we will <a id="id830" class="indexterm"/>have "books" that contain "notes", which means we will only see a note when the user clicks on a specific book. In this case, a tabbed interface probably doesn't make much sense, so we will use a navigation view to move between our list of books and the list of notes for a particular book.</p><p>We also want to move beyond the traditional list and use a tiled view with some icons. This will give us something like this:</p><div class="mediaobject"><img src="graphics/8901OS_09_01.jpg" alt="Designing the basic application"/></div><p>When the user taps on one of the books, they will get a similar screen with the notes for that particular book. We will have an <a id="id831" class="indexterm"/>
+<span class="strong"><strong>Add</strong></span> button for new books and an <span class="strong"><strong>Add</strong></span> button for new notes. Since the navigation view uses the same title bar for both views, we will need to swap between the two <span class="strong"><strong>Add</strong></span> buttons based on which view we are looking at.</p><p>We will also need forms for our <a id="id832" class="indexterm"/>books and notes. The notes form will also need a button that allows us to either take a picture with the device camera, or select a photo from the device's photo library.</p><p>In terms of data, we need a title and an ID for our books. Our notes will also have a title and an ID, and we will need fields for our notes, an image, and a book ID to tell us which book the note belongs to.</p><p>Since we have a good idea of what data we need, let's start by setting up our models and stores.</p></div></div>
+<div class="section" title="Creating the models and stores"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec55"/>Creating the models and stores</h1></div></div></div><p>Our book is by far the simpler of the two pieces we need to deal with, so let's start there. Our book model looks like this:</p><div class="informalexample"><pre class="programlisting">Ext.define('Workbook.model.Book', {
+    extend: 'Ext.data.Model',
+    config: {
+        fields: [
+            {
+                name: 'id',
+                type: 'int'
+            },
+            {
+                name: 'title',
+                type: 'string'
+            }
+        ]
+    }
+});</pre></div><p>Our <code class="literal">bookstore.js</code> file is equally <a id="id833" class="indexterm"/>simple and uses a local storage proxy for storing our data. Since the list of books is the first thing the user will see, we also want this store to automatically load. So, in that case we will use the following code:</p><div class="informalexample"><pre class="programlisting">Ext.define('Workbook.store.BookStore', {
+    extend: 'Ext.data.Store',
+    requires: [
+        'Workbook.model.Book'
+    ],
+    config: {
+        model: 'Workbook.model.Book',
+        autoLoad: true,
+        storeId: 'BookStore',
+        proxy: {
+            type: 'localstorage',
+            id  : 'books'
+        }
+    }
+});</pre></div><p>Our notes need to be related to our books, so they will have an associated <code class="literal">bookID</code> as well as their own unique ID property:</p><div class="informalexample"><pre class="programlisting">Ext.define('Workbook.model.Note', {
+    extend: 'Ext.data.Model',
+    config: {
+        fields: [
+            {
+                name: 'id',
+                type: 'int'
+            },
+            {
+                name: 'bookID',
+                type: 'int'
+            },
+            {
+                name: 'title',
+                type: 'string'
+            },
+            {
+                name: 'dateModified',
+                type: 'date'
+            },
+            {
+                name: 'notes',
+                type: 'string'
+            },
+            {
+                name: 'image',
+                type: 'string'
+            }
+        ]
+    }
+});</pre></div><p>We also have fields for our title, <code class="literal">dateModified</code>, <code class="literal">notes</code>, and <code class="literal">image</code>. We will set <code class="literal">dateModified</code> to the current date when a new note is created and when an existing note is updated and saved.</p><p>Our <code class="literal">noteStore.js</code> file looks <a id="id834" class="indexterm"/>much the same as our book store, except we don't want this one to load automatically so we set <code class="literal">autoLoad</code> to <code class="literal">false</code>:</p><div class="informalexample"><pre class="programlisting">Ext.define('Workbook.store.NoteStore', {
+    extend: 'Ext.data.Store',
+    requires: [
+        'Workbook.model.Note'
+    ],
+    config: {
+        model: 'Workbook.model.Note',
+        storeId: 'NoteStore',
+        autoLoad: false,
+        proxy: {
+            type: 'localstorage',
+            id  : 'notes'
+        }
+    }
+});</pre></div><p>Now that we know what kind of data we are dealing with, we need to think about how things will be displayed.</p></div>
+<div class="section" title="The views"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec56"/>The views</h1></div></div></div><p>For our application views, we will <a id="id835" class="indexterm"/>need a list and edit views for our books. When the user clicks on a book, they will get the list of notes. We will also need a form for editing notes and a details view for the notes.</p><p>Let's start with the book views.</p><div class="section" title="Creating the book views"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec95"/>Creating the book views</h2></div></div></div><p>The first book view is our <a id="id836" class="indexterm"/>list of books. Rather than going with the simple list, we will <a id="id837" class="indexterm"/>use a DataView and icons to give our list a bit more visual appeal:</p><div class="mediaobject"><img src="graphics/8901OS_09_02.jpg" alt="Creating the book views"/></div><p>This layout will be <a id="id838" class="indexterm"/>
+<a id="id839" class="indexterm"/>created using the xTemplate (<code class="literal">tpl</code>) and CSS styles:</p><div class="informalexample"><pre class="programlisting">Ext.define('Workbook.view.bookList', {
+    extend: 'Ext.dataview.DataView',
+    alias: 'widget.booklist',
+    config: {
+        title: 'Workbooks',
+        styleHtmlContent: true,
+        scrollable: {
+         direction: 'vertical',
+         directionLock: true
+        },
+        emptyText: 'You don\'t have any Workbooks. Click the Add button at the top of your screen to add a new Workbook',
+        store: 'BookStore',
+        id: 'bookList',
+        itemTpl: '&lt;img src="resources/icons/book.png" /&gt;&lt;h4&gt;{title}&lt;/h4&gt;',
+        itemCls: 'bookItem'
+    }
+});</pre></div><p>We start our <code class="literal">booklist.js</code> file by extending the standard <code class="literal">Ext.dataview.DataView</code> and adding our configuration options. We set a title and allow for styled HTML content in the panel. We also set up scrolling and give it providing <code class="literal">directionLock</code> so it only scrolls in one direction.</p><p>Next, we add some empty text that instructs the user how to add a book and finish up with our <code class="literal">itemTpl</code> and an <code class="literal">itemCls</code>. <code class="literal">itemTpl</code> and <code class="literal">itemCls</code> will be used to position each of our books within the view.</p><p>By default, when the <a id="id840" class="indexterm"/>
+<a id="id841" class="indexterm"/>DataView is rendered as HTML, each item in our DataView is wrapped in a <code class="literal">div</code> tag with a CSS class of <code class="literal">.x-dataview-item</code>. It looks something like this:</p><div class="informalexample"><pre class="programlisting">&lt;div class="x-dataview-item"&gt;Our Book Item&lt;/div&gt;</pre></div><p>Potentially, we could just set styles on <code class="literal">.x-dataview-item</code>, but this would change the style for every DataView we use. By setting <code class="literal">itemCls</code>, the <code class="literal">div</code> tag now looks like this:</p><div class="informalexample"><pre class="programlisting">&lt;div class="x-dataview-item bookItem"&gt;Our Book Item&lt;/div&gt;</pre></div><p>This means we can now style the <code class="literal">bookItem</code> class<a id="id842" class="indexterm"/> without affecting the rest of our data views. We style the <code class="literal">bookItem</code> class by placing the following into our CSS file:</p><div class="informalexample"><pre class="programlisting">.bookItem {
+  width: 140px;
+  display: inline-block;
+  clear: none;
+  margin: 10px;
+  text-align: center;
+  vertical-align: top;
+}
+.bookItem img {
+    margin-left: auto;
+    margin-right: auto;
+  }
+ .bookItem h4 {
+    margin-bottom: 0px;
+  }</pre></div><p>This style data determines our width for each item and tiles them across the screen from left to right. It also sets our margins and centers the text and our icon.</p><p>Next, we need to create a view for adding our books using a <code class="literal">form</code> component:</p><div class="informalexample"><pre class="programlisting">Ext.define('Workbook.view.bookEdit', {
+    extend: 'Ext.form.Panel',
+    alias: 'widget.bookedit',
+    config: {
+        items: [
+            {
+                xtype: 'container',
+                html: 'Please enter a book name below:',
+                id: 'bookEditText',
+                margin: 8,
+                style: 'text-align:center;'
+            },
+            {
+                xtype: 'textfield',
+                id: 'bookName',
+                name: 'title',
+                label: 'Title'
+            },
+            {
+                xtype: 'hiddenfield',
+                id: 'bookID',
+                name: 'id'
+            }
+        ]
+    }
+});</pre></div><p>This form has a container for instructions, a text field for the user to enter a name for the book, and a <code class="literal">hiddenfield</code> component<a id="id843" class="indexterm"/> where we will add the book's <code class="literal">id</code> value when we are editing an existing book.</p><p>We are also going <a id="id844" class="indexterm"/>to add two buttons to the form; a <span class="strong"><strong>Save</strong></span> button and a <span class="strong"><strong>Cancel</strong></span> button. In this example, we will set handlers for each button inside the view itself. <a id="id845" class="indexterm"/>This code could also be moved into the controller if you prefer, and we will show you how to do it that way a bit later. For now, let's add the <span class="strong"><strong>Save</strong></span> button first:</p><div class="informalexample"><pre class="programlisting">{
+ xtype: 'button',
+ margin: 8,
+ id: 'saveBookButton',
+ ui: 'confirm',
+ text: 'Save Book',
+ handler: function() {
+  var form = this.up('formpanel');
+  var store = Ext.getStore('BookStore');
+  var values = form.getValues();
+  if(values.id &gt; 0) {
+   var index = store.find('id', values.id);
+   var record = store.getAt(index);
+   record.set(values);
+  } else {
+   var record = Ext.ModelMgr.create(values, 'Workbook.model.Book'); 
+  store.add(record);
+  }
+  store.sync();
+  var main = this.up('navigationview');
+  main.pop(form);
+ }
+}</pre></div><p>The basic setup for the <code class="literal">button</code> element<a id="id846" class="indexterm"/> should be pretty familiar to you now. The <code class="literal">handler</code> component will automatically fire when the button is tapped.</p><p>This function grabs our <code class="literal">store</code> and <code class="literal">form</code>, values, and the value from the <code class="literal">values</code> variable. We then check to see if the <code class="literal">id</code> value is a number greater than zero. The only way this will occur is if we have loaded an existing book record into our form for editing.</p><p>If the <code class="literal">id</code> value is greater than zero (we have an existing book), we grab the current <code class="literal">record</code> value from the store and replace its <a id="id847" class="indexterm"/>values with the new values from our form.</p><p>If the <code class="literal">id</code> value is <a id="id848" class="indexterm"/>null (it's a new book), we create a new record using our book model, insert the form's <code class="literal">values</code> variable and add the record to the store.</p><p>We then sync the store to save our changes and pop the book form off of our main <code class="literal">navigationview</code>.</p><p>Lastly, we add a <span class="strong"><strong>Cancel</strong></span> button after our <span class="strong"><strong>Save</strong></span> button. This one just needs to pop the form off of our <code class="literal">navigationview</code>:</p><div class="informalexample"><pre class="programlisting">{
+ xtype: 'button',
+ margin: 8,
+ ui: 'decline',
+ text: 'Cancel',
+ handler: function() {
+  var form = this.up('formpanel');
+  var main = this.up('navigationview');
+  main.pop(form);
+ }
+}</pre></div><p>Now that we have the views for adding and displaying books in our application, we need to create our <code class="literal">main.js</code> view that will launch when the application is started.</p></div><div class="section" title="Adding the book list to the main view"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec96"/>Adding the book list to the main view</h2></div></div></div><p>Our main view needs to <a id="id849" class="indexterm"/>display the list of books and it needs a button to <a id="id850" class="indexterm"/>show our add book form. As we noted previously, we will be using <code class="literal">navigationview</code> for this main component:</p><div class="informalexample"><pre class="programlisting">Ext.define("Workbook.view.Main", {
+ extend: 'Ext.NavigationView',
+ requires: ['Ext.TitleBar','Ext.dataview.DataView'],
+ config: {
+  id: 'mainView',
+  fullscreen: true,
+  navigationBar : {
+   docked : 'top',
+   items : [
+    {
+     text : 'Add Book',
+     align : 'right',
+     id: 'addBookButton'
+    }
+   ]
+  },
+  items: [
+   { xtype: 'booklist'}
+  ]
+ }
+});</pre></div><p>This view is defined in <code class="literal">app.js</code> as the one that will be added to the viewport when the application launches. You will notice that we have required the <code class="literal">TitleBar</code> and <code class="literal">DataView</code> components in our <code class="literal">Main</code> component. This is to prevent compiling errors later on when we build our native application. The main <code class="literal">navigationview</code> component also includes our booklist component and an add button to show our form.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip26"/>Tip</h3><p>
+<span class="strong"><strong>Code in the controller versus the view</strong></span>
+</p><p>Unlike our previous book's <code class="literal">form</code> view, <a id="id851" class="indexterm"/>we will place the function code for our "Add Book" button inside the controller. Placing the functionality of a view in the controller is generally considered a "best practice", but it is important to understand that this can be done in a number of different ways.</p></div></div><p>Now that we have our main view created, let's jump over to the <code class="literal">Book.js</code> controller and set things up to test what we have so far.</p></div><div class="section" title="Starting the book controller"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec97"/>Starting the book controller</h2></div></div></div><p>The book controller will <a id="id852" class="indexterm"/>start with our views, models, and stores that we have <a id="id853" class="indexterm"/>created. It will also set up our references, our initial controls, and two functions:</p><div class="informalexample"><pre class="programlisting">Ext.define('Workbook.controller.Book', {
+    extend: 'Ext.app.Controller',
+    config: {
+        stores: ['BookStore'],
+        models: ['Book'],
+        views: ['bookEdit', 'bookList'],
+        refs: {
+            bookList: '#bookList',
+            addBookButton: '#addBookButton',
+            main: '#mainView'
+        },
+
+        control: {
+            addBookButton: {
+                tap: 'onAddBookButtonTap'
+            },
+            bookList: {
+                select: 'onBookSelect'
+            }
+        }
+    },
+    onAddBookButtonTap: function(button, event, options) {
+        var bookForm = Ext.create('Workbook.view.bookEdit');
+        this.getMain().push(bookForm);
+    },
+    onBookSelect: function(dataview, record, options) {
+        console.log(dataview, record, options);
+    }
+});</pre></div><p>Our <code class="literal">book.js</code> controller file needs to push our <code class="literal">bookEdit</code> form onto the <code class="literal">Main</code> navigation view. We do this by creating a reference (<code class="literal">refs</code>) for the <code class="literal">addBookButton</code> component<a id="id854" class="indexterm"/> using its <code class="literal">id</code> property. We then assign a function to the button's <code class="literal">tap</code> event in our <code class="literal">controls</code> section.</p><p>The <code class="literal">onAddBookButtonTap</code> function creates a new instance of our <code class="literal">bookEdit</code> form and pushes it onto our <code class="literal">Main</code> navigation view. This will make the form appear and add a back button at the top of the page.</p><p>We also added <code class="literal">refs</code> and <code class="literal">controls</code> for the <code class="literal">bookList</code> form, including an <code class="literal">onBookSelect</code> function. However, we don't have any of our other views so we can't display a list of notes for the book. Instead, we have added a console log that will show the DataView, record, and options that are passed when a book in the list is tapped. Once we add a book, we should be able <a id="id855" class="indexterm"/>to tap on it and see the information displayed in the Safari Error console.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note51"/>Note</h3><p>The <code class="literal">console.log()</code> function<a id="id856" class="indexterm"/> is a great way to test your application in the early stages of development. It can help you detect problems early on and deal with them before you build up the <a id="id857" class="indexterm"/>entire project.</p></div></div><p>If you test the project now, you should get the initial empty book screen and be able to add new books:</p><div class="mediaobject"><img src="graphics/8901OS_09_03.jpg" alt="Starting the book controller"/></div><p>If you add a book and then tap it in the book list, you should see something like the following screenshot in the Safari Error console:</p><div class="mediaobject"><img src="graphics/8901OS_09_04.jpg" alt="Starting the book controller"/></div><p>From left to right, these objects are the DataView (our book list), the record (which book was tapped), and the options (the object that was passed to the listener—serious nerd stuff).</p><p>We will use the <a id="id858" class="indexterm"/>
+<a id="id859" class="indexterm"/>information in the record object later on to tell us which notes to display. Now we need to create the views for our notes.</p></div><div class="section" title="Creating the note views"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec98"/>Creating the note views</h2></div></div></div><p>We need three different <a id="id860" class="indexterm"/>views for our notes: a list view, an edit view, and a details view. We <a id="id861" class="indexterm"/>will start with our list view since it is similar to the one we use for books:</p><div class="informalexample"><pre class="programlisting">Ext.define('Workbook.view.noteList', {
+    extend: 'Ext.dataview.DataView',
+    config: {
+        id: 'noteList',
+        itemId: 'noteList',
+        styleHtmlContent: true,
+        scrollable: {
+            direction: 'vertical',
+            directionLock: true
+        },
+        itemTpl: '&lt;img src="resources/icons/note.png" /&gt;&lt;h4&gt;{title}&lt;/h4&gt;&lt;h5&gt;{dateModified:date("m/d/Y, g:i a")}&lt;/h5&gt;',
+        store: 'NoteStore',
+        emptyText: 'You don't have any Notes in this Workbook. Click the Add button at the top of your screen to add a new Note to the Workbook',
+        title: 'Notes For'
+    }
+});</pre></div><p>We override the DataView, set up our IDs and our scrolling, just as we did with our book list. In the <code class="literal">itemTpl</code> configuration, we added the date the note was modified, using the <code class="literal">date()</code> function to change it to a shorter format than the default. We also set our empty text and a default title. Our book controller will update the title and display the book name for the current note.</p><p>We will be using the same basic styles as our book container to make the note list tile across the screen like our book list.</p><div class="mediaobject"><img src="graphics/8901OS_09_05.jpg" alt="Creating the note views"/></div><p>When the user taps a <a id="id862" class="indexterm"/>note in the list, we need to display the note details with <a id="id863" class="indexterm"/>the text and the image for the note. Our <code class="literal">noteDetails.js</code> view is a simple panel with an xTemplate:</p><div class="informalexample"><pre class="programlisting">Ext.define('Workbook.view.noteDetails', {
+    extend: 'Ext.Container',
+    alias: 'widget.notedetails',
+    config: {
+        layout: 'fit',
+        scrollable: {direction: 'vertical', directionLock: true},
+        tpl: '&lt;h1&gt;{title}&lt;/h1&gt;&lt;img src="data:image/png;base64,{image}" /&gt;&lt;h5&gt;{date}&lt;/h5&gt;&lt;div class="notes"&gt;{notes}&lt;/div&gt;'
+    }
+});</pre></div><p>Don't worry too much about the <code class="literal">data:image/png;base64</code> section of this code. We will cover the base64 image format in the <span class="emphasis"><em>Getting started with images</em></span> section of the chapter.</p><p>The edit view for our note will have fields for a title and note text. There will also be hidden fields such as <code class="literal">bookID</code>, <code class="literal">image</code>, and the note's <code class="literal">id</code> field (the value of these will be set by our controller).</p><div class="informalexample"><pre class="programlisting">Ext.define('Workbook.view.noteEdit', {
+ extend: 'Ext.form.Panel',
+ alias: 'widget.noteedit',
+ config: {
+  items: [
+   {
+    xtype: 'container',
+    html: 'Please enter a note title, notes and select an image below:',
+    id: 'noteEditText',
+    margin: 8,
+    style: 'text-align:center;'
+   }, {
+    xtype: 'button',
+    text: 'Select Image',
+    id: 'imageSelectButton',
+    width: 220,
+    style: 'margin-top: 10px; margin-right:auto; margin-left:auto; margin-bottom: 15px;'
+   }, {
+    xtype: 'container',
+    id: 'imageView',
+    width: 200,
+    height: 200
+   },
+   {
+    xtype: 'hiddenfield',
+    id: 'imageField',
+    name: 'image',
+    value: ''
+   },
+   {
+    xtype: 'textfield',
+    id: 'noteTitle',
+    name: 'title',
+    label: 'Title'
+   },
+   {
+    xtype: 'hiddenfield',
+    id: 'bookID',
+    name: 'bookID',
+    value: 0
+   },
+   {
+    xtype: 'hiddenfield',
+    id: 'noteID',
+    name: 'id',
+    value: 0
+   },
+   {
+    xtype: 'textareafield',
+    id: 'notesArea',
+    name: 'notes',
+    label: 'Notes',
+    value: ''
+   }
+  ]
+ }
+});</pre></div><p>We will also have a button for selecting an image and a container for displaying the selected image. When the button is tapped, we will select an image from the device that will be returned <a id="id864" class="indexterm"/>to us as a base64 string. This string will be set as the value for our hidden <code class="literal">image</code> field.</p><p>We will also have two buttons just like our book edit form, one for for the purpose of saving and one for canceling. The <a id="id865" class="indexterm"/>
+<span class="strong"><strong>Cancel</strong></span> button is exactly the same as the previous one for the book edit and it just pops the form off of the navigation view.</p><p>The <span class="strong"><strong>Save</strong></span> button<a id="id866" class="indexterm"/> is a little different in that it needs to set a value for date modified whenever a note is saved:</p><div class="informalexample"><pre class="programlisting">{
+ xtype: 'button',
+ margin: 8,
+ ui: 'confirm',
+ text: 'Save',
+ id: 'saveNoteButton',
+ handler: function() {
+  var form = this.up('formpanel');
+  var store = Ext.getStore('NoteStore');
+  var values = form.getValues();
+  if(values.id &gt; 0) {
+   var index = store.find('id', values.id);
+   var record = store.getAt(index);
+   record.set(values);
+<span class="strong"><strong>   var date = new Date();</strong></span>
+<span class="strong"><strong>   record.set('dateModified', date);</strong></span>
+  } else {
+   var record = Ext.ModelMgr.create(values, 'Workbook.model.Note');
+<span class="strong"><strong>   var date = new Date();</strong></span>
+<span class="strong"><strong>   record.set('dateModified', date);</strong></span>
+  }
+  store.add(record);
+  store.sync();
+  var main = this.up('navigationview');
+  main.pop(form);
+ }
+}</pre></div><p>Other than that, the button is mostly the same as our book save button. We grab the store and the form values, we check to see if we are dealing with a new note or an existing note, and we save the note accordingly.</p><p>With these basic <a id="id867" class="indexterm"/>views set up, it's time to get back into our controller and hook everything together.</p></div></div>
+<div class="section" title="Creating the controller"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec57"/>Creating the controller</h1></div></div></div><p>The first thing we need to <a id="id868" class="indexterm"/>do in our controller is update our <code class="literal">config</code> section to add the new views, stores, and models for our application. We also need to add some new <a id="id869" class="indexterm"/>references and controls for these new components.</p><div class="informalexample"><pre class="programlisting">config: {
+  stores: ['BookStore', 'NoteStore'],
+  models: ['Book', 'Note'],
+  views: ['bookEdit', 'noteEdit', 'noteList', 'bookList'],
+  refs: {
+   bookList: '#bookList',
+   noteList: '#noteList',
+   addBookButton: '#addBookButton',
+   addNoteButton: '#addNoteButton',
+   imageSelectButton: '#imageSelectButton',
+   main: '#mainView'
+  },
+  control: {
+   addBookButton: {
+    tap: 'onAddBookButtonTap'
+   },
+   addNoteButton: {
+    tap: 'onAddNoteButtonTap'
+   },
+   imageSelectButton: {
+    tap: 'onImageSelectButtonTap'
+   },
+   bookList: {
+    select: 'onBookSelect'
+   },
+   noteList: {
+    select: 'onNoteSelect'
+   },
+   main: {
+    back: 'onBackClicked'
+   }
+  }
+ }</pre></div><p>The <code class="literal">refs</code> section will set up <a id="id870" class="indexterm"/>our shortcuts for the new note components we <a id="id871" class="indexterm"/>created and the controls will add new functions for the following actions:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Tapping a note in the list</li><li class="listitem" style="list-style-type: disc">Tapping the button to add an image</li><li class="listitem" style="list-style-type: disc">Selecting a book in the list</li><li class="listitem" style="list-style-type: disc">Selecting a note in the list</li><li class="listitem" style="list-style-type: disc">Clicking the back button from anywhere in the application</li></ul></div><p>Now that we have <code class="literal">refs</code> and <code class="literal">control</code> in place, let's start creating the functions we will need for the application.</p><p>The <code class="literal">onBookSelect</code> function<a id="id872" class="indexterm"/> is linked to the <code class="literal">select</code> event for the book list (in the <code class="literal">controls</code> section). The <code class="literal">select</code> event will automatically pass along the record that was selected as part of its arguments. We will use the book title from that record to set the <code class="literal">title</code> property of our new note list view. We will also use the <code class="literal">id</code> property from this record to limit the note's <code class="literal">store</code> to just the notes for that book:</p><div class="informalexample"><pre class="programlisting">onBookSelect: function(dataview, record, options) {
+  console.log(dataview, record, options);
+  var noteList = Ext.create('Workbook.view.noteList', {title: record.get('title')});
+  var bookID = record.get('id');
+  this.getMain().push(noteList);
+  this.getAddNoteButton().show();
+  this.getAddBookButton().hide();
+  var noteStore = noteList.getStore();
+  noteStore.filter("bookID", bookID);
+  noteStore.load();
+  noteList.bookID = bookID;
+}</pre></div><p>Notice that we pass the <code class="literal">title</code> value as a configuration option when we create the new instance of the note list. This is often a handy way to set additional parameters when creating a new object.</p><p>Next, we push our new <code class="literal">noteList</code> object onto the <code class="literal">Main</code> navigation view, and swap our <code class="literal">AddBook</code> button with the <code class="literal">AddNote</code> button<a id="id873" class="indexterm"/> using <code class="literal">show</code>/<code class="literal">hide</code> functions.</p><p>We then use the <code class="literal">bookID</code> value to filter the store, limiting the notes to just the ones for our current book and load the store.</p><p>We also add <code class="literal">bookID</code> as a configuration option on <code class="literal">noteList</code>. This will let us easily grab <code class="literal">bookID</code> when we add new notes.</p><p>The next thing we need to <a id="id874" class="indexterm"/>take care of is the <span class="strong"><strong>Back</strong></span> button<a id="id875" class="indexterm"/>. This button is created automatically by the navigation view and it will automatically pop the current view off of the <a id="id876" class="indexterm"/>navigation view stack, returning us to the previous page.</p><p>However, there are three problems with this:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">When we switch back to the previous view, we need to hide the <span class="strong"><strong>Add Note</strong></span> button and show our <span class="strong"><strong>Add Book</strong></span> button.</li><li class="listitem" style="list-style-type: disc">When we switch back to the book list, we still have a filter on the notes store. This will mess things up if we select a different book.</li><li class="listitem" style="list-style-type: disc">When we switch back to the book list, the book we originally selected will still be selected. This means that if you click on the same book again, the <code class="literal">select</code> event will not fire. This is also true for our notes list.</li></ul></div><p>This means we need to tie into the back event on our navigation view and fix these issues:</p><div class="informalexample"><pre class="programlisting">onBackClicked: function(button, options) {
+ var store = Ext.getStore('NoteStore');
+ var activeItem = this.getMain().getActiveItem();
+ if(activeItem.id == 'bookList') {
+  this.getAddNoteButton().hide();
+  this.getAddBookButton().show();
+  this.getBookList().deselectAll();
+  store.clearFilter();
+ } else if(activeItem.id == 'noteList') {
+  this.getAddNoteButton().show();
+  this.getAddBookButton().hide();
+  this.getNoteList().deselectAll();
+ }
+}</pre></div><p>The first thing we have to determine is which item is active after the <code class="literal">back</code> event is fired.</p><p>If it is the book list, we hide the <code class="literal">AddNote</code> button, show the <code class="literal">AddBook</code> button, deselect all in <code class="literal">bookList</code>, and clear the filter on the store.</p><p>If <code class="literal">noteList</code> is active then the user is coming back from the note details. We still need to deselect all in <code class="literal">noteList</code> and show the correct buttons, but we keep the filters on the store.</p><p>The next function will be used to create a <code class="literal">noteEdit</code> form<a id="id877" class="indexterm"/> and add some initial values to it:</p><div class="informalexample"><pre class="programlisting">onAddNoteButtonTap: function(button, event, options) {
+ var noteForm = Ext.create('Workbook.view.noteEdit');
+ this.getMain().push(noteForm);
+ var record = Ext.create(
+ 'Workbook.model.Note', {
+  title: '',
+  note: '',
+  bookID: this.getNoteList().bookID
+ });
+ noteForm.setRecord(record);
+ }</pre></div><p>In the <code class="literal">onAddNoteButtonTap</code> function we create a new instance of the <code class="literal">noteEdit</code> form and push it onto the <code class="literal">Main</code> navigation view. We also create a new record based on our <code class="literal">Note</code> model and set the <code class="literal">bookID</code> value. Lastly, we load the record into the form using <code class="literal">setRecord()</code>.</p><p>Next, we need a short function to push the details panel for a note onto our main navigation. This is accomplished by our <code class="literal">onNoteSelect</code> function:</p><div class="informalexample"><pre class="programlisting">onNoteSelect: function(dataview, record, options) {
+ var noteDetails = Ext.create('Workbook.view.noteDetails');
+ this.getMain().push(noteDetails);
+ noteDetails.setRecord(record);
+}</pre></div><p>Now that we are done with the <a id="id878" class="indexterm"/>basic functions, we can finally move on to getting images into our application.</p></div>
+<div class="section" title="Getting started with images"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec58"/>Getting started with images</h1></div></div></div><p>There are a couple of important things to note <a id="id879" class="indexterm"/>about using images in an application. The first is that the application must be a compiled application in order for this feature to work. You will also need to add <code class="literal">Ext.device.Camera</code> to your <code class="literal">requires</code> section in <code class="literal">app.js</code>. Since this functionality is only used in compiled applications, the file is not included by default.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note52"/>Note</h3><p>Since we have covered compiling applications in <a class="link" href="ch03.html" title="Chapter 3. Going Command Line">Chapter 3</a>, <span class="emphasis"><em>Going Command Line</em></span>, for our TimeCop application, we will not cover it again here.</p></div></div><p>For security reasons, JavaScript has no access to the filesystem on a mobile device. Only by compiling the application can we bypass this limitation and use the camera or access existing photos on the device. This means that actual testing of the application can be somewhat limited before you compile it.</p><p>When you are testing in a web browser, Sencha Touch will return a placeholder image link for the purposes of testing. However, there are two different formats an image can be returned in.</p><p>The first is a <code class="literal">file</code> or URI format. This is basically a link to the existing file and the implementation can vary across devices. The <a id="id880" class="indexterm"/>second format is <code class="literal">data</code>, which is a base64-encoded string.</p><p>The <code class="literal">file</code> format can typically be used in an image link as <code class="literal">src</code>. For example:</p><div class="informalexample"><pre class="programlisting">&lt;img src="file_URI_here" /&gt;</pre></div><p>However, the base64 <code class="literal">data</code> needs a slightly different format, which you might recall from our <code class="literal">noteDetails.js</code> file:</p><div class="informalexample"><pre class="programlisting">&lt;img src="data:image/png;base64,{image}" /&gt;</pre></div><p>This base64 <code class="literal">data</code> format allows us to control the image format on the fly and store the value as a string in the database.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note53"/>Note</h3><p>Base64 data<a id="id881" class="indexterm"/> is a format that allows you to transmit files as a string of text. This lets us include things such as images as part of our JSON data. It also lets us store the string as part of the data in our database.</p></div></div><p>If we use the file URI and the user deletes the image from the device, the URI will also disappear from our application. While this may be the desired behavior in some instances, more often it is not.</p><p>We also need to consider where the source image is coming from. Is it coming from the camera itself, the stored photos, or a particular photo album?</p><p>All of these options and more are handled within the <code class="literal">capture</code> function.</p><div class="section" title="Capturing an image"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec99"/>Capturing an image</h2></div></div></div><p>Let's take a look at how the <a id="id882" class="indexterm"/>image <code class="literal">capture()</code> function<a id="id883" class="indexterm"/> works in our <a id="id884" class="indexterm"/>
+<code class="literal">onImageSelectButtonTap</code> function works in our <code class="literal">Book.js</code> controller:</p><div class="informalexample"><pre class="programlisting">onImageSelectButtonTap: function(button, event, options) {
+ var imageView = Ext.getCmp('imageView');
+ var imageField = Ext.getCmp('imageField');
+ Ext.device.Camera.capture({
+  success: function(image) {
+   imageView.setHtml('&lt;img src="data:image/png;base64,'+image+'" width=200px height=200px /&gt;');
+   imageField.setValue(image);
+  },
+  quality: 100,
+  destination: 'data'
+ });
+}</pre></div><p>We start out by grabbing our <code class="literal">imageView</code> variable<a id="id885" class="indexterm"/> (where we will place a copy of the image after it is selected) and our <code class="literal">imageField</code> variable (the hidden field that will store the data for our image for saving). <a id="id886" class="indexterm"/>You can see our completed form in the following screenshot. This shows our button, our selected image, and the two form fields:</p><div class="mediaobject"><img src="graphics/8901OS_09_06.jpg" alt="Capturing an image"/></div><p>The <code class="literal">Ext.device.Camera.capture</code> function<a id="id887" class="indexterm"/> has an internal <code class="literal">success</code> function to which the image is passed. The format of the image is set in the <code class="literal">destination</code> config and can be either <code class="literal">data</code> (base64) or <code class="literal">file</code> (URI) format.</p><p>The <code class="literal">success</code> function<a id="id888" class="indexterm"/> is where we <a id="id889" class="indexterm"/>process the image information we receive. In this case we set the HTML of our <code class="literal">imageView</code> container <a id="id890" class="indexterm"/>to the image, scaled to 200 by 200 pixels. This provides the user with a preview of their selection before saving.</p><p>We also set the value of our hidden <code class="literal">imageField</code> component to the base64-encoded string so that it will save with our other form values.</p><p>However, before we save there are a number of options we can set on the image:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><code class="literal">quality</code>: This specifies the <a id="id891" class="indexterm"/><a id="id892" class="indexterm"/>image quality to be anything from 1 – 100.</li><li class="listitem" style="list-style-type: disc"><code class="literal">source</code>: Where should the <a id="id893" class="indexterm"/><a id="id894" class="indexterm"/>image come from? The options are <code class="literal">camera</code>, <code class="literal">library</code>, or <code class="literal">album</code>.</li><li class="listitem" style="list-style-type: disc"><code class="literal">encoding</code>: The available <a id="id895" class="indexterm"/><a id="id896" class="indexterm"/>encodings are <code class="literal">png</code> and <code class="literal">jpg</code>.</li><li class="listitem" style="list-style-type: disc"><code class="literal">height</code>: This specifies the height of the <a id="id897" class="indexterm"/><a id="id898" class="indexterm"/>image in pixels.</li><li class="listitem" style="list-style-type: disc"><code class="literal">width</code>: This specifies the width of the <a id="id899" class="indexterm"/><a id="id900" class="indexterm"/>image in pixels.</li></ul></div><p>Any of these options can be set within the capture function, but it is good to keep in mind that <code class="literal">quality</code>, <code class="literal">height</code>, and <code class="literal">width</code> will be applied to the image before it can potentially be stored. Limiting these values <a id="id901" class="indexterm"/>can subsequently limit the usefulness of the image later on. It's always easier to make a big image smaller than it is to make a small image bigger.</p></div><div class="section" title="Storing the image"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec100"/>Storing the image</h2></div></div></div><p>In our <code class="literal">onImageSelectButtonTap</code> function, <a id="id902" class="indexterm"/>we set the value of our hidden field to the base64-encoded <code class="literal">data</code> string. If we had chosen <code class="literal">destination: file</code> instead of <code class="literal">destination: data</code>, we could still do much the same thing. The image is saved as part of our <a id="id903" class="indexterm"/>save button handler in <code class="literal">noteEdit.js</code> we built earlier in the chapter.</p><p>However, the <code class="literal">file</code> option would only store a reference to the image file. As we noted previously, if the user deletes the image from their device using their photo manager, it disappears from our application as well.</p><p>The <code class="literal">data</code> option gives us the actual data for the image itself. This means if the user deletes the image from their device using their photo manager, it doesn't affect the image stored in our application.</p></div><div class="section" title="Displaying the image"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec101"/>Displaying the image</h2></div></div></div><p>Once you have the stored image, <a id="id904" class="indexterm"/>you can use it in your xTemplates as we described previously.</p><p>The <code class="literal">file</code> format can typically be used in an image link as <code class="literal">src</code> like this:</p><div class="informalexample"><pre class="programlisting">&lt;img src="file_URI_here" /&gt;</pre></div><p>The base64 <code class="literal">data</code> format is used like this:</p><div class="informalexample"><pre class="programlisting">&lt;img src="data:image/png;base64,{image}" /&gt;</pre></div><p>As we also noted, when you are testing in a web browser, Sencha Touch will return a test image link (<a class="ulink" href="http://www.sencha.com/img/sencha-large.png">http://www.sencha.com/img/sencha-large.png</a>).</p><p>While the test image returned when testing in the browser will work fine, if you are using the <code class="literal">file destination</code> format, it will display a missing image if you are using the <code class="literal">data destination</code> format. In the <a id="id905" class="indexterm"/>compiled application, the image will display correctly.</p><p>Another thing to keep in mind with these images is that you can use the standard <code class="literal">img height</code> and <code class="literal">width</code> tags to shrink the image to a particular screen size. For example:</p><div class="informalexample"><pre class="programlisting">var imageWidth = Ext.Viewport.getWindowWidth();
+var imageString = '&lt;img src="data:image/png;base64,{image}" width='+imageWidth' /&gt;';</pre></div><p>This will give you a great deal of flexibility if you store the full size image and use it in different ways.</p></div><div class="section" title="Sending images"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec102"/>Sending images</h2></div></div></div><p>If your application needs to <a id="id906" class="indexterm"/>transmit images, either to another user or an external API, you will need to use the data destination format. As noted previously, the file destination format is just a reference and it is relative to the device the application is running on.</p><p>Since the data format is base64, it can be transmitted just like any other string data. Unfortunately, there is currently no way to natively upload a file to a remote server without building your own custom API to accept the base64 data string and convert it to an image file.</p><p>However, if you compile your application using the PhoneGap compiler instead of the native Sencha Touch compiler, you can use their <code class="literal">fileTransfer</code> object<a id="id907" class="indexterm"/> to send files as a standard HTTP POST. You can find more information on PhoneGap and the <code class="literal">fileTransfer</code> <a id="id908" class="indexterm"/>object at <a class="ulink" href="http://docs.phonegap.com/en/1.0.0/phonegap_file_file.md.html#FileTransfer">http://docs.phonegap.com/en/1.0.0/phonegap_file_file.md.html#FileTransfer</a>.</p><p>PhoneGap provides an <a id="id909" class="indexterm"/>online compiling service that can create native applications from the Sencha Touch code much like the Sencha Touch Command tools we covered in a previous chapter.</p><p>More information on PhoneGap can be found at <a class="ulink" href="http://www.phonegap.com/">http://www.phonegap.com/</a>.</p></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec59"/>Summary</h1></div></div></div><p>In this chapter we talked about setting up your application to take advantage of the camera on your mobile device. With this we covered the following points:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">How to use DataViews to create a different looking UI</li><li class="listitem" style="list-style-type: disc">The difference between the <code class="literal">data</code> and <code class="literal">file</code> image formats</li><li class="listitem" style="list-style-type: disc">Using Sencha Touch to interact with the device's camera and local photo storage</li></ul></div><p>In the next chapter we will use DataViews to an even greater extent to create the board for a multiplayer game.</p></div></body></html>

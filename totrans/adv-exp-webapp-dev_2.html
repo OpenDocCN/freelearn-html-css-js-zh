@@ -1,0 +1,562 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;2.&#xA0;Building a Web API"><div class="titlepage"><div><div><h1 class="title"><a id="ch02"/>Chapter 2. Building a Web API</h1></div></div></div><p>With the foundations in place, we begin the process of building a Web API for our Vision project. We will start by setting up a persistence layer using MongoDB. We will then implement, feature-by-feature, the various aspects of our Web API.</p><div class="section" title="Persisting data with MongoDB and Mongoose"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec22"/>Persisting data with MongoDB and Mongoose</h1></div></div></div><p>MongoDB<a id="id47" class="indexterm"/> is an open source document-oriented database system. MongoDB stores structured data such as JSON-like documents, simplifying integration.</p><p>Let's start by creating <a id="id48" class="indexterm"/>a MongoDB schema for our project. The schema <a id="id49" class="indexterm"/>contains some basic information related to the project such as the project's name, a GitHub access token, a user, and a list of repositories.</p><p>Let's install Mongoose, a<a id="id50" class="indexterm"/> MongoDB Object Document Mapper for Node.js; it <a id="id51" class="indexterm"/>provides a schema-based solution to modeling your data.</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm install mongoose --save</strong></span>
+</pre></div><p>Let's configure our application to use MongoDB and Mongoose; we add a URL for MongoDB to our configuration files <code class="literal">./lib/config/*.js</code>:</p><div class="informalexample"><pre class="programlisting">{
+  "express": {
+    "port": 3000
+  },
+  "logger" : {
+    "filename": "logs/run.log",
+    "level": "silly"
+  },
+<span class="strong"><strong>  "mongo": {</strong></span>
+<span class="strong"><strong>    "url":  "mongodb://localhost/vision"</strong></span>
+<span class="strong"><strong>  }</strong></span>
+}</pre></div><p>Let's create a<a id="id52" class="indexterm"/> MongoDB connection module, <code class="literal">./lib/db/index.js</code>, <a id="id53" class="indexterm"/>which simply pulls in the MongoDB URL from our Winston configuration and opens a connection:</p><div class="informalexample"><pre class="programlisting">var mongoose = require('mongoose')
+, config = require('../configuration')
+, connectionString = config.get("mongo:url")
+, options = { server: { auto_reconnect: true, poolSize: 10 } };
+
+mongoose.connection.open(connectionString, options);</pre></div><p>We now create a model class <code class="literal">./lib/models/index.js</code> that defines our <code class="literal">ProjectSchema</code>:</p><div class="informalexample"><pre class="programlisting">var mongoose = require('mongoose'),
+    Schema = mongoose.Schema;
+
+var ProjectSchema = new Schema({
+    name         : { type: String, required: true, index: true }
+  , token        : { type: String }
+  , user         : { type: String, required: true, index: true }
+  , created      : { type: Date, default: Date.now }
+  , repositories : [ { type: String } ]
+});
+
+mongoose.model('Project', ProjectSchema);
+module.exports = mongoose;</pre></div><p>In order to run the following examples, we need a running instance of MongoDB. You can download MongoDB<a id="id54" class="indexterm"/> from <a class="ulink" href="http://www.mongodb.org">http://www.mongodb.org</a>. Run the following command to start MongoDB:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>mongod</strong></span>
+</pre></div></div></div>
+<div class="section" title="GitHub tokens"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec23"/>GitHub tokens</h1></div></div></div><p>In order to acquire a <a id="id55" class="indexterm"/>GitHub token, log in to your GitHub account and go to the <span class="strong"><strong>Accounts</strong></span> section of your <span class="strong"><strong>Settings</strong></span> page. Here you will need to enter your password. Now click on <span class="strong"><strong>Create new token</strong></span>, and name the token, if you prefer. Click on the <span class="strong"><strong>copy to clipboard</strong></span> button in order to copy the token into the following <code class="literal">login</code> file.</p><p>Let's create a <code class="literal">login</code> file—<code class="literal">./test/login.js</code>—with the data from GitHub. We will use this in order to call the GitHub API; this will be removed in a later chapter.</p><div class="informalexample"><pre class="programlisting">module.exports = {
+  user : '#USER#'
+  token : '#TOKEN#'
+}</pre></div></div>
+<div class="section" title="Feature: Create a project"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec24"/>Feature: Create a project</h1></div></div></div><div class="informalexample"><pre class="programlisting">As a vision user
+I want to create a new project
+So that I can monitor the activity of multiple repositories</pre></div><p>Let's add a test to our <a id="id56" class="indexterm"/>existing set of tests for our feature <code class="literal">Create a project</code>. This resource will POST a project to the route <code class="literal">/project</code> and return a <code class="literal">201 Created</code> status code. The following test: <code class="literal">./test/project.js</code> is the <code class="literal">201 Created</code> test.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip04"/>Tip</h3><p>This book will not document the full set of tests for a feature. Please refer to the source code for the full set of tests.</p></div></div><p>In this example, SuperTest executes an <code class="literal">end</code> function that returns a response; this allows us to check the headers and body of the response.</p><div class="informalexample"><pre class="programlisting">describe('when creating a new resource /project', function(){
+  var project = {
+    name: "new project"
+    , user: login.user  
+    , token: login.token
+    , repositories    : [ "12345", "9898" ]
+  };
+
+  it('should respond with 201', function(done){
+    request(app)
+    .post('/project')
+    .send(project)
+    .expect('Content-Type', /json/)
+    .expect(201)
+    .end(function (err, res) {
+      var proj = JSON.parse(res.text);
+      assert.equal(proj.name, project.name);
+      assert.equal(proj.user, login.user);
+      assert.equal(proj.token, login.token);
+      assert.equal(proj.repositories[0], project.repositories[0]);
+      assert.equal(proj.repositories[1], project.repositories[1]);
+      assert.equal(res.header['location'],'/project/' + proj._id);
+      done();
+      });
+    });
+  });</pre></div><p>In order for some of our tests to work, we will need some test data. So, the following <code class="literal">./test/project.js</code> will tear down any existing project data and add a new project using a Mocha hook <code class="literal">beforeEach</code>, that runs before each test:</p><div class="informalexample"><pre class="programlisting">beforeEach(function(done){
+  mongoose.connection.collections['projects'].drop( function(err) {
+  var proj = {
+    name: "test name"
+    , user: login.user  
+    , token: login.token
+    , repositories    : [ "node-plates" ]
+  };
+  
+  mongoose.connection.collections['projects'].insert(proj,function(err, docs) {
+      id = docs[0]._id;
+      done();
+    });
+  });
+})</pre></div><p>Let's install <code class="literal">string.js</code>, a lightweight JavaScript library that provides extra string methods. This will help us validate a request:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm install string --save</strong></span>
+</pre></div><p>Let's implement the <code class="literal">Create a project</code> feature. We start by creating a <code class="literal">Project</code> module <code class="literal">./lib/project/index.js</code>. We import a Mongoose schema for<a id="id57" class="indexterm"/> the <code class="literal">Project</code> model and define a function called <code class="literal">post</code>, which accepts the <code class="literal">name</code> and <code class="literal">data</code> as arguments. We call the static function <code class="literal">Project.findOne</code> to check if the project exists, and if the project is unique, we call the <code class="literal">project.save</code> function, which saves the project. </p><div class="informalexample"><pre class="programlisting">var ProjectSchema = require('../models').model('Project'); 
+
+function Project() {};
+
+Project.prototype.post = function(name, data, callback){
+  var query = {'name': name};
+  var project = new ProjectSchema(data);
+
+  ProjectSchema.findOne(query, function(error, proj) {
+    if (error) return callback(error, null);
+    if (proj != null) return callback(null, null);
+
+    project.save(function (error, p) {
+      if (error) return callback(error, null);
+      return callback(null, p);
+    });
+  });
+};</pre></div><p>Let's add a new <a id="id58" class="indexterm"/>route <code class="literal">./lib/routes/project.js</code>. We import a <code class="literal">logger</code> variable, a <code class="literal">ProjectService</code> module, and define a route called <code class="literal">Post</code>, that uses <code class="literal">req.body</code> to gain access to the items we POST in a request. We then validate the request that returns a <code class="literal">400 Bad Request</code> if it is invalid. If the request is valid, we add the user and the token to the body and call <code class="literal">Project.post</code>; if we get an error, we return <code class="literal">500 Internal Server Error</code>, and if the project already exists, we return a <code class="literal">409 Conflict</code> response. If the request is ok, we set <code class="literal">res.location</code> on the response for our new resource and return a <code class="literal">201 Created</code> response:</p><div class="informalexample"><pre class="programlisting">var logger = require("../logger")
+, S = require('string')
+, login = require('../../test/login')
+, ProjectService = require('../project')
+, Project = new ProjectService();
+
+exports.post = function(req, res){
+  logger.info('Post.' + req.body.name);
+
+  if (S(req.body.name).isEmpty() )
+  return res.json(400, 'Bad Request');
+
+  req.body.user = login.user;
+  req.body.token = login.token;
+
+  Project.post(req.body.name, req.body, function(error, project) {
+    if (error) return res.json(500, 'Internal Server Error');
+    if (project == null) return res.json(409, 'Conflict');
+    res.location('/project/' +  project._id);
+    return res.json(201, project);
+  });
+};</pre></div><p>In order to add our new route and allow our application to support HTTP POST, we need to make a few changes to our Express server <code class="literal">./lib/express/index.js</code>.</p><p>First, we import the <code class="literal">db</code> module we created at the beginning of this chapter, which opens a connection to a MongoDB database. We then import the <code class="literal">project</code> route module we just created. Importantly, <code class="literal">app.use(express.bodyParser())</code> parses the request body when the forms are submitted. The <code class="literal">bodyParser</code> middleware supports <code class="literal">application/x-www-form-urlencoded</code>, <code class="literal">application/json</code>, and <code class="literal">multipart/form-data</code>. We add a new route at <code class="literal">/project</code> for<a id="id59" class="indexterm"/> posting a project.</p><div class="informalexample"><pre class="programlisting">var express = require('express')
+  , http = require('http')
+  , config = require('../configuration')
+<span class="strong"><strong>  , db = require('../db')</strong></span>
+  , heartbeat = require('../routes/heartbeat')
+<span class="strong"><strong>  , project = require('../routes/project')</strong></span>
+  , error = require('../routes/error')
+  , notFound = require('../middleware/notFound')
+  , app = express();
+
+<span class="strong"><strong>app.use(express.bodyParser());</strong></span>
+app.set('port', config.get('express:port'));
+app.use(express.logger({ immediate: true, format: 'dev' }));
+app.get('/heartbeat', heartbeat.index);
+<span class="strong"><strong>app.post('/project', project.post);</strong></span>
+app.use(notFound.index);
+
+http.createServer(app).listen(app.get('port'));
+module.exports = app;</pre></div></div>
+<div class="section" title="Feature: Get a project"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec25"/>Feature: Get a project</h1></div></div></div><div class="informalexample"><pre class="programlisting">As a vision user
+I want to get a project
+So that I can monitor the activity of selected repositories</pre></div><p>Let's add a test to the<a id="id60" class="indexterm"/> existing set of tests <code class="literal">./test/project.js</code> for our feature <code class="literal">Get a project</code>. This resource will GET a project from route <code class="literal">/project/:id</code>, and return a <code class="literal">200 OK</code> status.</p><p>Let's install <code class="literal">underscore.js</code>; a utility-belt library that provides functional programming support:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm install underscore --save</strong></span>
+</pre></div><div class="informalexample"><pre class="programlisting">describe('when requesting an available resource /project/:id', function(){
+  it('should respond with 200', function(done){
+    request(app)
+    .get('/project/' + id)
+    .expect('Content-Type', /json/)
+    .expect(200)
+    .end(function (err, res) {
+      var proj = JSON.parse(res.text);
+      assert.equal(proj._id, id);
+      assert(_.has(proj, '_id'));
+      assert(_.has(proj, 'name'));
+      assert(_.has(proj, 'user'));
+      assert(_.has(proj, 'token'));
+      assert(_.has(proj, 'created'));
+      assert(_.has(proj, 'repositories'));
+      done();
+    });
+  });
+});</pre></div><p>Let's implement the <code class="literal">Get a project</code> feature <code class="literal">./lib/project/index.js</code> and add a <code class="literal">get</code> function. We attempt to retrieve a project by calling the static function <code class="literal">Project.findOne</code>. If we get an error, we return it, if we find the project then we return the project:</p><div class="informalexample"><pre class="programlisting">Project.prototype.get = function(id, callback){
+  var query = {"_id" : id};
+
+  ProjectSchema.findOne(query, function(error, project) {
+    if (error) return callback(error, null);
+    return callback(null, project);
+  });
+};</pre></div><p>Let's add a new route <code class="literal">./lib/routes/project.js</code>. We start by defining a route called <code class="literal">get</code>. We validate the request using a regular expression for a valid Mongoose <code class="literal">ObjectId</code>; and it returns<a id="id61" class="indexterm"/> a <code class="literal">400 Bad Request</code> status if the request is invalid. We attempt to retrieve a project by calling <code class="literal">Project.get</code> passing the <code class="literal">id</code>. If we get an error, we return <code class="literal">500 Internal Server Error</code>; if the project does not exist, we return a <code class="literal">404 Not Found</code>. If we find the project, we return the project and a <code class="literal">200 OK</code> response:</p><div class="informalexample"><pre class="programlisting">exports.get = function(req, res){
+  logger.info('Request.' + req.url);
+
+  Project.get(req.params.id, function(error, project) {
+    if (error) return res.json(500, 'Internal Server Error');
+    if (project == null) return res.json(404, 'Not Found');
+    return res.json(200, project);
+  });
+};</pre></div><p>Now add the following route to <code class="literal">./lib/express/index.js:</code>
+</p><div class="informalexample"><pre class="programlisting">app.get('/project/:id', project.get);</pre></div></div>
+<div class="section" title="Feature: Edit a project"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec26"/>Feature: Edit a project</h1></div></div></div><div class="informalexample"><pre class="programlisting">As a vision user
+I want to update a project
+So that I can change the repositories I monitor</pre></div><p>Let's add a test to our <a id="id62" class="indexterm"/>existing set of tests <code class="literal">./test/project.js</code> for our <code class="literal">Edit a project</code> feature. This resource will PUT a project to route <code class="literal">/project/:id</code>, and return a <code class="literal">204 No Content</code> status:</p><div class="informalexample"><pre class="programlisting">describe('when updating an existing resource /project/:id', function(){
+  var project = {
+    name: "new test name"
+    , user: login.user  
+    , token: login.token
+    , repositories    : [ "12345", "9898" ]
+  };
+
+  it('should respond with 204', function(done){
+
+    request(app)
+    .put('/project/' + id)
+    .send(project)
+    .expect(204, done);
+  });
+});</pre></div><p>Let's implement the <code class="literal">Edit a project</code> feature <code class="literal">./lib/project/index.js</code> and add a <code class="literal">put</code> function. We attempt to retrieve a project by calling the static function <code class="literal">Project.findOne</code>. If we get an error, we return it; if we cannot find the project, we return null. If we find the project, we update it and return the project:</p><div class="informalexample"><pre class="programlisting">Project.prototype.put = function(id, update, callback){
+  var query = {"_id": id};
+  delete update._id;
+
+  ProjectSchema.findOne(query, function(error, project) {
+    if (error) return callback(error, null);
+    if (project == null) return callback(null, null);
+
+    ProjectSchema.update(query, update, function(error, project) {
+      if (error) return callback(error, null);
+      return callback(null, {});
+    });
+  });
+};</pre></div><p>Let's add a new route <code class="literal">./lib/routes/project.js</code>. We start by defining a route called <code class="literal">put</code>, we then validate the request by returning a <code class="literal">400 Bad Request</code> if the request is invalid. We add a login user and token to the body of the request; this will be removed in a later chapter. We attempt to update the project by calling <code class="literal">Project.put</code> passing the <code class="literal">id</code>. If we get an error, we return <code class="literal">500 Internal Server Error</code>; if the project does not exist, we return <a id="id63" class="indexterm"/>a <code class="literal">404 Not Found</code> status. If we find the project, then we return a <code class="literal">204 No Content</code> response:</p><div class="informalexample"><pre class="programlisting">exports.put = function(req, res){
+  logger.info('Put.' + req.params.id);
+
+  if (S(req.body.name).isEmpty() )
+  return res.json(400, 'Bad Request');
+
+  req.body.user = login.user;
+  req.body.token = login.token;
+
+  Project.put(req.params.id, req.body, function(error, project) {
+    if (error) return res.json(500, 'Internal Server Error');
+    if (project == null) return res.json(404, 'Not Found');
+    return res.json(204, 'No Content');
+  });
+};</pre></div><p>Now, add the following route to the Express server <code class="literal">./lib/express/index.js</code>:</p><div class="informalexample"><pre class="programlisting">app.put('/project/:id', project.put);</pre></div></div>
+<div class="section" title="Feature: Delete a project"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec27"/>Feature: Delete a project</h1></div></div></div><div class="informalexample"><pre class="programlisting">As a vision user
+I want to delete a project
+So that I can remove projects no longer in use</pre></div><p>Let's add a test<a id="id64" class="indexterm"/> to <code class="literal">./test/project.js</code> for our feature <code class="literal">Delete a project</code>. This resource will DELETE a project at route <code class="literal">/project/:id</code> and return a <code class="literal">204 No Content</code> status:</p><div class="informalexample"><pre class="programlisting">describe('when deleting an existing resource /project/:id', function(){
+  it('should respond with 204', function(done){
+    request(app)
+    .del('/project/' + id)
+    .expect(204, done);
+  });
+});</pre></div><p>Let's implement the <code class="literal">Delete a project</code> feature <code class="literal">./lib/project/index.js</code> and add a <code class="literal">del</code> function. We attempt to delete a project by calling the static function <code class="literal">Project.findOne</code>. If we get an error, we return it; if we cannot find the project, we return <code class="literal">null</code>. If we find the project, we delete it and return an empty response.</p><div class="informalexample"><pre class="programlisting">Project.prototype.del = function(id, callback){
+  var query = {'_id': id};
+
+  ProjectSchema.findOne(query, function(error, project) {
+    if (error) return callback(error, null);
+    if (project == null) return callback(null, null);
+
+    project.remove(function (error) {
+      if (error) return callback(error, null);
+      return callback(null, {});
+    });
+  });
+};</pre></div><p>Let's add a new route <code class="literal">./lib/routes/project.js</code>. We start by defining a route called <code class="literal">del</code>. We attempt to delete the project by calling <code class="literal">Project.del</code> and passing the <code class="literal">id</code>. If we get an error, we return <code class="literal">500 Internal Server Error</code>; if the project does not exist, we return a <code class="literal">404 Not Found</code>.  If we find the project, we return a <code class="literal">204 No Content</code> response.</p><div class="informalexample"><pre class="programlisting">exports.del = function(req, res){
+  logger.info('Delete.' + req.params.id);
+
+  Project.del(req.params.id, function(error, project) {
+    if (error) return res.json(500, 'Internal Server Error');
+    if (project == null) return res.json(404, 'Not Found');
+    return res.json(204, 'No Content');
+  });
+};</pre></div><p>Now, add the following route to the Express server <code class="literal">./lib/express/index.js</code>:</p><div class="informalexample"><pre class="programlisting">app.del('/project/:id', project.del);</pre></div></div>
+<div class="section" title="Feature: List projects"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec28"/>Feature: List projects</h1></div></div></div><div class="informalexample"><pre class="programlisting">As a vision user
+I want to see a list of projects
+So that I can select a project I want to monitor</pre></div><p>Let's add<a id="id65" class="indexterm"/> a test to <code class="literal">./test/project.js</code> for our feature <code class="literal">List projects</code>. This resource will GET all projects from route <code class="literal">/project</code> and return a <code class="literal">200 Ok</code> status.</p><div class="informalexample"><pre class="programlisting">describe('when requesting resource get all projects', function(){
+  it('should respond with 200', function(done){
+    request(app)
+    .get('/project/?user=' + login.user)
+    .expect('Content-Type', /json/)
+    .expect(200)
+    .end(function (err, res) {
+      var proj = _.first(JSON.parse(res.text))
+      assert(_.has(proj, '_id'));
+      assert(_.has(proj, 'name'));
+      assert(_.has(proj, 'user'));
+      assert(_.has(proj, 'token'));
+      assert(_.has(proj, 'created'));
+      assert(_.has(proj, 'repositories'));
+      done();
+    });
+  });
+});</pre></div><p>Let's implement the <code class="literal">List projects</code> feature <code class="literal">./lib/project/index.js</code> and add an <code class="literal">all</code> function. We attempt to retrieve all projects by calling the static function <code class="literal">Project.find</code> and querying by a user <code class="literal">id</code>. If we get an error we return it, if we find the projects, we return the projects:</p><div class="informalexample"><pre class="programlisting">Project.prototype.all = function(id, callback){
+  var query = {"user" : id};
+
+  ProjectSchema.find(query, function(error, projects) {
+    if (error) return callback(error, null);
+    return callback(null, projects);
+  });
+};</pre></div><p>Let's add a new route <code class="literal">./lib/routes/project.js</code>. We start by defining a route called <code class="literal">all</code>. We start by retrieving a users <code class="literal">id</code>. In order to accommodate the fact that we have not implemented an authentication strategy; we get the user details from our hard-coded <code class="literal">login.user</code> object. We will clean this up in a future chapter. We attempt to retrieve a project by calling <code class="literal">Project.all</code>, passing the <code class="literal">userId</code>. If we get an error, we return <code class="literal">500 Internal Server Error</code>; if we find projects, we return the projects and a <code class="literal">200 OK</code> response.</p><div class="informalexample"><pre class="programlisting">exports.all = function(req, res){
+  logger.info('Request.' + req.url);
+
+  var userId = login.user || req.query.user || req.user.id;
+
+  Project.all(userId, function(error, projects) {
+    if (error) return res.json(500, 'Internal Server Error');
+    if (projects == null) projects = {};
+    return res.json(200, projects);
+  });
+};</pre></div><p>Now, add the following<a id="id66" class="indexterm"/> route to the Express server <code class="literal">./lib/express/index.js</code>:</p><div class="informalexample"><pre class="programlisting">app.get('/project', project.all);</pre></div></div>
+<div class="section" title="GitHub API"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec29"/>GitHub API</h1></div></div></div><p>Our project API is complete <a id="id67" class="indexterm"/>but things are about to get a little more complicated as we attempt to communicate with the GitHub API. Let's install the following modules.</p><p>The <code class="literal">github</code> module provides an object-oriented wrapper for the GitHub v3 API; the complete API for this module can be found at <a class="ulink" href="http://mikedeboer.github.io/node-github/">http://mikedeboer.github.io/node-github/</a>.</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm install github --save</strong></span>
+</pre></div><p>The <code class="literal">async</code> module is a utility module that provides around 20 powerful functions for working with asynchronous JavaScript. The <code class="literal">async</code> module is a control-flow module and will allow us to do operations over IO in a clean, controlled way.</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm install async --save</strong></span>
+</pre></div><p>The <code class="literal">moment.js</code> is a library <a id="id68" class="indexterm"/>for parsing, validating, manipulating, and formatting dates. </p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm install moment --save</strong></span>
+</pre></div></div>
+<div class="section" title="Feature: List repositories"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec30"/>Feature: List repositories</h1></div></div></div><div class="informalexample"><pre class="programlisting">As a vision user
+I want to see a list of all repositories for a GitHub account
+So that I can select and monitor repositories for my project</pre></div><p>Let's add a test to <code class="literal">./test/github.js</code> for our feature <code class="literal">List repositories</code>. This resource will GET all repositories for a <a id="id69" class="indexterm"/>project from the route <code class="literal">project/:id/repos</code> and return a <code class="literal">200 Ok</code> status:</p><div class="informalexample"><pre class="programlisting">describe('when requesting an available resource /project/:id/repos', function(){
+  it('should respond with 200', function(done){
+    this.timeout(5000);
+    request(app)
+    .get('/project/' + id + '/repos/')
+    .expect('Content-Type', /json/)
+    .expect(200)
+    .end(function (err, res) {
+      var repo = _.first(JSON.parse(res.text))
+      assert(_.has(repo, 'id'));
+      assert(_.has(repo, 'name'));
+      assert(_.has(repo, 'description'));
+      done();
+    });
+  });
+});</pre></div><p>The first thing we need to do is create a <code class="literal">GitHubRepo</code> module in <code class="literal">./lib/github/index.js</code>. We start by importing the required modules including <code class="literal">github</code>. We define a constructor function that accepts as input a GitHub access <code class="literal">token</code> and a <code class="literal">user</code>. We then instantiate a <code class="literal">GitHubApi</code> module, calling <code class="literal">github.authenticate</code>, which authenticates based on the token:</p><div class="informalexample"><pre class="programlisting">var GitHubApi = require("github")
+, config = require('../configuration')
+, async =  require("async")
+, moment = require('moment')
+, _ =  require("underscore")
+
+function GitHubRepo(token, user) {
+  this.token = token;
+  this.user = user;
+
+  this.github = new GitHubApi({
+    version: "3.0.0",
+    timeout: 5000 });
+
+  this.github.authenticate({
+    type: "oauth",
+    token: token
+  });
+};
+
+module.exports = GitHubRepo;</pre></div><p>Let's implement the feature <code class="literal">List repositories</code> and add it to our new <code class="literal">GitHubRepo</code> module in <code class="literal">./lib/github/index.js</code>. We start by defining our prototype function <code class="literal">repositories</code>. We call <code class="literal">getAll</code> on the <code class="literal">github</code> module. If we get an error, we return the error; if no repositories are found we return a <code class="literal">null</code> value. If we find repositories, we use the <code class="literal">map</code> function to create a new array of items using the <code class="literal">underscore pick</code> function to select <a id="id70" class="indexterm"/>the three attributes <code class="literal">id</code>, <code class="literal">name</code>, and <code class="literal">description</code>. We return these <code class="literal">items</code> via <code class="literal">callback</code>:</p><div class="informalexample"><pre class="programlisting">GitHubRepo.prototype.repositories = function(callback) {
+  this.github.repos.getAll({}, function(error, response) {
+    if (error) return callback(error, null);
+    if (response == null) return callback(null, null);
+
+    var items = response.map(function(model) {
+      return _.pick(model, ['id','name', 'description']);
+    });
+
+    callback(null, items);
+  });
+};</pre></div><p>Let's add a <code class="literal">repos</code> function to <code class="literal">./lib/project/index.js</code>. We start by importing the <code class="literal">GitHubRepo</code> module and we attempt to retrieve the project by calling the static function <code class="literal">Project.findOne</code>. If we get an error, we return the error; if the project does not exist we return a <code class="literal">null</code> value. If we find the project, we create a <code class="literal">GithubRepo</code> module and initialize it with a <code class="literal">token</code> and a <code class="literal">user</code>, and assign it to <code class="literal">git</code>. We then call <code class="literal">git.repositories</code> which returns a response. If we get an error, we return an <code class="literal">error</code>, if we do not find any repositories, we return a <code class="literal">null</code> value. If we find repositories, we use the <code class="literal">map</code> function to create a new array of items using <code class="literal">underscore pick</code> function to select three attributes, including <code class="literal">id</code>, <code class="literal">name</code>, and <code class="literal">description</code>. We add a fourth attribute, <code class="literal">enabled</code>, which signifies if our project has the repository assigned to it and returns all the repositories:</p><div class="informalexample"><pre class="programlisting">, GitHubRepo = require('../github')
+
+Project.prototype.repos = function(id, callback){
+  ProjectSchema.findOne({_id: id}, function(error, project) {
+    if (error) return callback(error, null);
+    if (project == null) return callback(null, null);
+
+    var git = new GitHubRepo(project.token, project.user);
+
+    git.repositories(function(error, response){
+      if (error) return callback(error, null);
+      if (response == null) return callback("error", null);
+
+      items = response.map(function(model) {
+        var item = _.pick(model, ['id','name', 'description''description']);
+        var enabled = _.find(project.repositories, function(p){ return p == item.name; });
+        (enabled) ? item.enabled = 'checked' : item.enabled = '';
+        return item;
+      });
+
+      return callback(null, items);
+    });
+  });
+};</pre></div><p>Let's add a new route <code class="literal">repos</code> to <code class="literal">./lib/routes/github.js</code>. We instantiate a new <code class="literal">ProjectService</code> and then attempt to retrieve the projects repositories by calling the function <code class="literal">Project.repos</code>. If we get an error, we return <code class="literal">500 Internal Server Error</code>. If no repositories are returned, we <a id="id71" class="indexterm"/>return a <code class="literal">404 Not Found</code> status. If we receive repositories, we return a <code class="literal">200 OK</code> status with the repositories.</p><div class="informalexample"><pre class="programlisting">, ProjectService = require('../project')
+, Project = new ProjectService();
+
+exports.repos = function(req, res){
+  logger.info('Request.' + req.url);
+
+  Project.repos(req.params.id, function(error, repos) {
+    if (error) return res.json(500, 'Internal Server Error');
+    if (repos == null) return res.json(404, 'Not Found');
+    return res.json(200, repos);
+  });
+};</pre></div><p>Now, add the following route to <code class="literal">./lib/express/index.js</code>:</p><div class="informalexample"><pre class="programlisting">app.get('/project/:id/repos', github.repos);</pre></div></div>
+<div class="section" title="Feature: List commits"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec31"/>Feature: List commits</h1></div></div></div><div class="informalexample"><pre class="programlisting">As a vision user
+I want to see a list of multiple repository commits in real time
+So that I can review those commits</pre></div><p>Let's add a test to <code class="literal">./test/github.js</code> for our <code class="literal">List commits</code> feature. This resource will GET the 10 most recent commits for all repositories in a project via the route <code class="literal">project/:id/commits</code> and <a id="id72" class="indexterm"/>return a <code class="literal">200 OK</code> status:</p><div class="informalexample"><pre class="programlisting">describe('when requesting an available resource /project/:id/commits', function(){
+  it('should respond with 200', function(done){
+    this.timeout(5000);
+    request(app)
+    .get('/project/' + id + '/commits')
+    .expect('Content-Type', /json/)
+    .expect(200)
+    .end(function (err, res) {
+      var commit = _.first(JSON.parse(res.text))
+      assert(_.has(commit, 'message'));
+      assert(_.has(commit, 'date'));
+      assert(_.has(commit, 'login'));
+      assert(_.has(commit, 'avatar_url'));
+      assert(_.has(commit, 'ago'));
+      assert(_.has(commit, 'repository'));
+      done();
+    });
+  });
+});</pre></div><p>Let's implement the <code class="literal">List commits</code> feature, and add it to our new <code class="literal">GitHubRepo</code> module in <code class="literal">./lib/github/index.js</code>. We start by defining our function, <code class="literal">commits</code>, that takes a list of <code class="literal">repos</code>. We use <code class="literal">async.each</code> to loop though all <code class="literal">repos</code>. The <code class="literal">async</code> module allows us to do asynchronous work over IO.</p><p>We then call <code class="literal">github.repos.getCommits</code>; we pass it our GitHub <code class="literal">user</code> and <code class="literal">repo</code>. We call the <code class="literal">callback</code> if <code class="literal">github.repos.getCommits()</code> returns an error. When we get a response, we use the <code class="literal">map</code> function to create a new array of items using the <code class="literal">uderscore pick</code> function to select two attributes: <code class="literal">committer</code> and <code class="literal">message</code>. If the item has a <code class="literal">committer</code>, we use underscores the <code class="literal">extend</code> function and add the committers, <code class="literal">login</code> and <code class="literal">avatar_url</code>. We return the items to the main function via <code class="literal">callback</code> and use underscores <code class="literal">sort</code> function to sort the items by date and select the top 10 items. We then return the commits via <code class="literal">callback</code>:</p><div class="informalexample"><pre class="programlisting">GitHubRepo.prototype.commits = function(repos, callback) {
+  var me = this;
+  var items = [];
+
+  async.each(repos, function(repo, callback) {
+    me.github.repos.getCommits({ user: me.user,
+      repo: repo }, function(error, response) {
+      if (error) return callback();
+      if (response == null) return callback();
+      
+      var repoItems = response.map(function(model) {
+        var item =_.pick(model.commit, ['message']);
+        if (model.commit.committer) _.extend(item, _.pick(model.commit.committer, ['date']));
+        if (model.committer) _.extend(item, _.pick(model.committer, ['login', 'avatar_url']));
+        item.ago = moment(item.date).fromNow();
+        item.repository  = repo;
+        return item;
+      });
+
+      items = _.union(items, repoItems);
+      callback(null, items );
+    });
+  }
+  , function(error) {
+    var top = _.chain(items)
+    .sortBy(function(item){ return item.date })
+    .reverse()
+    .first(10)
+    .value();
+
+    callback(error, top);
+  });
+};</pre></div><p>Let's add a <code class="literal">commits</code> <a id="id73" class="indexterm"/>function to <code class="literal">./lib/project/index.js</code>. We start by defining a function called <code class="literal">commits</code>. We attempt to retrieve the project by calling the static function <code class="literal">Project.findOne</code>. If we get an error, we return the error. If the project does not exist, we return a <code class="literal">null</code> value. If we find the project, we create a <code class="literal">GithubRepo</code> module and initialize it with a token and a user and assign it to <code class="literal">git</code>. We then call the <code class="literal">git.commits</code> function and pass a list of repositories returning a response. If we get an error, we return an error. If we get a valid response, we return the commits.</p><div class="informalexample"><pre class="programlisting">Project.prototype.commits = function(id, callback){
+  ProjectSchema.findOne({_id: id}, function(error, project) {
+    if (error) return callback(error, null);
+    if (project == null) return callback(null, null);
+
+    var git = new GitHubRepo(project.token, project.user);
+
+    git.commits(project.repositories, function(error, response){
+      if (error) return callback(error, null);
+      return callback(null, response);
+    });
+  });
+};</pre></div><p>Let's add a new route <code class="literal">commits</code> to <code class="literal">./lib/routes/github.js</code>. We attempt to retrieve the commits by calling <code class="literal">Project.commits</code>. If we get an error we return <code class="literal">500 Internal Server Error</code>. If no commits are returned we return a <code class="literal">404 Not Found</code>. If we receive commits we return a <code class="literal">200 OK</code> response with the commits:</p><div class="informalexample"><pre class="programlisting">exports.commits = function(req, res){
+  logger.info('Request.' + req.url);
+
+  Project.commits(req.params.id, function(error, commits) {
+    if (error) return res.json(500, 'Internal Server Error');
+    if (commits == null) return res.json(404, 'Not Found');
+    return res.json(200, commits);
+  });
+};</pre></div><p>Now, add the following<a id="id74" class="indexterm"/> route to <code class="literal">./lib/express/index.js</code>:</p><div class="informalexample"><pre class="programlisting">app.get('/project/:id/commits', github.commits);</pre></div></div>
+<div class="section" title="Feature: List issues"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec32"/>Feature: List issues</h1></div></div></div><div class="informalexample"><pre class="programlisting">As a vision user
+I want to see a list of multiple repository issues in real time
+So that I can review and fix issues</pre></div><p>Let's add a test to <code class="literal">./test/project.js</code> for<a id="id75" class="indexterm"/> our <code class="literal">List issues</code> feature. This resource will GET all projects from the route <code class="literal">project/:id/issues</code> and return a <code class="literal">200 OK</code> response:</p><div class="informalexample"><pre class="programlisting">describe('when requesting an available resource /project/:id/issues', function(){
+  it('should respond with 200', function(done){
+    this.timeout(5000);
+    request(app)
+    .get('/project/' + id + '/issues')
+    .expect('Content-Type', /json/)
+    .expect(200)
+    .end(function (err, res) {
+      var issue = _.first(JSON.parse(res.text))
+      assert(_.has(issue, 'title'));
+      assert(_.has(issue, 'state'));
+      assert(_.has(issue, 'updated_at'));
+      assert(_.has(issue, 'login'));
+      assert(_.has(issue, 'avatar_url'));
+      assert(_.has(issue, 'ago'));
+      assert(_.has(issue, 'repository'));
+      done();
+    });
+  });
+});</pre></div><p>Let's implement the feature <code class="literal">List issues</code> and add it to our new <code class="literal">GitHubRepo</code> module <code class="literal">./lib/github/index.js</code>. We start by defining our function <code class="literal">issues</code> which takes a list of <code class="literal">repos</code>. We use <code class="literal">async.each</code> to loop though all <code class="literal">repositories</code>.</p><p>We then call <code class="literal">github.repos.repoIssues</code> and we pass our GitHub <code class="literal">user</code> and <code class="literal">repo</code>, calling the callback if <code class="literal">github.repos.repoIssues()</code> returns an <code class="literal">error</code>. If we get a valid response we use the <code class="literal">map</code> function to create a new array of items using <code class="literal">underscore pick</code> function to select four <a id="id76" class="indexterm"/>attributes, including <code class="literal">id</code>, <code class="literal">title</code>, <code class="literal">state</code>, and <code class="literal">updated_at</code>. If the item has a user, we use underscores <code class="literal">extend</code> function and add the users <code class="literal">login</code> and <code class="literal">avatar_url</code>. We then return the items to the main function via <code class="literal">callback</code> and use the <code class="literal">underscore sort</code> function to sort the items by date. We then select the top 10 issues and return the issues via <code class="literal">callback</code>.</p><div class="informalexample"><pre class="programlisting">GitHubRepo.prototype.issues = function(repos, callback) {
+  var me = this;
+  var items = [];
+
+  async.each(repos, function(repo, callback) {
+    me.github.issues.repoIssues({ user: me.user, repo: repo }, function(error, response) {
+      if (error) return callback();
+      if (response == null) return callback();
+
+      var repoItems = response.map(function(model) {
+        var item = _.pick(model, ['title', 'state', 'updated_at']);
+        if (model.user) _.extend(item, _.pick(model.user, ['login', 'avatar_url']));
+        item.ago = moment(item.updated_at).fromNow();
+        item.repository = repo;
+        return item;
+      });
+
+      items = _.union(items, repoItems);
+      callback(null, items );
+    });
+  }
+  , function(error) {
+    var top = _.chain(items)
+    .sortBy(function(item){ return item.updated_at; })
+    .reverse()
+    .first(10)
+    .value();
+
+    callback(error, top);
+  });
+};</pre></div><p>Let's add an <code class="literal">issues</code> function to <code class="literal">./lib/project/index.js</code>. We start by defining a function called <code class="literal">issues</code>. We attempt to retrieve the project by calling the static function <code class="literal">Project.findOne</code>. If we get an error, we return the <code class="literal">error</code>. If the project does not exist, we return a <code class="literal">null</code> value. If we find the project, we create a <code class="literal">GitHubRepo</code> module and initialize it with a <code class="literal">token</code> and a<a id="id77" class="indexterm"/> <code class="literal">user</code>, and assign it to <code class="literal">git</code>. We then call <code class="literal">git.issues</code>, passing a list of repositories, returning a response. If we get an error, we return an <code class="literal">error</code> and if we get a valid response, we return the issues and a <code class="literal">200 OK</code> response:</p><div class="informalexample"><pre class="programlisting">exports.issues = function(req, res){
+  logger.info('Request.' + req.url);
+
+  Project.findOne({_id: req.params.id}, function(error, project) {
+    if (error) return res.json(500, 'Internal Server Error');
+    if (project == null) return res.json(404, 'Page Not Found');
+
+    var git = new GitHubRepo(project.token, project.user);
+
+    git.issues(project.repositories, function(error, response){
+      if (error) return res.json(500, 'Internal Server Error');
+      return res.json(200, response);
+    });
+  });
+};</pre></div><p>Let's add a new route, <code class="literal">issues</code>, to <code class="literal">./lib/routes/github.js</code>. We attempt to retrieve the issues by calling <code class="literal">Project.issues</code>. If we get an error we return <code class="literal">500 Internal Server Error</code>. If no issues are returned we return a <code class="literal">404 Not Found</code> response, and if we receive issues we return a <code class="literal">200 OK</code> response with the issues:</p><div class="informalexample"><pre class="programlisting">exports.issues = function(req, res){
+  logger.info('Request.' + req.url);
+
+  Project.issues(req.params.id, function(error, issues) {
+    if (error) return res.json(500, 'Internal Server Error');
+    if (issues == null) return res.json(404, 'Not Found');
+    return res.json(200, issues);
+  });
+};</pre></div><p>Now, add the following <a id="id78" class="indexterm"/>route to <code class="literal">./lib/express/index.js</code>:</p><div class="informalexample"><pre class="programlisting">app.get('/project/:id/issues', github.issues);</pre></div></div>
+<div class="section" title="Validating parameters with param middleware"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec33"/>Validating parameters with param middleware</h1></div></div></div><p>You will have noticed that <a id="id79" class="indexterm"/>we have repeated the <code class="literal">id</code>  validation in <a id="id80" class="indexterm"/>each of our routes. Let's improve things using <code class="literal">app.params</code>.</p><p>Here is the offending line of code that simply checks to see if our <code class="literal">id</code> is a valid MongoDB <code class="literal">id</code>:</p><div class="informalexample"><pre class="programlisting">if (req.params.id.match(/^[0-9a-fA-F]{24}$/) == null)
+  return res.json(400, 'Bad Request');</pre></div><p>Let's add a middleware to handle this <code class="literal">./lib/middleware/id.js</code>. We define a <code class="literal">validate</code> function that takes four parameters, with the last being the value of <code class="literal">id</code>. We then validate the <code class="literal">id</code> parameter, returning a <code class="literal">400 Bad Request</code>,<code class="literal"> </code>if it's invalid. We then call <code class="literal">next()</code>, which calls the next middleware in our Express stack:</p><div class="informalexample"><pre class="programlisting">exports.validate = function(req, res, next, id){
+  if (id.match(/^[0-9a-fA-F]{24}$/) == null)
+  return res.json(400, 'Bad Request');
+  next();
+}</pre></div><p>Now we can use this <code class="literal">id</code> middleware in our Express server. Let's include the <code class="literal">param</code> middleware and add this line before the first route so that it applies to all of our routes: <code class="literal">./lib/express/index.js</code>:</p><div class="informalexample"><pre class="programlisting">, id = require('../middleware/id')
+..
+app.param('id', id.validate);</pre></div><p>We can now edit our two route modules <code class="literal">./lib/routes/project.js</code> and <code class="literal">./lib/routes/github.js</code>, and remove the offending line of code. The <code class="literal">id</code> param will now handle this for all routes.</p></div>
+<div class="section" title="Route improvements"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec34"/>Route improvements</h1></div></div></div><p>We now have quite a few routes required <a id="id81" class="indexterm"/>in our Express server; let's clean this up. A common pattern in <code class="literal">node.js</code> is to include an <code class="literal">index</code> file that returns all files in its current directory. We will use <code class="literal">require-directory</code> to do this for us:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm install require-directory –save</strong></span>
+</pre></div><p>Let's create a new module <code class="literal">./lib/routes/index.js</code>. with the following code:</p><div class="informalexample"><pre class="programlisting">var requireDirectory = require('require-directory');
+module.exports = requireDirectory(module, __dirname, ignore);</pre></div><p>Now, all routes in the <code class="literal">./lib/routes/</code> folder will be exposed under a single variable, <code class="literal">routes</code>:</p><div class="informalexample"><pre class="programlisting">  var express = require('express')
+  , http = require('http')
+  , config = require('../configuration')
+  , db = require('../db')
+<span class="strong"><strong>  , routes = require('../routes')</strong></span>
+  , notFound = require('../middleware/notFound')
+<span class="strong"><strong>  , id = require('../middleware/id')</strong></span>
+  , app = express();
+
+app.use(express.bodyParser());
+app.set('port', config.get('express:port'));
+app.use(express.logger({ immediate: true, format: 'dev' }));
+<span class="strong"><strong>app.param('id', id.validate);</strong></span>
+app.get('/heartbeat', <span class="strong"><strong>routes.heartbeat.index</strong></span>);
+app.get('/project/:id', <span class="strong"><strong>routes.project.get</strong></span>);
+app.get('/project', <span class="strong"><strong>routes.project.all</strong></span>);
+app.post('/project', <span class="strong"><strong>routes.project.post</strong></span>);
+app.put('/project/:id', <span class="strong"><strong>routes.project.put</strong></span>);
+app.del('/project/:id', <span class="strong"><strong>routes.project.del</strong></span>);
+app.get('/project/:id/repos', <span class="strong"><strong>routes.github.repos</strong></span>);
+app.get('/project/:id/commits', <span class="strong"><strong>routes.github.commits</strong></span>);
+app.get('/project/:id/issues', <span class="strong"><strong>routes.github.issues</strong></span>);
+app.use(notFound.index);
+
+http.createServer(app).listen(app.get('port'));
+module.exports = app;</pre></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec35"/>Summary</h1></div></div></div><p>We have now completed our Web API. We have implemented a basic MongoDB provider; we are using Mongoose to give us a bit of schema support. We have also made a small improvement to our Express server, cleaning up the routes.</p><p>In the next chapter, we will consume this API when we build our client.</p></div></body></html>

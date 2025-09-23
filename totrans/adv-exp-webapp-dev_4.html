@@ -1,0 +1,269 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;4.&#xA0;Real-time Communication"><div class="titlepage"><div><div><h1 class="title"><a id="ch04"/>Chapter 4. Real-time Communication</h1></div></div></div><p>Our application is beginning to take shape. We have a list of projects and a form that allows us to add, delete, and update projects. We are also able to assign repositories to these projects, which allows us to view a list of issues/commits for all repositories in a project. This chapter will guide you through the next phase of our client setup: displaying a list of project repository commits and issues in real time using Redis and Socket.IO.</p><p>We would ideally like the application to continue working with Socket.IO/Redis switched off, leaving the application without a real-time element. We will attempt to implement these features with this in mind.</p><div class="section" title="Caching data with Redis"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec49"/>Caching data with Redis</h1></div></div></div><p>Redis <a id="id123" class="indexterm"/>is an extremely fast, open source, in-memory key value store. Redis has a useful Pub/Sub mechanism that we will use to push messages to a Socket.IO subscriber that will emit events to the client.</p><p>Visit this website in order to download and install<a id="id124" class="indexterm"/> Redis: <a class="ulink" href="http://redis.io/download">http://redis.io/download</a>.</p><p>Once Redis is<a id="id125" class="indexterm"/> installed, you<a id="id126" class="indexterm"/> can start it with the following command:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>redis-server</strong></span>
+</pre></div><p>In order to start the Redis command-line interface, CLI issues the following command:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>redis-cli</strong></span>
+</pre></div><p>The following commands can be issued from the CLI:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">To monitor activity on Redis:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>monitor</strong></span>
+</pre></div></li><li class="listitem" style="list-style-type: disc">To clear the Redis store:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>flushall</strong></span>
+</pre></div></li><li class="listitem" style="list-style-type: disc">To view all the keys stored in Redis:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>keys *</strong></span>
+</pre></div></li><li class="listitem" style="list-style-type: disc">To get the value of a key:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>get &lt;key&gt;</strong></span>
+</pre></div></li></ul></div><p>In order to use Redis in our application, install the <code class="literal">node-redis</code> client, as follows:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm install redis --save</strong></span>
+</pre></div><p>Let's configure our application to use Redis by updating the<code class="literal">./lib/config/*.json</code> config files with the following configuration:</p><div class="informalexample"><pre class="programlisting">  "redis": {
+    "port": 6379
+  , "host": "localhost"
+  }</pre></div><p>First, we create a simple module, <code class="literal">Redis</code>, that wraps up the Redis connection <code class="literal">./lib/cache/redis.js</code>. We start by importing the <code class="literal">redis</code> module. We define a <code class="literal">Redis</code> module, which calls <code class="literal">createClient</code> in order to create a Redis client. </p><p>We pull in the Redis configuration data from the preceding:</p><div class="informalexample"><pre class="programlisting">var redis = require('redis')
+, config = require('../configuration');
+
+function Redis() {
+  this.port = config.get("redis:port");
+  this.host = config.get("redis:host");
+  this.password = config.get("redis:password");
+  this.client = redis.createClient(this.port, this.host);
+  if (this.password) this.client.auth(this.password, function() {});
+}
+
+module.exports = Redis;</pre></div><p>Let's extend <a id="id127" class="indexterm"/>our <code class="literal">Redis</code> module and create a <code class="literal">Publisher</code> module that will publish<a id="id128" class="indexterm"/> messages using the Redis Pub/Sub feature, <code class="literal">./lib/cache/publisher/index.js</code>. We start by importing our <code class="literal">Redis</code> module and use the <code class="literal">util</code> module to extend the <code class="literal">Redis</code> module with the <code class="literal">Publisher</code> module. We then define our <code class="literal">Publisher</code> module, which includes a <code class="literal">save</code> function, which saves an object as a string to Redis and a <code class="literal">publish</code> function, which publishes a message to Redis.</p><p>The <code class="literal">Publisher</code> module is defined as shown in the following code snippet:</p><div class="informalexample"><pre class="programlisting">var Redis = require('../../cache/redis')
+  , util = require('util');
+
+util.inherits(Publisher, Redis);
+
+function Publisher() {
+  Redis.apply(this, arguments);
+};
+
+Redis.prototype.save = function(key, items) {
+  this.client.set(key, JSON.stringify(items));
+};
+
+Redis.prototype.publish = function(key, items) {
+  this.client.publish(key, JSON.stringify(items));
+};
+
+module.exports = Publisher;</pre></div><p>Next, we extend our <code class="literal">Redis</code> module and create a <code class="literal">Subscribe</code>
+<code class="literal">r./lib/cache/subscriber/index.js</code>, which consumes published messages. We start by importing our <code class="literal">Redis</code> module and use the <code class="literal">util</code> module to extend the <code class="literal">Redis</code> module with the <code class="literal">Subscriber</code> module. We then define our <code class="literal">Subscriber</code> module, which includes a <code class="literal">subscribe</code> function. This allows the user to subscribe to messages on a <code class="literal">key</code>:</p><div class="informalexample"><pre class="programlisting">var Redis = require('../../cache/redis')
+  , util = require('util');
+
+util.inherits(Subscriber, Redis);
+
+function Subscriber() {
+  Redis.apply(this, arguments);
+};
+
+Subscriber.prototype.subscribe = function(key) {
+  this.client.subscribe(key);
+};
+
+module.exports = Subscriber;</pre></div></div></div>
+<div class="section" title="Populating Redis"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec50"/>Populating Redis</h1></div></div></div><p>The <code class="literal">./lib/cache/populate.js</code> script populates a Redis store with new commits/issues using our<a id="id129" class="indexterm"/> preceding modules. We will demonstrate scheduling this script later in the chapter. We start by importing the <code class="literal">Publisher</code> module, and use <code class="literal">util.inherits</code> to extend the <code class="literal">Publisher</code> module with a <code class="literal">Populate</code> function, giving our <code class="literal">Populate</code> module the ability to publish messages.</p><p>We then define the <code class="literal">Populate</code> function and add a <code class="literal">run</code> function, that gets all projects from MongoDB. We use <code class="literal">async.each</code> to loop through each project, using the projects <code class="literal">user</code> and <code class="literal">token</code> to instantiate a <code class="literal">GitHubRepo</code> module. We then call <code class="literal">git.commits</code>, passing a list of <code class="literal">repositories</code>; the response returned is a sorted list of the 10 latest commits. We save the response to Redis using <code class="literal">project._id</code> as the key. We then publish the <code class="literal">project._id</code> and <code class="literal">commits</code>, via the <code class="literal">publish</code> function to activate a refresh. We then repeat the whole process for <code class="literal">issues</code>.</p><div class="informalexample"><pre class="programlisting">var async =  require('async')
+  , _ =  require('underscore')
+  , util = require('util')
+  , db = require('../db')
+  , Publisher = require('../cache/publisher')
+  , GitHubRepo = require('../github')
+  , Project = require('../models').model('Project');
+
+util.inherits(Populate, Publisher);
+
+function Populate() {
+  Publisher.apply(this, arguments);
+};
+
+Populate.prototype.run = function(callback) {
+  var me = this;
+
+  Project.find({}, function(error, projects) {
+    if (error) callback();
+    if (projects == null) callback();
+
+    async.each(projects, function(project, callback) {
+      var git = new GitHubRepo(project.token, project.user);
+
+      git.commits(project.repositories, function(error, commits) {
+        if (error || !commits) callback();
+
+        me.save('commits:' + project._id, commits);
+        me.publish('commits', { projectId : project._id, commits : commits});
+
+        git.issues(project.repositories, function(error, issues) {
+          if (error || !issues) callback();
+
+          me.save('issues' + project._id, issues);
+          me.publish('issues', { projectId : project._id, issues : issues});
+        });
+      });
+
+      callback(error);
+    }
+    , function(error) {
+      callback(error);
+    });
+  });
+};
+module.exports = Populate;</pre></div></div>
+<div class="section" title="Socket.IO"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec51"/>Socket.IO</h1></div></div></div><p>Socket.IO <a id="id130" class="indexterm"/>is a real-time application framework that allows for cross-browser, real-time communication between a browser and server.</p><p>The lack of browser and server support for the emerging WebSocket standard means we cannot easily achieve real-time communication across browsers. In order to achieve this, Socket.IO supports multiple transport protocols including WebSockets, long polling, XHR, and flashsockets, that function as a fallback mechanism for older browsers. Browsers that do not support WebSockets will simply fall back to a transport protocol they do support.</p><p>Socket.IO comes in two parts: a server-side module and a client-side script. Both parts need to be installed in order for our application to support bidirectional duplex communication. Let's install the server piece via NPM:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm install socket.io --save</strong></span>
+</pre></div><p>Let's configure our application to use Socket.IO by updating our <code class="literal">./config/*.json</code> config files with the following configuration:</p><div class="informalexample"><pre class="programlisting">"sockets": {
+    "loglevel": 3
+  , "pollingduration": 10
+  , "browserclientminification" : false
+  , "browserclientetag" : false
+  , "browserclientgzip" : false
+  }</pre></div><p>The next <a id="id131" class="indexterm"/>step is to wire up Socket.IO to Express. Let's create and configure a typical Socket.IO server: <code class="literal">./lib/socket/index.js</code>. We define our <code class="literal">Socket</code> module, which accepts a single argument: <code class="literal">server</code>. We require the <code class="literal">socket.io</code> module and create a new Socket.IO server, passing our Express-enabled HTTP server to it. We then configure our Socket.IO server by setting sensible values for <code class="literal">log level</code>, <code class="literal">transports</code>, and <code class="literal">polling duration</code>, as defined previously in our config files, and return the Socket.IO server.</p><div class="informalexample"><pre class="programlisting">var config = require('../configuration');
+
+function Socket(server) {
+    var socketio = require('socket.io').listen(server);
+
+    if (config.get('sockets:browserclientminification'))
+      socketio.enable('browser client minification');
+    if (config.get('sockets:browserclientetag'))
+      socketio.enable('browser client etag');
+    if (config.get('sockets:browserclientgzip'))
+      socketio.enable('browser client gzip');
+    socketio.set("polling duration",
+      config.get('sockets:pollingduration'));
+    socketio.set('log level', config.get('sockets:loglevel'));
+
+    socketio.set('transports', [
+        'websocket'
+        , 'flashsocket'
+        , 'htmlfile'
+        , 'xhr-polling'
+        , 'jsonp-polling'
+    ]);
+
+    return socketio;
+};
+
+module.exports = Socket;</pre></div><p>Setting <code class="literal">log level</code> is useful for debugging. Socket.IO supports the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><code class="literal">0</code>: Error</li><li class="listitem" style="list-style-type: disc"><code class="literal">1</code>: Warn</li><li class="listitem" style="list-style-type: disc"><code class="literal">2</code>: Info</li><li class="listitem" style="list-style-type: disc"><code class="literal">3</code>: Debug and defaults to <code class="literal">3</code></li></ul></div><p>Further <a id="id132" class="indexterm"/>information on configuring Socket.IO can be found at:<a class="ulink" href="https://github.com/LearnBoost/Socket.IO/wiki/Configuring-Socket.IO">https://github.com/LearnBoost/Socket.IO/wiki/Configuring-Socket.IO</a>.</p><p>Let's now use our Socket.IO server and create a handler for Socket.IO <code class="literal">./lib/socket/handler.js</code>.</p><p>We start by importing the <code class="literal">Socket</code> module, instantiating it, and passing it an Express-enabled <code class="literal">httpServer</code> parameter. We create a Redis <code class="literal">Subscriber</code> module and define a <code class="literal">SocketHandler</code> function that accepts <code class="literal">httpServer</code> as input. We set up a Socket.IO handler for the connection event. When ready, this will return the connected socket.</p><p>We then subscribe to two Redis channels—<code class="literal">issues</code> and <code class="literal">commits</code>—and define a Redis handler for the new message event. This handler broadcasts a channel and a message to clients listening on the channel defined by <code class="literal">message.projectId</code>.</p><p>We define a Socket.IO <code class="literal">subscribe</code> handler, which allows a client to join or subscribe to events on a given project. We also define a Socket.IO <code class="literal">unsubscribe</code> handler that allows a client to leave or unsubscribe to events on a given project. We also define an <code class="literal">error</code> handler on Socket.IO, which logs any errors to <code class="literal">logger</code>:</p><div class="informalexample"><pre class="programlisting">var http = require('http')
+  , logger = require("../logger")
+  , Socket = require('../socket')
+  , Subscriber = require('../cache/subscriber')
+  , subscriber = new Subscriber();
+
+function SocketHandler(httpServer) {
+
+  var socketIo = new Socket(httpServer)
+
+  socketIo.sockets.on('connection', function(socket) {
+    subscriber.subscribe("issues");
+    subscriber.subscribe("commits");
+
+    subscriber.client.on("message", function (channel, message) {
+      socket.broadcast.to(message.projectId).emit(channel, JSON.parse(message));
+    });
+
+    socket.on('subscribe', function (data) {
+      socket.join(data.channel);
+    });
+
+    socket.on('unsubscribe', function () {
+      var rooms = socketIo.sockets.manager.roomClients[socket.id];
+
+      for (var room in rooms) {
+          if (room.length &gt; 0) {
+            room = room.substr(1);
+            socket.leave(room);
+          }
+      }
+    });
+  });
+
+  socketIo.sockets.on('error', function() {
+    logger.error(arguments);
+  });
+};
+
+module.exports = SocketHandler;</pre></div><p>Now we can<a id="id133" class="indexterm"/> wire up Socket.IO to our <code class="literal">./lib/express/index.js</code> Express server. Let's import the <code class="literal">SocketHandler</code> module, passing to it an Express server called <code class="literal">httpServer</code>:</p><div class="informalexample"><pre class="programlisting">, SocketHandler = require('../socket/handler')
+..
+var httpServer = http.createServer(app).listen(app.get('port'))
+socketHandler = new SocketHandler(httpServer);</pre></div></div>
+<div class="section" title="Socket.IO on the client"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec52"/>Socket.IO on the client</h1></div></div></div><p>In order to display<a id="id134" class="indexterm"/> these <a id="id135" class="indexterm"/>Socket.IO published messages, we need to make some client changes. Let's install the Socket.IO client piece using bower:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>bower install socketio-client</strong></span>
+</pre></div><p>Let's make a single change to our <code class="literal">./lib/express/index.js</code> Express server and simplify the location of our <code class="literal">socket.io-client</code> using the <code class="literal">static</code> middleware:</p><div class="informalexample"><pre class="programlisting">app.use('/sockets', express.static('public/components/socket.io-client/dist/'));</pre></div><p>We will now add the Socket.IO client scripts to <code class="literal">./views/index.html</code>:</p><div class="informalexample"><pre class="programlisting">&lt;script src="/sockets/socket.io.js"&gt;&lt;/script&gt;</pre></div><p>Now we integrate Socket.IO into our backbone piece. Let's update our <code class="literal">Backbone.js Router</code>. The router <code class="literal">initialise</code> method now accepts <code class="literal">socket</code> as an argument and contains two Socket.IO event handlers: one for issues which calls the issues method and one for commits which calls the commits method. The join method will now emit an Socket.IO <code class="literal">unsubscribe</code> event unsubscribing the user from any currently subscribed projects. It will then emit a Socket.IO <code class="literal">subscribe</code> event which subscribes the user to the newly selected project.  The project selected is passed to the join method via the <code class="literal">args</code> parameter.</p><div class="informalexample"><pre class="programlisting">Vision.Router = Backbone.Router.extend({
+  projectListView : '',
+  repositoryListView:'',
+  issueListView:'',
+  commitListView:'',
+<span class="strong"><strong>  socket: null</strong></span>,
+
+  routes: {
+    '' : 'index',
+    'add' : 'add'
+  },
+
+  initialize : function(<span class="strong"><strong>socket</strong></span>) {
+<span class="strong"><strong>    this.socket = socket;</strong></span>
+    this.project();
+    this.listenTo(this.projectListView, 'join', this.join);
+<span class="strong"><strong>    this.socket.on('issues', this.issues);</strong></span>
+<span class="strong"><strong>    this.socket.on('commits', this.commits);</strong></span>
+  },
+
+  join : function(args) {
+    this.repository(args);
+    this.issues(args);
+    this.commits(args);
+<span class="strong"><strong>    this.socket.emit('unsubscribe');</strong></span>
+<span class="strong"><strong>    this.socket.emit('subscribe', {channel : args.projectId});</strong></span>
+  },
+
+  project : function() {
+    this.projectListView = new Vision.ProjectListView();
+  },
+
+  repository : function(args) {
+
+    this.repositoryListView = new Vision.RepositoryListView(
+      {el: 'ul#repository-list', projectId: args.projectId,
+        editMode: args.editMode });
+  },
+
+  issues : function(args) {
+
+    this.issueListView = new Vision.IssueListView(
+      {el: 'ul#issues-list', projectId: args.projectId,
+        issues : args.issues});
+  },
+
+  commits : function(args) {
+
+    this.commitListView = new Vision.CommitListView(
+      { el: 'ul#commits-list', projectId: args.projectId,
+        commits : args.commits});
+  },
+
+  index : function(){
+    this.projectListView.render();
+  },
+
+  add : function(){
+    this.projectListView.showForm();
+  }
+});</pre></div><p>We now need to pass <a id="id136" class="indexterm"/>an instance of our Socket.IO client to our <code class="literal">Router</code>. We call <code class="literal">io.connect</code>, create <a id="id137" class="indexterm"/>a socket, and pass this into our <code class="literal">Router</code>.</p><div class="informalexample"><pre class="programlisting">Vision.Application = function() {
+  this.start = function() {
+<span class="strong"><strong>    var socketio = io.connect('/');</strong></span>
+    var router = new Vision.Router(<span class="strong"><strong>socketio</strong></span>);
+    Backbone.history.start();
+    router.navigate('index', true);
+  }
+};</pre></div></div>
+<div class="section" title="Scheduling Redis population"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec53"/>Scheduling Redis population</h1></div></div></div><p>The only thing that <a id="id138" class="indexterm"/>remains is to create a scheduler that polls our Redis <code class="literal">populate</code> script, <code class="literal">./populate.js</code>. </p><p>First, let's install a scheduler named <code class="literal">node-schedule</code> via NPM:</p><div class="informalexample"><pre class="programlisting">npm install node-schedule --save</pre></div><p>We start by importing <code class="literal">node-schedule</code>, which allows us to do cron-like scheduling. We call <code class="literal">schedule.scheduleJob</code> every five minutes using <code class="literal">*/5</code>; however, it will also run as soon as the script starts. We then call <code class="literal">populate.run</code> to start population:</p><div class="informalexample"><pre class="programlisting">var schedule = require('node-schedule')
+  , logger = require('./lib/logger')
+  , Populate = require('./lib/cache/populate')
+  , populate = new Populate();
+
+schedule.scheduleJob('*/5 * * * *', function() {
+  populate.run(function(err) {
+    if (err) logger.error('Redis Population error', err);
+    if (!err) logger.info('Redis Population complete');
+  });
+});</pre></div><p>In order to run the application with real-time updates, open a new terminal and run the following command:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>npm start</strong></span>
+</pre></div><p>Now, open another terminal to run the Redis population script.</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>node populate.js</strong></span>
+</pre></div><p>We configured the previous script to run every five minutes, so go and add some issues/commits to your GitHub project repository in order to see the results.</p></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec54"/>Summary</h1></div></div></div><p>Socket.IO and Redis are powerful tools. We have barely scratched the surface of what can be achieved with them. We will revisit Redis and Socket.IO in the following chapters of this book as Redis is also used to scale Express sessions and the Socket.IOs Pub/Sub mechanism.</p><p>The next chapter will focus on securing our application when we implement an authentication strategy via GitHub, using Passport, and add SSL support.</p></div></body></html>
