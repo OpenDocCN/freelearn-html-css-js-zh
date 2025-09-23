@@ -1,7 +1,9 @@
 - en: Chapter 4. Managing Memory and Space
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第四章 管理内存和空间
 - en: Today's developer has easy access to surprisingly inexpensive storage solutions.
     The movement away from monolithic systems toward composed and distributed ones
     has certain advantages, yet inevitably introduces a few new problems. The availability
@@ -10,8 +12,10 @@
     in such a system? Does a cluster of servers share a common database connection?
     How is data synchronized in such a setup? If you are using a *shared-nothing noSQL*
     architecture, how are state changes communicated across all actors?
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 今天的开发者可以轻松访问令人惊讶的低成本存储解决方案。从单体系统向由多个组件组成的分布式系统的转变具有某些优势，但不可避免地引入了一些新问题。例如，便宜的存储不应成为将所有东西无限制地推入内存或磁盘的借口。此外，在这种系统中状态存储在哪里？服务器集群是否共享一个公共数据库连接？在这种设置中数据是如何同步的？如果你使用的是*无共享的NoSQL*架构，状态变化是如何在所有参与者之间通信的？
 - en: There are many considerations. Always seeking to use a minimum of resources
     is a good guiding principle. In this chapter, we will look at ways to reduce the
     cost of data storage in your Node programs, including tips on writing efficient,
@@ -21,12 +25,16 @@
     Examples demonstrating how to use tokens to manage user session data efficiently
     at scale and storing extensive user activity data compactly using Redis will help
     you put these ideas into practice.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 有许多需要考虑的因素。始终寻求使用最少的资源是一个好的指导原则。在本章中，我们将探讨降低Node程序中数据存储成本的方法，包括编写高效、优化代码的技巧。将讨论一些在分布式服务器之间高效共享数据的策略，包括缓存策略、微服务、进程间消息传递以及其他保持系统快速、轻量级和可扩展的技术。使用令牌高效管理用户会话数据以及使用Redis紧凑地存储大量用户活动数据的示例将帮助您将这些想法付诸实践。
 - en: Dealing with large crowds
+  id: totrans-3
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 应对大量人群
 - en: Because Node is designed to make the writing of networked applications easier,
     those using Node are often building applications composed of many isolated services
     that are connected via message queues, sockets, REST APIs, and so on. I will describe
@@ -34,25 +42,34 @@
     through a network into systems that appear integrated to clients. In this section
     and the sections that follow, we will consider how isolated services can be designed
     to be memory efficient with a small footprint.
+  id: totrans-4
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于Node被设计用来简化网络应用程序的编写，因此使用Node的人通常在构建由许多通过消息队列、套接字、REST API等连接的独立服务组成的应用程序。我将这些描述为由独立服务组成、通过网络耦合和协调的系统，这些系统对客户端来说似乎是集成的。在本节及随后的章节中，我们将考虑如何设计独立服务以实现内存效率，并具有较小的占用空间。
 - en: For the purposes of this section and what follows, the word **microservice**
     will be used when referring to application architectures composed of many small
     cooperating services. Generally, we'll explore ideas around how well-designed
     modularization can often help keep a system from becoming inscrutable by helping
     maintain expressive, scalable, testable systems that maintain production readiness.
+  id: totrans-5
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节及随后的内容中，当提到由许多小型协作服务组成的应用架构时，我们将使用**微服务**这个词。通常，我们将探讨如何通过维护表达性、可扩展性和可测试的系统来帮助系统保持可理解性，从而常常有助于保持系统不变得难以理解。
 - en: Then, we'll put the microservice theory into practice by using Richard Rogers'
     microservice toolkit for Node, **Seneca** ([https://github.com/rjrodger/seneca](https://github.com/rjrodger/seneca)).
     Finally, we'll take a look at how to use Redis pub/sub as a cross-process communication
     system, thus demonstrating another way to compose your own microservice clusters.
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 然后，我们将通过使用Richard Rogers为Node编写的微服务工具包**Seneca** ([https://github.com/rjrodger/seneca](https://github.com/rjrodger/seneca))来将微服务理论付诸实践。最后，我们将探讨如何使用Redis
+    pub/sub作为跨进程通信系统，从而展示另一种构建自己的微服务集群的方法。
 - en: Microservices
+  id: totrans-7
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 微服务
 - en: Any nontrivial, network-based application is composed of several independent
     subsystems that must cooperate to fulfill the business or other requirements of
     the larger system. For example, many web applications present browser-based interfaces
@@ -62,159 +79,215 @@
     running programs that implement various sorts of business logic—all sharing one
     or several databases, perhaps across several data centers. These initiate and
     coordinate even longer chains of requests.
+  id: totrans-8
   prefs: []
   type: TYPE_NORMAL
+  zh: 任何非平凡的基于网络的程序都是由几个独立的子系统组成的，这些子系统必须协作以实现更大系统的商业或其他需求。例如，许多Web应用程序提供基于浏览器的界面，由一个或多个库和/或UI框架组成，将用户操作转换为针对多个Web协议发出的正式化网络请求。这些最终与运行实现各种类型业务逻辑的程序的服务器进行通信——所有这些共享一个或多个数据库，可能分布在几个数据中心。这些数据库启动并协调甚至更长的请求链。
 - en: Because there is no absolute *right way* to build software, every design is
     biased toward one or a few key principles, in particular, principles guiding how
     a system should scale, which normally affects how it is deployed. A few of the
     key principles informing the Node community—modular systems composed of small
     programs that do one thing well and are event-driven, I/O focused, and network
     focused—align closely with those underpinning microservices.
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
+  zh: 因为没有绝对正确的软件构建方式，每个设计都偏向于一个或几个关键原则，特别是指导系统如何扩展的原则，这通常会影响其部署方式。Node社区中的一些关键原则——由执行单一任务且表现良好的小程序组成的模块化系统，以事件驱动、I/O关注和网络关注为特点——与支撑微服务的基础原则紧密一致。
 - en: 'Microservice architecture designs typically respect the following principles:'
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 微服务架构设计通常遵循以下原则：
 - en: A system should be broken down into many small services that each do one thing
     and no more. This helps with clarity.
+  id: totrans-11
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 应将系统分解成许多小的服务，每个服务只做一件事。这有助于提高清晰度。
 - en: The code-powering services should be short and simple. A common guideline in
     the Node community is to limit programs to somewhere near 100 lines of code. This
     helps with maintainability.
+  id: totrans-12
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 驱动服务的代码应该简短且简单。Node社区中的一个常见准则是将程序限制在约100行代码左右。这有助于可维护性。
 - en: No service should depend on the existence of another service or even know of
     the existence of other services. Services are decoupled. This helps with scalability,
     clarity, and maintainability.
+  id: totrans-13
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 没有一个服务应该依赖于另一个服务的存在，甚至不应该知道其他服务的存在。服务是解耦的。这有助于可扩展性、清晰度和可维护性。
 - en: Data models should be decentralized, with a common (but not required) microservice
     pattern—that each service maintains its own database or a similar model. Services
     are stateless (this reinforces the previous point).
+  id: totrans-14
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 数据模型应该是去中心化的，采用一个共同的（但不是必需的）微服务模式——即每个服务维护自己的数据库或类似模型。服务是无状态的（这加强了前面的观点）。
 - en: Independent services are easy to replicate (or cull). Scaling (in both directions)
     is a natural feature of microservice architectures as new *nodes* can be added
     or removed as necessary. This also enables easy experimentation, where prototype
     services can be tested, new features can be tested or deployed temporarily, and
     so on.
+  id: totrans-15
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 独立的服务易于复制（或淘汰）。可扩展性（在两个方向上）是微服务架构的自然特性，因为可以根据需要添加或删除新的*节点*。这也使得易于实验，例如，原型服务可以被测试，新功能可以被测试或临时部署等。
 - en: Independent, stateless services can be replaced or upgraded (or downgraded)
     independently regardless of the state of any system they form a part of. This
     opens the possibility of more focused, discrete deployments and refactors.
+  id: totrans-16
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 独立的无状态服务可以独立替换或升级（或降级），无论它们构成的部分系统的状态如何。这为更专注的、离散的部署和重构打开了可能性。
 - en: Failure is unavoidable, so systems should be designed to fail gracefully. Localize
     points of failure (the first and second points of this list), isolate failure
     (the third and fourth points of this list), and implement recovery mechanisms
     (easier when error boundaries are clearly defined, small, and noncritical). Promote
     robustness by reducing the scope of unreliability.
+  id: totrans-17
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 失败是不可避免的，因此系统应该被设计成能够优雅地失败。定位故障点（本列表的第一和第二点），隔离故障（本列表的第三和第四点），并实施恢复机制（当错误边界明确、规模小且非关键时更容易实现）。通过减少不可靠性的范围来提高系统的鲁棒性。
 - en: Testing is essential to any nontrivial system. Unambiguous and simple stateless
     services are easy to test. A key aspect of testing is simulation—the *stubbing*
     or *mocking* of services in order to test service interoperability. Clearly delineated
     services are also easy to simulate and can, therefore, be intelligently composed
     into testable systems.
+  id: totrans-18
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 测试对于任何非平凡的系统都是至关重要的。明确的简单无状态服务很容易测试。测试的一个关键方面是模拟——为了测试服务互操作性而对服务的 *存根化* 或 *模拟*。明确界定的服务也容易模拟，因此可以智能地组合到可测试的系统中。
 - en: 'The idea is simple: smaller services are easy to reason about individually,
     encouraging correctness of specifications (little or no gray area) and clarity
     of APIs (constrained sets of output follow constrained sets of input). Being stateless
     and decoupled, services promote system composability, help with scaling and maintainability,
     and are easier to deploy. Also, very precise, discrete monitoring of these sorts
     of systems is possible.'
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个想法很简单：较小的服务单独推理起来更容易，鼓励规格的正确性（几乎没有灰色区域）和 API 的清晰性（受限的输出集跟随受限的输入集）。由于是无状态的和解耦的，服务促进了系统的可组合性，有助于扩展和维护，并且更容易部署。此外，对这类系统进行非常精确的离散监控也是可能的。
 - en: Redis pub/sub
+  id: totrans-20
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: Redis 发布/订阅
 - en: In the previous chapter, we discussed the use of message queues, an excellent
     technique for rapid cross-process communication. Redis offers an interface allowing
     connected clients to subscribe to a particular channel and broadcast messages
     to that channel. This is generally described as a publish/subscribe paradigm.
     When you do not need more complex message exchanges and brokers but a simple and
     fast notification network, pub/sub works well.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 在上一章中，我们讨论了消息队列的使用，这是一种快速跨进程通信的优秀技术。Redis 提供了一个接口，允许连接的客户端订阅特定的通道并向该通道广播消息。这通常被描述为发布/订阅范式。当你不需要更复杂的消息交换和代理，而只需要一个简单快速的通知网络时，发布/订阅工作得很好。
 - en: Let's set up a basic pub/sub example and then move on to an example of using
     pub/sub to create a microservice architecture where many components doing a particular
     job are passed requests for their services and pass back results—all coordinated
     via Redis.
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们设置一个基本的发布/订阅示例，然后继续探讨如何使用发布/订阅创建一个微服务架构的示例，在这个架构中，许多执行特定任务的组件会传递服务请求并返回结果——所有这些协调都通过
+    Redis 完成。
 - en: 'First, let''s look at the most basic example of pub/sub—a script that demonstrates
     how to subscribe to a channel and how to publish to that channel:'
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，让我们看看发布/订阅最基础的示例——一个脚本，演示了如何订阅一个通道以及如何向该通道发布消息：
 - en: '[PRE0]'
+  id: totrans-24
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: Note
+  id: totrans-25
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: We are using Matt Ranney's **Redis** npm module. Find out more at [https://github.com/mranney/node_redis](https://github.com/mranney/node_redis).
+  id: totrans-26
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们正在使用 Matt Ranney 的 **Redis** npm 模块。更多信息请访问 [https://github.com/mranney/node_redis](https://github.com/mranney/node_redis)。
 - en: 'To create both a publisher and a subscriber, we create two Redis clients. Note
     that, once a `subscribe` or `psubscribe` (more on `psubscribe` later) command
     is issued to a client, that client will enter *subscriber mode*, no longer accepting
     standard Redis commands. Typically, you will create two clients: one listening
     for messages on subscribed channels and the other a standard Redis client used
     for all other commands.'
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: 要创建一个发布者和一个订阅者，我们需要创建两个 Redis 客户端。请注意，一旦向客户端发出 `subscribe` 或 `psubscribe`（稍后会更详细地介绍
+    `psubscribe`），该客户端将进入 *订阅者模式*，不再接受标准 Redis 命令。通常，你会创建两个客户端：一个用于监听订阅通道上的消息，另一个用于执行所有其他命令的标准
+    Redis 客户端。
 - en: 'Also note that we must wait for the `subscribe` event to be fired on the `subscriber`
     client prior to publishing any messages. Redis does not hold a queue of published
     messages, which involves waiting for subscribers. A message for which there are
     no subscribers is simply dropped. The following is based on the Redis documentation:'
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: 还要注意，在发布任何消息之前，我们必须等待 `subscriber` 客户端上的 `subscribe` 事件被触发。Redis 不会保留已发布消息的队列，这涉及到等待订阅者。对于没有订阅者的消息，它会被简单地丢弃。以下内容基于
+    Redis 文档：
 - en: '*"…published messages are characterized into channels, without knowledge of
     what (if any) subscribers there may be. Subscribers express interest in one or
     more channels, and only receive messages that are of interest, without knowledge
     of what (if any) publishers there are. This decoupling of publishers and subscribers
     can allow for greater scalability and a more dynamic network topology."*'
+  id: totrans-29
   prefs:
   - PREF_BQ
   type: TYPE_NORMAL
+  zh: '*"…发布消息被分类到通道中，而不了解可能存在哪些（如果有的话）订阅者。订阅者表达对一个或多个通道的兴趣，并且只接收感兴趣的消息，而不了解可能存在哪些（如果有的话）发布者。这种发布者和订阅者的解耦可以允许更大的可伸缩性和更动态的网络拓扑。"*'
 - en: 'So, we must wait for a subscriber prior to publishing. Once that subscription
     is made, we can publish to the `channel5` channel, and the `subscriber` handle
     listening `on` that channel receives our message:'
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE1]'
+  id: totrans-31
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: Let's take this a little further by creating two distinct Node processes, each
     performing a simple (micro) service. We'll build a calculator service with two
     operations—add and subtract. A separate, dedicated process will perform each operation,
     and the two-way communication between the calculator service and its helper services
     will be managed by Redis pub/sub.
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
 - en: 'First, we design two Node programs, one that adds and one that subtracts. We''ll
     only show the adder here:'
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE2]'
+  id: totrans-34
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: The subtraction program is nearly identical, differing only in the channel it
     listens on and the calculation it performs. These two services exist in the `add.js`
     and `subtract.js` files.
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
 - en: We can see what this service does. When it receives a message on the `service:add`
@@ -223,14 +296,18 @@
     listen for results on the `added` channel. Also, you will notice a call to `process.send`—this
     is used to notify the calculator service that the add service is ready. This will
     make more sense shortly.
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
 - en: 'Now, let''s build the `calculator.js` service itself:'
+  id: totrans-37
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE3]'
+  id: totrans-38
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: The main calculator service forks two new processes running the `add.js` and
     `subtract.js` microservices. Typically, in a real system, the creation of these
     other services would be done independently, perhaps even on completely separate
@@ -240,6 +317,7 @@
     in, allowing child processes to communicate with their parents as seen in the
     calculator service's use of `add.on(…)` and `substract.on(...)` and in our calculation
     services with `process.send(…)`.
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
 - en: 'Once the calculator service receives notice that its dependent services are
@@ -248,107 +326,161 @@
     channel and performs the work requested, publishing a result that this calculator
     service can then receive and use. When `calculator.js` is executed, the following
     will be displayed in your terminal:'
+  id: totrans-40
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE4]'
+  id: totrans-41
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'Earlier, we mentioned the `psubscribe` method. The `p` prefix signifies *pattern*
     and is useful when you want to subscribe to channels using a typical glob pattern.
     For example, rather than the calculator service subscribing to two channels with
     the common `result:` prefix, we can simplify it as follows:'
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE5]'
+  id: totrans-43
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: Now, any additional service can publish results with the `result:` prefix and
     can be picked up by our calculator. Note that the `p` prefix must also be reflected
     in the `pmessage` event listener.
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
 - en: Microservices with Seneca
+  id: totrans-45
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用 Seneca 的微服务
 - en: 'Seneca is a Node-based microservice construction kit that helps you organize
     your code into distinct **actions** triggered by **patterns**. Seneca applications
     are composed of services that can accept JSON messages and, optionally, return
     some JSON. Services register an interest in messages with certain characteristics.
     For example, a service might run whenever a JSON message displaying `{ cmd: "doSomething"
     }` is broadcast.'
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 'Seneca 是一个基于 Node 的微服务构建工具，它帮助您将代码组织成由 **patterns** 触发的 **actions**。Seneca
+    应用程序由可以接受 JSON 消息并可选地返回 JSON 的服务组成。服务注册对具有特定特征的消息感兴趣。例如，一个服务可能会在显示 `{ cmd: "doSomething"
+    }` 的 JSON 消息广播时运行。'
 - en: 'To start, let''s create a service that responds to two patterns, one pattern
     returning `"Hello!"` and the other returning `"Goodbye!"`. Create a `hellogoodbye.js`
     file containing the following code:'
+  id: totrans-47
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，让我们创建一个响应两个模式的服务，一个模式返回 `"Hello!"`，另一个返回 `"Goodbye!"`。创建一个包含以下代码的 `hellogoodbye.js`
+    文件：
 - en: '[PRE6]'
+  id: totrans-48
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: 'The call to `seneca()` starts up a service that will listen on port `8080`
     on `localhost` for patterns rendered in the JSON format—one of either `{ operation:
     "sayHello" }` or `{ operation: "sayGoodbye" }`. We also create a `client` object
     connected to the Seneca service on `8080` and have that client act against those
     patterns. When this program is executed, you will see `Hello!` and `Goodbye!`
     displayed in your terminal.'
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: '对 `seneca()` 的调用启动了一个服务，该服务将在 `localhost` 的 `8080` 端口上监听以 JSON 格式呈现的模式——要么是
+    `{ operation: "sayHello" }`，要么是 `{ operation: "sayGoodbye" }`。我们还创建了一个连接到 `8080`
+    上 Seneca 服务的 `client` 对象，并让该客户端针对这些模式进行操作。当程序执行时，您将在终端看到 `Hello!` 和 `Goodbye!`
+    的显示。'
 - en: 'Because the Seneca service is listening on HTTP by default, you can achieve
     the same result by making a direct call over HTTP, operating against the `/act`
     route:'
+  id: totrans-50
   prefs: []
   type: TYPE_NORMAL
+  zh: 因为 Seneca 服务默认监听 HTTP，所以您可以通过直接通过 HTTP 调用 `/act` 路由来达到相同的结果：
 - en: '[PRE7]'
+  id: totrans-51
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: Now, let's replicate the calculator application developed earlier, this time
     using Seneca. We're going to create two services, each listening on a distinct
     port, with one performing addition and the other performing subtraction. As in
     the previous calculator example, each will be started as an individual process
     and called remotely.
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们复制之前开发的计算器应用程序，这次使用 Seneca。我们将创建两个服务，每个服务监听不同的端口，一个执行加法，另一个执行减法。与之前的计算器示例一样，每个服务都将作为一个独立进程启动并远程调用。
 - en: 'Create an `add.js` file as follows:'
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 创建一个名为 `add.js` 的文件，如下所示：
 - en: '[PRE8]'
+  id: totrans-54
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: 'Next, create a `subtract.js` file identical to `add.js`, changing only its
     operation parameter and, of course, its algorithm:'
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，创建一个与 `add.js` 相同的 `subtract.js` 文件，只需更改其操作参数及其算法：
 - en: '[PRE9]'
+  id: totrans-56
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: 'Open two terminals, and start both services:'
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 打开两个终端，并启动两个服务：
 - en: '[PRE10]'
+  id: totrans-58
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: 'To demonstrate the usage of these services, create a `calculator.js` file that
     binds a client to each service on its unique port and acts against them. Note
     that you must create distinct Seneca clients:'
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了演示这些服务的使用，创建一个 `calculator.js` 文件，将客户端绑定到每个服务的唯一端口，并对它们进行操作。请注意，您必须创建不同的 Seneca
+    客户端：
 - en: '[PRE11]'
+  id: totrans-60
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: 'Executing this program will result in the following:'
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: 执行此程序将产生以下结果：
 - en: '[PRE12]'
+  id: totrans-62
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: 'Just as with the previous example, we can make a direct HTTP call:'
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: 就像之前的例子一样，我们可以直接进行 HTTP 调用：
 - en: '[PRE13]'
+  id: totrans-64
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: By building out your calculator in this way, each operation can be isolated
     into its own service, and you can add or remove functionality as needed without
     affecting the overall program. Should a service develop bugs, you can fix and
@@ -360,53 +492,75 @@
     mapping, and other services, they can be more easily modeled, deployed, scaled,
     monitored, and maintained than if they were all coupled to a centralized service
     manager.
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过这种方式构建您的计算器，每个操作都可以隔离到自己的服务中，并且您可以根据需要添加或删除功能，而不会影响整个程序。如果某个服务出现错误，您可以修复并替换它，而无需停止通用计算器应用程序。如果一个操作需要更强大的硬件或更多内存，您可以将其转移到自己的服务器上，而无需停止计算器应用程序或更改您的应用程序逻辑——您只需更改目标服务的
+    IP 地址。同样，很容易看出，通过将数据库、身份验证、事务、映射和其他服务连接起来，它们可以比所有这些都耦合到一个中心服务管理器时更容易进行建模、部署、扩展、监控和维护。
 - en: Reducing memory usage
+  id: totrans-66
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 减少内存使用
 - en: JavaScript was born and raised in the browser environment. For most of its history,
     this also implied that JavaScript programs were running on desktop systems with
     an enormous pool of available memory. For this reason, many JavaScript programmers
     have not traditionally thought much about managing memory in their applications.
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: JavaScript诞生并成长于浏览器环境中。在其大部分历史中，这也意味着JavaScript程序是在拥有巨大内存池的桌面系统上运行的。因此，许多JavaScript程序员在传统上并没有太多考虑在他们的应用程序中管理内存。
 - en: 'In the world of Node, memory is not so cheap. According to Joyent ([https://github.com/joyent/node/wiki/FAQ#what-is-the-memory-limit-on-a-node-process](https://github.com/joyent/node/wiki/FAQ#what-is-the-memory-limit-on-a-node-process)):'
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 在Node的世界里，内存并不便宜。根据Joyent（[https://github.com/joyent/node/wiki/FAQ#what-is-the-memory-limit-on-a-node-process](https://github.com/joyent/node/wiki/FAQ#what-is-the-memory-limit-on-a-node-process)）：
 - en: '*"Currently, by default, v8 has a memory limit of 512 MB on 32-bit systems
     and 1 GB on 64-bit systems. The limit can be raised by setting --max_old_space_size
     to a maximum of ~1024 (~1 GB) (32-bit) and ~1741 (~1.7 GiB) (64-bit), but it is
     recommended that you split your single process into several workers if you are
     hitting memory limits."*'
+  id: totrans-69
   prefs:
   - PREF_BQ
   type: TYPE_NORMAL
+  zh: '*"目前，默认情况下，v8在32位系统上的内存限制为512 MB，在64位系统上的内存限制为1 GB。可以通过将--max_old_space_size设置为最大值~1024
+    (~1 GB) (32位)和~1741 (~1.7 GiB) (64位)来提高限制，但如果你遇到内存限制，建议将单个进程拆分为多个工作者进程。"*'
 - en: Let's go over possible strategies to reduce the amount of memory your Node programs
     consume. We'll end with a discussion of how to make use of two memory-efficient
     data structures supported by Redis when developing your projects.
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们探讨一些可能的策略来减少您的Node程序消耗的内存量。我们将以讨论如何在开发项目时利用Redis支持的两种内存高效数据结构来结束。
 - en: Use streams, not buffers
+  id: totrans-71
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用流，而不是缓冲区
 - en: 'The design and implementation of Node.js native modules follow a simple directive:
     keep everything asynchronous. This design ethic, by convention, informs the design
     of modules contributed by the Node community.'
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
+  zh: Node.js原生模块的设计和实现遵循一个简单的指令：保持一切异步。这个设计原则，按照惯例，也影响了Node社区贡献的模块的设计。
 - en: 'When a process operates synchronously, it holds, or locks, the total amount
     of memory it needs to fully complete, at which point the memory it has held is
     flushed, usually returning this result to the calling method or process. For example,
     the following operation will load the entirety of a file into the memory prior
     to returning it:'
+  id: totrans-73
   prefs: []
   type: TYPE_NORMAL
+  zh: 当一个进程以同步方式运行时，它会持有或锁定它完成所需的总内存量，此时所持有的内存会被刷新，通常将此结果返回给调用方法或进程。例如，以下操作会在返回之前将整个文件加载到内存中：
 - en: '[PRE14]'
+  id: totrans-74
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: When a request is made to `localhost:8000`, the `somefile.js` file is read off
     the filesystem *in its entirety* and returned to the client. That is the desired
     effect—but there is a slight problem. Because the entire file is being pushed
@@ -414,44 +568,64 @@
     of the file must be allocated on each request. While the operation is itself asynchronous
     (allowing other operations to proceed), just a few requests for a very large file
     (of several MB, for example) can overflow the memory and take down the Node process.
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: 当请求`localhost:8000`时，`somefile.js`文件会从文件系统中完整地读取并返回给客户端。这是期望的效果——但是存在一个小问题。因为整个文件在返回之前被推入缓冲区，所以每个请求都需要分配与文件字节大小相等的内存量。虽然这个操作本身是异步的（允许其他操作进行），但仅仅对一个非常大的文件（例如几个MB）进行几次请求就可能导致内存溢出并使Node进程崩溃。
 - en: Node excels at creating scalable web services. One of the reasons for this is
     the focus on providing robust `Stream` interfaces.
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
+  zh: Node在创建可扩展的Web服务方面表现出色。其中一个原因是对提供健壮的`Stream`接口的关注。
 - en: 'A better strategy is to stream the file directly to the HTTP response object
     (which is a writable stream):'
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 一个更好的策略是将文件直接流式传输到HTTP响应对象（它是一个可写流）：
 - en: '[PRE15]'
+  id: totrans-78
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: In addition to requiring less code, data is sent (piped) directly to the out
     stream, using very little memory.
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: 除了需要更少的代码外，数据会直接发送（通过管道）到输出流，使用的内存非常少。
 - en: On the other hand, we can use Stream to enable a very nice and composable pipeline
     of transformations. There are several ways to achieve this goal (such as with
     `Transform Stream`), but we'll just create our own transformer.
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，我们可以使用Stream来启用一个非常优雅且可组合的转换管道。有几种方法可以实现这个目标（例如使用`Transform Stream`），但我们将只创建自己的转换器。
 - en: 'This script will take an input from `process.stdin` and convert what is received
     to uppercase, piping the result back to `process.stdout`:'
+  id: totrans-81
   prefs: []
   type: TYPE_NORMAL
+  zh: 此脚本将从`process.stdin`获取输入，并将接收到的内容转换为大写，然后将结果通过管道返回到`process.stdout`：
 - en: '[PRE16]'
+  id: totrans-82
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: As much as possible, convert your program logic into discrete stream transformations,
     and compose useful pipelines that do good things with data without touching the
     memory.
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽可能地将您的程序逻辑转换为离散的流转换，并构建有用的管道，这些管道可以对数据进行有益的操作，而不触及内存。
 - en: Understanding prototypes
+  id: totrans-84
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 理解原型
 - en: JavaScript is an **Object-oriented** (**OO**) prototype-based language. It is
     important for you to understand what this means and how this sort of design is
     more memory efficient than many traditional OO language designs when used correctly.
@@ -460,8 +634,10 @@
     prototypal nature of the language to minimize memory usage. What follows is a
     brief but pointed comparison of the classical inheritance-based object model and
     the object system that JavaScript provides in terms of memory usage and efficiency.
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: JavaScript是一种**面向对象**（**OO**）的基于原型的语言。了解这意味着什么以及这种设计在正确使用时如何比许多传统的面向对象语言设计更节省内存，这对您来说很重要。由于在Node进程内部存储状态数据是一种常见做法（例如，套接字服务器内的连接数据查找表），我们应该利用语言的原型特性来最小化内存使用。以下是对基于经典继承的对象模型和JavaScript提供的对象系统在内存使用和效率方面的简要但尖锐的比较。
 - en: In class-based systems, a **class** contains instructions on how to create instances
     of itself. In other words, a class describes a set containing objects built according
     to a class specification, which includes things such as default values for attributes
@@ -469,54 +645,78 @@
     definition that describes how to build that instance. Classes can also inherit
     properties from each other, creating new instance blueprints that share characteristics
     with other blueprints—an inheritance model describing the provenance of objects.
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
+  zh: 在基于类的系统中，一个**类**包含创建自身实例的指令。换句话说，一个类描述了一个包含根据类规范构建的对象的集合，这包括诸如构造对象属性默认值之类的东西。要创建类的实例，必须有一个描述如何构建该实例的类定义。类也可以相互继承属性，创建具有与其他蓝图共享特征的新实例蓝图——一个描述对象来源的继承模型。
 - en: 'The primary purpose of any OO system is to facilitate the sharing of common
     knowledge between related objects. For example, this is how you would create two
     Point instances using an inheritance model:'
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 任何面向对象系统的首要目的是促进相关对象之间共享通用知识。例如，这就是使用继承模型创建两个点实例的方式：
 - en: '![Understanding prototypes](img/1403OS_04_01.jpg)'
+  id: totrans-88
   prefs: []
   type: TYPE_IMG
+  zh: '![理解原型](img/1403OS_04_01.jpg)'
 - en: Note that both instances now maintain an identical attribute structure. Additionally,
     the property x of both point instances has been copied from the base point class.
     Importantly, notice that the value of x has been copied to each instance even
     though this attribute value is identical in both instances.
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，现在这两个实例都维护了相同的属性结构。此外，两个点实例的属性x都是从基点类复制的。重要的是要注意，尽管这个属性值在这两个实例中是相同的，但x的值已经被复制到每个实例中。
 - en: 'Objects in a prototypal language do not require a class to define their composition.
     For example, an object in JavaScript can be created literally:'
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: 在原型语言中，对象不需要类来定义它们的组成。例如，JavaScript中的对象可以按字面意思创建：
 - en: '[PRE17]'
+  id: totrans-91
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: 'Not requiring the storage of a class definition prior to creating an object
     instance is already more memory efficient. Now, consider this use of prototypes
     to replicate the inheritance-based example discussed previously. In the following
     code, we see how a single object, `myPoint`, is passed as the first object to
     `Object.create`, which returns a new object with `myPoint` as its prototype:'
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 不需要在创建对象实例之前存储类定义，这已经更加节省内存。现在，考虑使用原型来复制之前讨论的基于继承的示例。在下面的代码中，我们看到单个对象`myPoint`作为第一个对象传递给`Object.create`，它返回一个以`myPoint`作为其原型的新的对象：
 - en: '[PRE18]'
+  id: totrans-93
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: Note
+  id: totrans-94
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: '`Object.create` is the preferred method in modern JavaScript (ES5+) to create
     objects. Older browsers will not support this syntax. For more information on
     compatibility, visit [http://kangax.github.io/compat-table/es5/#Object.create](http://kangax.github.io/compat-table/es5/#Object.create).'
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: '`Object.create`是现代JavaScript（ES5+）中创建对象的推荐方法。较老的浏览器将不支持这种语法。有关兼容性的更多信息，请访问[http://kangax.github.io/compat-table/es5/#Object.create](http://kangax.github.io/compat-table/es5/#Object.create)。'
 - en: 'This creates the following object construct:'
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 这创建了以下对象结构：
 - en: '![Understanding prototypes](img/1403OS_04_02.jpg)'
+  id: totrans-97
   prefs: []
   type: TYPE_IMG
+  zh: '![理解原型](img/1403OS_04_02.jpg)'
 - en: Note that each point instance *does not store copies* of attributes, the value
     of which is not explicitly declared. Prototypal systems employ message delegation,
     not inheritance. When a point instance receives the message *give me x*, and it
@@ -528,46 +728,67 @@
     themselves function as prototypes for other objects, continuing a delegation chain
     indefinitely and enabling elegant object graphs using only as much memory as necessary
     to distinguish unique object properties.
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，每个点实例*不存储*那些值未显式声明的属性的副本。原型系统使用消息委派，而不是继承。当一个点实例收到消息 *给我 x*，并且它无法满足这个请求时，它将满足该消息的责任委派给它的原型（在这种情况下，原型确实有
+    x 的值）。在现实世界的场景中，对于大型和复杂对象，能够在不冗余复制相同字节的情况下跨许多实例共享默认值，这将导致更小的内存占用。此外，这些实例本身也可以作为其他对象的原型，无限期地继续委派链，并使用仅足以区分唯一对象属性的内存量来实现优雅的对象图。
 - en: 'Memory efficiency also speeds up instantiation. As should be clear from the
     preceding code, delegating responsibility for messages to a prototype implies
     that your extended receiver requires a smaller instance footprint—fewer slots
     need to be allocated per object. The following are two construction function definitions:'
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: 内存效率还可以加快实例化速度。从前面的代码中应该很明显，将消息的责任委派给原型意味着你的扩展接收器需要更小的实例占用——每个对象需要分配的槽位更少。以下是有两个构造函数定义：
 - en: '[PRE19]'
+  id: totrans-100
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: Even with these simple definitions, many instances built from the first constructor
     will consume much less memory than an equal number of instances constructed from
     the second—`new Rec1()` will complete well before `new Rec2()` due to the redundant
     copying seen in the second prototype-less constructor.
+  id: totrans-101
   prefs: []
   type: TYPE_NORMAL
+  zh: 即使有这些简单的定义，由第一个构造函数构建的实例在内存消耗上通常会比由第二个构造函数构建的相同数量的实例少得多——`new Rec1()` 由于第二个无原型构造函数中看到的冗余复制，将比
+    `new Rec2()` 完成得更快。
 - en: Note
+  id: totrans-102
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: You can see a performance comparison of the two instantiation methods at [http://jsperf.com/prototype-speeds](http://jsperf.com/prototype-speeds).
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
+  zh: 你可以在 [http://jsperf.com/prototype-speeds](http://jsperf.com/prototype-speeds)
+    上看到两种实例化方法的性能比较。
 - en: Use prototypes intelligently to reduce memory usage in your objects and to lower
     instantiation times. Determine the static or infrequently changed attributes and
     methods of your objects and put those into prototypes. This will allow you to
     create thousands of objects quickly, while reducing redundancy.
+  id: totrans-104
   prefs: []
   type: TYPE_NORMAL
+  zh: 智能地使用原型来减少对象中的内存使用和降低实例化时间。确定对象的静态或很少改变的属性和方法，并将它们放入原型中。这将允许你快速创建成千上万的对象，同时减少冗余。
 - en: Memory-efficient data structures with Redis
+  id: totrans-105
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用 Redis 的内存高效数据结构
 - en: While you should use the memory allotted to you in each Node process, more memory
     will likely be needed. In this section, we will look at Redis, an in-memory, high-speed
     database, and how it can be used to efficiently extend the amount of memory available
     to your programs.
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然你应该使用每个 Node 进程分配给你的内存，但可能还需要更多的内存。在本节中，我们将探讨 Redis，一个内存中、高速的数据库，以及它如何被用来有效地扩展程序可用的内存量。
 - en: At its most basic, Redis is a fast key-value store. We'll see later how it can
     be used as a cache for commonly used pieces of data. However, it also provides
     powerful data structures and an API allowing complex operations on those structures,
@@ -575,20 +796,27 @@
     of data. Here, we will discuss how to use Redis support for **Bit Operations**
     (**bitops**) and **HyperLogLog**—two space-efficient and, importantly, space-predictable
     memory structures to store and analyze the activity of data.
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: 在最基本的意义上，Redis 是一个快速的键值存储。我们稍后将会看到它如何被用作常用数据的缓存。然而，它还提供了强大的数据结构和 API，允许对这些结构进行复杂操作，从而帮助建模数据集及其之间的关系。在这里，我们将讨论如何使用
+    Redis 对 **位操作**（**bitops**）和 **HyperLogLog** 的支持——两种空间高效且，更重要的是，空间可预测的内存结构来存储和分析数据的活动。
 - en: Using bitwise operations to analyze user actions over time
+  id: totrans-108
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 使用位操作分析用户随时间的行为
 - en: One of the more interesting features Redis provides is the ability to store
     binary numbers as values for keys. Multiple keys containing binary values can
     be compared by using the **bitwise operators** AND, OR, and XOR. By applying bitmasks
     mapping a range of bits to other binary values, you can make very rapid and memory-efficient
     analytical comparisons. In this section, we will learn some typical examples of
     how to use this technique.
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: Redis 提供的一个更有趣的特性是能够将二进制数字作为键的值存储。可以使用 **位运算符** AND、OR 和 XOR 来比较包含二进制值的多个键。通过应用位掩码将一系列位映射到其他二进制值，你可以进行非常快速且内存高效的比较分析。在本节中，我们将学习一些如何使用这种技术的典型示例。
 - en: Any key in a Redis database can store `(2^32 - 1)` bits or just under 512 MiB.
     This means that there are approximately 4.29 billion columns, or offsets, that
     can be set per key. This is a large number of data points referenced by a single
@@ -597,12 +825,16 @@
     article. Furthermore, we can use bit operations to gather other dimensions of
     information, such as what percentage of viewers of an article are female. Let's
     look at a few examples.
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: Redis 数据库中的任何键都可以存储 `(2^32 - 1)` 位或略小于 512 MiB。这意味着每个键可以设置大约 42.9 亿个列，或偏移量。这是一个由单个键引用的大量数据点。我们可以设置这些范围内的位来描述我们想要跟踪的项目特征，例如查看特定文章的用户数量。此外，我们可以使用位运算来收集其他维度的信息，例如文章观看者中女性的百分比。让我们看看几个例子。
 - en: Setting, getting, and counting bits
+  id: totrans-111
   prefs:
   - PREF_H4
   type: TYPE_NORMAL
+  zh: 设置、获取和计数位
 - en: 'Let''s assume that we are serving many different articles and each article
     is assigned a unique identifier. Also assume that we have 100,000 active members
     on our website, and that each user also has a unique identifier—a number between
@@ -610,38 +842,58 @@
     on a given day by creating a key in Redis, which can be done by combining the
     article''s unique key and a date string and setting bits at that key corresponding
     to the user ID associated with an article view. For example:'
+  id: totrans-112
   prefs: []
   type: TYPE_NORMAL
+  zh: 假设我们正在提供许多不同的文章，并且每篇文章都分配了一个唯一的标识符。还假设我们网站上活跃着 100,000 名成员，并且每个用户也都有一个唯一的标识符——一个介于
+    1 和 100,000 之间的数字。使用位运算，我们可以轻松跟踪特定一天的文章观看活动，通过在 Redis 中创建一个键来实现，这可以通过组合文章的唯一键和日期字符串，并在该键上设置与文章观看关联的用户
+    ID 对应的位来完成。例如：
 - en: '[PRE20]'
+  id: totrans-113
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: 'This key represents article 324 on a specific date, efficiently storing the
     unique user IDs of viewers on that day by *flipping a bit* at an offset corresponding
     to the user''s assigned ID. Whenever a user views an article, fetch that user''s
     ID, use that number as an offset value, and use the `setbit` command to set a
     bit at that offset:'
+  id: totrans-114
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个键代表特定日期上的第 324 篇文章，通过在用户分配的 ID 对应的偏移量处 *翻转位*，有效地存储了那天观看者的唯一用户 ID。每当用户观看一篇文章时，获取该用户的
+    ID，使用该数字作为偏移值，并使用 `setbit` 命令在该偏移量处设置位：
 - en: '[PRE21]'
+  id: totrans-115
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: 'In what follows, we''re going to demonstrate how to use Redis bitops to efficiently
     store and analyze data. First, let''s create data for three articles:'
+  id: totrans-116
   prefs: []
   type: TYPE_NORMAL
+  zh: 在接下来的内容中，我们将演示如何使用 Redis 位运算来高效地存储和分析数据。首先，让我们为三篇文章创建数据：
 - en: '[PRE22]'
+  id: totrans-117
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: Here, we simply created three Redis keys, `'article (1-3):today'`, and randomly
     set 100,000 bits on each key—either 0 or 1\. Using the technique of storing user
     activity based on user ID offsets, we now have sample data for a hypothetical
     day of traffic against three articles.
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这里，我们简单地创建了三个 Redis 键，`'article (1-3):today'`，并在每个键上随机设置了 100,000 个位——要么是 0，要么是
+    1。使用基于用户 ID 偏移量存储用户活动的技术，我们现在有了针对三个文章的假设性一天流量的样本数据。
 - en: Note
+  id: totrans-119
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: We're using Matt Ranney's `node_redis` module ([https://github.com/mranney](https://github.com/mranney)),
     which supports the Redis **multi** construct, allowing the execution of several
     instructions in one pipeline rather than suffering the cost of calling each individually.
@@ -649,51 +901,76 @@
     operations. Note also how the ordering guarantees provided by Redis ensure ordered
     execution and how its atomicity guarantees that either all or none of the instructions
     in a transaction will succeed. See [http://redis.io/topics/transactions](http://redis.io/topics/transactions).
+  id: totrans-120
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们正在使用Matt Ranney的`node_redis`模块([https://github.com/mranney](https://github.com/mranney))，它支持Redis
+    **multi**构造，允许在一个管道中执行多个指令，而不是单独调用每个指令所付出的成本。在执行多个操作时始终使用`multi`以加快操作速度。注意Redis提供的排序保证确保了有序执行，以及它的原子性保证，即事务中的所有或没有指令将成功。参见[http://redis.io/topics/transactions](http://redis.io/topics/transactions)。
 - en: 'To count the number of users who have viewed an article, we can use `bitcount`:'
+  id: totrans-121
   prefs: []
   type: TYPE_NORMAL
+  zh: 要计算查看文章的用户数量，我们可以使用`bitcount`：
 - en: '[PRE23]'
+  id: totrans-122
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: 'This is straightforward: the number of users who saw the article equals the
     number of bits set on the key. Now, let''s count the total number of article views:'
+  id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 这很简单：看到文章的用户数量等于键上设置的位数量。现在，让我们计算文章的总阅读次数：
 - en: '[PRE24]'
+  id: totrans-124
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: Once `multi` returns an array of results corresponding to the results returned
     by Redis for each operation (a count of bits), we `reduce` the count to a sum
     representing the total number of views of all our articles.
+  id: totrans-125
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦`multi`返回一个数组，其中包含每个操作（位计数）对应的Redis返回的结果，我们就`reduce`计数到一个表示我们所有文章总阅读次数的求和。
 - en: 'If we are interested, instead, in how many articles user 123 has viewed today,
     we can use `getbit`, which simply returns the value (either 0 or 1) at a given
     offset. The result will be in the range 0–3:'
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果我们感兴趣的是用户123今天看了多少篇文章，我们可以使用`getbit`，它简单地返回给定偏移量的值（要么是0要么是1）。结果将在0–3的范围内：
 - en: '[PRE25]'
+  id: totrans-127
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE25]'
 - en: These are very useful and direct ways to glean information from bit representations.
     Let's go a little further and learn about filtering bits using bitmasks and the
     AND, OR, and XOR operators.
+  id: totrans-128
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些是从位表示中获取信息非常有用且直接的方法。让我们更进一步，了解如何使用位掩码和AND、OR和XOR运算符进行位过滤。
 - en: Bitmasks and filtering results
+  id: totrans-129
   prefs:
   - PREF_H4
   type: TYPE_NORMAL
+  zh: 位掩码和过滤结果
 - en: 'Previously, we learned how to count the number of articles user 123 has seen.
     What if we want to check whether user 123 has read both articles? Using the bitop
     AND, this is easy to accomplish:'
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 之前，我们学习了如何计算用户123看到的文章数量。如果我们想检查用户123是否阅读了这两篇文章呢？使用bitop AND，这很容易实现：
 - en: '[PRE26]'
+  id: totrans-131
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE26]'
 - en: First, we create a mask that isolates a specific user stored at the key `'user123'`,
     containing a single positive bit at offset 123 (again, representing the user's
     ID). The results of an AND operation on two or more bit representations is not
@@ -701,19 +978,27 @@
     in the preceding example as `'123:sawboth'`. This key contains the bit representation
     that answers the question whether *both* the article keys contain bit representations
     that also have a positive bit at the same offset as the 'user123' key.
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，我们创建一个掩码，它隔离了存储在键`'user123'`中的特定用户，该掩码在偏移量123处有一个单独的正位（再次表示用户的ID）。两个或多个位表示的AND操作的结果不是由Redis作为值返回，而是写入到指定的键，在先前的例子中给出为`'123:sawboth'`。这个键包含位表示，回答了文章键是否*同时*包含在`user123`键相同偏移量处也有正位的位表示。
 - en: 'What if we wanted to find the total number of users who have seen at least
     one article? The bitop OR works well in this case:'
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果我们想找到至少看过一篇文章的总用户数呢？在这种情况下，bitop OR工作得很好：
 - en: '[PRE27]'
+  id: totrans-134
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE27]'
 - en: Here, the `'atleastonearticle'` key flags bits at all offsets that were set
     in any one of the three articles.
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里，`'atleastonearticle'`键标记了在三个文章中的任何一个中设置的偏移量上的位。
 - en: 'We can use these techniques to create a simple recommendation engine. For example,
     if we are able to determine via other means that two articles are similar (based
     on tags, keywords, and so on), we can find all users that have read one and recommended
@@ -721,15 +1006,21 @@
     the first article or the second article, but not both. We then break that set
     into two lists: those who have read the first article and those who have read
     the second article. We can then use these lists to offer recommendations:'
+  id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们可以使用这些技术来创建一个简单的推荐引擎。例如，如果我们能够通过其他方式确定两篇文章是相似的（基于标签、关键词等），我们可以找到所有阅读了一篇并推荐另一篇的用户。为此，我们将使用XOR来找到所有阅读了第一篇文章或第二篇文章，但没有同时阅读两篇的用户。然后我们将该集合分成两个列表：阅读了第一篇文章的人和阅读了第二篇文章的人。然后我们可以使用这些列表来提供推荐：
 - en: '[PRE28]'
+  id: totrans-137
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE28]'
 - en: While it is not necessary, we also fetch a count of each list and delete the
     result keys when we are done.
+  id: totrans-138
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然不是必需的，但我们也会获取每个列表的计数，并在完成后删除结果键。
 - en: The total number of bytes occupied by a binary value in Redis is calculated
     by dividing the largest offset by 8\. This means that storing access data for
     even 1,000,000 users on one article requires 125 KB—not a lot. If you have 1,000
@@ -737,52 +1028,74 @@
     in 125 MB—again, not a very large amount of memory or storage to spend in return
     for such a rich set of analytics data. Also, the amount of storage needed can
     be precisely calculated ahead of time.
+  id: totrans-139
   prefs: []
   type: TYPE_NORMAL
+  zh: 在Redis中，一个二进制值占用的总字节数是通过将最大偏移量除以8来计算的。这意味着存储一篇文章的1,000,000个用户的访问数据只需要125 KB——并不是很多。如果你在数据库中有1,000篇文章，你可以用125
+    MB存储1,000,000个用户的完整访问数据——再次强调，这不是一个很大的内存或存储量，可以用来换取这样丰富的一套分析数据。此外，所需的存储量可以提前精确计算。
 - en: Note
+  id: totrans-140
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: View the code bundle for an example of building a *like this page* service,
     where we use a bookmarklet to trigger *likes* on any URL using bit operations
     to store the time at which each *like* occurs (offsetting by the current second
     on a given day).
+  id: totrans-141
   prefs: []
   type: TYPE_NORMAL
+  zh: 查看代码包以了解如何构建一个*喜欢此页面*服务的示例，其中我们使用书签来触发任何URL上的*喜欢*，使用位操作来存储每次*喜欢*发生的时间（相对于给定日期的当前秒数）。
 - en: Other useful ways to deploy bitwise ideas are easy to find. Consider that if
     we allocate 86,400 bits to a key (the number of seconds in a day) and set a bit
     corresponding to the current second in the day, whenever a particular action is
     performed (such as a login), we have spent *86400 / 8 / 1000 = 10.8 KB* to store
     login data that can easily be filtered using bitmasks to deliver analytics data.
+  id: totrans-142
   prefs: []
   type: TYPE_NORMAL
+  zh: 其他部署位操作想法的有用方式也容易找到。考虑如果我们为键分配86,400位（一天中的秒数）并设置与当天当前秒相对应的位，每当执行特定操作（如登录）时，我们就花费了*86400
+    / 8 / 1000 = 10.8 KB*来存储登录数据，这些数据可以很容易地使用位掩码进行过滤以提供分析数据。
 - en: 'As an exercise, use bitmasks to demonstrate gender breakdown in article readership.
     Assume that we have stored two keys in Redis, one reflecting the user IDs identified
     as female and the other as male:'
+  id: totrans-143
   prefs: []
   type: TYPE_NORMAL
+  zh: 作为练习，使用位掩码来展示文章阅读者的性别分布。假设我们在Redis中存储了两个键，一个反映被识别为女性的用户ID，另一个反映男性：
 - en: '[PRE29]'
+  id: totrans-144
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE29]'
 - en: Using bit operations, we filter articles by gender.
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用位操作，我们通过性别过滤文章。
 - en: Using HyperLogLog to count unique anonymous visitors
+  id: totrans-146
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 使用HyperLogLog来计数独特的匿名访客
 - en: One of the most common things done with databases is storing and counting unique
     things. How many events of a certain type have occurred? How many tags have been
     created?
+  id: totrans-147
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用数据库最常见的事情之一是存储和计数独特的事物。特定类型的事件发生了多少次？创建了多少标签？
 - en: 'Consider the nearly ubiquitous task of every marketer: counting the number
     of unique visitors to a web page. Traditionally, counting is done in databases
     by writing a row of data or in logs by writing a line of text whenever a visitor
     lands on a page. Each unique visit increments the set length by one. These are
     simple and straightforward techniques.'
+  id: totrans-148
   prefs: []
   type: TYPE_NORMAL
+  zh: 考虑每个营销人员几乎都会做的任务：计算访问网页的独特访客数量。传统上，计数是通过在数据库中写入一行数据或在日志中写入一行文本来完成的，每当访客访问页面时。每次独特的访问都会使集合长度增加一。这些是简单直接的技术。
 - en: 'However, there is a problem: what if the same person arrives at the same page
     more than once? Whenever the user *John* lands on a page, some work must be done
     to determine whether this is a first-time occurrence (record it), or a repeat
@@ -793,30 +1106,43 @@
     will occur, we cannot know how much memory will be needed to store this potential
     activity; we are, therefore, exposed to the risk of our system being overwhelmed
     when one page or another becomes very popular, goes viral, and so on, overnight.'
+  id: totrans-149
   prefs: []
   type: TYPE_NORMAL
+  zh: 然而，存在一个问题：如果同一个人多次访问同一页面怎么办？每当用户 *John* 访问一个页面时，必须做一些工作来确定这是首次出现（记录它），还是重复出现（不记录它）。还有一个问题：表示唯一标识符的字节序列——通常是一个非常长的哈希——必须被存储。每个唯一的项目都会增加用于跟踪集合基数项目计数的总内存消耗。由于我们无法预先知道会有多少唯一点击，因此我们无法知道存储这种潜在活动所需的内存量；因此，当某个页面或另一个页面一夜之间变得非常受欢迎、病毒式传播等情况发生时，我们的系统可能会被压垮。
 - en: 'HyperLogLog is a probabilistic data structure that allows a nearly infinite
     number of unique items to be counted within a fixed memory allocation. As Salvatore
     Sanfilippo puts it at [http://antirez.com/news/75](http://antirez.com/news/75):'
+  id: totrans-150
   prefs: []
   type: TYPE_NORMAL
+  zh: HyperLogLog 是一种概率数据结构，它允许在固定的内存分配内计数几乎无限数量的唯一项目。正如 Salvatore Sanfilippo 在 [http://antirez.com/news/75](http://antirez.com/news/75)
+    中所说：
 - en: '*"HyperLogLog is remarkable as it provides a very good approximation of the
     cardinality of a set even using a very small amount of memory. In the Redis implementation
     it only uses 12kbytes per key to count with a standard error of 0.81%, and there
     is no limit to the number of items you can count, unless you approach 2^64 items
     (which seems quite unlikely)."*'
+  id: totrans-151
   prefs:
   - PREF_BQ
   type: TYPE_NORMAL
+  zh: '*"HyperLogLog 是一个显著的算法，因为它即使在只使用非常小的内存量时，也能提供集合基数的一个非常好的近似值。在 Redis 的实现中，它每个键只使用
+    12k 字节来计数，标准误差为 0.81%，并且你可以计数的项目数量没有限制，除非你接近 2^64 个项目（这似乎不太可能）。"*'
 - en: 'In your code bundle, you will find the `/hyperloglog` folder containing a simple
     counting application. Start this application by running `server.js`, and then,
     in your browser, visit `localhost:8080`. When you get there, click on the **Send
     a specific value** button. You should see the following output:'
+  id: totrans-152
   prefs: []
   type: TYPE_NORMAL
+  zh: 在您的代码包中，您将找到一个包含简单计数应用的 `/hyperloglog` 文件夹。通过运行 `server.js` 来启动此应用，然后在浏览器中访问
+    `localhost:8080`。当您到达那里时，点击 **发送特定值** 按钮。您应该看到以下输出：
 - en: '![Using HyperLogLog to count unique anonymous visitors](img/1403OS_04_03.jpg)'
+  id: totrans-153
   prefs: []
   type: TYPE_IMG
+  zh: '![使用 HyperLogLog 计算唯一匿名访客](img/1403OS_04_03.jpg)'
 - en: You have inserted the value `123` into a HyperLogLog key, and the number returned
     (`1`) is the cardinality of that key's set. Click on the same button a few times—
     given that this structure maintains a count of unique values, the number should
@@ -824,68 +1150,99 @@
     up. Regardless of how many entries you make in the log key, the same amount of
     memory will be used. This sort of predictability is great when scaling out your
     application.
+  id: totrans-154
   prefs: []
   type: TYPE_NORMAL
+  zh: 您已将值 `123` 插入到 HyperLogLog 键中，返回的数字（`1`）是该键集合的基数。点击相同的按钮几次——鉴于这种结构维护了唯一值的计数，数字不应改变。现在，尝试添加随机值。您将看到返回的数字增加。无论您在日志键中输入多少条记录，使用的内存量都是相同的。这种可预测性在扩展您的应用时非常好。
 - en: 'You can find the `index.html` page describing this client interface in the
     code bundle. All that the client needs to do is send an XHR request to `localhost:8080/log/<some
     value>`. Feel free to browse the code. More to the point, let''s look at how the
     relevant route handler is defined on the server to insert values into HyperLogLog
     and retrieve log cardinality:'
+  id: totrans-155
   prefs: []
   type: TYPE_NORMAL
+  zh: 您可以在代码包中找到描述此客户端界面的 `index.html` 页面。客户端需要做的只是向 `localhost:8080/log/<some value>`
+    发送一个 XHR 请求。请随意浏览代码。更重要的是，让我们看看服务器上如何定义相关路由处理程序来插入值到 HyperLogLog 并检索日志基数：
 - en: '[PRE30]'
+  id: totrans-156
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE30]'
 - en: After validating that we have received a new value on the `/log` route, we add
     that value to `hyperLLKey` using the `PFADD` command (in Redis, if a key does
     not exist when performing an insert operation, it is automatically created). Once
     inserted successfully, the key is queried for its `PFCOUNT`, and the updated set's
     cardinality is returned to the client.
+  id: totrans-157
   prefs: []
   type: TYPE_NORMAL
+  zh: 在验证我们在 `/log` 路由上收到新值后，我们使用 `PFADD` 命令（在 Redis 中，如果在插入操作时键不存在，则自动创建）将该值添加到 `hyperLLKey`。一旦成功插入，就查询键的
+    `PFCOUNT`，并将更新后的集合基数返回给客户端。
 - en: 'In addition, the `PFMERGE` command lets you merge (create the union of) several
     HyperLogLog sets and fetch the cardinality of the resulting set. The following
     code will result in a cardinality value of `10`:'
+  id: totrans-158
   prefs: []
   type: TYPE_NORMAL
+  zh: 此外，`PFMERGE` 命令允许您合并（创建多个 HyperLogLog 集合的并集）并获取结果集合的基数。以下代码将产生基数值为 `10`：
 - en: '[PRE31]'
+  id: totrans-159
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE31]'
 - en: The ability to approximate the cardinality of merged sets brings to mind the
     sort of efficient analytics possibilities we saw when exploring bitwise operations.
     Consider HyperLogLog when counts of many unique values are useful analytically
     and an imprecise but very closely approximated count is sufficient (such as tracking
     the number of users who logged in today, the total number of pages viewed, and
     so on).
+  id: totrans-160
   prefs: []
   type: TYPE_NORMAL
+  zh: 近似合并集合基数的能力让人联想到我们在探索位运算时看到的那些高效的分析可能性。当许多唯一值的计数在分析中很有用，并且一个不精确但非常接近的计数足够时（例如，跟踪今天登录的用户数量、查看的总页面数等），请考虑使用
+    HyperLogLog。
 - en: Taming V8 and optimizing performance
+  id: totrans-161
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 驯服 V8 和优化性能
 - en: V8 manages Node's main process thread. When executing JavaScript, V8 does so
     in its own process, and its internal behavior is *not* controlled by Node. However,
     we can write JavaScript in a way that helps V8 achieve optimal compilation results.
     In this section, we'll focus on how to write efficient JavaScript and take a look
     at special configuration flags we can pass to V8 that help with keeping our Node
     process fast and light.
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: V8 管理 Node 的主进程线程。当执行 JavaScript 时，V8 在其自己的进程中执行，并且其内部行为**不**受 Node 控制。然而，我们可以编写
+    JavaScript 代码来帮助 V8 实现最佳的编译结果。在本节中，我们将重点介绍如何编写高效的 JavaScript，并查看我们可以传递给 V8 的特殊配置标志，这些标志有助于保持我们的
+    Node 进程快速且轻量。
 - en: Tip
+  id: totrans-163
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 小贴士
 - en: 'The version of V8 used by your Node installation can be viewed by typing the
     following:'
+  id: totrans-164
   prefs: []
   type: TYPE_NORMAL
+  zh: 您可以通过输入以下命令来查看您的 Node 安装使用的 V8 版本：
 - en: '[PRE32]'
+  id: totrans-165
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE32]'
 - en: Optimizing JavaScript
+  id: totrans-166
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 优化 JavaScript
 - en: The convenience of a dynamic language is in avoiding the strictness that compiled
     languages impose. For example, you need not explicitly define object property
     types and can actually change those property types at will. This dynamism makes
@@ -894,24 +1251,32 @@
     a significant penalty in terms of execution speeds when compared to statically
     compiled languages. The limited speed of JavaScript has regularly been identified
     as one of its major weaknesses.
+  id: totrans-167
   prefs: []
   type: TYPE_NORMAL
+  zh: 动态语言的便利性在于避免了编译语言强加的严格性。例如，您不需要显式定义对象属性类型，实际上可以随意更改这些属性类型。这种动态性使得传统的编译变得不可能，但为探索性语言（如
+    JavaScript）开辟了有趣的新机会。然而，与静态编译语言相比，动态性在执行速度方面引入了显著的惩罚。JavaScript 的有限速度经常被识别为其主要弱点之一。
 - en: 'V8 attempts to achieve the sorts of speeds with JavaScript that one observes
     for compiled languages. V8 attempts to compile JavaScript into native machine
     code rather than interpreting bytecode or using other just-in-time techniques.
     Because the precise runtime topology of a JavaScript program cannot be known ahead
     of time (the language is dynamic), compilation consists of a two-stage, speculative
     approach:'
+  id: totrans-168
   prefs: []
   type: TYPE_NORMAL
+  zh: V8 试图以编译语言的速度实现 JavaScript。V8 试图将 JavaScript 编译成原生机器代码，而不是解释字节码或使用其他即时技术。由于
+    JavaScript 程序的确切运行时拓扑结构无法提前知道（该语言是动态的），编译包括一个两阶段、推测性的方法：
 - en: Initially, a first-pass compiler converts your code into a runnable state as
     quickly as possible. During this step, type analysis and other detailed analysis
     of the code is deferred, achieving fast compilation—your JavaScript can begin
     executing as close to instantly as possible. Further optimizations are accomplished
     during the second step.
+  id: totrans-169
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 最初，一次编译器尽可能快地将您的代码转换为可运行状态。在此步骤中，类型分析和代码的其他详细分析被推迟，以实现快速编译——您的 JavaScript 可以尽可能快地开始执行。进一步的优化在第二步完成。
 - en: Once the program is up and running, an optimizing compiler then begins its job
     of watching how your program runs and attempting to determine its current and
     future runtime characteristics, optimizing and re-optimizing as necessary. For
@@ -920,9 +1285,11 @@
     While the first compile step was conservative with an as-yet unknown and untyped
     functional signature, this *hot* function's predictable texture impels V8 to assume
     a certain optimal profile and recompile based on that assumption.
+  id: totrans-170
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 一旦程序运行起来，优化编译器就开始执行其工作，监视程序运行情况并尝试确定其当前和未来的运行特性，根据需要优化和重新优化。例如，如果一个函数被多次以相似的一致类型参数调用，V8会重新编译该函数以使用优化代码。虽然第一次编译步骤在未知和未类型化的函数签名上较为保守，但这个*热点*函数可预测的纹理促使V8假设一个特定的最优配置文件并据此重新编译。
 - en: 'Assumptions help us make decisions more quickly but can lead to mistakes. What
     if the hot function that V8''s compiler just optimized against a certain type
     signature is now called with arguments violating that optimized profile? V8 has
@@ -931,147 +1298,216 @@
     pattern is seen. However, if V8 must again de-optimize at a later time and if
     this binary switching of optimizing/de-optimizing continues, V8 simply *gives
     up* and leaves your code in a de-optimized state.'
+  id: totrans-171
   prefs: []
   type: TYPE_NORMAL
+  zh: 假设帮助我们更快地做出决定，但可能导致错误。如果V8编译器刚刚针对某个类型签名优化了热点函数，现在却用违反该优化配置文件的参数调用该函数，那会怎样？在这种情况下，V8别无选择：它必须去优化该函数——V8必须承认其错误并撤销所做的工作。如果将来看到新的模式，它将重新优化。然而，如果V8在以后的时间必须再次去优化，并且这种优化/去优化的二进制切换持续进行，V8将简单地*放弃*，并让你的代码保持在去优化状态。
 - en: Two areas of focus for the V8 team are achieving fast property access and dynamically
     creating efficient machine code. Let's look at ways to approach the design and
     declaration of arrays, objects, and functions so that you are helping, rather
     than hindering, the compiler.
+  id: totrans-172
   prefs: []
   type: TYPE_NORMAL
+  zh: V8团队关注的两个重点是实现快速的属性访问和动态创建高效的机器代码。让我们看看如何设计数组的声明、对象和函数，以便你能够帮助而不是阻碍编译器。
 - en: Numbers and tracing optimization/de-optimization
+  id: totrans-173
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 数字和跟踪优化/去优化
 - en: The ECMA-262 specification defines the `Number` value as a *primitive value
     corresponding to a double-precision, 64-bit binary format IEEE 754 value*. The
     point is that there is no integer type in JavaScript; there is a `Number` type
     defined as a double-precision floating-point number.
+  id: totrans-174
   prefs: []
   type: TYPE_NORMAL
+  zh: ECMA-262规范将`Number`值定义为*与双精度、64位二进制格式IEEE 754值相对应的原始值*。重点是JavaScript中没有整数类型；有一个`Number`类型定义为双精度浮点数。
 - en: V8 uses 32-bit numbers for *all* values internally for performance reasons that
     are too technical to discuss here. It can be said that, should greater width be
     needed, one bit is used to point to another 32-bit number. Regardless, it is clear
     that there are two types of values tagged as numbers by V8 and switching between
     these types will cost you something. Try to restrict your needs to 31-bit signed
     integers where possible.
+  id: totrans-175
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于性能原因，V8内部使用32位数字来表示*所有*值，这里不讨论过于技术性的原因。可以说，如果需要更大的宽度，则使用一个位来指向另一个32位数字。无论如何，很明显，V8将数值分为两种类型，并在这些类型之间切换将消耗一些资源。尽可能将需求限制在31位有符号整数。
 - en: 'Because of the type ambiguity of JavaScript, switching the types of numbers
     assigned to a slot is allowed. The following code does not throw an error:'
+  id: totrans-176
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于JavaScript的类型歧义性，允许将分配给槽位的数字类型进行切换。以下代码不会抛出错误：
 - en: '[PRE33]'
+  id: totrans-177
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE33]'
 - en: However, a speculative compiler such as V8 will be unable to optimize this variable
     assignment given that its *guess* that `a` will always be an integer turned out
     to be wrong, forcing de-optimization.
+  id: totrans-178
   prefs: []
   type: TYPE_NORMAL
+  zh: 然而，像V8这样的投机编译器将无法优化这个变量赋值，因为其*猜测*`a`始终是整数的结果证明是错误的，迫使去优化。
 - en: 'We can demonstrate this using powerful V8 options available to you when executing
     code: executing V8 native commands in your Node program and tracing how V8 optimizes/de-optimizes
     your code.'
+  id: totrans-179
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们可以通过使用在执行代码时提供的强大V8选项来演示这一点：在Node程序中执行V8原生命令并跟踪V8如何优化/去优化你的代码。
 - en: 'Consider the following Node program:'
+  id: totrans-180
   prefs: []
   type: TYPE_NORMAL
+  zh: 考虑以下Node程序：
 - en: '[PRE34]'
+  id: totrans-181
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE34]'
 - en: 'If you try to run this normally, you receive an `Unexpected Token` error—the
     modulo (`%`) symbol cannot be used within an identifier name in JavaScript. What
     is this strange method with a `%` prefix? It is a V8 native command, and we can
     turn to the execution of these types of functions using the `--allow-natives-syntax`
     flag as follows:'
+  id: totrans-182
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果您尝试正常运行，您会收到一个 `Unexpected Token` 错误——JavaScript 中不能在标识符名称中使用取模符号（`%`）。这个以
+    `%` 前缀为前缀的奇怪方法是什么？这是一个 V8 本地命令，我们可以通过使用 `--allow-natives-syntax` 标志来执行这些类型的函数，如下所示：
 - en: '[PRE35]'
+  id: totrans-183
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE35]'
 - en: Note
+  id: totrans-184
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: You can learn about the available native functions by browsing the V8 source
     at [https://code.google.com/p/v8/source/browse/trunk/src/runtime.cc?r=22500](https://code.google.com/p/v8/source/browse/trunk/src/runtime.cc?r=22500),
     and searching for **runtime_function**.
+  id: totrans-185
   prefs: []
   type: TYPE_NORMAL
+  zh: 您可以通过浏览 V8 源代码了解可用的本地函数，[https://code.google.com/p/v8/source/browse/trunk/src/runtime.cc?r=22500](https://code.google.com/p/v8/source/browse/trunk/src/runtime.cc?r=22500)，并搜索
+    **runtime_function**。
 - en: 'Now, consider the following code, which uses native functions to assert information
     about the optimization status of the `square` function using the `%OptimizeFunctionOnNextCall`
     native method:'
+  id: totrans-186
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，考虑以下代码，它使用本地函数通过 `%OptimizeFunctionOnNextCall` 本地方法断言关于 `square` 函数优化状态的信息：
 - en: '[PRE36]'
+  id: totrans-187
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE36]'
 - en: 'Create a file using the preceding code and execute it using the following command:'
+  id: totrans-188
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用前面的代码创建一个文件，并使用以下命令执行它：
 - en: '[PRE37]'
+  id: totrans-189
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE37]'
 - en: 'You will see something like the following output returned:'
+  id: totrans-190
   prefs: []
   type: TYPE_NORMAL
+  zh: 您将看到以下类似输出返回：
 - en: '[PRE38]'
+  id: totrans-191
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE38]'
 - en: 'We can see that V8 has no problem optimizing the `square` function as the operand
     is declared once and never changed. Now, append the following lines to your file
     and run it again:'
+  id: totrans-192
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们可以看到，V8 没有问题优化 `square` 函数，因为操作数只声明了一次且从未改变。现在，将以下行添加到您的文件中，并再次运行它：
 - en: '[PRE39]'
+  id: totrans-193
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE39]'
 - en: 'On this execution, following the optimization report given earlier, you should
     now receive something like the following output:'
+  id: totrans-194
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这次执行中，根据之前给出的优化报告，您现在应该收到以下类似输出：
 - en: '[PRE40]'
+  id: totrans-195
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE40]'
 - en: This very expressive optimization report tells the story very clearly—the once-optimized
     `square` function was de-optimized following the change we made in one number's
     type. You are encouraged to spend time writing code and to test it using these
     methods now and as you move through this section.
+  id: totrans-196
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个非常表达性的优化报告清楚地讲述了故事——之前优化的 `square` 函数在改变一个数字类型后进行了去优化。您被鼓励花时间编写代码，并使用这些方法现在以及您通过本节进行测试。
 - en: Objects and arrays
+  id: totrans-197
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 对象和数组
 - en: As we learned when investigating numbers, V8 works best when your code is predictable.
     The same holds true with arrays and objects. Nearly all of the following *bad
     practices* are bad for the simple reason that they create unpredictability.
+  id: totrans-198
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们调查数字时，我们了解到 V8 在您的代码可预测时工作得最好。这与数组和对象相同。以下所有 *不良做法* 几乎都是因为它们创造了不可预测性。
 - en: Remember that, in JavaScript, an object and an array are very similar *under
     the hood*. We won't be discussing those differences but only the important similarities,
     specifically in terms of how both these data constructs benefit from similar optimization
     techniques.
+  id: totrans-199
   prefs: []
   type: TYPE_NORMAL
+  zh: 记住，在 JavaScript 中，对象和数组在底层非常相似。我们不会讨论这些差异，但只会讨论重要的相似之处，特别是关于这两种数据结构如何从类似的优化技术中受益。
 - en: 'Avoid mixing types in arrays. It is always better to have a consistent data
     type, such as *all integers* or *all strings*. Also, avoid changing types in arrays
     or in property assignments after initialization, if possible. V8 creates *blueprints*
     of objects by creating hidden classes to track types, and, when those types change,
     the optimization blueprints will be destroyed and rebuilt—if you''re lucky. See
     the following link for more information:'
+  id: totrans-200
   prefs: []
   type: TYPE_NORMAL
+  zh: 避免在数组中混合类型。始终最好有一个一致的数据类型，例如 *所有整数* 或 *所有字符串*。如果可能，避免在初始化后更改数组或属性赋值中的类型。V8 通过创建隐藏类来跟踪类型来创建对象的
+    *蓝图*，当这些类型发生变化时，优化蓝图将被销毁并重建——如果您幸运的话。有关更多信息，请参阅以下链接：
 - en: '[https://developers.google.com/v8/design](https://developers.google.com/v8/design)'
+  id: totrans-201
   prefs: []
   type: TYPE_NORMAL
+  zh: '[https://developers.google.com/v8/design](https://developers.google.com/v8/design)'
 - en: 'Don''t create arrays with gaps, an example of which is shown as follows:'
+  id: totrans-202
   prefs: []
   type: TYPE_NORMAL
+  zh: 不要创建带有间隙的数组，以下是一个示例：
 - en: '[PRE41]'
+  id: totrans-203
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE41]'
 - en: 'Sparse arrays are bad for this reason: V8 can either use a very efficient *linear
     storage* strategy to store (and access) your array data, or it can use a hash
     table (which is much slower). If your array is sparse, V8 must choose the less
@@ -1081,19 +1517,26 @@
     way of creating a sparse array. Similarly, be careful about populating an array
     with empty values—ensure that the external data you are pushing into an array
     is not incomplete.'
+  id: totrans-204
   prefs: []
   type: TYPE_NORMAL
+  zh: 稀疏数组因为这个原因不好：V8可以使用非常高效的*线性存储*策略来存储（和访问）你的数组数据，或者它可以使用哈希表（这要慢得多）。如果你的数组是稀疏的，V8必须选择两种中效率较低的一种。出于同样的原因，始终从零索引开始你的数组。此外，永远不要使用`delete`从数组中删除元素。你只是在那个位置插入一个`undefined`值，这实际上是创建稀疏数组的一种方式。同样，小心使用空值填充数组——确保你推送到数组中的外部数据不是不完整的。
 - en: Try not to pre-allocate large arrays—grow as you go. Similarly, do not pre-allocate
     an array and then exceed that size. You always want to avoid spooking V8 into
     turning your array into a hash table.
+  id: totrans-205
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽量不要预先分配大数组——随着需要增长。同样，不要预先分配一个数组然后超过那个大小。你总是想避免让V8将你的数组转换成哈希表。
 - en: V8 creates a new hidden class whenever a new property is added to an object
     constructor. Try to avoid adding properties after an object is instantiated. Initialize
     all members in constructor functions in the same order. *Same properties + same
     order = same object*.
+  id: totrans-206
   prefs: []
   type: TYPE_NORMAL
+  zh: 每当向对象构造函数添加新属性时，V8都会创建一个新的隐藏类。尽量在对象实例化后避免添加属性。在构造函数中初始化所有成员的顺序应相同。*相同的属性 + 相同的顺序
+    = 相同的对象*。
 - en: Remember that JavaScript is a dynamic language that allows object (and object
     prototype) modifications *after* instantiation. Since the shape and volume of
     an object can, therefore, be altered *after the fact*, how does V8 allocate memory
@@ -1104,33 +1547,45 @@
     A total of 32 *fast property slots* is then allocated to each instance based on
     this assumed maximum size. Any *extra properties* are slotted into a (slower)
     overflow property array that can be resized to accommodate any further new properties.
+  id: totrans-207
   prefs: []
   type: TYPE_NORMAL
+  zh: 记住JavaScript是一种动态语言，允许在实例化后修改对象（和对象原型）。因此，对象的形状和体积可以在事后改变，那么V8是如何为对象分配内存的呢？它做出了一些合理的假设。从给定的构造函数实例化了一定数量的对象（我相信是8个是触发数），其中最大的被认为是最大大小，所有后续实例都分配了这么多内存（初始对象也会相应地调整大小）。然后根据这个假设的最大大小为每个实例分配总共32个*快速属性槽位*。任何*额外属性*都会放入一个（较慢的）溢出属性数组中，该数组可以调整大小以适应任何进一步的新属性。
 - en: With objects, just as with arrays, try as much as possible to define the shape
     of your data structures in a *futureproof* manner, with a set number of properties,
     types, and so on.
+  id: totrans-208
   prefs: []
   type: TYPE_NORMAL
+  zh: 就像数组一样，对于对象，尽可能以*未来兼容*的方式定义你的数据结构的形状，包括一组属性、类型等。
 - en: Functions
+  id: totrans-209
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 函数
 - en: Functions are typically called often and should be one of your prime optimization
     focuses. Functions containing try-catch constructs are *not optimizable*, nor
     are functions containing other *unpredictable* constructs, such as `with` and
     `eval`. If, for some reason, your function is not optimizable, keep its use to
     a minimum.
+  id: totrans-210
   prefs: []
   type: TYPE_NORMAL
+  zh: 函数通常会被频繁调用，因此应该是你优化重点之一。包含try-catch结构的函数*不可优化*，包含其他*不可预测*结构的函数也不可优化，例如`with`和`eval`。如果由于某种原因你的函数不可优化，请尽量减少其使用。
 - en: A very common optimization error involves the use of polymorphic functions.
     Functions that accept variable function arguments will be de-optimized. Avoid
     polymorphic functions.
+  id: totrans-211
   prefs: []
   type: TYPE_NORMAL
+  zh: 一个非常常见的优化错误涉及多态函数的使用。接受可变函数参数的函数将被优化。避免使用多态函数。
 - en: Caching strategies
+  id: totrans-212
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 缓存策略
 - en: '**Caching**, generally, is the strategy of creating easily accessible intermediate
     versions of assets. When retrieving an asset is expensive—in terms of time, processor
     cycles, memory, and so on—you should consider caching that asset. For example,
@@ -1140,8 +1595,10 @@
     visit. A good caching strategy is essential to any web-based application that
     serves large numbers of rendered data views, be they HTML pages or JSON structures.
     Cached content can be served cheaply and quickly.'
+  id: totrans-213
   prefs: []
   type: TYPE_NORMAL
+  zh: '**缓存**，通常，是创建易于访问的资产中间版本的战略。当检索资产代价高昂——从时间、处理器周期、内存等方面来看——你应该考虑缓存该资产。例如，如果每次加拿大人访问时都必须从数据库中检索加拿大省份的列表，那么将这个列表存储在静态格式中，从而避免每次访问都执行昂贵的数据库查询操作，这是一个好主意。良好的缓存策略对于任何基于Web的应用程序至关重要，这些应用程序为大量渲染的数据视图提供服务，无论是HTML页面还是JSON结构。缓存内容可以以低廉的成本和速度提供服务。'
 - en: 'Whenever you deploy content that doesn''t change often, you most likely want
     to cache your files. Two general types of *static* assets are commonly seen. Assets
     such as a company logo, existing as-is in a content folder, will change very rarely.
@@ -1149,98 +1606,145 @@
     of the asset. This second class encompasses such things as CSS style sheets, lists
     of user contacts, latest headlines, and so on. Creating a reliable and efficient
     caching system is a nontrivial problem:'
+  id: totrans-214
   prefs: []
   type: TYPE_NORMAL
+  zh: 无论何时部署不经常更改的内容，你很可能希望缓存你的文件。常见的两种**静态**资产类型包括：像公司标志这样的资产，作为内容文件夹中现有的文件，几乎不会改变。其他资产虽然更频繁地改变，但远不如每次请求资产时那么频繁。这类资产包括CSS样式表、用户联系名单、最新头条新闻等等。创建一个可靠且高效的缓存系统是一个非同小可的问题：
 - en: '|   | *"There are only two hard things in Computer Science: cache invalidation
     and naming things."* |   |'
+  id: totrans-215
   prefs: []
   type: TYPE_TB
+  zh: '|   | *"在计算机科学中，只有两件难事：缓存失效和命名事物。"* |   |'
 - en: '|   | --*Phil Karlton* |'
+  id: totrans-216
   prefs: []
   type: TYPE_TB
+  zh: '|   | --*Phil Karlton* |'
 - en: In this section, we'll look at two strategies to cache your application content.
     First, we'll look at using Redis as an in-memory key-value cache for regularly
     used JSON data, learning about the Redis key expiry and key scanning. Finally,
     we'll investigate how to manage your content using the CloudFlare **content delivery
     network** (**CDN**), in the process learning something about using Node to watch
     for file changes and then invalidating a CDN cache when change events are detected.
+  id: totrans-217
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将探讨两种缓存应用程序内容的方法。首先，我们将探讨使用Redis作为内存中的键值缓存来存储常用JSON数据，了解Redis键过期和键扫描。最后，我们将研究如何使用CloudFlare
+    **内容分发网络**（**CDN**）来管理你的内容，在这个过程中，我们将学习如何使用Node监控文件更改，并在检测到更改事件时使CDN缓存失效。
 - en: Using Redis as a cache
+  id: totrans-218
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用Redis作为缓存
 - en: In the example session-store implemented earlier, cookie values were stored
     in Redis and matched against incoming values to provide simple session management.
     This sort of regular checking of small, in-memory values is a common pattern in
     multiuser environments, for which technologies such as **memcached** were developed.
+  id: totrans-219
   prefs: []
   type: TYPE_NORMAL
+  zh: 在之前实现的示例session-store中，cookie值存储在Redis中，并与传入的值进行匹配以提供简单的会话管理。这种对小型内存值进行定期检查的模式在多用户环境中很常见，为此开发了像**memcached**这样的技术。
 - en: Redis is fully capable of functioning as a similar in-memory caching system.
     Let's implement a simple caching layer using Redis that intelligently manages
     key association and expiry.
+  id: totrans-220
   prefs: []
   type: TYPE_NORMAL
+  zh: Redis完全能够作为一个类似的内存缓存系统运行。让我们实现一个简单的缓存层，使用Redis智能管理键关联和过期。
 - en: 'Because many types of information will be cached, it is a good idea to namespace
     your cache keys. We''ll structure our cache library such that individual namespace-aware
     cache APIs can be instantiated:'
+  id: totrans-221
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于许多类型的信息将被缓存，为缓存键命名空间是一个好主意。我们将构建我们的缓存库，以便可以实例化单个命名空间感知的缓存API：
 - en: '[PRE42]'
+  id: totrans-222
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE42]'
 - en: 'Typically, our caching layer will be decoupled from any given server, so here
     we design a constructor that expects Redis''s connection and authentication information.
     Note the prefix argument. To instantiate a cache instance, use the following code:'
+  id: totrans-223
   prefs: []
   type: TYPE_NORMAL
+  zh: 通常，我们的缓存层将与任何特定的服务器解耦，因此在这里我们设计了一个构造函数，它期望Redis的连接和认证信息。注意前缀参数。要实例化一个缓存实例，请使用以下代码：
 - en: '[PRE43]'
+  id: totrans-224
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE43]'
 - en: Also note that we're going to implement the cache API using **Promises** via
     the `bluebird` library ([https://github.com/petkaantonov/bluebird](https://github.com/petkaantonov/bluebird)).
+  id: totrans-225
   prefs: []
   type: TYPE_NORMAL
+  zh: 还请注意，我们将通过`bluebird`库（[https://github.com/petkaantonov/bluebird](https://github.com/petkaantonov/bluebird)）使用**Promises**来实现缓存API。
 - en: 'Getting a cached value is straightforward:'
+  id: totrans-226
   prefs: []
   type: TYPE_NORMAL
+  zh: 获取缓存值很简单：
 - en: '[PRE44]'
+  id: totrans-227
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE44]'
 - en: 'All cache keys will be implemented as Redis hashes, so a `GET` operation will
     involve calling `hmget` on a key. The Promises-powered API now enables the following
     easy-to-follow syntax:'
+  id: totrans-228
   prefs: []
   type: TYPE_NORMAL
+  zh: 所有缓存键都将实现为Redis哈希，因此`GET`操作将涉及在键上调用`hmget`。由Promises支持的API现在允许以下易于理解的语法：
 - en: '[PRE45]'
+  id: totrans-229
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE45]'
 - en: 'Setting a value is simply a matter of passing an object:'
+  id: totrans-230
   prefs: []
   type: TYPE_NORMAL
+  zh: 设置值只是传递一个对象的问题：
 - en: '[PRE46]'
+  id: totrans-231
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE46]'
 - en: 'When `val` is received, we reflect its key-value map in the Redis hash stored
     at `key`. The optional third argument, `ttl`, allows a flag to be set in Redis
     to expire this key after a number of seconds, flagging it for deletion. The key
     bit of code in `this.expire` is the following:'
+  id: totrans-232
   prefs: []
   type: TYPE_NORMAL
+  zh: 当接收到`val`时，我们将它的键值映射反映在存储在`key`的Redis哈希中。可选的第三个参数`ttl`允许在Redis中设置一个标志，在经过一定秒数后使该键过期，并标记为删除。`this.expire`中的关键代码如下：
 - en: '[PRE47]'
+  id: totrans-233
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE47]'
 - en: For more information on Redis `expire`, visit [http://redis.io/commands/expire](http://redis.io/commands/expire).
+  id: totrans-234
   prefs: []
   type: TYPE_NORMAL
+  zh: 更多关于Redis `expire`的信息，请访问 [http://redis.io/commands/expire](http://redis.io/commands/expire)。
 - en: 'The `remove` method is simply a `del` operation on the Redis keyspace, so there
     is no need to explain it here. More interesting is the implementation of the `clear`
     method to remove all keys with a given prefix from Redis:'
+  id: totrans-235
   prefs: []
   type: TYPE_NORMAL
+  zh: '`remove`方法只是对Redis键空间进行`del`操作，因此这里无需解释。更有趣的是`clear`方法的实现，用于从Redis中删除所有具有给定前缀的键：'
 - en: '[PRE48]'
+  id: totrans-236
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE48]'
 - en: Note the `scan` method we are using to target and delete keys matching our cache
     prefix. Redis is designed for efficiency, and, as much as possible, its designers
     aim to avoid adding slow features. Unlike other databases, Redis has no advanced
@@ -1249,8 +1753,10 @@
     in a Redis keyspace, operations using *keys*, unavoidably or through sloppiness,
     can end up being punitively expensive because a long operation blocks other operations—transactions
     are atomic, and Redis is single-threaded.
+  id: totrans-237
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意我们使用的`scan`方法来定位和删除匹配我们缓存前缀的键。Redis被设计为高效，其设计者尽可能避免添加缓慢的功能。与其他数据库不同，Redis没有高级的*查找*方法来搜索其键空间，开发者只能限于使用*keys*和基本通配符模式匹配。由于Redis键空间中通常有数百万个键，使用*keys*的操作不可避免地或由于粗心大意，可能会变得非常昂贵，因为长时间的操作会阻塞其他操作——事务是原子的，Redis是单线程的。
 - en: 'The `scan` method allows you to fetch limited ranges of the keyspace in an
     iterative manner, enabling (nonblocking) asynchronous keyspace scanning. The scan
     object itself is stateless, passing only a cursor indicating whether there are
@@ -1260,14 +1766,21 @@
     function, continuing until the scanner returns a zero value (indicating that all
     sought keys have been returned), at which point we delete all those keys in one
     command.'
+  id: totrans-238
   prefs: []
   type: TYPE_NORMAL
+  zh: '`scan`方法允许您以迭代方式获取键空间的一定范围，从而实现（非阻塞）异步键空间扫描。扫描对象本身是无状态的，只传递一个指示是否有更多记录要获取的光标。使用这种技术，我们能够清除所有以我们的目标缓存键（模式：`this.prefix
+    + ''*''`）为前缀的键。在每次扫描迭代中，我们使用`multi.del`函数将返回的任何键排队以供删除，直到扫描器返回零值（表示所有要查找的键都已返回），此时我们使用一个命令删除所有这些键。'
 - en: 'Tie these methods together:'
+  id: totrans-239
   prefs: []
   type: TYPE_NORMAL
+  zh: 将这些方法结合起来：
 - en: '[PRE49]'
+  id: totrans-240
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE49]'
 - en: 'This is a simple caching strategy to get you started. While managing key expiration
     yourself is a perfectly valid technique, as you move into larger production implementations,
     consider configuring Redis''s eviction policies directly. For example, you will
@@ -1275,38 +1788,54 @@
     for the cache memory and configure Redis to use one of the six documented eviction
     policies when memory limits are reached, such as **Least Recently Used** (**LRU**).
     For more information, visit: [http://redis.io/topics/lru-cache](http://redis.io/topics/lru-cache).'
+  id: totrans-241
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是一个简单的缓存策略，可以帮助您入门。虽然自己管理键的过期时间是一种完全有效的技术，但随着您进入更大的生产实施，考虑直接配置Redis的驱逐策略。例如，您可能希望将`redis.conf`中的`maxmemory`值设置为缓存内存的最大上限，并配置Redis在内存限制达到时使用六种文档中记录的驱逐策略之一，例如**最近最少使用**（**LRU**）。更多信息，请访问：[http://redis.io/topics/lru-cache](http://redis.io/topics/lru-cache)。
 - en: Deploying CloudFlare as a CDN
+  id: totrans-242
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 将 CloudFlare 部署为 CDN
 - en: A CDN is typically a globe-spanning network of servers leased out to companies
     unable to fund and build their own network. A CDN is set up to ensure that your
     application or other content remains available to anyone who wishes to access
     it, wherever they choose to access it in the world, and that your content is delivered
     quickly. Akamai is perhaps the most famous CDN, and CloudFlare is a recent arrival
     with a particular focus on security and "attack proofing" networks.
+  id: totrans-243
   prefs: []
   type: TYPE_NORMAL
+  zh: CDN 通常是一个全球性的服务器网络，这些服务器被租给无法自己出资和建设自己网络的公司。CDN 的设置是为了确保你的应用程序或其他内容对任何希望访问它的人来说都是可用的，无论他们选择在世界上的哪个地方访问，并且你的内容能够快速交付。Akamai
+    可能是最著名的 CDN，而 CloudFlare 是一个最近加入的，特别关注安全和“攻击防护”网络。
 - en: Usefully for our purposes, CloudFlare provides a free tier of service that satisfies
     the needs of most deployed applications. In the example that follows, you'll learn
     how to enable caching with CloudFlare. We'll then use the `cloudflare` module
     to purge your domain files when they change, in the process learning how to use
     Node's `fs.watch` method to watch for file changes.
+  id: totrans-244
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于我们的目的来说，CloudFlare 提供了一个免费的服务层，这满足了大多数部署应用的需求。在接下来的示例中，你将学习如何使用 CloudFlare
+    启用缓存。然后我们将使用 `cloudflare` 模块在文件更改时清除你的域名文件，在这个过程中学习如何使用 Node 的 `fs.watch` 方法来监视文件更改。
 - en: Note
+  id: totrans-245
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: CloudFlare has also embarked on an ambitious effort to host *all the JS* on
     its CDN at [https://cdnjs.com/](https://cdnjs.com/). Unlike other popular hosting
     services that only host the most popular JavaScript libraries, CloudFlare hosts
     all projects represented in the open GitHub project at [https://github.com/cdnjs/cdnjs](https://github.com/cdnjs/cdnjs).
     Consider deploying your JavaScript files via this service.
+  id: totrans-246
   prefs: []
   type: TYPE_NORMAL
+  zh: CloudFlare 还开始了一个雄心勃勃的努力，在其 CDN 上托管所有 JS，网址为 [https://cdnjs.com/](https://cdnjs.com/)。与其他只托管最流行
+    JavaScript 库的流行托管服务不同，CloudFlare 托管了在 [https://github.com/cdnjs/cdnjs](https://github.com/cdnjs/cdnjs)
+    的 GitHub 开放项目中表示的所有项目。考虑通过此服务部署你的 JavaScript 文件。
 - en: 'To start, visit [https://www.cloudflare.com/sign-up](https://www.cloudflare.com/sign-up)
     and set up a free account. You will need a domain to host files on—follow the
     instructions to configure your name servers and other DNS information. Once signed
@@ -1316,42 +1845,67 @@
     and select **Page rules**. If your domain is `foo.com`, the following page rule
     will enable full caching: `*foo.com/*`. Finally, locate the **Custom Caching**
     dropdown on the page rules admin page and select **Cache everything**.'
+  id: totrans-247
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，访问 [https://www.cloudflare.com/sign-up](https://www.cloudflare.com/sign-up)
+    并设置一个免费账户。你需要一个域名来托管文件——遵循说明来配置你的域名服务器和其他 DNS 信息。一旦注册，你将收到一个身份验证令牌，并使用此令牌将 CDN
+    支持添加到你的应用程序中。CloudFlare 默认不缓存 HTML 文件。要启用 HTML 缓存，请访问你的仪表板，找到你的域名，打开选项菜单，并选择 **页面规则**。如果你的域名是
+    `foo.com`，以下页面规则将启用完全缓存：`*foo.com/*`。最后，在页面规则管理页面上找到 **自定义缓存** 下拉菜单并选择 **缓存一切**。
 - en: 'Now, let''s establish a connection with CloudFlare:'
+  id: totrans-248
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们与 CloudFlare 建立连接：
 - en: '[PRE50]'
+  id: totrans-249
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE50]'
 - en: 'In our example, we will serve (and modify) a single `index.html` file. For
     this example, we will create a simple server:'
+  id: totrans-250
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们的示例中，我们将提供（并修改）一个单独的 `index.html` 文件。对于这个示例，我们将创建一个简单的服务器：
 - en: '[PRE51]'
+  id: totrans-251
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE51]'
 - en: Note how `max-age` is set on the `cache-control` header. This will indicate
     to CloudFlare that we want this file cached.
+  id: totrans-252
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意 `max-age` 是如何在 `cache-control` 头部设置的。这将向 CloudFlare 指示我们希望缓存此文件。
 - en: 'With the server set up, we will now add the following `purge` method:'
+  id: totrans-253
   prefs: []
   type: TYPE_NORMAL
+  zh: 服务器设置完成后，我们现在将添加以下 `purge` 方法：
 - en: '[PRE52]'
+  id: totrans-254
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE52]'
 - en: When this method is passed a file path, it asks CloudFlare to purge its cache
     of this file. Note how we must use two purge actions to accommodate subdomains.
+  id: totrans-255
   prefs: []
   type: TYPE_NORMAL
+  zh: 当此方法传递一个文件路径时，它会要求 CloudFlare 清除该文件的缓存。注意我们如何必须使用两个清除操作来适应子域名。
 - en: 'With purging set up, all that is left to do is watch the filesystem for changes.
     This can be accomplished via the `fs.watch` command:'
+  id: totrans-256
   prefs: []
   type: TYPE_NORMAL
+  zh: 在清除设置完成后，剩下的就是监视文件系统中的更改。这可以通过 `fs.watch` 命令来完成：
 - en: '[PRE53]'
+  id: totrans-257
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE53]'
 - en: 'Now, whenever the `index.html` file is changed, our CDN will flush its cached
     version. Create that file, start up the server, and point your browser to `localhost:8080`,
     bringing up your index file. In your browser''s developer console, inspect the
@@ -1360,61 +1914,83 @@
     the first call, there is no cached version yet, so the cache was *missed*. Reload
     the page. The same response header should now read `CF-Cache-Status: HIT`. Your
     file is cached!'
+  id: totrans-258
   prefs: []
   type: TYPE_NORMAL
+  zh: '现在，每当`index.html`文件发生变化时，我们的CDN将刷新其缓存的版本。创建该文件，启动服务器，并将你的浏览器指向`localhost:8080`，打开你的索引文件。在你的浏览器开发者控制台中检查响应头——你应该看到一个`CF-Cache-Status:
+    MISS`记录。这意味着**CloudFlare**（**CF**）已经从你的服务器获取并服务了原始文件——在第一次调用时，还没有缓存的版本，因此缓存未命中。重新加载页面。现在相同的响应头应该读取为`CF-Cache-Status:
+    HIT`。你的文件已缓存！'
 - en: Go ahead and change the index file in some way. When you reload your browser,
     the changed version will be displayed—its cached version has been purged, the
     file has been fetched once again from your server, and you will see the `MISS`
     header value again.
+  id: totrans-259
   prefs: []
   type: TYPE_NORMAL
+  zh: 尝试以某种方式更改索引文件。当你重新加载浏览器时，更改后的版本将被显示——其缓存的版本已被清除，文件再次从你的服务器获取，你将再次看到`MISS`头值。
 - en: You will want to expand this functionality to include a larger group of files
     and folders. To learn more about `fs.watch`, go to [http://nodejs.org/api/fs.html#fs_fs_watch_filename_options_listener](http://nodejs.org/api/fs.html#fs_fs_watch_filename_options_listener).
+  id: totrans-260
   prefs: []
   type: TYPE_NORMAL
+  zh: 你可能希望扩展此功能以包括更多的文件和文件夹。要了解更多关于`fs.watch`的信息，请访问[http://nodejs.org/api/fs.html#fs_fs_watch_filename_options_listener](http://nodejs.org/api/fs.html#fs_fs_watch_filename_options_listener)。
 - en: Managing sessions
+  id: totrans-261
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 管理会话
 - en: The HTTP protocol is stateless. Any given request has no information about previous
     requests. For a server, this means that determining whether two requests originated
     from the same browser is not possible without further work. That's fine for general
     information, but targeted interactions require a user to be verified via some
     sort of unique identifier. A uniquely identified client can then be served targeted
     content—from lists of friends to advertisements.
+  id: totrans-262
   prefs: []
   type: TYPE_NORMAL
+  zh: HTTP协议是无状态的。任何给定的请求都没有关于之前请求的信息。对于服务器来说，这意味着在没有进一步工作的前提下，确定两个请求是否来自同一浏览器是不可能的。这对于一般信息来说是可以的，但针对特定交互则需要通过某种唯一标识符来验证用户。唯一标识的客户可以接收针对特定内容的服务——从朋友列表到广告。
 - en: This semipermanent communication between a client (often a browser) and a server
     persists for a period of time—at least until the client disconnects. That period
     of time is understood as a *session*. An application that manages sessions must
     be able to create a unique user session identifier, track the activity of an identified
     user during that session, and disconnect that user when requested or for some
     other reason, such as on reaching a session limit.
+  id: totrans-263
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种半永久性的客户端（通常是浏览器）与服务器之间的通信会持续一段时间——至少直到客户端断开连接。这段时间被称为**会话**。管理会话的应用程序必须能够创建一个唯一的用户会话标识符，跟踪会话期间已识别用户的活动，并在请求或由于某些其他原因（例如达到会话限制）时断开该用户。
 - en: In this section, we'll implement a **JSON Web Token** (**JWT**) system for session
     management. JWT's have an advantage over traditional cookie-based sessions in
     that they do not require the server to maintain a session store as JWTs are self-contained.
     This greatly helps with deployments and scaling. They are also mobile friendly
     and can be shared between clients. While a new standard, JWTs should be considered
     as a simple and scalable session storage solution for your applications.
+  id: totrans-264
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将实现一个用于会话管理的**JSON Web Token**（**JWT**）系统。JWT相对于基于cookie的传统会话有优势，因为它们不需要服务器维护会话存储，因为JWT是自包含的。这极大地帮助了部署和扩展。它们也适合移动设备，并且可以在客户端之间共享。虽然是一个新标准，但JWT应被视为一个简单且可扩展的应用程序会话存储解决方案。
 - en: JSON Web Token authentication and sessions
+  id: totrans-265
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: JSON Web Token身份验证和会话管理
 - en: 'A basic authentication system might require a client to send a username and
     password on each request. To initiate a token-based authenticated session, a client
     sends credentials just once, receives a token in exchange, and then sends only
     that token on subsequent requests, gaining any access that token provides. Incessantly
     passing around sensitive credentials is no longer required, as the following diagram
     demonstrates:'
+  id: totrans-266
   prefs: []
   type: TYPE_NORMAL
+  zh: 基本认证系统可能要求客户端在每次请求时发送用户名和密码。为了启动基于令牌的认证会话，客户端只需发送一次凭证，然后收到一个令牌作为交换，并在随后的请求中只发送那个令牌，从而获得该令牌提供的任何访问权限。不再需要不断传递敏感凭证，如下面的图示所示：
 - en: '![JSON Web Token authentication and sessions](img/1403OS_04_04.jpg)'
+  id: totrans-267
   prefs: []
   type: TYPE_IMG
+  zh: '![JSON Web Token认证和会话](img/1403OS_04_04.jpg)'
 - en: One particular advantage of JWTs is that servers are no longer responsible for
     maintaining access to a common database of credentials as only the *issuing authority*
     needs to validate an initial signin. There is no need to maintain a session store
@@ -1425,52 +2001,76 @@
     avoid the problems we can face using cookies on mobile devices, such as cross-domain
     issues (cookies are domain-bound), certain types of request forgery attacks, and
     so on.
+  id: totrans-268
   prefs: []
   type: TYPE_NORMAL
+  zh: JWT的一个特定优点是服务器不再负责维护对共享凭证数据库的访问，因为只有**发行机构**需要验证初始登录。当使用JWT时，无需维护会话存储。因此，发行的令牌（可以将其视为访问卡）可以在任何认可并接受它的域（或服务器）中使用。在性能方面，请求的成本现在是解密哈希的成本与调用数据库验证凭证的成本之比。我们还避免了在移动设备上使用cookie可能遇到的问题，例如跨域问题（cookie是域绑定的）、某些类型的请求伪造攻击等。
 - en: Let's look at the structure of a JWT and build a simple example demonstrating
     how to issue, validate, and otherwise use JWTs to manage sessions.
+  id: totrans-269
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们看看JWT的结构，并构建一个简单的示例，演示如何发行、验证以及其他如何使用JWT来管理会话。
 - en: 'A JWT token has the following format:'
+  id: totrans-270
   prefs: []
   type: TYPE_NORMAL
+  zh: JWT令牌具有以下格式：
 - en: '[PRE54]'
+  id: totrans-271
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE54]'
 - en: Each segment is described in the JSON format.
+  id: totrans-272
   prefs: []
   type: TYPE_NORMAL
+  zh: 每个部分都以JSON格式进行描述。
 - en: 'A **header** simply describes the token—its type and encryption algorithm.
     Take the following code as an example:'
+  id: totrans-273
   prefs: []
   type: TYPE_NORMAL
+  zh: '**头部**简单地描述了令牌——它的类型和加密算法。以下代码作为示例：'
 - en: '[PRE55]'
+  id: totrans-274
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE55]'
 - en: Here, we declare that this is a JWT token, which is encrypted using `HMAC SHA-256`.
+  id: totrans-275
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里，我们声明这是一个JWT令牌，它使用`HMAC SHA-256`进行加密。
 - en: Note
+  id: totrans-276
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: See [http://nodejs.org/api/crypto.html](http://nodejs.org/api/crypto.html) for
     more information about encryption and how to perform encryption with Node. The
     JWT specification itself can be found at [http://self-issued.info/docs/draft-ietf-oauth-json-web-token.html](http://self-issued.info/docs/draft-ietf-oauth-json-web-token.html).
     Note that the JWT specification is in a draft state at the time of writing this,
     so changes may be made in the future.
+  id: totrans-277
   prefs: []
   type: TYPE_NORMAL
+  zh: 有关加密和如何在Node中执行加密的更多信息，请参阅[http://nodejs.org/api/crypto.html](http://nodejs.org/api/crypto.html)。JWT规范本身可以在[http://self-issued.info/docs/draft-ietf-oauth-json-web-token.html](http://self-issued.info/docs/draft-ietf-oauth-json-web-token.html)找到。请注意，JWT规范在撰写本文时处于草案状态，因此将来可能会有所变动。
 - en: 'The **claims** segment outlines security and other constraints that should
     be checked by any service receiving the JWT. Check the specification for a full
     accounting. Typically, a JWT claims manifest will want to indicate when the JWT
     was issued, who issued it, when it expires, who the subject of the JWT is, and
     who should accept the JWT:'
+  id: totrans-278
   prefs: []
   type: TYPE_NORMAL
+  zh: '**声明**部分概述了任何接收JWT的服务应检查的安全和其他约束。请参阅规范以获取完整说明。通常，JWT声明将希望表明JWT何时被发行，谁发行的，何时过期，JWT的主题是谁，以及谁应该接受JWT：'
 - en: '[PRE56]'
+  id: totrans-279
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE56]'
 - en: The `iat` (issued-at) and `exp` (expires) claims are both set to numeric values
     indicating the number of seconds since the Unix epoch. The `iss` (issuer) should
     be a URL describing the issuer of the JWT. Any service that receives a JWT must
@@ -1478,44 +2078,62 @@
     not appear in the audience list. The `sub` (subject) of the JWT identifies the
     subject of the JWT, such as the user of an application—a unique value that is
     never reassigned, such as the name of the issuing service and a unique user ID.
+  id: totrans-280
   prefs: []
   type: TYPE_NORMAL
+  zh: '`iat`（签发时间）和`exp`（过期时间）声明都设置为表示自Unix纪元以来秒数的数值。`iss`（发行者）应该是一个描述JWT发行者的URL。任何接收JWT的服务都必须检查`aud`（受众），并且如果JWT不在受众列表中，该服务必须拒绝JWT。JWT的`sub`（主题）标识JWT的主题，例如应用程序的用户——一个永远不会重新分配的唯一值，例如发行服务的名称和唯一的用户ID。'
 - en: Finally, useful data is attached using a key-value pairing of your choice. Here,
     let's call the token data `sessionData`. Note that we need to encrypt this data—the
     signature segment of a JWT prevents tampering with session data, but JWTs are
     not themselves encrypted (you can always encrypt the entire token itself though).
+  id: totrans-281
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，使用你选择的键值对附加有用的数据。在这里，让我们称令牌数据为`sessionData`。请注意，我们需要加密这些数据——JWT的签名段可以防止篡改会话数据，但JWT本身并不是加密的（尽管你可以加密整个令牌）。
 - en: The last step is to create a signature, which, as mentioned, prevents tampering—a
     JWT validator specifically checks for mismatches between the signature and the
     packet received.
+  id: totrans-282
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后一步是创建一个签名，正如之前提到的，这可以防止篡改——JWT验证器会特别检查签名与接收到的数据包之间的不匹配。
 - en: What follows is a scaffold server and client example demonstrating how to implement
     a JWT-driven authentication system. Rather than implementing the various signing
     and validation steps *by hand*, we'll use the `jwt-simple` package. Feel free
     to browse the `/jwt` folder in your code bundle, which contains the full code
     we'll be unpacking next.
+  id: totrans-283
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来是一个框架服务器和客户端示例，演示如何实现一个JWT驱动的认证系统。我们不会手动实现各种签名和验证步骤，而是使用`jwt-simple`包。请随意浏览你的代码包中的`/jwt`文件夹，其中包含我们将要解包的完整代码。
 - en: 'To ask for a token, we will use the following client code:'
+  id: totrans-284
   prefs: []
   type: TYPE_NORMAL
+  zh: 要请求令牌，我们将使用以下客户端代码：
 - en: '[PRE57]'
+  id: totrans-285
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE57]'
 - en: We'll implement the server code next. For now, note that we have a `send` method
     that expects, at some point, to have a global `token` set for it to pass along
     when making requests. The initial `/login` is where we ask for that token.
+  id: totrans-286
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将在下一节实现服务器代码。现在，请注意，我们有一个`send`方法，它期望在某个时刻有一个全局的`token`设置，以便在发出请求时传递。初始的`/login`是我们请求该令牌的地方。
 - en: 'Using the Express web framework, we create the following server and `/login`
     route:'
+  id: totrans-287
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用Express网络框架，我们创建了以下服务器和`/login`路由：
 - en: '[PRE58]'
+  id: totrans-288
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE58]'
 - en: 'Note that we store `jwtsecret` on the app server. This is the key that is used
     when we are signing tokens. When a login attempt is made, the server will return
     the result of `jwt.encode`, which encodes the JWT claims discussed previously.
@@ -1523,46 +2141,62 @@
     audience will be allowed to interact with any services those audience members
     provide for a period expiring 7 days from the date of issue. These services will
     implement something like the following code:'
+  id: totrans-289
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，我们在应用服务器上存储`jwtsecret`。这是我们在签名令牌时使用的密钥。当进行登录尝试时，服务器将返回`jwt.encode`的结果，该结果编码了之前讨论的JWT声明。就这样。从现在开始，任何提及此令牌并指向正确受众的客户端都将被允许在从签发日期起7天有效期内与任何受众成员提供的服务进行交互。这些服务将实现类似以下代码：
 - en: '[PRE59]'
+  id: totrans-290
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE59]'
 - en: Here, we are simply fetching the `Authorization` header (stripping out `Bearer`)
     and decoding via `jwt.decode`. A service must at least check for token expiry,
     which we do here by comparing the current number of seconds from the `epoch` to
     the token's **expiry** time.
+  id: totrans-291
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这里，我们只是获取`Authorization`头（移除`Bearer`）并通过`jwt.decode`进行解码。一个服务至少必须检查令牌过期，我们在这里通过比较从`epoch`到令牌的**过期时间**的当前秒数来实现这一点。
 - en: Using this simple framework, you can create an easily scalable authentication/session
     system using a secure standard. No longer required to maintain a connection to
     a common credentials database, individual services (deployed perhaps as microservices)
     can use JWTs to validate requests, incurring little CPU latency or memory cost.
+  id: totrans-292
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用这个简单的框架，你可以创建一个易于扩展的认证/会话系统，使用一个安全标准。不再需要维护与公共凭证数据库的连接，单个服务（可能作为微服务部署）可以使用JWT来验证请求，从而产生很少的CPU延迟或内存成本。
 - en: Summary
+  id: totrans-293
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: We covered a lot of ground in this chapter. Best practices for writing efficient
     JavaScript that the V8 interpreter can handle properly were outlined, including
     an exploration of garbage collection, the advantages of Node streams, and how
     JavaScript prototypes should be deployed in order to save memory. Continuing with
     the theme of reducing storage costs, we explored various ways in which Redis can
     help with storing large amounts of data in a space-efficient way.
+  id: totrans-294
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们涵盖了大量的内容。概述了V8解释器能够正确处理的编写高效JavaScript的最佳实践，包括对垃圾回收的探讨、Node流的优势，以及如何部署JavaScript原型以节省内存。继续探讨降低存储成本的主题，我们研究了Redis如何以空间高效的方式帮助存储大量数据的各种方法。
 - en: Additionally, we looked at strategies to build composable, distributed systems.
     In the discussion on microservices, we touched on approaches to network many individual
     services and build the networks they can use to communicate with each other—from
     pub/sub to Seneca's pattern and action models. Joined with the examples of caching
     techniques, a reasonably complete picture of the issues you might want to consider
     when planning out resource management in your application was established.
+  id: totrans-295
   prefs: []
   type: TYPE_NORMAL
+  zh: 此外，我们还探讨了构建可组合、分布式系统的策略。在关于微服务的讨论中，我们提到了将多个服务网络化并构建它们之间通信的网络的方法，从pub/sub到Seneca的模式和动作模型。结合缓存技术的例子，我们建立了一个相对完整的图景，展示了在规划应用程序资源管理时你可能需要考虑的问题。
 - en: After you build up a reasonably sophisticated architecture, it becomes more
     and more necessary to build probes and other monitoring tools to stay on top of
     what is going on. In the next chapter, we'll build tools to help you trace the
     changing topology of running applications.
+  id: totrans-296
   prefs: []
   type: TYPE_NORMAL
+  zh: 在构建了一个相对复杂的架构之后，越来越有必要构建探针和其他监控工具来保持对正在发生的事情的掌控。在下一章中，我们将构建帮助您追踪运行应用程序拓扑变化的工具。
