@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# MEAN 蓝图
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/7fbede1e27be02d3d720ab3e0d820ee8`](https://zh.annas-archive.org/md5/7fbede1e27be02d3d720ab3e0d820ee8)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

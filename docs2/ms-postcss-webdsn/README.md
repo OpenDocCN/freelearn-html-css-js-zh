@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# 精通 PostCSS Web 设计
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/5118bf765617fb08db8d26340ef42ee2`](https://zh.annas-archive.org/md5/5118bf765617fb08db8d26340ef42ee2)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Knockout.js Web 开发
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/6b99267fda1a75d6dc87c17a215139ea`](https://zh.annas-archive.org/md5/6b99267fda1a75d6dc87c17a215139ea)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

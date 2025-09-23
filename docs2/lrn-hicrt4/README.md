@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# HighCharts4  学习指南
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/66c0e35f19a805eeed24dc912ad49b35`](https://zh.annas-archive.org/md5/66c0e35f19a805eeed24dc912ad49b35)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
