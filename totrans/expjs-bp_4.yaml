@@ -1,0 +1,954 @@
+- en: Chapter 4. MMO Word Game
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Word Chain Game is a real-time, massive multiplayer online game. Each player
+    will be able to see the other online players when playing the game, along with
+    a score leaderboard for score. In this chapter we will introduce the Promise pattern
+    and explain how Promises simplify asynchronous operations. You will learn how
+    to build a real-time application with Express and SocketIO, perform authentication
+    over socket handshaking, and deal with race conditions using the atomic update
+    of MongoDB. You will also learn how to build the game client to connect to the
+    game server over socket, and how to debug WebSocket on the client side using Chrome
+    Developer Tools.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once you have mastered this, you can build similar games such as online quiz
+    competitions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Gameplay
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The game starts with a randomly selected English word and each player tries
+    to submit a word where the first character of their submission matches the last
+    character of the current word; we call this chaining with the current word. For
+    example, if the game starts with the word `Today`, then players can send words
+    such as `Yes` or `Yellow`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first person to submit a valid word will have their word become the starting
+    word for the next round and gets the points for that round. Once the new word
+    is accepted, the server will broadcast the change to all online players. The players
+    will see the new word and submit another word to chain with it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, if player 1 sends `Yes` to chain with `Today`, the server will
+    accept the word and broadcast the current word `Yes` to all other players. If
+    a player submits a word that is invalid based on the dictionary we have or was
+    submitted by another player earlier, the game server will ignore that request.
+    If multiple players submit valid words simultaneously, the server will only accept
+    the first submitted word.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Gameplay](img/0818_04_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Real-time application overview
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this game, we will introduce the Promise pattern and explain how Promise
+    will simplify async operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite this being a real-time game, we will not rush into implementing a real-time
+    feature at the beginning. Instead, we will first build a game model, which contains
+    all the game logic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the game logic, we first introduce how to keep track of active users and
+    then explain how we verify users' input. After verifying the input, during the
+    updating game state phase, we deal with race conditions by utilizing the atomic
+    operation of MongoDB. We also look into how to cover the race conditions with
+    test cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After the game logic is done, we will introduce how to broadcast game state
+    changes to all players using Socket.IO.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the end, we will create an Express app, a Socket.IO server, and a game client
+    that can talk to our server using the `socket.io-client` libraries.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keeping track of active users
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Since the game is a multiplayer game, players can see the number of players
+    and their usernames. To keep track of active users, we need to track when a player
+    joins the game and when a player leaves the game.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Schema design
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Each player can simply be represented by a document with a single field for
+    the name:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: User schema
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We will use Mongoose for our data modeling. Let''s start with designing our
+    user schema. The schemas are placed in the `models` folder in the app. The following
+    screenshot shows the folder structure. The schema will have one required field
+    `name`, this is done by adding `required: true` to the name object in the schema.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![User schema](img/0818_04_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: To make querying a user by name fast, we can add an index to `name`. By default,
+    only the `_id` field that MongoDB generates will be indexed. This means, to perform
+    a search by name, the database will need to iterate over all the documents in
+    the collection to find a matching name. When you add an index to `name`, you can
+    query by name as quickly as when you query by `_id`. Now, when a user leaves,
+    we can find the user by name directly and remove that user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Also, we add the `unique : true` property to the index to avoid having multiple
+    users with the same name, as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: User join
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'When a user joins a game, we create a user with the key `name` and save this
+    user to MongoDB, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `save()` method in the preceding code uses callback patterns, which is also
+    known as callback hell. If an error occurs, we make a call to the callback function
+    passing the error as a parameter; otherwise, the operation succeeds and it returns
+    the updated document.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding callback pattern involves a lot of logic and condition checks.
+    The nested callback pattern of JavaScript can quickly turn into a spaghetti nightmare.
+    A good alternative is to use Promises to simplify things.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mongoose's `model.create()` method ([http://mongoosejs.com/docs/api.html#model_Model.create](http://mongoosejs.com/docs/api.html#model_Model.create))
+    can create and save a new document into the database if valid. Functions and documents
+    such as objects and arrays are valid parameters for the `model.create()` method.
+    The `create` method returns a Promise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With this Promise, the caller of the `join` method can define the success and
+    fail callbacks, simplifying the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Promises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'A Promise is the eventual result of an asynchronous operation, just like giving
+    someone a promise. Promises help handle errors, which results in writing cleaner
+    code without callbacks. Instead of passing in an additional function that takes
+    an error and result as parameters to every function, you can simply call your
+    function with its parameter and get a Promise:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: versus
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The benefit of using Promises isn't obvious if there is only one async operation.
+    If there are many async operations with one depending on another, the callback
+    pattern will quickly turn into a deeply nested structure, while Promises can keep
+    your code shallow and easier to read.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Promises can centralize your error handling and when an exception happens, you
+    will get stack traces that reference actual function names instead of anonymous
+    ones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our word game, you could use Promises to turn this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'into this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'or even simplier:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To understand the execution flow of the preceding, let''s create a complete
+    example that calls the user model''s `join()` method, and then add some log statements
+    to see the output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If a user joins the game successfully, the Promise returned by the `User.join()`
+    method will be resolved. A newly created user document object will be passed to
+    the `onJoinSuccess` callback and the output result will be printed as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Promises](img/0818_04_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: If we run this script again, we will see that the user fails to join the game
+    and the error is printed. It fails because the user model already has an index
+    on name property because a user with the name `leo` was created when we ran the
+    script the first time. When we run it again, we can't create another user with
+    the same name `leo`, so the Promise fails and the error is passed into `onJoinFail`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Promises](img/0818_04_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'A Promise has three states: pending, fulfilled, or rejected; a Promise''s initial
+    state is pending, then it Promises that it will either succeed (fulfilled) or
+    fail (rejected). Once it is fulfilled or rejected, it cannot change again. A major
+    benefit of this is that you can chain multiple Promises together and define one
+    error handler to handle all the errors.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As the `join()` method returns a Promise, we can define the success and fail
+    callbacks as follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The then and catch method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `then` and `catch` methods are used to define success and fail callbacks;
+    you might wonder when they are actually being called. When the `User.create()`
+    method is called, it will return a Promise object and at the same time send an
+    async query to MongoDB. The success callback, `onJoinSuccess`, is then passed
+    into the `then` method and will be called when the async query is successfully
+    completed, resolving the Promise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the Promise is resolved, it can't be resolved again, so `onJoinSuccess`
+    won't be called again, it will only be called once at the most.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Chain multiple Promises
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'You can chain Promise operations by calling them on the Promise that is returned
+    by the previous `then()` function. We use the `.then()` method when we want to
+    do something with the result from the Promise (once *x* resolves, then do *y*)
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can centralize the error handling at the end. It''s much easier to deal
+    with errors with Promise chains. If we run the code, we will get the following
+    result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Chain multiple Promises](img/0818_04_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Now that we've gone through all the logic and error handling of creating a new
+    user, let's look into how we will ensure that multiple users with the same name
+    can't join.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Prevent duplicates
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Earlier, when we defined our user schema, we added `index` with a unique set
+    to `true` on the name field:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'MongoDB will issue a query to see whether there is another record with the
+    same value for the unique property and, if that query comes back empty, it allows
+    the save or update to proceed. If another user joins with the same name, Mongo
+    throws the error: Duplicate Key Error. This prevents the user from being saved
+    and the player must choose another name to join with.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To make sure our code works as we want it to, we need to create tests; we will
+    create a test case with Mocha. The test case will pass a username to the `User.join`
+    method and expect that the username of the newly created user is valid. The `User.join`
+    method returns a Promise. If it succeeds, the object returned from the Promise
+    will be sent to the `then` method; otherwise it fails and the Promise will `.reject`
+    with an error that will be caught by the `catch` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the case of the success callback, we have the newly created user, and we
+    can check whether it's correct by expecting `user.name` to return `leo`, since
+    `leo` was entered as the username (illustrated in the following code).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the case of fail callback, we can pass the error object to Mocha, `done(error)`,
+    to fail the test case. Since we created a user named `leo` for the first time,
+    we expect this test to pass. Since Mocha tests are synchronous and Promises are
+    async, we need to wait for the function to be done. When the code is successful,
+    it will call the `done()` function and report success to Mocha; if it fails, the
+    `catch` method will catch the error and return the error to the `done` method,
+    which will tell Mocha to fail the test case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Version 1.18.0 or above of Mocha allows you to return a Promise in a test case.
+    Mocha will fail the test case if the Promise fails without needing to explicitly
+    catch the error as given in the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we tested that submitting the first user with a unique name works,
+    we want to test what happens when another user with the same name joins:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: When we submit `leo` again as a username, the Promise of `Game.join` comes back
+    rejected and goes to the `.catch` method. The `return true` turns a failed Promise
+    into a success, which tells us that it succeeded in rejecting the second `leo`
+    and that we successfully caught the error; we basically swallow the error to tell
+    Mocha that this is the correct behavior we expect.
+  prefs: []
+  type: TYPE_NORMAL
+- en: User leaves the game
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When a user leaves the game, we need to remove their entry in the database;
+    this would also free up their user name so that a new user can take it. Mongoose
+    has a `delete` method called `findOneAndRemove`, which can find that player by
+    name, and then remove it as shown in the following code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For our Promises, we use Bluebird ([https://github.com/petkaantonov/bluebird](https://github.com/petkaantonov/bluebird))
+    (spec: PromiseA) because of its better performance, utility, and popularity (support).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We call the `Promise.resolve` method, which creates a Promise that is resolved
+    with the value inside: `Promise.resolve(value)`. Therefore, we can take a method
+    that does not normally return a Promise and wrap it with the Bluebird `Promise.resolve`
+    method to get a Promise back, which we can then chain with then if it succeeds
+    or catch if it fails. Receiving Promises from our methods will ensure that we
+    deal with successes and errors efficiently and also lets the callee deal with
+    the error when it runs (.exec()).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Show all active users
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: So far we demonstrated how to add and remove users, we will now dive into how
+    we will display the game data to a user that's joined. To show the total active
+    users, we could simply return all users, as offline users have already been removed.
+    In order to return an array of just the user names, rather than an array of the
+    entire user object, we could use the `Promise.map()` method to convert each user
+    object in the array into a user name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since `User.find` returns an array of users, we use the `Promise.map()`method
+    to return the values from the name key. This effectively turns the array of user
+    objects into an array of user names. Again, notice that we use the `promise.resolve()`method
+    to obtain a Promise from our input. This will allow us to display a list of the
+    currently logged in users by their user name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: The words – Subdocuments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We have gone through the game logic involving creating, displaying, and deleting
+    users but what about the meat of the game itself—the words?
+  prefs: []
+  type: TYPE_NORMAL
+- en: In `app/models/stat.js`, we see how we model our word data. The `word` field
+    shows the current word, and the `used` field saves the game's history.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We embedded the `used` list as subdocuments into the Stat document, so that
+    we can update stats atomically. We will explain this later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code gives you an overview of what we will store in the database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We first create a model for our word inputs, new word (word) and used words
+    (used), in a similar method to our user's model, by defining a type (string for
+    new and array for old). The old words are stored in an array so that they can
+    be accessed when we check whether or not a new word has been used before.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Further logic about validating word inputs and scoring will be described after
+    we create a new game.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we create a new game, we want to make sure that no old game data exists
+    and that all values in our database are reset, so we will first remove the existing
+    game, and then create a new one, as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding example, we use `Stat.remove()` to remove all old game data
+    and when the Promise is fulfilled, we create a new game using `Stat.create()`
+    by passing a new word, `'what'`, to start off the new round and also submit both
+    the word and the user who submitted the word into the used array. We want to submit
+    the user in addition to the word so that other users can see who submitted the
+    current word and also use that information to calculate scores.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Validate input
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We can't just accept any word a user might input; users might enter an invalid
+    word (as determined by our internal dictionary), a word that can't chain with
+    the current word or a word that has already been used before in this game.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our internal dictionary model is found in `models/dictionary.js` and consists
+    of the dictionary `json`. Requests with an invalid word should be ignored and
+    should not change the game's state (see `app/controllers/game.js`); if the word
+    is not in the dictionary, the Promise will be rejected and will not go to `Stat.chain()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the following code example, we illustrate how to check whether the submitted
+    word chains with the current word:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first step is to query the `Stat` collection to get the current game state.
+    From the game state, we know the current word that needs to be matched by calling
+    `stat.word` and assigning it to the variable `currentWord`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We then compare the current word with the user's input. First we determine the
+    first letter of the submitted word using `calling substr(0, 1)` and then we compare
+    it to the last letter of the current word (`currentWord` ) by calling `substr(-1)`.
+    If the first character of the user's input doesn't match with the last character
+    of the current word of the game, we throw a `400` error. The Promise will catch
+    this error, and call the `catch` callback to handle the error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here, in the model's method, we let the model object return a `Promise` object.
+    Later on, we will introduce how to catch this error in the controller's method
+    and return a `400` response to the user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `Helper.build400Error()` function is a utility function that returns a
+    `400` Error with an error message:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the word can chain with the current word, it's a valid request. We will get
+    back a successful Promise, which allows us to chain with the next then and save
+    the word along with the player's username to the database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To save the data into the database, we use Mongoose's `findOneAndUpdate` method,
+    which takes three arguments. The first is a query object to find the document
+    to be updated. We find the stat document where the word is `currentWord` we get
+    from `Stat.findOnequery`. The second argument is the `update` object. This defines
+    what to update.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use Mongo's modifier `$push` to push a word chain history into the `used`
+    field, which is an array. The last argument is options.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We use the `{ upsert: false }` option, which means if we can''t find the document
+    with the query defined in the first argument, we won''t update or insert a new
+    document. This makes sure no other operation occurs in between the time it takes
+    to find the document and update the document, that is, we don''t insert a new
+    word if the current word cannot be found. Therefore, the game status doesn''t
+    change because the current word is assigned to `word` and is still the same.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we successfully find the word, we add a new used word object to the used
+    word array consisting of the new valid word and the username that submitted it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Dealing with race conditions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You might have questions about the preceding code. Finding a document and updating
+    a document seem like two separate operations; what if two users send the same
+    request? It may cause a race condition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, if the current word is `Today`, Player 1 submits `yes`, and Player
+    2 submits `yellow`; both players chain a valid word. While both these words are
+    valid, we can't accept both of them for two reasons; only one player can win each
+    round, and if we had two or more winning words, the words could end with different
+    letters, which would affect the next word chain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If `yes` arrives at the server first and gets accepted, then the next word should
+    start with an `s`, and `yellow` from Player 2 should become invalid and be rejected.
+    This is called a race condition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How do we solve this? We need to combine the two database operations, finding
+    a document and updating a document, into one operation. We could use Mongoose
+    model's `findOneAndUpdate` method. This method will actually call the `findAndModify`
+    method of MongoDB, which is an isolated update and return operation. Since it
+    becomes one database operation, MongoDB will update the document atomically.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: When a user submits a word, we first query the current game state, when the
+    Promise is resolved and successful, and then check that the first letter of our
+    submitted word (first) and last letter of the current word (currentWord) are the
+    same.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If they are the same, we call `findOneAndUpdate()` to search for the submitted
+    word and make sure that it is not present in the array of previously used words.
+    `used.word: { $ne: word }` then returns a Promise object.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the Promise comes back fulfilled, then we push the submitted word and user
+    to the used words array.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If the Promise is rejected and/or the conditions are not satisfied, then no
+    data will be pushed into the array (`upsert: false`).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last `then` statement returns the new result; if none was returned, then
+    the `not found` error will be thrown.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Test case to test race conditions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Now that we implemented the logic, we want to test it out. The test case is
+    shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: As the word by player 1 goes in first, the `hello` word by player 1 should increase
+    the length of the used array to `4`, the current word position in the array should
+    be equal to `hello`, and the successful user who submitted it should be updated
+    to be `geoffrey`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When marc submits a word beginning with `h`, it should return an error because
+    the last letter of the current word, `hello`, is `o` and helium does not begin
+    with `o`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Socket.IO
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We can send information to our servers when we submit user info or words but
+    how do we get the server to update us without requesting updates manually? We
+    use Socket.IO to enable real-time two-way event-based communication. Documentation
+    for Socket.IO is available at `socket.io/docs`. We install it by executing the
+    following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: Socket handshaking, user join
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'First, we require `socket.io` and our game in `socket.js`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Authorization takes place during handshaking, which is when the socket connection
+    is established. Without handshaking, we would not know which socket connection
+    belongs to which Express session. As given in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `io.use()` method lets you give the Socket.IO server functions to run after
+    a socket is created.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The request sent from the client (consisting of a URL and name) will be stored
+    in `handshakeData`. The console will output the username and make sure that the
+    sockets are handshaking.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, it will assign the username to `socket.user` so that it can be passed
+    in to the `join()` function. The socket will call the `Game.join()` function and
+    if the user is able to join, a console message will be displayed with the message
+    `game joined successfully` and the name of the user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Socket.broadcast.emit` method sends the message to all other clients except
+    the newly created connection telling them that a new user has joined.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the user was not successfully created (that is, there were two users with
+    the same name) the error will be sent to the `catch` method and the console will
+    log that the user was not able to join the game. Then, `next(err)` will send the
+    error message back to the connecting client, so that on the client side we can
+    show a pop-up message telling the user that the name is being used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding and pushing updates to clients
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: With Socket.IO, you can send and receive any events you want as well as any
+    data you want in the JSON format.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are three additional socket events (after connecting) that we''re going
+    to need for our game: disconnect, chain (chain new word to last), and game status.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In `socket.js`, add these three socket events:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first socket event `connection` we subscribe to will be triggered when a
+    user establishes a socket connection with the server. Once a client is connected,
+    we log that event and display their name on to the console so that we know who
+    is connected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second event `disconnect` will be triggered when users are disconnected
+    from the server. It happens when they leave the game or the network connection
+    is broken. Once this event is triggered, we broadcast to all other sockets that
+    the user has left (via `socket.broadcast.emit`) so that the other users can see
+    that the disconnected user is no longer in the list of active players.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last two socket events, chain and game, are game actions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The chain takes in the user's submitted word and calls the `Game.chain()` function;
+    if it succeeds, then it logs that the chain was successful and broadcasts the
+    status to all other users.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `game` responds with the latest game status.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Launch Socket.IO applications
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To launch our game, let''s create a launch script called `www`, and place it
+    under the `bin` folder. This is our code for `./bin/www` as given in the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The first line tells shell which interpreter should be used to execute this
+    script. Here, we tell shell that the interpreter is node. Then, we can launch
+    the server locally with the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, in `bin/www`, we will set up an Express application listening on a port,
+    which is defined in the environment variable or `3000` if nothing is there.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We then bind socket to our HTTP server, which is created by our Express application.
+    Since the Socket.IO server needs to be attached to an HTTP server, we pass the
+    server object to the socket function, where we initialize the socket server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So now we have the launch script in place. If we launch the server locally,
+    we will see the following message printed to the console:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: Test Socket.IO applications with the Socket.IO client
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We will write the JavaScript for the client-side frontend application, which
+    we will test our game with.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can find the JavaScript file under `public/javascripts/app.js` and the view
+    in `app/views/index.jade`. We will not be covering frontend components such as
+    `jade` and `stylus/css` in this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We begin by setting up our game with all our variables, which are classes in
+    the `index.jade` file that we will refer to. We also initialize our game with
+    the `init()` function, which will be described in the next code block:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `Game.prototype` adds functions to our `Game` method in `app/controllers/game.js`.
+    We will break this up into several smaller code blocks to show the client-side
+    logic that we're working with.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `init()` function begins by bringing the username input box into focus,
+    and then when the submit button is pressed, obtain the value of the user input
+    and assign it to the variable `username`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We then send the user name to the `join()` function listed as follows, in the
+    next code block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also set up a function that will take the input from the submit button for
+    `chain` (which is where you input the word you would like to chain with the current
+    word), store it in the chain variable, and then send it to the chain function
+    (discussed later) and clear out the text input box.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The login UI will look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Test Socket.IO applications with the Socket.IO client](img/0818_04_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: When a user submits a user name, it is passed on to the `join` function, which
+    first establishes a socket connection and then calls `User.join()` (covered earlier)
+    on the server (`game.js`) and initializes a socket handshake (with the configuration
+    to only use WebSocket as the transport) with the submitted username and a URL
+    that consists of `/?username= + username`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the connection is established, the socket emits the game status and users
+    list (`updateStat()` and `updateUsers()` functions, which we will discuss later)
+    and calls the `showGameView()` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `showGameView()` function (see the following code block) hides the login
+    form, displays the view-game form where you can input a `word` to chain, and focuses
+    on the chain input box.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: When a user joins or leaves the game, it's passed to the socket server (`game.js`)
+    `join` or `leave` functions, and the client-side `updateUsers()` function is called.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `updateUsers()` function takes the array of users that was returned by the
+    server and maps it to get the usernames that are displayed as a list.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similarly, when a stat call is made to the server, `updateStat()` method gets
+    called, which receives the current word (`stat.word`) from the server and displays
+    it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, the input box will contain the last letter of that word as a placeholder
+    and the user who submitted the current word will be displayed by accessing the
+    user array and popping out the last user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `chain` function given in the following alerts a user if they try to submit
+    without entering a word; it then sends a call to the server's `chain` function,
+    the input word, and the callback function, which will output the data received
+    from the server (which is the response word and used array).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Looking in the server's socket code (socket.js line 47), if a callback is present,
+    and the function was successful, then a status of `200` is sent back.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the client side receives a status of `200`, then it will call the `updateStat()`
+    function with `data.resp`, which is the stat object containing the word and used
+    words; otherwise, if no data was received from the server or the chain was unsuccessful
+    and a status code that is not `200` is sent back, the user will see an alert telling
+    them that their input word doesn't chain with the current word.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: '![Test Socket.IO applications with the Socket.IO client](img/0818_04_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Debug Socket.IO with Chrome Developer Tools
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To debug Socket.IO, we want to know what socket request we send to our server,
+    what the request arguments are, and what the broadcast messages look like. Chrome
+    has a built-in powerful WebSocket debugging tool; let's see how to use it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To open Chrome Developer Tools, go to the menu, select **View** | **Developer**
+    | **Developer Tools**. You can also right click on the page, and select **Inspect
+    Element**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From the Developer tools, select the **Network** panel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Debug Socket.IO with Chrome Developer Tools](img/0818_04_08.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Now when we go back to the page and join the game, we will see a Socket.IO request
+    in the **Network** panel of the Chrome Developer Tools. The request URL is `ws://127.0.01:3000/socket.io/?username=marc&EIO=2&transport=websocket`
+    and **Status Code is 101 Switching Protocols**, meaning we passed the handshaking
+    and established a socket connection with the server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, click on the **Frames** tab on the right-hand side panel. We will see some
+    messages there in the table. The white rows are the messages our client sent to
+    the server and the green rows are the messages that the server sent to the client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Debug Socket.IO with Chrome Developer Tools](img/0818_04_09.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Let's take a look at each row and understand what happened in the game.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**0{"sid":"XNhi9CiZ-rbgbS5VAAAC","upgrades":[],"pingInterval":25000,"pingTimeout":60000}:**.
+    After the connection is established, the server returned some configuration to
+    the client such as the socket session id (sid), pingInterval, and pingTimeout.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**420["game",null]:** The client sent a socket request to get the latest game
+    status.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**430[{"users":["leo"],"stat":{"word":"what","_id":"54cec37c0ffeb2cca1778ae6","__v":0,"used":[{"word":"what","user":"admin"}]}}]**:
+    The server responded with the latest game status, which shows that the current
+    word is **what**.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**421["chain","tomorrow"]:** The client sent a request to chain the current
+    word **what** with **tomorrow**.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**431[{"status":200,"resp":{"__v":0,"_id":"54cec37c0ffeb2cca1778ae6","word":"tomorrow","used":[{"word":"what","user":"admin"},{"user":"leo","word":"tomorrow"}]}}]**:
+    The server accepted the request and returned the updated game status. So now,
+    the current word is **tomorrow**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**42["join",["leo","marc"]]**: marc joined the game. Now we have leo and marc
+    in the game.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**42["stat",{"__v":0,"_id":"54cec37c0ffeb2cca1778ae6","word":"we","used":[{"word":"what","user":"admin"},{"user":"leo","word":"tomorrow"},{"user":"marc","word":"we"}]}]**:
+    Here **marc** chained the current word **tomorrow** with **we**. So the server
+    pushed the game status to the client.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**42["join",["leo","marc","geoffrey"]]:** **geoffrey** joined the game. Now
+    we have three players in the game: **leo**, **marc**, and **geoffrey**.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**42["leave",["leo","geoffrey"]]:** **marc** left the game, **leo** and **geoffrey**
+    are still in the game.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now you've had a chance to actually test the game developed for this app and
+    can see how the different aspects intertwine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We created an Express app, a Socket.IO server, and a game client that can talk
+    to our server using the `socket.io-client` library, and receive the push updates
+    from our server. We've also gone through the user creation and word chaining logic
+    so that we can validate new users and words to be chained. In this process, we
+    dived into the world of Promises; hopefully, illustrating their versatility and
+    how they can simplify your code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will introduce how to build a user matching system,
+    and make it a service. You will also learn how to set up periodical tasks with
+    node-cron.
+  prefs: []
+  type: TYPE_NORMAL

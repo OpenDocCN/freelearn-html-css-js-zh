@@ -1,0 +1,585 @@
+- en: Chapter 10. Implementing a Dispatcher
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Up until this point in the book, we've relied on the reference implementation
+    of the Flux dispatcher. There's nothing wrong with doing this—it's a functional
+    piece of software, and the dispatcher doesn't have many moving parts. On the other
+    hand, it is just a reference implementation of a larger idea—that actions need
+    to be dispatched to stores, and store dependencies need to be managed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll kick things off by talking about the abstract dispatcher interface that's
+    required by Flux architectures. Next, we'll discuss some of the motivations behind
+    implementing our own dispatcher. Finally, we'll devote the remainder of the chapter
+    to implementing our own dispatcher module, and then improving our store components
+    so that they're able to seamlessly interact with the new dispatcher.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract dispatcher interface
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The idea with any reference implementation is to directly illustrate, using
+    code, how something is supposed to work. The Facebook reference implementation
+    of the Flux dispatcher does just that—we can use it in a real Flux architecture
+    and get results. We also gain an understating of the abstract dispatcher interface.
+    Put another way, the reference implementation is kind of like software requirements,
+    expressed in code form.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we'll try to better understand what these minimum requirements
+    are before we dive into our own dispatcher implementation. The first essential
+    piece of functionality that the dispatcher must implement is store registration
+    so that the dispatcher can dispatch payloads to it. Then, we need the actual dispatching
+    mechanism, which iterates over the registered stores and delivers payloads. Finally,
+    we have the dependency semantics to think about while we're dispatching payloads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Store registration
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'When we instantiate a store, we have to tell the dispatcher about it. Otherwise,
+    the dispatcher doesn''t know about the store''s existence. The pattern generally
+    looks something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Store registration](img/B05419_10_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The dispatcher maintains an internal collection of callbacks to run whenever
+    an action is dispatched. It simply needs to iterate over this collection of callback
+    functions, calling each of them in turn. This really is as easy as it sounds,
+    when everything during a Flux update round is synchronous. The question is, what
+    would we want to change about the way the store registration process works?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Maybe instead of registering a callback function within the store constructor,
+    we were to pass the dispatcher a reference to the store instance itself? Then,
+    when it comes time to notify the store about an action that's been dispatched,
+    the dispatcher would iterate over a collection of store instances and call some
+    predefined method. The advantage to this approach would be that since the dispatcher
+    has a reference to the store, it could access other metadata about the store,
+    such as its dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll explore this idea further once we start writing code, a bit later on in
+    the chapter. The bottom line is this—we need a means to tell the dispatcher that
+    a given store instance would like to receive action notifications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dispatching payloads
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The actual dispatching of payloads is quite simple. The only complicated part
+    is handling dependencies between stores—we''ll talk about that next. For now,
+    just imagine an architecture where there are no inter-store dependencies. It''s
+    just a simple collection to iterate over, calling each function with the action
+    payload as the argument. Here''s an illustration of the process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Dispatching payloads](img/B05419_10_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Apart from dependency management, is there anything else that's missing from
+    this picture? Well, there is one situation we could find ourselves in—nested dispatches.
+    These are strictly forbidden in Flux architectures as they would disrupt the synchronous
+    unidirectional update rounds. In fact, the reference implementation of the dispatcher
+    by Facebook tracks the state of any given update round and will catch this if
+    it happens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This doesn't mean that a dispatcher component that we implement has to check
+    for such conditions. However, it's never a bad idea to fail fast when something
+    so disruptive to the nature of the architecture is taking place.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Something else worth thinking about is the necessity of calling every registered
+    store in a given update round. Sure, it makes sense as far as consistency goes—treat
+    every store the same and notify them about *all the things*. On the other hand,
+    we could have a large application with hundreds of actions being dispatched. Would
+    it make sense to always dispatch actions to stores that never respond to them?
+    When we implement our own dispatcher component, we're free to think about how
+    we can implement such heuristics that benefit our application while staying true
+    to the principles of Flux.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling dependencies
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Perhaps the most challenging aspect of dispatching actions is making sure that
+    store dependencies are handled correctly. On the other hand, the dispatcher just
+    has to make sure that the store action handlers are called in the correct order.
+    Dispatching actions with dependencies in mind is illustrated here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Handling dependencies](img/B05419_10_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: As long as stores that fall on the right-hand side of `waitFor()` calls get
+    the dispatch notifications first, then all is well. So in essence, store dependencies
+    are an ordering problem as far as the dispatcher is concerned. Order the callbacks
+    in such a way that satisfies the dependency graph, then iterate and call each
+    handler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here's the thing—do we really want to rely on the `waitFor()` dispatcher method
+    as a means to manage store dependencies? Possibly a better way to handle this
+    would be to declare an array of stores that we depend on. This would then be passed
+    to the dispatcher at registration time, and we would no longer require the `waitFor()`
+    calls.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have the basic blueprint of what's required to implement our own dispatcher.
+    But before we go ahead with the implementation, let's spend a little more time
+    discussing the challenges faced with the Facebook dispatcher.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Challenges with the dispatcher
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the preceding section, we caught a glimpse of some of the potential challenges
+    with the Facebook reference implementation of a Flux dispatcher. In this section,
+    we'll elaborate on some some of this reasoning, in an attempt to provide motivation
+    to implement our own custom dispatcher.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we'll reiterate the fact that the Flux NPM package mainly exists
+    as an educational tool. Depending on a package like this is fine, especially since
+    it does the job, but we'll go over some of the risks that something like this
+    carries in a production context. Then, we'll talk about the fact that dispatcher
+    components are singleton instances and they probably don't need to be.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll then think about the store registration process and the fact that it's
+    a more manual process than it needs to be. Finally, we'll touch on the store dependency
+    management problem again with a discussion on `waitFor()` and possible declarative
+    alternatives.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Educational purposes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The Facebook Flux NPM package, as we know, provides a reference implementation
+    of a dispatcher. The best way to learn how such a component is supposed to work
+    is to write code that uses it. It's for educational purposes, in other words.
+    This gets us off the ground quickly, as we figure out the best way to write Flux
+    code. Facebook could have just as easily left out the dispatcher implementation
+    and left it up to programmers reading the Flux documentation to figure this out.
+    Code is highly educational though, and serves as a form of documentation. Even
+    if we decide that we're not crazy about how the dispatcher is implemented, we
+    can at least read the code to figure out what the dispatcher is supposed to do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So is there any risk involved if we were to use this package in a production
+    setting? If we use the default Flux dispatcher in our project, and everything
+    we've developed against it works, there's no reason we couldn't use it in a production
+    application. If it works, it works. However, the fact that this is a reference
+    implementation meant for educational purposes probably means that there's no serious
+    development happening with it. Take React as a counter example, where millions
+    of people use this software in a production environment. There's motivation that
+    this technology moves forward and improves upon itself. This simply isn't the
+    case with a reference dispatcher implementation. Rolling our own is definitely
+    worth thinking about, especially if there's room for improvement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Singleton dispatchers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: If we use the Flux dispatcher from Facebook, we have to instantiate it, as it's
+    just a class. However, since there's only one update round happening at any given
+    time, there's no need for more than one dispatcher instance across the entire
+    application. This is the singleton pattern, and it isn't always the best pattern
+    to use. For one thing, it's needless indirection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, any time we want to dispatch an action, we need to access the
+    `dispatch()` method of the dispatcher. This means that we have to import the dispatcher
+    instance and invoke the method using the instance as the context, like this: `dispatcher.dispatch()`.
+    The same is true with the `register()` method; when a store wants to register
+    itself with the dispatcher, it first needs to access the instance before it calls
+    the method.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, it would seem that this singleton dispatcher instance serves no real purpose
+    other than to get in the way and make for more verbose code. What if instead of
+    a singleton class instance, the dispatcher were just a simple module that exported
+    the relevant functions? This would greatly simplify the code in places where the
+    dispatcher is required, which is probably quite a few if our application has a
+    lot of stores and actions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Manual store registration
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: One invariant of Flux architectures is that stores are connected to dispatchers.
+    There's no other way to change the state of a store, other than by dispatching
+    an action. So unless we want a static store that never changes state, we need
+    to register it with the dispatcher. All the example stores we've looked at in
+    this book so far set up their dispatcher handlers in the constructor. This is
+    where we handle actions that could potentially change the state of a store.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since dispatcher registration is a given, do we really need to explicitly register
+    a callback function when every store is created? An alternative approach might
+    involve a base store class that takes care of this registration for us; this isn't
+    necessarily a dispatcher-specific problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The other aspect of store registration that feels unnecessary for the most part
+    is managing dispatcher IDs. For example, if we implement a store that depends
+    on another store, we have to reference that other store's dispatch ID. The reason
+    IDs are used is simple—a callback function doesn't identify the store. So we have
+    to use the dispatcher to map the callback ID to the store. The whole approach
+    just feels messy, so when we implement our own dispatcher, we can do away with
+    these dispatch IDs entirely.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Error-prone dependency management
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The final gripe that we'll want to address with the default Facebook Flux dispatcher
+    is the way that dependencies between stores are handled. The `waitFor()` mechanism
+    does its job in that it blocks further execution of the handler until all its
+    dependencies have handled the action. This way, we know that the store that we
+    depend on is always up to date. The trouble is that `waitFor()` feels kind of
+    error-prone.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For one thing, it always has to be in the same place—right at the top of the
+    store action handler. We have to remember to use the dispatch IDs from the stores
+    that we depend on so that `waitFor()` knows which stores to process next. A more
+    declarative approach would mean that we could set the store's dependencies as
+    an array of store references or something along these lines. This way, the dependencies
+    are declared outside of the actual callback function and are a little more obvious.
+    We'll figure out a way to implement this in our dispatcher, which we'll now get
+    started on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building a dispatcher module
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we're going to implement our own dispatcher module. This will
+    serve as a replacement for the Facebook reference implementation that we've relied
+    upon so far in this book. First, we'll think about how the dispatcher will track
+    references to store modules. Then, we'll discuss the functions that this module
+    needs to expose, followed by a walk-through of the `dispatch()` implementation.
+    Lastly, we'll figure out how we want to handle dependency management with this
+    dispatcher module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Encapsulating store references
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The first aspect of our dispatcher module to consider are the stores themselves.
+    With Facebook''s reference implementation, there are no references to stores—only
+    references to callback functions. That is, when we register with Facebook''s dispatcher,
+    we''re passing the `register()` method a function instead of the store instance
+    itself. Our dispatcher module will hold onto store references instead of just
+    callback functions. Here''s a diagram that illustrates the approach taken by the
+    reference implementation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Encapsulating store references](img/B05419_10_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Each time `register()` is called, it adds a callback function to the list of
+    callbacks to be processed by the dispatcher any time an action is dispatched.
+    However, the downside is that the dispatcher might need access to the store for
+    more advanced capabilities that we want to implement, as we''ll see shortly. So
+    we''ll want to register the store instance itself, rather than just a callback
+    function. This approach is illustrated here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Encapsulating store references](img/B05419_10_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The list of callback functions is now a list of store instances, and when an
+    action is dispatched, the dispatcher now has access to store data, which is useful
+    for things, such as methods and dependency lists. The trade-off here is that callback
+    functions are more generic, and they're simply called by the dispatcher. As we'll
+    see momentarily, there are advantages to this approach that make for simplified
+    store code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling dependencies
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The first thing we'll think about in terms of our dispatcher implementation
+    is how dependencies between stores are managed. The standard approach is to implement
+    a `waitFor()` method that blocks execution in the store handler function until
+    the stores it depends on have been handled. As you're now aware, this approach
+    can be problematic due to the fact that it's used within the handler function.
+    A more declarative approach is what we're shooting for with our implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The idea is that the list of stores that are depended upon are declared as
+    a property of the store. This allows the store to be queried for other stores
+    that it depends on. It also takes the dependency management aspect of stores out
+    of the handler code that''s supposed to focus on actions. Here''s a visual comparison
+    of the two approaches:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Handling dependencies](img/B05419_10_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Trying to access dependencies that are specified in `waitFor()` is like peeling
+    back an onion—they're hidden. Our goal is to separate the handler code from the
+    dependency specification. So how do we do that exactly?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Rather than trying to handle dependencies during the dispatching process, we
+    could sort out our dependencies as stores are registered. If a store has its dependencies
+    listed in a property, then the dispatcher can organize the store list in such
+    a way that satisfies those dependencies. Here''s an implementation of a `register()`
+    function for our dispatcher module:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is the function that stores can use to register themselves. The first thing
+    this function does is it checks if the store has already been registered with
+    the dispatcher. This is an easy check to perform, because the references are stored
+    in an array; we can use the `includes()` method. If the store hasn't already been
+    registered, then we can push the store onto the array.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we handle store dependencies. Every time a store is registered, we re-sort
+    the `stores` array. This sort is based on the `deps` property of the store. This
+    is where the dependencies of the store are declared. The sort comparator is straightforward.
+    It''s based on whether **Store A** depends on **Store B** or vice-versa. For example,
+    let''s say these stores were registered in the following order:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Handling dependencies](img/B05419_10_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Now, let''s assume that the follow store dependencies have been declared:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Handling dependencies](img/B05419_10_08.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'This means that **Store A** depends on both **Store B** and **Store D**. After
+    each of these stores have been registered, the order of the store list in our
+    dispatcher modules would be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Handling dependencies](img/B05419_10_09.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Now the store list is in an order that satisfies the dependencies of the stores.
+    When the dispatcher iterates over the store list and calls each store handler,
+    it will be done in the correct order. Since **Store A** depends on **Store C**
+    and **Store D**, all that matters is that these two stores are handled first.
+    The order of **Store A** and **Store C** are inconsequential since there's no
+    dependency declared between them. Now, let's see how to implement the dispatching
+    logic of our module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dispatching actions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the Facebook reference implementation of a Flux dispatcher, the dispatching
+    mechanism is a method of a dispatcher instance. Since there''s really no need
+    for a singleton dispatcher instance, our dispatcher is a simple module with a
+    couple of functions exposed, including a `dispatch()` function. Thanks to the
+    dependency sorting logic, we''ve implemented in the `register()` function; the
+    work-flow of `dispatch()` will be nice and straightforward. Let''s take a look
+    at this code now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can see that there's a `busy` variable that's checked at the top of the
+    function. This is set just before we start calling store handlers. Essentially,
+    this checks for anything that calls `dispatch()` as a result of a store handling
+    an action. For example, we could accidentally call `dispatch()` from a store or
+    from a view that's listening to a store. This is not allowed as it breaks the
+    unidirectional data-flow of our Flux architecture. When this happens, it's better
+    to detect it and fail fast than it is to let nested update rounds run their course.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Aside from the busy state handling logic, this function iterates over the stores
+    collection and checks if there''s an appropriate method to call. The method name
+    is based on the action type. For example, if the action is `MY_ACTION` and store
+    has a method of the same name, then that method is invoked with the payload as
+    an argument. The process is visualized here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Dispatching actions](img/B05419_10_10.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'This is quite the departure from the standard `switch` statement approach we''ve
+    been using in this book so far. Instead, it''s up to the dispatcher to locate
+    the appropriate code to run within the store. This means that if the store doesn''t
+    implement a method that corresponds to the action that has been dispatched, it''s
+    ignored by the store. This is something that happens often within our store dispatch
+    handlers, only now it happens more efficiently because it sidesteps the `switch`
+    case checking. In the next section, we''ll see how our stores can work with this
+    new dispatcher implementation. But first, here''s the dispatcher module in its
+    entirety, so you can see how everything fits together:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Improving store registration
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We can't improve the work-flow of the dispatcher without improving the work-flow
+    of our stores. Thankfully, the hard work has already been implemented by the dispatcher.
+    We just need to implement our stores in a way that best utilizes the improvements
+    we've made to the dispatcher. In this section, we'll discuss implementing a base
+    store class, followed by some example implementations of stores that extend it
+    and implement their own action methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Base store class
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The new dispatcher we've just implemented has some important differences from
+    Facebook's reference implementation. The two key differences are that the store
+    registers an instance of itself instead of a callback function, and that the store
+    needs to implement action methods. The base store class should be able to automatically
+    register itself with the dispatcher when it's created. This would mean that stores
+    extending this base class wouldn't need to worry about the dispatcher at all—just
+    implementing action methods that change the state of the store accordingly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The layout of the dispatcher, the base store, and stores that extend it is
+    illustrated here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Base store class](img/B05419_10_11.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Let''s go ahead and look at the implementation of our base store class now.
+    Then, we''ll implement some stores that extend it so that we can see our new dispatcher
+    module in action:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: That's it, pretty simple right? The constructor accepts the initial state of
+    the store and an array of store dependencies. Both of these arguments are optional—they
+    have default argument values. This is especially important for the `deps` property
+    because our dispatcher module expects it to be there. Then, we call the `register()`
+    function so that the dispatcher is automatically aware of any stores. Remember,
+    a Flux store is of no use if it's unable to handle actions as they're dispatched.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We've also added a handy little `change()` method that updates the state and
+    emits the change event for us. Now that we have a base store class, we're free
+    to implement little helper methods like this in order to reduce duplicate store
+    code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An action method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let''s complete our example that''s been running through a few sections now.
+    To do so, we''ll implement a few stores that extend the base store we''ve just
+    created. Here''s the first store:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This store has all of the relevant moving parts to work with our new base store
+    class and our new dispatcher module. You can see in the constructor that we''re
+    passing the `initialState` and the `deps` values to the `Store` constructor. You
+    can also see that we have two action methods implemented in this store: `FOO()`
+    and `BAR()`. This means that if any actions with a type of `FOO` or `BAR` are
+    dispatched, this store will respond to them. Now let''s implement the two stores
+    that this store depends on:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you absolutely can't stand the look of all-caps method names, feel free to
+    change the case of the action types that get dispatched. Another alternative is
+    to implement case-insensitive matching in the dispatcher. The trade-off working
+    against this latter option is that we'd lose the direct mapping from action type
+    to method name. Be careful what you wish for.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `Second` store is similar to the `First` store. It extends the base `Store`
+    class and sets a default state. It also responds to two actions, as we can see
+    by the two method names. However, this store doesn''t declare any dependencies,
+    yet it clearly depends on the third store in the `BAR()` action handler. This
+    may or may not work, depending on where the `third` store lands in the collection
+    of stores held by the dispatcher. If we declare `third` as a dependency, then
+    we know for certain that it''ll always be updated before this store. Let''s look
+    at our last store now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once again, this store follows the same patterns as its two successors. The
+    key difference being that it has no `BAR()` action handler. This means that nothing
+    in this store will be called when `BAR` actions are dispatched. This is in contrast
+    to our earlier handlers where every action would have *funnelled* through a `switch`
+    statement only to be ignored. Finally, let''s look at `main.js` to tie this all
+    together:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that the output of `foo()` reflects the correct dependency order and that
+    the output of `bar()` reflects the missing action handler in `Third`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, you learned about some of the limitations that are inherent
+    with the Facebook Flux component. For starters, it's not targeted for production
+    environments, because it's a reference implementation for the Flux patterns. We're
+    free to implement these dispatcher patterns however we like.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The essential aspects of a dispatcher are the ability to register store code
+    that handles actions as they're dispatched and the ability to perform the dispatches.
+    Given the simplicity of the requirements, it doesn't make sense to implement another
+    singleton class. Instead, the dispatcher only needs to expose a `register()` and
+    `dispatch()` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The big change with our implementation was with regard to dependency management.
+    Instead of figuring out dependencies every time an action is dispatched, the `register()`
+    function sorts the `stores` collection in such a way that satisfies the store
+    dependencies. We then implemented a base store class that's used to simplify our
+    store code by automatically registering the store with the dispatcher for us.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we'll look at view components that rely on technologies
+    other than ReactJS to render themselves.
+  prefs: []
+  type: TYPE_NORMAL

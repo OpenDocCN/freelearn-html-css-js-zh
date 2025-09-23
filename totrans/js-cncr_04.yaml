@@ -1,0 +1,668 @@
+- en: Chapter 4. Lazy Evaluation with Generators
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Lazy evaluation is a programming technique, which is used when we don't want
+    to compute values until the very last second. This way, we're sure we actually
+    need it. The opposite approach, eager evaluation, has the potential to compute
+    several values that aren't needed. This generally isn't a problem, until the size
+    and complexity of our applications grow beyond a level where these wasted computations
+    are imperceptible to the user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Generator` is a new primitive type introduced to JavaScript as a part of
+    the ES6 specification of the language. Generators help us implement lazy evaluation
+    techniques in our code, and as a corollary, help us implement the conserve concurrency
+    principle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll start the chapter off with some simple introductions to generators, so
+    we can get a feel for how they behave. From there, we'll move onto more advanced
+    lazy evaluation scenarios, wrapping up the chapter with a look at coroutines.
+    Let's get started.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Call stacks and memory allocation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Memory allocation is a necessity of any programming language. Without this,
+    we have no data structures to work with, not even primitive types. Memory is cheap,
+    and it seems that there's plenty of it to go around; this isn't cause for celebration
+    just yet. While it's more feasible today to allocate larger data structures in
+    memory then it was 10 years ago, we still have to deallocate that memory when
+    we're done with it. JavaScript is a garbage-collected language, which means our
+    code doesn't have to explicitly destroy objects in memory. However, the garbage
+    collector incurs a CPU penalty.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So there are two factors in play here. We want to conserve two resources here,
+    and we'll try to do so using generators to implement lazy evaluation. We don't
+    want to allocate memory unnecessarily, and if we can avoid this, then we can avoid
+    invoking the garbage collector frequently. In this section, I'll introduce some
+    generator concepts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bookmarking function contexts
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In a normal function call stack, a function returns a value. The `return` statement
+    activates a new execution context and discards the old context because we returned,
+    so we''re done with it. Generator functions are a special kind of JavaScript function
+    denoted with their own syntax, and their call stacks aren''t so cut-and-dried
+    compared to `return` statements. Here''s a visualization of what happens when
+    a generator function is invoked, and it starts generating values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Bookmarking function contexts](img/B05133_04_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Just as the `return` statement passes a value to the calling context, the `yield`
+    statement passes a value back. However, unlike a regular function, generator function
+    contexts aren't discarded. In fact, they're bookmarked so that when control is
+    given back to the generator context, it can pick up where it left off to continue
+    yielding values until it's done. This bookmarking data is very insignificant,
+    as it just points to a location in our code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sequences instead of arrays
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In JavaScript, when we need to iterate over a list of things, numbers, strings,
+    objects, and so on, we use an array. Arrays are general purpose and powerful.
+    The challenge with arrays in the context of lazy evaluation is that arrays themselves
+    are data that need to be allocated. So we have the elements within the array that
+    need to be allocated somewhere in memory, and we also have metadata about the
+    elements in the array.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we''re working with a large number of objects, the memory overhead associated
+    with the array is significant. Additionally, we need to somehow put these objects
+    in the array. This is an additional step that adds CPU time. An alternative concept
+    is a sequence. Sequences aren''t a tangible JavaScript language construct. They''re
+    an abstract concept—arrays without actually allocating arrays. Sequences help
+    with lazy evaluation. For this exact reason, there''s nothing to allocate, and
+    there''s no initial population step. Here''s a visualization of the steps involved
+    with iterating over an array:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Sequences instead of arrays](img/B05133_04_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'As we can see, before we can iterate over these three objects, we first have
+    to allocate an array, then populate it with these objects. Let''s contrast this
+    approach with the conceptual idea of a sequence with the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Sequences instead of arrays](img/B05133_04_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: With sequences, we don't have an explicit container structure for the objects
+    that we're interested in iterating over. The only overhead associated with a sequence
+    is the pointer to the current item. We can use generator functions as a mechanism
+    for generating sequences in JavaScript. As we saw in the preceding section, generators
+    bookmark their execution context when they yield values back to the caller. This
+    is the kind of minimal overhead that we're looking for. It enables us to lazily
+    evaluate objects and iterate over them as a sequence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating generators and yielding values
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, I'll introduce the generator function syntax, and we'll walk
+    through yielding values from a generator. We'll also look at the two approaches
+    that we can use to iterate over values yielded from generators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generator function syntax
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The syntax for generator functions is nearly identical to normal functions.
+    The difference in the declaration is that the `function` keyword is followed by
+    an asterisk. The more profound difference is the return value, which is always
+    a generator instance. Moreover, there''s no need for the `new` keyword, despite
+    a new object being created. Let''s take a look at what a generator function looks
+    like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: It's highly unlikely that we'd ever use generators in this fashion, but it's
+    a good way to illustrate the nuances of generator functions. For example, `return`
+    statements are perfectly valid within generator functions, and yet, they produce
+    a completely different result for the caller, as we can see. In practice, we're
+    far more likely to encounter `yield` statements in generators, so let's look at
+    them next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Yielding values
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The common case with generator functions is to yield values and control back
+    to the caller. Yielding control back to the caller is a defining characteristic
+    of generators. When we yield, the generator bookmarks our position in the code.
+    It does this because the caller is likely going to request another value from
+    the generator, and when it does, the generator simply picks up where it left off.
+    Let''s take a look at a generator function that yields several times:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code is what a sequence looks like. We have three values, and they're
+    sequentially yielded from our function. They're not put in any kind of container
+    structure either. The first call to `yield` passes `first` to `next()`, which
+    is where it's used. The same goes for the other two values. In fact, this is lazy
+    evaluation in action. We have three calls to `console.log()`. The eager implementation
+    of `gen()` would return a collection of values for us to log. Instead, when we
+    need to log a value, we go and get it from the generator. This is the laziness
+    factor; we conserve our efforts until they're actually required, avoiding allocations
+    and computations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The not-so-ideal aspect of our previous example is that we're actually repeating
+    calls to `console.log()`, when really, we want to iterate over the sequence, calling
+    `console.log()` for each item in it. Let's iterate over some generator sequences
+    now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Iterating over generators
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `next()` method gets us, not surprisingly, the next value in the generator
+    sequence. The actual value returned by `next()` is an object with two properties:
+    the yielded `value` and whether or not the generator is `done`. However, we generally
+    don''t want to hard-code our calls to `next()`. Instead, we want to call it iteratively
+    as values are yielded from the generator. Here''s an example that uses a `while`
+    loop to iterate over a generator:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This loop will continue until the `done` property of the yielded item is `true`;
+    at this point, we know there aren''t any items, and thus, we can stop. This allows
+    us to iterate over a sequence of yielded values without the need to create an
+    array for the sole purpose of iterating over it. However, there''s a lot of boilerplate
+    code in this loop that has more to do with managing the generator iteration than
+    actually iterating over it. Let''s take a look at another approach:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is much better. We've condensed our code down into something that's much
+    more focused on the task at hand. This code essentially does the exact same thing
+    as our `while` loop, except the `for..of` statement, which understands what to
+    do when the iterable is a generator. Iterating over generators is a common pattern
+    in concurrent JavaScript applications, so optimizing for compact and readable
+    code here would be a wise decision.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Infinite sequences
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Some sequences are infinite, prime numbers, Fibonacci numbers, odd numbers,
+    and so on. Infinite sequences aren't limited to sets of numbers; more abstract
+    notions can be considered infinite. For example, a set of stings that repeats
+    itself infinitely, a Boolean value that toggles infinitely, and so on. In this
+    section, we'll explore how generators make it possible for us to work with infinite
+    sequences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: No end in sight
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Allocating items from an infinite sequence isn''t practical from a memory consumption
+    point of view. In fact, it''s not even possible to allocate the whole sequence—it''s
+    infinite. Memory is finite. So, it''s better to simply sidestep the whole allocation
+    problem entirely and use a generator to yield the values from the sequence as
+    we need them. At any given point in time, our application is only going to use
+    a tiny slice of the infinite sequence. Here''s a visualization of what''s used
+    from an infinite sequence versus the potential size of these sequences:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![No end in sight](img/B05133_04_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'As we can see, there are a vast number of items available that we''ll never
+    use with this sequence. Let''s take a look at some generator code that lazily
+    produces items from an infinite Fibonacci sequence:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Alternating sequences
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'A variation on infinite sequences is either a circular sequence or an alternating
+    sequence. These types of sequences are circular when the end is reached; they
+    start from the beginning. Here''s what a sequence that alternates between two
+    values looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Alternating sequences](img/B05133_04_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'These types of sequences will continue to generate values infinitely. This
+    becomes useful when we have a set of rules that determine how the sequence is
+    defined and the set of items that''s generated; then, we start this set all over
+    again. Now, let''s look at some code to see the implementation of these sequences
+    using generators. Here''s a generic generator function that we can use to alternate
+    between values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is the first time we''ve declared a generator function that accepts arguments.
+    In fact, we''re using the spread operator to iterate over arguments passed to
+    the function. Unlike arguments, the `seq` argument that we''ve created using the
+    spread operator is a real array. As we iterate over this array, we yield each
+    item from the generator. This may not seem all that useful at first glance, but
+    it''s the `while` loop that adds the real power here. Since the `while` loop will
+    never exit, the `for` loop will simply repeat itself. That is, it''ll alternate.
+    This negates the need for explicit bookkeeping code (Have we reached the end of
+    the sequence? How do we reset the counter and move back to the beginning? And
+    so on) Let''s see how this generator function works:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Cool. So the `alternator` will continue to generate `true`/`false` values as
+    long as we continue to ask for them. The main benefit here is that we don''t need
+    to know about the next value, `alternator` takes care of this for us. Let''s look
+    at this generator function with a different sequence to iterate over:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: As we can see, the `alternate()` function comes in handy for alternating between
+    any arguments passed to it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deferring to other generators
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We've seen how the `yield` statement is able to pause the execution context
+    of a `generator` function, and yield a value back to the calling context. There's
+    a variation on the `yield` statement that allows us to defer to other `generator`
+    functions. Another technique involves creating a mesh of generators by interweaving
+    several generator sources together. In this section, we'll explore both of these
+    ideas.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Selecting a strategy
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Deferring to other generators gives our functions the ability to decide at
+    run-time, to hand off control from one generator to another. In other words, it
+    allows the selection of a more appropriate generator function based on a strategy.
+    Here''s a visualization of a generator function that makes a decision and defers
+    to one of several other generator functions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Selecting a strategy](img/B05133_04_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: What we have here are three specialized generators that we would like to use
+    throughout our application. That is, they each work in their own unique way. Perhaps,
+    they're tailored for specific types of inputs. However, these generators simply
+    make assumptions about the input that they're given. It may not be the best tool
+    for the job, and so, we have to figure out which of these generators to use. What
+    we want to avoid is having to implement this strategy selection code all over
+    the place. It would be nice if we were able to encapsulate all of this into a
+    general purpose generator that captures common cases throughout our code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s say that we have the following generator functions, and they''re equally
+    used throughout our application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'These are small and concise functions, and they are easy to use wherever we
+    need them. The trouble is that each of these functions make assumptions about
+    the collection that''s passed in. Is it an array of objects, each with a specific
+    property? Is it an array of strings? Is it an object instead of an array? Since
+    these generator functions are commonly used throughout our code for a similar
+    purpose, we can implement a more generic iterator, who''s job is to determine
+    the best generator function to use, and then to defer to it. Let''s see what this
+    function looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Think of the `iterateNames()` function as a simple proxy for any one of the
+    other three generators. It examines the input and makes a selection based on the
+    collection. We could have implemented one large generator function, but that would
+    preclude us from use cases where we want to use the smaller generators directly.
+    What if we want to use them to compose new functionality, or if another composite
+    generator wants to use it? It's always a good idea to keep generator functions
+    small and focused. The `yield*` syntax allows us to handoff control to a more
+    suitable generator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let''s see how this general purpose generator function is put to use by
+    deferring to generators that are best equipped to handle the data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Interweaving generators
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When a generator defers to another generator, control isn't handed back to the
+    first generator until the second generator is completely finished. In the preceding
+    example, our generator simply looked for a better generator to carry out the work.
+    However, there will be other times when we'll have two or more data sources that
+    we want to use together. So, instead of handing off control to one generator,
+    then to another and so on, we would alternate between the various sources, taking
+    turns consuming data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s a diagram that illustrates the idea of a generator that interweaves
+    multiple data sources to create a single data source:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Interweaving generators](img/B05133_04_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The idea is to round-robin the data sources, rather than to empty one source,
+    then another, and so on. A generator like this is handy when there isn''t a single
+    large collection for us to work with, but instead, two or more collections. Using
+    this generator technique, we can actually treat multiple data sources as though
+    they were one big source, but without having to allocate the memory for a large
+    structure. Let''s look at the following code example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Passing data to generators
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `yield` statement doesn't just yield control back to the caller, it also
+    returns a value. This value is passed to the generator function through the `next()`
+    method. This is how we pass data into generators after they've been created. In
+    this section, we'll address the bidirectional aspect of generators, and how creating
+    feedback loops can produce some lean code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reusing generators
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Some generators are general purpose and used frequently throughout our code.
+    This being the case, does it make sense to constantly create and destroy these
+    generator instances? Or can we reuse them? For instance, consider a sequence that's
+    mainly dependent on initial conditions. Let's say we want to generate a sequence
+    of even numbers. We would start at two, and as we iterate over this generator,
+    the value would be incremented. The next time we want to iterate over even numbers,
+    we would have to create a new generator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is kind of wasteful, since all we're doing is resetting a counter. What
+    if we took a different approach, one that would allow us to keep on using the
+    same generator instance for these types of sequences? The `next()` method of generators
+    is a possible implementation path for this capability. We could pass it a value,
+    which would then reset our counter. So instead of having to create a new generator
+    instance every time we need to iterate over even numbers, we can simply call `next()`
+    with a value that resets the initial conditions of our generator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `yield` keyword actually returns a value—the argument that's passed to `next()`.
+    Most of the time, this is undefined, such as when the generator is iterated over
+    in a `for..of` loop. However, this is how we're able to pass arguments to the
+    generator after it starts running. This is not the same thing as passing arguments
+    to the generator function, which comes in handy for doing the initial configuration
+    of the generator. Values passed to `next()` are how we talk to the generator when
+    we need to change something for the next value that's to be generated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s take a look at how we can use the `next()` method to create a reusable
+    even number sequence generator:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In case you're wondering why we're not using a `for..of` loop in the favor of
+    a `while` loop, it's because you use a `for..of` loop to iterate over a generator.
+    When you do so, the generator gets marked as *done* as soon as the loop exits.
+    Hence, it would no longer be usable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lightweight map/reduce
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Something else we can do with the `next()` method is map one value to another.
+    For example, let's say we had a collection containing seven items. To map these
+    items, we would iterate over the collection, passing each item to `next()`. As
+    we saw in the preceding section, this method can reset the state of a generator,
+    but it can also be used to supply a stream of input data, just as it supplies
+    a stream of output data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s see if we can write some code that does this—map collection items by
+    feeding them into a generator through `next()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: As we can see, this is indeed possible. We're able to perform a lightweight
+    map/reduce job using this approach. The mapper generator has the `iteratee` function
+    that's applied to every item in the collection. As we iterate over the array,
+    we're able to feed items into the generator by passing them to the `next()`method
+    as an argument.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But, there's something about the previous method that just doesn't feel optimal—having
+    to bootstrap the generator like this, and explicitly calling `next()`for every
+    iteration feels clunky. In fact, could we not apply the `iteratee` function directly,
+    instead of calling `next()`? It's these things that we need to be on the lookout
+    while using generators; in particular, when passing data to generators. Just because
+    we're able to, doesn't mean that it's a good idea.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Mapping and reducing would probably feel more natural, if we were to simply
+    iterate over the generator just as we do with all other generators. We still want
+    the lightweight mapping that generators give us, to, avoid the memory allocations.
+    Let''s try a different approach here—one that doesn''t require the `next()` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: This looks like an improvement. There's less code, and the flow of the generator
+    is easy to grok. The difference is that we pass our array and `iteratee` function
+    to the generator up front. Then, as we iterate over the generator, each item gets
+    mapped lazily. The code that reduces this array into an object is simpler to read
+    too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `genMap()` function that we've just implemented is generic, which is advantageous
+    to us. In real applications, mappings are going to be more complex than an uppercase
+    transformation. More likely, there will be multiple levels of mappings. That is,
+    we map the collection, then map it N more times before reducing it. If we've done
+    a good job designing our code, then we'll want to compose generators out of smaller
+    iterated functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But how can we keep this generic and lazy? The idea is to have several generators,
+    each serving as the input to the next. This means that as our reducer code iterates
+    over these generators, only one item makes it''s way through the various layers
+    of mappings, to the reduction code. Let''s take a stab at implementing this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Coroutines
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Coroutines are a concurrency technique that allow for cooperative multitasking.
+    What this means is that if one part of our application needs to perform part of
+    a task, it can do so, and then hand control off to another part of the application.
+    Think about a subroutine, or in more recent times, a function. These subroutines
+    often rely on other subroutines. However, they don't just run in succession, they
+    cooperate with one another.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In JavaScript, there's no intrinsic coroutine mechanism. Generators aren't coroutines,
+    but they have similar properties. For example, generators can pause the execution
+    of a function, yielding control to another context, then regain control and resume.
+    This gets us partway there, but generators are for generating values, which isn't
+    necessarily what we're after with coroutines. In this section, we'll look at some
+    techniques for implementing coroutines in JavaScript using generators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating coroutine functions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Generators give us most of what we need to implement `coroutine` functions
+    in JavaScript; they can pause and resume executing. We just need to implement
+    some minor abstractions around generators so that the functions that we''re working
+    with actually feel like calling `coroutine` functions, instead of iterating over
+    generators. Here''s a rough illustration of how we want our coroutines to behave
+    when called:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Creating coroutine functions](img/B05133_04_08.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The idea is that invoking the `coroutine` function moves from one `yield` statement
+    to the next. And we can supply input to the coroutine by passing an argument,
+    which is then returned by the `yield` statement. This is a lot to remember, so
+    let''s generalize these coroutine concepts in a function wrapper:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Pretty simple—five lines of code, but it''s also powerful. The function returned
+    by Harold''s wrapper simply advances the generator to the next `yield` statement,
+    supplying the argument to `next()`, if one was provided. It''s one thing to make
+    claims of utility, but let''s actually use this thing to make a `coroutine` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: When there are a series of steps involved with fulfilling some task, we typically
+    require bookkeeping code, temporary values, and so on. These aren't necessary
+    with coroutines because the function simply pauses, leaving any local state intact.
+    In other words, there's no need to intertwine concurrency logic with our application
+    logic when coroutines do a decent job of hiding these details for us.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling DOM events
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Somewhere else where we can use coroutines is with the DOM as event handlers.
+    This works by adding the same `coroutine()` function as an event listener to several
+    elements. Let's recall that each call to these coroutine functions talks to a
+    single generator. This means that our coroutines that are setup to handle DOM
+    events get passed in as a stream. It's almost like we're iterating over these
+    events.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Since these `coroutine` functions use the same generator, it''s easy for elements
+    to talk to one another using this technique. The typical approach to DOM events
+    involves callback functions that talk to some sort of central source that''s shared
+    among elements and maintains state. With coroutines, the state of element communications
+    is implicit inside our function code. Let''s use our coroutine wrapper in the
+    context of DOM event handlers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Handling promised values
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the preceding section, we saw how the `coroutine()` function can be used
+    to process DOM events. Instead of haphazardly adding callback functions that respond
+    to DOM events, we use the same `coroutine()` function, which treats events as
+    a stream of data. It's easier for DOM event handlers to cooperate with one another
+    since they share the same generator context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can apply this same principle to `then()` callbacks of promises, which works
+    in a similar way to the DOM coroutine approach. Instead of passing a regular function,
+    we pass a coroutine to `then()`. When the promise resolves, the `coroutine` advances
+    to the next `yield` statement along with a resolved value. Let''s take a look
+    at the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is very useful because it provides something that static promise methods
+    do not. The `Promise.all()` method forces us to wait for all the promises to resolve
+    before resolving the returned promise. However, in the case where the resolved
+    promise values aren't dependent on one another, we can simply iterate over them,
+    responding as they resolve in any order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can achieve something similar by attaching plain functions to `then()` as
+    callbacks, but then, we wouldn't have a shared context for promise values as they
+    resolve. Another tactic we can adopt by combining promises with coroutines is
+    to declare a handful of coroutines that respond differently, depending on the
+    type of data they're responding to. These coroutines would then live on throughout
+    the entire duration of the application, being passed to promises as they get created.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter introduced you to the concept of generators, a new construct as
+    of ES6, which allow us to implement lazy evaluation. Generators help us realize
+    the conserve concurrency principle because we can avoid computations and intermediary
+    memory allocations. There are a few new syntax forms associated with generators.
+    First, there's the generator function, which always returns a generator instance.
+    These are declared differently than regular functions. These functions are responsible
+    for generating values, which rely on the `yield` keyword.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We then explored more advanced generator and lazy evaluation topics, including
+    deferring to other generators, implementing map/reduce functionality, and passing
+    data into generators. We closed the chapter with a look at how to use generators
+    to make coroutine functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the following chapter, we'll look at web workers—our first glimpse at utilizing
+    parallelism in the browser environment.
+  prefs: []
+  type: TYPE_NORMAL

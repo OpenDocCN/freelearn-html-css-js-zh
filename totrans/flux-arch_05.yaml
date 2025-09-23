@@ -1,0 +1,555 @@
+- en: Chapter 5. Asynchronous Actions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 4](ch04.html "Chapter 4. Creating Actions"), *Creating Actions,*
+    we examined Flux actions in detail—action creator functions in particular. One
+    aspect of action creators we didn't cover was asynchronous behavior. Asynchronicity
+    is central to any web application, and in this chapter, we'll think about what
+    this means for a Flux architecture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll start by covering the synchronous nature of Flux, as breaking this synchronicity
+    breaks the whole architecture. Next, we'll dive into some code that makes API
+    calls and some action creators that need to synchronize multiple API calls before
+    actually dispatching the action. Then, we'll introduce promises as return values
+    from action creator functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keeping Flux synchronous
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: It may sound strange that we would want to keep an architecture synchronous—especially
+    on the web. What about the laggy user experience that happens when everything
+    is performed synchronously?
+  prefs: []
+  type: TYPE_NORMAL
+- en: It's just the Flux data-flow that's synchronous, not the entire application.
+    In this section, we'll touch upon why keeping the core data-flow mechanisms of
+    our architecture synchronous is a good idea. Next, we'll talk about how we should
+    encapsulate asynchronous behavior in our application. Finally, we'll go over the
+    general semantics of how asynchronous action creator functions work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why synchronicity?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The simple answer is that anything that's asynchronous introduces a level of
+    uncertainty that wouldn't otherwise be there. It can be tempting, given all the
+    new hotness in web browsers, to make everything happen in parallel—to leverage
+    as many concurrent web requests and as many processor cores as we possibly can.
+    Once we go down this path, it's hard to turn back, and the further down we go,
+    the more tangled the synchronization semantics get.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s think about the DOM API for a moment. JavaScript applications use this
+    API to change the state of elements on the page. When these changes happen, the
+    browser''s rendering engine kicks in and performs an update to the screen so that
+    the user can actually see the changes. The DOM API doesn''t directly interface
+    with what''s displayed on screen—there''s a whole bunch of nasty details taken
+    care of for us by the rendering engine. This idea is illustrated here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Why synchronicity?](img/B05419_05_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The takeaway here is that it's not the individual updates made by our components
+    that cause the rendering engine to update the screen. The JavaScript engine is
+    run-to-completion, meaning that it waits for all these components to finish making
+    their calls to update the DOM (and any other code they're running) before handing
+    off control to the rendering engine. This means that any updates the user sees
+    are fundamentally synchronous—all the concurrent code in the world doesn't change
+    the synchronous communication path between the JavaScript engine and the render
+    engine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You might be wondering what this has to do with Flux at this point. It's actually
+    very relevant because the authors of Flux understand this synchronous DOM update
+    mechanism, so rather than fight it with complex asynchronous code everywhere,
+    they came up with data-flow semantics that embrace the synchronous nature of updating
+    the DOM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The core abstraction Flux uses for synchronous data-flow is the **update round**,
+    which was introduced in [Chapter 2](ch02.html "Chapter 2. Principles of Flux"),
+    *Principles of Flux*. Nothing can interrupt an update round because every component
+    that takes part in it has no asynchronous behavior. If Flux has a killer feature,
+    this is it. The update round is such a critical property of Flux architectures
+    that we have to be especially careful to maintain it. It's like an umbrella concept—dozens
+    of little edge cases caused by asynchronous behavior fall outside of it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Encapsulating asynchronous behavior
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: With Flux update rounds being synchronous, where should we put our asynchronous
+    code? Let's think about this for a moment. Flux architecture aside, any asynchronous
+    behavior is going to update the state of the system in some way when the action
+    completes and is synchronized with the rest of our code. In some architectures,
+    this happens all over the place and there's nothing guarding against these types
+    of asynchronous actions from being called from places where they shouldn't.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, a Flux update round should never result in new asynchronous behavior
+    running. We know that update rounds are synchronous, so this is a non-starter.
+    We do need to encapsulate our asynchronous behavior somehow though. This is what
+    action creator functions are really good at—performing the asynchronous work and
+    managing the action dispatches once the asynchronous portion has completed. Here
+    is a visualization of action creator functions encapsulating asynchronous calls:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Encapsulating asynchronous behavior](img/B05419_05_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Keeping asynchronous behavior in the action creator functions does two things
+    for us. First, we know there's no synchronization semantics involved in calling
+    the action creator—this is all handled within the function for us. The second
+    advantage is that all of our asynchronous behavior can be found within a single
+    architectural layer. That is, if there's something that's asynchronous, such as
+    making an API call, we know where to look for this code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Asynchronous action semantics
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: It's up to our action creator functions to perform any synchronizations before
+    dispatching any actions. There are two parts to a given action creator function.
+    The first is the asynchronous calls, if any, while the second part is the actual
+    dispatching of the action. The job of these action creator functions is to synchronize
+    the async call with the Flux dispatcher, meaning that the function will have to
+    wait for some kind of response before the action can be dispatched.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is because the asynchronous action has payload data. Let''s take a look
+    at an example, shall we? Here''s an action creator function that calls an API
+    to load a list of user objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, we're using a promise in place of an actual API call. Generally
+    speaking, our application will probably have an API function call that returns
+    a promise. This is exactly what we're doing here—making it seem like we're talking
+    with an API when in reality, it's just a promise. The mechanics are the same,
+    regardless of whether `setTimeout()` or an actual AJAX response resolves the promise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The important thing to note is that it''s the `loadUsers()` function that takes
+    care of dispatching the action after the promise has resolved. Think of it this
+    way—the dispatcher is never invoked unless we have new data for the system. The
+    waiting part falls outside of the Flux update round, which is why it''s nice to
+    keep everything together in a function like this. Here''s how we use the `loadUsers()`
+    function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Something that you may have noticed is missing from this example is any kind
+    of error handling. For example, it would be unpleasant to call `loadUsers()` and
+    have it fail silently because something's wrong with the API. We'll cover error-handling
+    in more depth in the final section of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Making API calls
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, well go over the common case for asynchronous behavior in Flux
+    architectures—making API calls over the network. Then, we'll discuss some the
+    implications of asynchronous behavior in the context of user interactivity and
+    the Flux tools available to deal with them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: APIs are the common case
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Flux architecture is for the frontend of web applications. That said, there''s
+    going to be a lot of network communication between some components of our architecture
+    and the backend API. This is the common case for asynchronous behavior, not just
+    in Flux, but in the majority of JavaScript applications. Therefore, this is where
+    the emphasis should be when designing action creators that directly communicate
+    asynchronously with these API endpoints. Here''s what the most common communication
+    paths look like in Flux applications:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![APIs are the common case](img/B05419_05_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The stores need to be populated with data, and this is the most common way to
+    get data—by fetching it from the API. In fact, the user is likely going to spend
+    more time consuming information than interacting with UI elements. As you saw
+    in the last section, synchronizing the response with the dispatcher isn't difficult
+    to do with promises.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These types of API calls aren''t the only source of asynchronous data in Flux
+    architectures. For example, reading a file using the file API requires the use
+    of an asynchronous function call. Interacting with web workers is another asynchronous
+    form of communication—you ask the worker to compute something and get a response
+    in the form of a callback function. Although less common than HTTP calls, these
+    asynchronous interfaces may be treated in the same way, as illustrated here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![APIs are the common case](img/B05419_05_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The same synchronization mechanism—promises—can be used for all of these types
+    of asynchronous communication channels. As far as the action creator functions
+    are concerned, they all have the same interface—a promised value that's resolved
+    at a later time. The dispatcher semantics are the same here as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There's no asynchronous behavior entering the Flux update round because it's
+    all encapsulated within the action creator functions themselves. Additionally,
+    it could take more than one API to get all the data needed for an action payload.
+    We'll look at this shortly. For now, let's turn our attention to how asynchronous
+    action creators impact user interactivity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: API calls and user interactivity
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The main challenge with asynchronous calls and user interface elements is that
+    we have to manage the state of the request, which in turn reflects the state of
+    the UI elements. For example, when the user submits a form, we have to give some
+    sort of visual indication that the request has been made and that it's being processed.
+    Moreover, we also need to prevent the user from interacting with certain UI elements
+    until a response comes back with the state of the request.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The stores in a Flux architecture contain all application state, including
+    the state of any network requests we want to track. This can help us coordinate
+    the state of relevant UI elements with a given request. Let''s look at an action
+    creator that sends an asynchronous API request to start something:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you can see, the `start()` function dispatches the `START` action after
+    the promise resolves. Just like a real API call, this delay allows the user ample
+    time to interact with the UI before the call returns. So, we have to take steps
+    to prevent this from happening. Let''s look at another action creator function
+    that tells the system about the state of the API request we just made:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: By calling `starting()`, we can inform any stores that might be listening that
+    we're about to make an API call to start something. This could be what we need
+    to take care of handling the state of UI elements to inform the user that the
+    request is in progress, and to disable elements the user shouldn't touch while
+    the request is happening. Let's take a look at a store that processes these types
+    of actions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The store also processes `STOP` and `STOPPING` actions. These modules aren't
+    listed separately here because they're nearly identical to the `START` and `STARTING`
+    actions, respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The store has a clear representation of the disabled state for both a `start`
+    and a `stop` button. If the `STARTING` or `STOPPING` action is dispatched, then
+    we can mark both buttons as disabled. In the case of `START` or `STOP`, we can
+    mark the appropriate button as disabled and the other as enabled. Now that the
+    stores have all the state that they need, let's now look at a view that actually
+    renders the button elements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'You might be wondering why we''ve separated these two actions into two action
+    creator functions—`start()` and `starting()`. The reason is simple: one action
+    creator dispatches one action. However, this isn''t set in stone and is a matter
+    of personal preference. For example, `start()` could have dispatched the `STARTING`
+    action before actually making the API call. The upside here is that there''s only
+    one function that takes care of everything. On the downside, we lose the one-to-one
+    correspondence between action creator and action, raising the potential for confusion.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that the main job of the click handlers is to call action creator functions.
+    They're not performing extra state checking to make sure that the actions can
+    be called, and so on. This sort of thing doesn't belong in views, it belongs in
+    a store. We're following this tactic here, where we disable the buttons in the
+    store by change a particular piece of state. If we check for this sort of thing
+    in view event handlers, we end up decoupling the state from the logic that operates
+    on it, and in Flux this is not a good thing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Combining API calls
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As development moves forward and features become more involved, we're inevitably
+    faced with complex API scenarios. This means that there's no longer a simple API
+    endpoint that delivers everything the feature needs with one call. Instead, our
+    code has to stitch together two or more resources from different endpoints just
+    to get the data needed by the feature.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we'll look at action creator functions that fetch data from
+    multiple asynchronous resources and pass them to stores as payload data. These
+    stores then convert these to information required by features. Then, we'll look
+    at an alternative approach, where we compose action creator functions out of smaller
+    action creator functions, each pulling data from their own asynchronous resource.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Complex action creators
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Sometimes, a single API endpoint doesn''t have all of the data we need for
+    a given store. This means that we have to fetch data from multiple API endpoints.
+    The challenge is that these are asynchronous resources, and they need to be synchronized
+    before passing them to stores by dispatching them as action payloads. Let''s take
+    a look at an action creator that fetches data from three asynchronous API endpoints.
+    But first, here''s the API functions we''ll use to simulate asynchronous network
+    calls:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'So we have consistent return values from these API functions—promises. Each
+    promise that''s returned from a given function is responsible for synchronizing
+    that one API call. But what about when our store needs to combine all of these
+    resolved values to form the state of a store? Let''s now look at an action creator
+    function that handles this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The action `MY_ACTION` is only dispatched once all three asynchronous values
+    have resolved, because the store depends on all three. All three values are available
+    to the store within a single update round when the action is dispatched. Something
+    less obvious about this code, but important nonetheless, is the fact that we''re
+    not performing any data transformations inside the action creator function before
+    dispatching the payload. Instead, we provide the resolved API data as is, in the
+    form of payload properties. This ensures that the store is the sole component
+    responsible for the state of its information. Let''s look at how a store is now
+    able to use this payload:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you can see, the store has everything it needs in the payload to perform
+    the necessary transformations. Let''s call the action creator function and see
+    if this store behaves as expected:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Composing action creators
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As you saw earlier in the chapter, our action creator function calls can get
+    quite verbose when user interactivity is involved. This is because we have to
+    make two or more calls to action creator functions. One call ensures that the
+    UI elements are in a state that's appropriate while the user waits for the asynchronous
+    action to complete. The other call invokes the asynchronous behavior. To avoid
+    having to make two calls everywhere, we could just have the action creator function
+    dispatch two actions. However, this isn't always ideal because we might need to
+    call the first action creator without the second action creator at some point.
+    It's a granularity problem more than anything.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The easy solution is to compose a function out of the two. This way, we keep
+    the granularity intact, while reducing the number of functions to call in many
+    places. Let''s revisit our code from earlier, where we had to manually call `starting()`
+    then `start()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now our views can simply call `start()` or `stop()` and the necessary state
+    changes are applied to the relevant UI elements. This works because the first
+    action creator function is synchronous—meaning that the full Flux update round
+    takes place before the asynchronous call is made. This behavior is consistent,
+    no matter what. Where we start running into problems is when we start composing
+    functions out of several asynchronous action creators, as visualized here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Composing action creators](img/B05419_05_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The problem here is that each of these `asyncAction()` functions we've used
+    to compose `action()` results in an update round. The update round that happens
+    first is a race condition. We can't combine them into a single action creator
+    that makes requests to multiple API endpoints because they service two different
+    stores. Flux is all about predictable data flows, and this means always knowing
+    the order of update rounds. In the next section, we'll revisit promises in action
+    creator functions to help us get around these tricky asynchronous action creator
+    scenarios.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Returning promises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: None of the action creator functions we've looked at so far in this chapter
+    have returned any values. That's because their main job is to dispatch actions,
+    while at the same time hiding any concurrency synchronization semantics. On the
+    other hand, action creator functions could return a promise so that we could compose
+    more complex asynchronous behavior that spans multiple stores. In the last section,
+    we saw that composing asynchronous behavior using action creator functions can
+    be difficult if not impossible to do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we'll revisit the challenges posed by asynchronous behavior
+    in the context of composing larger functionality. Then, we'll create an example
+    implementation with action creators that return promises and use them to synchronize
+    with one another. Finally, we'll see whether returning promises from action creators
+    can help us deal with errors that happen in the asynchronous resources we're communicating
+    with.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synchronizing without promises
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: One nice aspect of a Flux architecture is the fact that a lot of it is synchronous.
+    For example, when we call the dispatcher with a new action and a new payload,
+    we can rest assured that the call will block until the update round has completed,
+    and everything in the UI is reflecting the current state of things. With asynchronous
+    behavior, things are different—especially in a Flux architecture where this type
+    of thing is strictly confined to action creator functions. Therefore, we face
+    the inevitable challenge of trying to piece together complex systems from an abundance
+    of asynchronous resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We saw how to get partway there earlier in the chapter. A single action creator
+    function can combine the resolved values of several asynchronous resources into
+    a single action and a payload. Then the logic within the store can figure out
+    how to make use of the data and update its state. This works fine when single
+    stores are in play, but falters when we're trying to synchronize resources across
+    several stores and features.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is when being able to synchronize the async data and the Flux update round
+    becomes important. To do so, our action creator functions need to return promises
+    that resolve when both have completed. Here''s an illustration of what we need
+    to accomplish:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Synchronizing without promises](img/B05419_05_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Composing asynchronous behavior
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The way to get around these tricky asynchronous action creator scenarios is
+    to have these functions return promises that are resolved after the asynchronous
+    behavior and the update round have completed. This lets the caller know that the
+    update round is complete and that anything we call now will take place afterward.
+    Consistency is what we''re after here, so let''s take a look at an action creator
+    function that returns a promise:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'So this action creator calls an asynchronous API that resolves after 1.5 seconds,
+    at which point the action payload is dispatched and the returned promise is resolved.
+    Let''s take a look at another action creator that uses a different API function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can see that the two action creator functions—`first()` and `last()`—follow
+    an identical strategy by returning promises. The API function, however, resolves
+    different data, and it takes only 1 second to do so. Let''s see what happens when
+    we try to use these two functions together:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Handling errors
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: What happens when the API that Flux action creators interact with fails? Generally
+    speaking, when we make AJAX calls, we supply both success and error callback functions.
+    This way, we can fail in a graceful manor. We have to be careful about how we
+    handle failure in Flux action creators because, just as stores want to know about
+    actions, they want to know about failures too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So the question is—what do we do differently in our action creator functions?
+    Do we just dispatch some sort of error action from within the action creator when
+    the API fails? We do want to dispatch an error action so that the stores can adjust
+    their state accordingly, but what about the caller of the action creator? For
+    example, we could have a generic action creator function that's used in many places,
+    and the error-handling could be context dependent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The answer is to have the promise that''s returned by the action creator reject.
+    This allows the caller to specify their own behavior in the event of a failed
+    API call. Let''s look at an action creator function that handles errors this way:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now let''s call this `updateTask()` function and see if we can assign error
+    handling behavior to it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter focused on asynchronous action creators in Flux architectures.
+    These are functions that need to dispatch actions, but before they can, they have
+    to wait for some asynchronous resource to resolve. We looked at the synchronous
+    update round concept, which is central to any Flux architecture. Then, we discussed
+    how action creators encapsulate asynchronous behavior in such a way that they
+    preserve the synchronous update rounds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Network calls are the most common form of asynchronous communication in JavaScript
+    applications, including Flux architectures. We covered the difference between
+    these and other asynchronous channels, and how promises can be used to bridge
+    the gap between them. We also looked at how promises can be utilized by action
+    creator functions to allow for the composition of more complex functionality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we'll take a deeper look at stores and everything they
+    have to do to maintain consistent state in our Flux architectures.
+  prefs: []
+  type: TYPE_NORMAL

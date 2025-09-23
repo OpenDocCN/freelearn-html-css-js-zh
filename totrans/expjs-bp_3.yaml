@@ -1,0 +1,839 @@
+- en: Chapter 3. Multiplayer Game API – Connect 4
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Connect 4 is a turn-based two-player game, where each player would drop a chip
+    down a column, with the objective to get four chip of the same color in a row.
+    It can be vertical, horizontal, or diagonal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we will build Connect4-as-a-Service. An API that allows you
+    to build a game of Connect 4 on any client, be it a website, mobile app, or just
+    play it from the command line; why not?
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Chapter 1](ch01.html "Chapter 1. Building a Basic Express Site"), *Building
+    a Basic Express Site*, and [Chapter 2](ch02.html "Chapter 2. A Robust Movie API"),
+    *MMO Word Game*, we covered the most generic use cases for an Express backed API,
+    which is to serve and persist data to and from a database. In this chapter, we'll
+    cover something more fun. We'll build a multiplayer game API!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some topics that will be covered include authentication, game state modeling,
+    and validation middleware. Also, we will build an app using test-driven development
+    with maximum code coverage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For your reference, this is the folder structure of our app, which we will
+    build throughout the chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Multiplayer Game API – Connect 4](img/0818_03_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: How do you create a game? How do you join a game? How do you make a move? And
+    how do you persist the game state in a DB?
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is always a good idea to start with the data structure. So let's get to it!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Modeling game state with Mongoose
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We will represent the board as a 2-dimensional array, with the values being
+    `''x''`, `''o''`, or `'' ''`, representing the three possible states for each
+    location on the grid. Here''s an example, where player 2 wins the game:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Modeling game state with Mongoose](img/0818_03_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'This game state would be represented in an array as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This would suffice if the game were to be played locally with the state being
+    stored in memory. In our case, we want to play on the internet, so we will need
+    a way to identify which game we are playing, as well as which player you are,
+    and whose turn it is. A game document would look as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here are the parameters:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Parameter | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `boardId` | This is a unique ID that you''ll need if you want to take a look
+    at the current game state. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `p1Key` | This is a secret token to identify player 1; we want to avoid the
+    possibility of cheating of course |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `p1Name` | This is player 1''s name |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `p2Key` | This is a secret token to identify player 2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `p2Name` | This is a player 2''s name |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `turn` | This is the total number of turns played on this board |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `rows` | This is the number of rows of the game board |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `columns` | This is the number of columns of the game board |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `board` | This is the game state stored in a 2D array |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `status` | This is either Game in progress or Game Over. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `winner` | This is the name of the winner once the game is over |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Let''s use the same app folder structure as was introduced in [Chapter 2](ch02.html
+    "Chapter 2. A Robust Movie API"), *Building a Basic Express Site*, and let''s
+    define the preceding as a Mongoose model in `src/models/game.js`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Creating a new game
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we have defined the data structure of our game, let's start with implementing
+    the logic to create and persist a new game document in the database, all the while
+    following Test-Driven Development practices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In order to create a new game, we need to accept a POST to `/create` with your
+    name in the POST body:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are a few things we should think about:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We need to return the board information to the user, and whether or not game
+    creation was successful
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We need to ensure the player can access the game they just created, so we must
+    send them the `boardId`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In order for the player to identify themselves, we also need to ensure that
+    we send them the `p1Key`, which will be needed for all future moves that Player
+    One wishes to play to this board
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Since we're building the game, we have the power to bend the rules of the game.
+    So let's allow player 1 to optionally configure the size of the playing board!
+    We should have a minimum size of 6x7, though.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So let''s start with the tests for creating a game and fetch the game information:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Throughout this chapter, we will use the `expect` assertion library. The only
+    difference with `should` is the syntax, and the way it handles `undefined` more
+    gracefully. The `should` library patches the object prototype, which means that
+    if the object is undefined, it will throw a TypeError: Cannot read property should
+    of undefined.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The test will use supertest to simulate POSTing data to the `/create` endpoint,
+    and we describe everything that we expect from the response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now let''s create a `POST` route in `src/routes/games.js` to create a game
+    in the database, and make the first test pass:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_IND
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Note that an API should always take care of all possible inputs, and make sure
+    it return `400` error if it does not pass the input validation; more on this as
+    follows.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'The `Utils.randomValueHex() method` will return a random string, which we use
+    to generate a token as well as `boardId`. Instead of defining it in the preceding
+    file, let''s package it up nicely in `src/lib/utils.js`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: All the game logic of Connect4 is in `src/lib/connect4.js`, which you can find
+    in the Appendix. We'll use that library to initialize the board.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Also notice that rows and columns are optional arguments. We don''t want to
+    be hardcoding the default values in the code, so we have the following `config.js`
+    file in the root folder:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'As we initiate the app in `src/lib/app.js`, we can attach this `config` object
+    onto the `app` object, so we have app-wide access to the config:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: By now, your first pass should pass—congratulations! We can now be rest assured
+    that the `POST` endpoint is working, and will keep working as expected. It's a
+    great feeling because if we ever break something in the future, the test will
+    fail. Now you don't have to worry about it anymore and focus on your next task.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'You do have to be diligent about getting as much code coverage as possible.
+    For instance, we allow the client to customize the size of the board, but we have
+    not written tests to test this feature yet, so let''s get right to it:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We should also enforce a minimum size of the board; otherwise, the game can''t
+    be played. Remember how we defined `MIN_ROWS` and `MIN_COLUMNS` in the `config.js`
+    file? We can reuse that in our tests as well, without having to resort to hardcoding
+    the tests. Now if we want to be changing the minimum size of the game, we can
+    do it one place! As given in the following:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: As described in the preceding test cases, we should make sure that if the player
+    is customizing the size of the board, that the size is not less than the minimum
+    size. There are many more validation checks that we'll be doing, so let's start
+    to get a bit more organized.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Input validation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We should always check that the inputs we receive from a `POST` request are
+    indeed what we expect, and return a `400` input error otherwise. This requires
+    thinking about as many edge-case scenarios as possible. When an API is used by
+    thousands of users, it is guaranteed that some users will abuse or misuse it,
+    be it either intentional or unintentional. However, it is your responsibility
+    to make the API as user-friendly as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The only input validation that we covered in the preceding `/create` route is
+    to make sure that there is a name in the `POST` body. Now we can just add two
+    more `if` blocks to cover the board-size cases to make the tests pass.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In true TDD philosophy, you should write the least amount of code to make the
+    tests pass first. They call it red-green-refactor. First, write tests that fail
+    (red), make them pass as quickly as possible (green), and refactor after.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We urge you to try the preceding first. The following is the result after refactoring.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A lot of the input validation checks would be useful across multiple routes,
+    so let''s package it nicely as a collection of middleware in `src/lib/validators.js`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The preceding packages three validation checkers in a reusable fashion. It returns
+    an object with three middleware. Note how we DRYed up the code using a `private
+    _return400Error` helper, to make it even cleaner.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Now we can refactor the `/create` route as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: This will create a nice separation of concerns, where each of the routes that
+    we will define will accept an array of (reusable!) validation middleware that
+    it has to go through, before it reaches the controller logic of the route.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Make sure your tests still pass before you proceed with the next endpoint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting the game state
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Both players need a way to check on the state of a game that they are interested
+    in. To do this, we can send a `GET` request to `/board/{boardId}`. This will return
+    the current state of the game, allowing players to see the state of the board,
+    as well as whose turn is next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will create another endpoint to fetch a board, so let''s first write the
+    test for that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that we want to make sure that we don''t accidentally leak the player
+    tokens. The response should be basically identical to the one received by the
+    player that most recently made a move as given in the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, `_sanitizeReturn(game)` is a simple helper that just copies the game object,
+    except for the player tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Joining a game
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This game would be no fun if played alone, so we need to allow a second player
+    to join the game.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In order to join a game, we need to accept `POST` to `/join` with the name
+    of player2 in the `POST` body:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_IND
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: For this to work, we need to implement a rudimentary match-making system. An
+    easy one is to simply have a queue of games in a joinable state, and popping one
+    off when the `/join` API is hit. We chose to use Redis as our Queue implementation
+    to keep track of the joinable games.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Once a game is joined, we will send `boardId` and `p2Key` back to the player,
+    so that they can play on this board with player 1\. This will intrinsically avoid
+    a game to be joined multiple times.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'All we need to do is add this line to push `boardId` onto the queue, once the
+    game is created and stored in the DB:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We glanced over database connections when we showed `app.js`. The way to set
+    up a MongoDB connection was covered in [Chapter 2](ch02.html "Chapter 2. A Robust
+    Movie API"), *A Robust Movie API*. The following is how we''ll connect to a `redis`
+    database in `src/lib/db.js`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_IND
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Note that in production, we'll be connecting to Redis To Go (you can start with
+    a 2MB instance for free). For local development, all you need to do is `redis.createClient()`.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Now we can write the tests to join a game, TDD style:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Note that we flush the `redis` queue each time we run this test suite, just
+    to make sure that the stack is empty. In general, it is a good idea to write atomic
+    tests that can run on their own, without reliance on outside state.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Always remember to cover input the edge-cases! In the preceding test, we make
+    sure that we cover the case that we have no games left to join. If not, we might
+    crash the server or return the `500` error (which we should attempt to eradicate
+    because that means it''s your fault, not the user!). Now let''s write the following
+    code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'These tests describe the core logic of creating a game and joining it. Enough
+    tests to describe this endpoint. Let''s now write the accompanying code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: We reuse the `Validate.name` middleware here to make sure that we have a name
+    for player 2\. If so, we will look for the next joinable game in the queue. When
+    there are no joinable games, we will return an appropriate `418` error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we successfully retrieve the next joinable `boardId`, we will fetch the board
+    from the database, and store the name of player 2 in it. We also have to make
+    sure that we do not return player 1's token along with the game object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that both players have fetched their respective tokens, let the games begin!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Playing the game
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The game state is stored in the database and can be retrieved with a `GET` request
+    to `/board/{boardId}`. The essence of making a move is a change to the game state.
+    In familiar CRUD terms, we would be updating the document. Following REST conventions
+    whenever possible, a `PUT` request to `/board/{boardId}` would be the logical
+    choice to make a move.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To make a valid move, a player needs to include an X-Player-Token in their
+    request header matching that of the corresponding player, as well as a request
+    body identifying which column to make a move in:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'However, not all moves are legal, for example, we need to ensure that players
+    only play moves when it is their turn. There are a few more things that need to
+    be checked for every move:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Is the move valid? Does the column parameter specify an actual column?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Does the column still have space?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Is the X-Player-Token a valid token for the current game?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Is it your turn?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Did the move create a victory condition? Did this player win with this move?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Did the move fill up the board and cause a draw game?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Now we will model all these scenarios.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s play a full game with the following tests:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The first test creates the game and the second test joins it. The next six tests
+    are validation tests to make sure that the requests are valid.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Make sure that the X-Player-Token is present:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Make sure that the X-Player-Token is the correct one:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Make sure that the board you move on exists:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Make sure that a column parameter is sent when making a move:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Make sure that the column is not off the board:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Make sure that the wrong player cannot move:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now that we have covered all the validation cases, let''s test the entire game
+    play:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Just a quick check that player 1 cannot move again, before player 2 makes a
+    move:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The remainder of this test suite plays out a full game. We won't show it all
+    here, but you may refer to the source code. The last three tests are still interesting
+    though because we cover the final game state and prevent any more moves.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Now that we have described our expected behavior, let's begin with implementing
+    the move endpoint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, let's cover the validation pieces, making the first 8 tests pass.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: We fetch the board that the move is sent to. If we cannot find the board, we
+    should return a 400 error. This should make the test 'Cannot move on unknown board'
+    pass.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: If the game is over, you cannot make any moves.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The following code will make sure that the token is either `p1Key` or `p2Key`.
+    If not, return the `400` error with the according message:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Now that we have verified that the token is indeed a valid one, we still need
+    to check if it is your turn.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `game.turn()` method will increment with each turn, so we have to take the
+    modulo to check who's turn it is. Incrementing the turn, instead of toggling,
+    will have the benefit of keeping a count on the number of turns that have been
+    played, which will also be handy later, when we want to check whether the board
+    is full, and end in a tie.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we know which key to compare the token with.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If your token does not match, then it is not your turn:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We added two more validation middleware for this route, move and token, which
+    we can add to the validators library in `src/lib/validators.js`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Since we are sending the `400` error four times in the preceding code, let''s
+    dry it up and reuse the same helper we had in `validators.js`, by extracting that
+    helper into `src/lib/utils.js`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Don''t forget to update `src/lib/validators.js` to use this `utils`, by replacing
+    the line with the following:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now we can refactor the move route to make a move as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Much cleaner, ain't it!
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the remainder of the controller logic, we will use the `connect4.js` library
+    (see Appendix), which implements the `makeMove()` and `checkForVictory()` methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `makeMove()` method will return a new board that results from the move,
+    or return false if the move is invalid. Invalid here means that the column is
+    already full, or the column is out of bounds. No turn validation is done here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: One really important thing to point out is the line `game.markModified('board')`.
+    Since we are using a 2D array for board, Mongoose is unable to auto-detect any
+    changes. It can only do so with the basic field types. So if we do not explicitly
+    mark the board as modified, it will not persist any changes when we call `game.save`!
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `checkForVictory()` method is a predicate that will check for victory based
+    on the last move by the last player. We don't need to be checking the entire board
+    each time. If the last move was a winning move, this method will return true;
+    otherwise, it will return false.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: It is a good idea to keep the controller logic as thin as possible and defer
+    as much of the business logic as possible to the libraries or models. This decoupling
+    and separation of concerns improves maintainability and testability, as well as
+    modularity and reusability. Given the current architecture, it would be very easy
+    to reuse the core components of our application in another Express project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Testing for a tie
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The only thing we haven't covered yet in our test suite is a tie game. We could
+    create another test suite that would fill the entire board manually using 42 individual
+    moves, but that would be too tedious. So let's fill the board programmatically.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That may sound easy, but it can be a bit tricky with JavaScript's asynchronous
+    control flow. What would happen if we were to simply wrap the move request in
+    a `for` loop?
+  prefs: []
+  type: TYPE_NORMAL
+- en: In short, it would be a mess. All requests would go out at the same time, and
+    there will be no order. And how would you know that all moves are finished? You
+    would need to maintain a global state counter that increments with each callback.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is where the `async` library becomes indispensable from Github.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Async is a utility module, which provides straightforward, powerful functions
+    to work with asynchronous JavaScript.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is so much that you can do with async that would make your life easier;
+    definitely a library that you should acquaint yourself with and add to your toolbox.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our situation, we will use `async.series`, which allows us to send a flight
+    of requests serially. Each request will wait until the previous request has returned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Run the functions in the tasks array in series, each one running once the previous
+    function has completed. If any functions in the series pass an error to its callback,
+    no more functions can be run, and callback is immediately called with the value
+    of the error; otherwise, callback receives an array of results when tasks are
+    completed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So to prepare our moves to be passed to `async.series`, we will use the following
+    helper to create a thunk:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: A thunk is simply a subroutine; in this case calling the API to make a move,
+    that is wrapped in a function, to be executed later. In this case, we create a
+    thunk that accepts a callback parameter (as required by async), which notifies
+    async that we're done.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now we can fill the board programmatically and check for the tie state:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Congratulations! By now, all your tests should be passing and your game should
+    be complete. You have mastered developing a robust and well-tested API and deal
+    with validation using reusable middleware. Along the way you've also learned to
+    use Redis for a simple queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now you can deploy your API and you'll have your Connect4-as-a-Service available
+    for the world to build their own connect 4 game upon, using their own favorite
+    platform. Whether it is an HTML5 interface, a mobile app, or a command-line interface,
+    it will all be powered by your backend!
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we'll be taking game development to another level—it will
+    be a realtime massively multiplayer online game!
+  prefs: []
+  type: TYPE_NORMAL

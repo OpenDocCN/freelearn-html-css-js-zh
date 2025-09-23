@@ -1,0 +1,630 @@
+- en: Chapter 2. The JavaScript Execution Model
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The first chapter of this book explored the state of JavaScript concurrency.
+    Generally speaking, dealing with concurrency in JavaScript applications is anything
+    but a trivial matter. There's a lot to think about when writing concurrent JavaScript
+    code, and the kind of solutions that we come up with are often unorthodox. There's
+    a lot of callbacks, and wading through all of them is enough to drive a person
+    insane. We also caught a glimpse of how our pattern of writing concurrent JavaScript
+    code has started to change with existing concurrency components. Web workers have
+    started to mature, and JavaScript language concurrency constructs have only just
+    been introduced.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The language and the runtime environment only get us partway there. We need
+    to think about concurrency at the design level, rather than after the fact. Concurrency
+    should be the default. This is easy to say and very difficult to do. Throughout
+    this book, we're going to explore all that the JavaScript concurrency features
+    have to offer, and how we can best use them to our advantage as design tools.
+    But, before we do this, we need to go into depth on what's really happening when
+    our JavaScript runs. This knowledge is an essential input to designing concurrent
+    applications, because we'll know exactly what to expect when choosing one concurrency
+    mechanism over another.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we'll start with the browser environment, by looking at all
+    the subsystems that our code touches—such as the JavaScript interpreter, the task
+    queue, and the DOM itself. Then we'll walk through some code that will shed some
+    light on what's really happening behind the scenes to orchestrate our code. We'll
+    close the chapter with a discussion on the challenges that we face with this model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Everything is a task
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When we visit a web page, a whole environment is created for us within the browser.
+    This environment has several subsystems that enable the webpage we're looking
+    at to look and behave as it should according to **World Wide Web Consortium**
+    (**W3C**) specs. Tasks are the fundamental abstraction inside a web browser. Anything
+    that happens is either a task itself, or a smaller part of a larger task.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you're reading any of the W3C specifications, the term "user agent" is used
+    instead of "web browser". In 99.9% of cases, the major browser vendors are what
+    we're reading about.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we'll look at the major components of these environments, and
+    how task queues and event loops facilitate the communication between these components,
+    to realize the overall appearance and behavior of the web page.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Meet the players
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let''s introduce some terminology that will help us throughout the various
+    sections in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Execution environment**: This container gets created whenever a new web page
+    is opened. It''s the all-encompassing environment, which has everything that our
+    JavaScript code will interact with. It also serves as a sandbox—our JavaScript
+    code can''t reach outside of this environment.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**JavaScript interpreter**: This is the component that''s responsible for parsing
+    and executing our JavaScript source code. It''s the browser''s job to augment
+    the interpreter with globals, such as `window`, and `XMLHttpRequest`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Task queue**: Tasks are queued whenever something needs to happen. An execution
+    environment has at least one of these queues, but typically, it has several of
+    them.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Event loop**: An execution environment has a single event loop that''s responsible
+    for servicing all task queues. There''s only one event loop, because there''s
+    only one thread.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Take a look at the following visualization of an execution environment created
+    within a web browser. The task queues are the entry points for anything that happens
+    in the browser. For example, one task can be used to execute a script by passing
+    it to the JavaScript interpreter, while another task is used to render pending
+    DOM changes. Now we'll dig into the parts that make up the environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Meet the players](img/B05133_02_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The Execution environment
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Perhaps the most revealing aspect of the web browser execution environment is
+    the relatively minor role played by our JavaScript code and the interpreter that
+    executes it. Our code is simply a cog in a much larger machine. There's certainly
+    a lot going on within these environments, because the platform that browsers implement
+    serve an enormous purpose. It's not simply a matter of rendering elements on the
+    screen, then enhancing these elements with style properties. The DOM itself is
+    similar to a micro platform, just as networking facilities, file access, security,
+    and so on. All these pieces are essential for a functioning web economy of sites,
+    and more recently, applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a concurrency context, we're mostly interested in the mechanics that tie
+    all these platform pieces together. Our application is written mainly in JavaScript,
+    and the interpreter knows how to parse and run it. But, how does this ultimately
+    translate into visual changes on the page? How does the networking component of
+    the browser know to make an HTTP request, and how does it invoke the JavaScript
+    interpreter once the response has arrived?
+  prefs: []
+  type: TYPE_NORMAL
+- en: It's the coordination of these moving parts that restricts our concurrency options
+    in JavaScript. These restrictions are necessary, because without them, programming
+    web applications would become too complex.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Event loops
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Once an execution environment is in place, the event loop is one of the first
+    components to start. Its job is to service one or more task queues in the environment.
+    Browser vendors are free to implement queues as they see fit, but there has to
+    be at least one queue. Browsers can place every task in one queue if they please,
+    and treat every task with equal priority. The problem with doing so would mean
+    that if the queue is getting backlogged, tasks that must receive priority, such
+    as mouse or keyboard events, are stuck in line.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In practice, it makes sense to have a handful of queues, if for no other reason
+    than to separate tasks by priority. This is all the more important because there''s
+    only one thread of control—meaning only one CPU—that will process these queues.
+    Here''s what an event loop that services several queues by varying levels of priorities
+    looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Event loops](img/B05133_02_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Even though the event loop is started along with the execution environment,
+    this doesn't mean that there's always tasks for it to consume. If there were always
+    tasks to process, there would never be any CPU time for the actual application.
+    The event loop will sit and wait for more tasks, and the queue with the highest
+    priority gets serviced first. For example, with the queues used in the preceding
+    image, the *interactive* queue will always be serviced first. Even if the event
+    loop is making its way through the *render* queue tasks, if an *interactive* task
+    is queued, the event loop will handle this task before resuming with render tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Task queues
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The concept of queued tasks is essential to understand how web browsers work.
+    The term browser is actually misleading. We used them to browse static web pages
+    in an earlier, sparser web. Now, large and complex applications run in browsers—it's
+    really more of a web platform. The task queues and event loops that service them
+    are probably the best design to handle so many moving parts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We saw earlier in this chapter that the JavaScript interpreter, along with
+    the code that it parses and runs, is really just a black box when viewed from
+    the perspective of an execution environment. In fact, invoking the interpreter
+    is itself a task, and is reflective of the run-to-completion nature of JavaScript.
+    Many tasks involve the invocation of the JavaScript interpreter, as visualized
+    here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Task queues](img/B05133_02_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Any one of these events—the user clicking an element, a script loading in the
+    page, or data from a prior API call arriving in the browser—creates a task that
+    invokes the JavaScript interpreter. It tells the interpreter to run a specific
+    piece of code, and it'll continue to run it until it completes. This is the run-to-completion
+    nature of JavaScript. Next, we'll dig into the execution contexts created by these
+    tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Execution contexts
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now it's time to look at the JavaScript interpreter itself—the component that
+    takes over from other browser components when events take place and code needs
+    to run. There's always an active JavaScript context, and within the interpreter,
+    we'll find a stack of contexts. This is similar to many programming languages
+    where stacks control the active context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Think of the active context as a snapshot of what's happening right now in our
+    JavaScript code. A stack structure is used because the active context can change
+    to something else, such as when a function is called. When this happens, a new
+    snapshot is pushed onto the stack, becoming the active context. When it's done
+    running, it's popped from the stack, leaving the next context as the active context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we'll take a look at how the JavaScript interpreter handles
+    context switching, and the internal job queue that manages the context stack.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Maintaining execution state
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The stack of contexts within the JavaScript interpreter isn''t a static structure—it''s
+    constantly changing. There''s two important things that happen throughout the
+    lifetime of this stack. First, at the top of the stack, we have the active context.
+    This is the code that currently executes as the interpreter moves through its
+    instructions. Here''s an idea of what a JavaScript execution context stack looks
+    like with the active context always at the top:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Maintaining execution state](img/B05133_02_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The other important responsibility of the call stack is to bookmark the state
+    of an active context when it's deactivated. For example, let's say that after
+    a few statements, `func1()` calls `func2()`. At this point, the context is bookmarked
+    to the spot directly after the call to `func2()`. Then, it's replaced with the
+    new active context—`func2()`. When it completes, the process is repeated and `func1()`again
+    becomes the active context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This kind of context switching happens all over our code. For example, there's
+    a global context, which is the entry point into our code, there's the functions
+    themselves which have their own context. There are also more recent additions
+    to the language, which have their own contexts, such as modules and generators.
+    Next, we'll look at the job queues responsible for creating new execution contexts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Job queues
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Jobs queues are similar to the task queues that we looked at earlier. The difference
+    is that job queues are specific to the JavaScript interpreter. That is, they're
+    encapsulated within the interpreter—the browser doesn't interact directly with
+    these queues. However, when the interpreter is invoked by the browser, in response
+    to a loaded script or event callback task for example, new jobs are created by
+    the interpreter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Job queues](img/B05133_02_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The job queues within the JavaScript interpreter are actually much more straightforward
+    than the task queues that are used to coordinate all the web browser components.
+    There are only two essential queues. One is for creating new execution context
+    stacks (call stacks). The other is specific to promise resolution callback functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We'll go into more depth on how the promise resolution callback job works in
+    the next chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Given the restricted responsibilities of these internal JavaScript job queues,
+    one might draw the conclusion that they're unnecessary—an act of over engineering.
+    That's not true, because while today there's limited responsibilities found in
+    these jobs, the job queue design allows for much easier expansion and refinement
+    of the language. In particular, the job queue mechanism is favorable when considering
+    new concurrency constructs in future versions of the language.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating tasks using timers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So far in this chapter, we've had a look at all the inner workers of the web
+    browser environment, and where the JavaScript interpreter fits in this environment.
+    What does all this have to do with applying concurrency principles to our code?
+    With the knowledge of what's happening under the hood, we have a greater insight
+    into what's happening when a given chunk of our code is run. Particularly, we
+    know what's happening relative to other code chunks; time ordering is a crucial
+    concurrency property.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This being said, let's actually write some code. In this section, we'll use
+    timers to explicitly add tasks to the task queue. We'll also learn when and where
+    the JavaScript interpreter jumps in and starts executing our code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using setTimeout()
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `setTimeout()` function is staple in any JavaScript code. It''s used to
+    execute code at some point in the future. New JavaScript programmers often trip
+    over the `setTimeout()` function because it''s a timer. At a set point in the
+    future, say 3 seconds from now, a callback function will be invoked. When we call
+    `setTimeout()`, we will get the `atimer` ID in return, which can be cleared later
+    on using `clearTimeout()`. Here''s what the basic usage of `setTimeout()` looks
+    like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here's the part that's misunderstood by JavaScript newcomers; it's a best effort
+    timer. The only guarantee we have when using `setTimeout()` is that our callback
+    function will never be called sooner than the allotted time that we pass it. So
+    if we said call this function in 300 milliseconds, it'll never call it in 275
+    milliseconds. Once the 300 milliseconds have elapsed, a new task is queued. If
+    there's nothing waiting in line before this task, the callback is run right on
+    time. Even if there are a few things in the queue in front of it, the effects
+    are hardly noticeable—it appears to run at the correct time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But as we''ve seen, JavaScript is single threaded and run-to-completion. This
+    means that once the JavaScript interpreter starts, it doesn''t stop until it''s
+    finished; even if there''s a task waiting for a timer event callback. So, it''s
+    entirely possible that even though we asked the timer to execute the callback
+    in 300 milliseconds, it executes it in 500 milliseconds. Let''s take a look at
+    an example to see how this is possible:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using setInterval()
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The cousin of `setTimeout()` is the `setInterval()` function. As the name suggests,
+    it accepts a callback function that's to be called at a regular interval. In fact,
+    `setInterval()` takes the exact same arguments as `setTimeout()`. The only difference
+    is that it will keep calling the function every x milliseconds until the timer
+    is cleared using `clearInterval()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This function is handy when we want to keep calling the same function, over
+    and over. For example, if we poll an API endpoint, `setInterval()` is a good candidate
+    solution. However, keep in mind that the scheduling of the callbacks is fixed.
+    That is, once we call `setInterval()` with, say, 1000 milliseconds, there's no
+    changing that 1000 milliseconds without first clearing the timer. For cases where
+    the interval needs to be dynamic, using `setTimeout()` works better. The callback
+    schedules the next interval, which allows the interval to be dynamic. For example,
+    backing off from polling an API too frequently by increasing the interval.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the `setTimeout()` example that we last looked at, we saw how running JavaScript
+    code can mess with the event loop. That is, it prevents the event loop from consuming
+    the task that invokes the JavaScript interpreter with our callback function. This
+    allows us to defer code execution till some point in the future, but with no promises
+    of accuracy. Let''s see what happens when we schedule tasks using `setInterval()`.
+    There''s also some blocking JavaScript code that runs afterward:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Responding to DOM events
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the preceding section, we saw how to schedule JavaScript code to run at a
+    later time. This is done explicitly by other JavaScript code. Most of the time,
+    our code runs in response to user interactions. In this section, we'll look at
+    the common interface that's used not only by DOM events, but also by things such
+    as network and web worker events. We'll also look at a technique for dealing with
+    large volumes of similar events—called debouncing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Event targets
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `EventTarget` interface is used by many browser components, including DOM
+    elements. It's how we dispatch events to elements as well as listen to events
+    and respond by executing a callback function. It's actually a very straightforward
+    interface that's easy to follow. This is crucial since many different types of
+    components use this same interface for event management. We'll see as we progress
+    through the book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The same task queue mechanisms that execute the callback functions for the
+    timers that we used in the preceding section are relevant for `EventTarget` events.
+    That is, if an event has taken place, a task to invoke the JavaScript interpreter
+    with the appropriate callback is queued. The same limitations faced with using
+    `setTimeout()` are imposed here. Here''s what a task queue looks like when there''s
+    long-running JavaScript code that''s blocking user events:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Event targets](img/B05133_02_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'In addition to attaching listener functions to event targets that react to
+    user interaction, we can trigger these events manually, as the following code
+    illustrates:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: It's good practice to name functions that are used in callbacks where possible.
+    This way, when our code breaks, it's much easier to trace down the problem. It's
+    not impossible with anonymous functions, it's just more time consuming. On the
+    other hand, arrow functions are more concise and have more binding flexibility.
+    Choose your trade-offs wisely.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Managing event frequency
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: One challenge with user interaction events is that there can be lots of them,
+    in a very short amount of time. For instance, when the user moves the mouse around
+    on the screen, hundreds of events are dispatched. If we had event targets listening
+    for these events, the task queue would quickly fill up, and the user experience
+    would bog down.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Even when we do have event listeners in place for high frequency events, such
+    as mouse moves, we don't necessarily need to respond to all of them. For example,
+    if there's 150 mouse move events that take place in 1-2 seconds, chances are,
+    we only care about the last move—the most recent position of the mouse pointer.
+    That is, the JavaScript interpreter is being invoked with our event callback code
+    149 times more than it needs to.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To deal with these types of event frequency scenarios, we can utilize a technique
+    called *debouncing*. A debounced function means that if it''s called in succession
+    more than once within a given time frame, only the last call is actually used
+    and the earlier calls are ignored. Let''s walk through an example of how we can
+    implement this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using the debounce technique to avoid giving the CPU more work than necessary
+    is an example of the conserve principle in action. By ignoring 149 events, we
+    save (conserve) the CPU instructions that would otherwise be executed and provide
+    no real value. We also save on any kind of memory allocation that would otherwise
+    happen in these event handlers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The JavaScript concurrency principles were introduced at the end of [Chapter
+    1](ch01.html "Chapter 1. Why JavaScript Concurrency?"), *Why JavaScript Concurrency?*,
+    and they'll be pointed out throughout the code examples in the remainder of the
+    book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Responding to network events
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Another critical piece of any front-end application is network interactions,
+    fetching data, issuing commands, and so forth. Since network communications are
+    an inherently asynchronous activity, we have to rely on events—the `EventTarget`
+    interface to be precise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll start by looking at the generic mechanism that hooks up our callback functions
+    with requests and getting responses from the back-end. Then, we'll look at how
+    trying to synchronize several network requests creates a seemingly hopeless concurrency
+    scenario.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Making requests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To interact with the network, we create a new instance of `XMLHttpRequest`.
+    We then tell it the type of request that we want to make—GET versus POST and the
+    request endpoint. These request objects also implement the `EventTarget` interface
+    so that we can listen for data arriving from the network. Here''s an example of
+    what this code looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can see here that there are a number of possible states for network requests.
+    The successful path is the server responding with the data we need and we're able
+    to parse it as JSON. The error state is when something went wrong, maybe the server
+    isn't reachable. The final state that we're concerned with here is when the request
+    is cancelled or aborted. This means that we no longer care about the successful
+    path because something in our application changed while the request was in flight.
+    The user navigated to another section, for example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While the previous code was easy enough to use and understand, it's not always
+    the case. We're looking at a single request and a few callbacks. Very seldom do
+    our application components consist of a single network request.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Coordinating requests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the preceding section, we saw what the basic interaction with `XMLHttpRequest`
+    instances looks like for making a network request. The challenge surfaces when
+    there are several requests. Most of the time, we make multiple network requests
+    so that we have the data necessary for rendering a UI component. The responses
+    from the back-end will all arrive at different times, and are likely dependent
+    on one another.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Somehow, we need to synchronize the responses of these asynchronous network
+    requests. Let''s take a look at how we can go about doing this using the `EventTaget`
+    callback functions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: There's a lot of extra bits to consider when there's more than one request.
+    Since they all arrive at different times, we need to store the parsed responses
+    in an array, and with the arrival of every response, we need to check if we have
+    everything we expect. This simplified example doesn't even take into consideration
+    failed or cancelled requests. As this code alludes, the callback function approach
+    to synchronization is limiting. In the coming chapters, we'll learn how to overcome
+    this limitation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Concurrency challenges with this model
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We'll wrap this chapter up with a discussion on the challenges that this execution
+    model poses with JavaScript concurrency. There are two fundamental obstacles.
+    The first is the fact that no matter what, any JavaScript code that runs will
+    block anything else from happening. The second obstacle is trying to synchronize
+    asynchronous actions with callback functions, leading to callback hell.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limited opportunity for parallelism
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: It used to be that the lack of parallelism in JavaScript wasn't really an issue.
+    Nobody missed it because JavaScript was viewed as a progressive enhancement tool
+    for HTML pages. This changed when the front-end started taking on more responsibilities.
+    These days, the majority of the application actually resides in the front-end.
+    This allows back-end components to focus on problems that can't be solved by JavaScript
+    (from a browser perspective, NodeJS is another matter entirely that we'll look
+    at later in the book).
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, mapping and reducing API data sources into some representation
+    required by a feature can be implemented in the back-end. This means that the
+    front-end JavaScript code just needs to query for this endpoint. The problem is
+    that this API endpoint is created for some specific UI feature, not as an essential
+    supporting pillar of our data model. If we can perform these tasks in the front-end,
+    we keep the UI features and the data transformations they need, tightly coupled
+    together. This frees up the back-end to stay focused on more pressing issues like
+    replication and load balancing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can perform these types of data transformations in the front-end, but they
+    wreak havoc on the usability of the interface. This is largely due to all the
+    moving parts competing for the same compute resource. This model, in other words,
+    makes it impossible for us to implement the parallelize principle and take advantage
+    of more than one resource. We will overcome this web browser limitation with the
+    help of Web workers, covered in further chapters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synchronization through callbacks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Synchronization through callbacks is hard to implement and doesn't scale well.
+    It's callback hell, which is a term popular among JavaScript programmers. Needless
+    to say, endless synchronization through callbacks in our code creates problems.
+    We often have to create some kind of state tracking mechanism, such as global
+    variables. And when problems do arise, a nest of callback functions is very time
+    consuming to traverse mentally.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generally speaking, the callback approach to synchronizing multiple asynchronous
+    actions requires a lot of overhead. That is, the boilerplate code that exists
+    for the sole purpose of dealing with asynchronous actions. The synchronize concurrency
+    principle is about writing concurrent code that doesn't embed the main goal in
+    a maze of synchronization handling logic. Promises help us write concurrent code
+    consistently throughout our application by lessening the use of callback functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The focus of this chapter has been the web browser platform and JavaScript's
+    place within it. There are a lot of events taking place whenever we view and interact
+    with web pages. These are processed as tasks, taken from queues. One such task
+    is invoking the JavaScript interpreter with code to run.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the JavaScript interpreter runs, it contains an execution context stack.
+    A function, a module, and global script code—these are all examples of JavaScript
+    execution contexts. The interpreter also has it's own internal job queues; one
+    is used to create new execution context stacks, and another is used for calling
+    promise resolution callback functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We wrote some code that manually created tasks using the `setTImeout()` function
+    and explicitly demonstrated how long-running JavaScript code can be problematic
+    for these tasks. We then looked at the `EventTarget` interface, used to listen
+    to DOM events, and to network requests, amongst other things we didn't look at
+    in this chapter, like web workers and file readers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We wrapped up with a look at some of the challenges that JavaScript programmers
+    face when using this model. In particular, it's hard to follow our JavaScript
+    concurrency principles. We can't parallelize, and trying to synchronize using
+    nothing but callbacks is a nightmare.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we'll look at a new way of thinking about synchronization
+    using promises. This will allow us to start designing and building concurrent
+    JavaScript applications in earnest.
+  prefs: []
+  type: TYPE_NORMAL

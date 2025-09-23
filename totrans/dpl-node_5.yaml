@@ -1,0 +1,1232 @@
+- en: Chapter 5. Monitoring Applications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Distributed systems fail often. Worse, they often fail partially. When failures
+    occur during operations responsible for altering a system's state (for instance,
+    a write or delete operation), how can the correct state be recovered, especially
+    when these operations are concurrent? To make matters even worse, some operations
+    fail silently. Partial failures, then, can put applications in an indeterminate
+    state. It is difficult to predict how an opaque system will behave.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Consider this quote from *The Datacenter as a Computer: An Introduction to
+    the Design of Warehouse-Scale Machines*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*"Suppose a cluster has ultra-reliable server nodes with a stellar mean time
+    between failures (MTBF) of 30 years (10,000 days)—well beyond what is typically
+    possible to achieve at a realistic cost. Even with these ideally reliable servers,
+    a cluster of 10,000 servers will see an average of one server failure per day.
+    Thus, any application that needs the entire cluster to be up to work will see
+    an MTBF of no better than 1 day."*'
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Failure, especially on a large scale, is indifferent to the quality of your
+    staff or your hardware. The point is that numerical ratios that seem large in
+    common usage are less so in network environments where billions of transactions
+    can happen in a matter of minutes or seconds and where hundreds or more separate
+    systems are interacting. How failure evolves is often counterintuitive. It is
+    a good idea, then, to prepare for failure, and, among other things, this means
+    reducing the ability of any one failure to take down an entire system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Typically, distributing the workload for a single user also requires distributing
+    user data across many independent processes. Also, when a piece of the system
+    fails, it must be restored in order to maintain two characteristics of the system—its
+    capacity and any data or transactions that were in flight when the failure occurred.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, I''ll outline certain tools and tricks used to monitor what
+    is going on across your application. We''ll look at ways in which you can build
+    your own monitoring and logging tools and discuss third-party tools. Along the
+    way, you''ll learn about the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Remotely controlling Node processes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using New Relic to monitor servers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Catching errors
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Other options for tracking and logging activity in your application
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Dealing with failure
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As we outlined in [Chapter 4](ch04.html "Chapter 4. Managing Memory and Space"),
+    *Managing Memory and Space*, isolating operations and intelligently monitoring
+    an applications help to minimize the chances of one failed subsystem taking down
+    the larger system. In this section, we'll look at how to catch errors and exceptions
+    within a Node program and how to gracefully shut down and/or restart a process
+    that has become unstable individually and within clusters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The following comprehensive article on handling errors with Node.js is recommended:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[http://www.joyent.com/developers/node/design/errors](http://www.joyent.com/developers/node/design/errors)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Peppering a codebase with try/catch blocks and trying to anticipate all errors
+    can become unmanageable and unwieldy. Additionally, what if an exception you didn't
+    anticipate occurs? How do you *pick up where you left off*?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Node does not yet have a good built-in way to handle uncaught critical exceptions.
+    This is a weakness of the platform. An exception that is uncaught will continue
+    to bubble up through the execution stack until it hits the event loop where, like
+    a wrench in the gears of a machine, it will take down the entire process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One option is to attach an `uncaughtException` handler to the process itself,
+    as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output of the preceding code will be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: While nothing that follows our exception code will execute, the timeout will
+    still fire as the process managed to catch the exception, thus saving itself.
+    However, this is a very clumsy way of handling exceptions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `domain` module makes a good attempt at fixing this hole in Node's design.
+    We will discuss the domain module next as a better tool to handle exceptions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The 'domain' module
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Error handling in asynchronous code is also difficult to trace:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Which function caused the error? It is difficult to say. It is also difficult
+    to intelligently insert exception management tools. It is difficult to know what
+    to do next. Node's `domain` module attempts to help with this and other exception
+    localization issues. In this way, code can be tested and errors can be handled
+    with more precision.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At its simplest, a **domain** sets up a context within which a function or
+    other "chunk" of code can be run such that any errors occurring within that implicit
+    domain binding will be routed to a specific domain error handler. Take the following
+    code as an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we establish a domain and execute code within that domain via the `run`
+    command within the context of that domain. This enables us to intelligently catch
+    those exceptions, implicitly binding all event emitters, timers, and other requests
+    created within that context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Sometimes, a method might be created elsewhere (not within the implicit context
+    of a given `domain.run` function call) but is nevertheless best associated with
+    an external domain. The `add` method exists for just such explicit binding, as
+    shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we see how a function that is not implicitly bound within the `run` context
+    can still be added to that context explicitly. To remove an execution context
+    from a domain, use `domain.remove`. An array of all timers, functions, and other
+    emitters added explicitly or implicitly to a domain is accessible via `domain.members`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the same way that JavaScript''s `bind` method binds a function to a context,
+    the `domain.bind` method similarly allows an independent function to be bound
+    to a domain. This is shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we see how any function can be wrapped by a particular error domain *inline*,
+    a feature especially useful to manage exceptions in callbacks. Error objects emitted
+    from a domain have the following special properties
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`error.domain`: This is the domain that handled the error.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`error.domainEmitter`: If `EventEmitter` fires an `error` event within a domain,
+    this will be flagged.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`error.domainBound`: This is the callback that passed an error as its first
+    argument.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`error.domainThrown`: This is a Boolean indicating whether the error was thrown
+    or not. For example, the following callback will pass an ENOENT error as its first
+    argument, so `domainThrown` would be false:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Another method, `domain.intercept`, functions similarly to `domain.bind` but
+    simplifies error handling in callbacks such that the developer will no longer
+    need to repetitively check (or even set) the first argument of every callback,
+    `cb(err, data)`, for errors. An example can be found in the `js/domainintercept.js`
+    file in your code bundle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You may also need to move between domains, entering and exiting them as needed.
+    For this, we use the `domain.enter` and `domain.exit` methods. Assuming that we
+    have set up two domains, `dom1` and `dom2`, the first emitting `domain 1 error`
+    and the second `domain 2 error`, we can move between domain contexts, as shown
+    here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Any number of `enter` and `exit` events can be used. Note that no changes are
+    made to the domain objects themselves—`exit` does not close the domain or do any
+    such thing. If a domain needs to be destroyed, you should use the `domain.dispose`
+    method, which will also try to clean up any inflight domain I/O—aborting streams,
+    clearing timers, ignoring callbacks, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Catching process errors
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Process-oriented designs are common in Node.js applications, where independent
+    processes communicate with each other through evented streams. Errors in these
+    channels, and in the processes themselves, must be tracked. In this section, we'll
+    look at how to track and how to properly throw errors related to process events.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We covered the `child_process` module in [Chapter 3](ch03.html "Chapter 3. Scaling
+    Node"), *Scaling Node*. Here, we will go into a little more detail about how to
+    handle errors in child processes and their parents.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To spawn a Node program, use the `fork` method of the `child_process` module.
+    This creates a new child process under the calling parent. Also, an IPC channel
+    is automatically set up between the two processes, where the child calls `process.send`
+    to send messages to its parent, and the parent can listen to `child.on(''message'')`.
+    Create two files, the first named `parent.js` and the other named `child.js`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: The child process upon which fork has been used by the parent will increment
+    and emit a value at a 1-second interval, which the parent will listen for and
+    echo to your console. How do we catch an error in the child process from the parent
+    process?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s cause an error in our child process by making it `throw`. Add the following
+    line to `child.js`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running the parent process again will result in an error, and the message we
+    set will be displayed. Typically, the parent will want to act when a child dies—such
+    as using `fork` on a new child or logging the error, or both. To catch child errors
+    in the parent, add the following line to `parent.js`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running the parent script again will result in the following being displayed
+    in addition to the original error:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first argument received is the exit code passed by the child process when
+    it is terminated (if the parent had sent a kill signal, for example, `child.kill('SIGTERM')`,
+    the second argument here would contain `'SIGTERM'`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition to handling child errors from within a parent process, using the
+    `Domain` module to catch and handle errors within the child process itself is
+    recommended. In this way, you properly clean up after a child error and use `process.send()`
+    to broadcast any additional error information to the parent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The exit codes that Node will return when a process exits abnormally can be
+    found at [https://github.com/joyent/node/blob/master/doc/api/process.markdown#exit-codes](https://github.com/joyent/node/blob/master/doc/api/process.markdown#exit-codes).
+    (Note that this is for Node 0.11.x—earlier versions always return exit code 8.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A child process can also be created via `spawn`, which differs from `fork`
+    in that it is not Node-specific; any OS process can be started by using `spawn`.
+    For example, this is a roundabout way of executing the `ls` command; you should
+    receive a directory listing when this runs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note the differences from `fork`. The first argument is an OS command, and
+    the second argument is an array of options passed to that command—the equivalent
+    of `> ls -l`. Secondly, we do not have access to a custom IPC (as with `fork`—no
+    `send` or `on(''message'')`), but we do have access to the standard process pipes:
+    `stdin`, `stdout`, and `stderr`. Because pipes will default to speaking in buffers,
+    we have set the desired encoding and simply display any data that the spawned
+    process writes to `stdout`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another way to catch subprocess errors should be clear to you. Modify the preceding
+    code with the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When this attempt to list the contents of a nonexistent directory is executed,
+    you should see the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'By listening on the `stderr` pipe, errors in child processes can be caught.
+    We can also change the `stdio` settings such that errors are automatically logged
+    to a file. Rather than catching the child output in the parent, we use `spawn`
+    on the child using a customized `stdio` option, redirecting the child''s `stdout`
+    directly to a file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we'll go a little deeper into logging strategies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Logging
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Why log data? One answer might be that the amount of activity data a modern
+    application produces exceeds the capacity of any one person's analytical abilities.
+    We can't react to that much information usefully in real time. It is, therefore,
+    necessary to store, or log, the mass of details and use smart tools to slice and
+    sort that data into forms that we humans can comprehend. We can look for patterns
+    in the logs and perhaps find bottlenecks or even bugs in our application, helping
+    us improve the design of our system. We can garner business intelligence from
+    logs, discovering usage patterns that help us understand customer preferences
+    or ones that can help us design new features or enhance existing ones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In what follows, I'll take you through some of the information available to
+    all Node processes, how those might be logged using **UDP**, and how to use Morgan
+    for simple request logging.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A popular open source project from the Etsy team for logging and statistical
+    reporting is **StatsD** ([https://github.com/etsy/statsd](https://github.com/etsy/statsd)),
+    for which there is a good Node client at [https://github.com/sivy/node-statsd](https://github.com/sivy/node-statsd).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's create a logging module that uses UDP. Detailed information on how UDP
+    works was provided in [Chapter 3](ch03.html "Chapter 3. Scaling Node"), *Scaling
+    Node*—go ahead and refresh your memory if necessary. The important concept to
+    remember is that UDP achieves extremely high performance by making no guarantee
+    that messages will arrive. Note that in 99 percent of cases, very few messages
+    will drop, making UDP an excellent balance of speed and accuracy for applications
+    that do not need perfect fidelity, such as logging applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Logging with UDP
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The goal of our UDP logging module is to have a straightforward interface for
+    any Node program to do logging. Also, we'll want to allow many independent processes
+    to write to the same log file. The full code for this module can be found in the
+    `udp/logger` folder of your code bundle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Starting from the end, let''s go over the client code first before diving into
+    the logger itself. All clients will send (at least) a log file path, optional
+    information about the port or host, a few handler functions if necessary, and
+    the system will just work:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can see that our module starts a server on the port provided and is configured
+    to notify the client of any errors as well as its ready state. By fleshing out
+    the remaining code for `onReady`, we can also see the ways that we expect clients
+    to hit the UDP logger:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: The client will be able to either call the module's `log` function or send a
+    UDP message directly. Also, we expect that it is possible to receive many messages.
+    Besides, we expect that any number of processes could be logging to *the same
+    file*, so we must deal with managing a flood of messages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The logging module is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is all the code necessary to manage the setting up of a UDP server and
+    our client interface. Note how the `log` function will either be called directly
+    by a client or will be called via the `on('message')` handler of our UDP binding.
+    This allows clients the flexibility of calling our logging server from any environment—using
+    this module, using another language, using another server, without using this
+    module, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last important bit is the management of backpressure in `log`. Because many
+    independent sources may be hitting our log file, the write stream managing that
+    resource could be at its high watermark (*full*) when we try to use `write`. When
+    that happens, a call to `stream.write` will return `false`, which the caller should
+    take as a signal to *stop sending data*. When that happens, we bind to the `drain`
+    event (only once—see [http://nodejs.org/api/events.html#events_emitter_once_event_listener](http://nodejs.org/api/events.html#events_emitter_once_event_listener)),
+    which is fired when the consumer (the write manager for our log file) is ready
+    to accept more data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Logging with Morgan
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**Morgan** ([https://github.com/expressjs/morgan](https://github.com/expressjs/morgan))
+    is an HTTP logger for the **Express** framework. If logging HTTP connection data
+    for a server is all you need, it serves very well and is easy to use. We''ll close
+    out this section with a few short examples using Express.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following is the most basic usage of Morgan:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code will create a server listening on port `8080` and will dump a log
+    entry in Apache **Combined Log Format** ([httpd.apache.org/docs/1.3/logs.html#combined](http://httpd.apache.org/docs/1.3/logs.html#combined))
+    to `stdout`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In addition to the format parameter, Morgan also accepts various options. For
+    example, to stream log data to a file, use the `stream` option. For this example,
+    replace the `app.use` declaration with the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Log entries will now be written to `out.log`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The combined argument reflects one of the built-in Morgan log formatters. These
+    formatters are composed of tokenized strings, with several tokens available by
+    default. For example, the combined formatter interpolates the following string:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: It should be clear how the preceding fully qualified output is generated via
+    the given formatter with tokens mapping to the standard properties of the `ClientRequest`
+    and `ClientResponse` objects managed by Node's `http` module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Morgan logs data reflecting the states of the `ClientRequest` and `ClientResponse`
+    objects. The `skip` option allows you to filter logging based on the state of
+    these objects. By default, Morgan logs every request. To only log errors, you
+    would add the following to your middleware definition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can also add new tokens. Here, we create one named `''cache''`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This new token (and/or existing tokens) can be used in custom formatters:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Morgan is now initialized with a custom formatter that will write something
+    like `cache-control is max-age=0` to your log.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For more information on additional built-in formatters and other advanced options,
+    visit the project page. Given its flexibility, Morgan can be customized to satisfy
+    many logging needs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Other popular options are available for consideration:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Bunyan** ([https://github.com/trentm/node-bunyan](https://github.com/trentm/node-bunyan)):
+    Bunyan is a simple but sufficiently powerful logging tool for most needs.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Winston** ([https://github.com/flatiron/winston](https://github.com/flatiron/winston)):
+    The key selling point of Winston is the number of logging transport plugins it
+    supports—you can configure it to log to Redis, a file, or a third-party service,
+    such as [loggly.com](http://loggly.com).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Modifying behavior in changing environments
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Modifying application data in a running system has been compared to changing
+    the engine of a jet while it is in flight. Luckily, we developers work in a virtual
+    world where the *laws of physics* are more forgiving. In this section, we will
+    learn how to create a *remote control* for your Node applications using examples
+    demonstrating how to monitor processes remotely.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Node REPL
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Node''s **Read-Eval-Print-Loop** (**REPL**) represents the Node shell. To enter
+    the shell prompt, enter Node via your terminal without passing a filename:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: You now have access to a running Node process and can pass JavaScript commands
+    to this process. For example, after entering `2+2`, the shell would send `4` to
+    `stdout`. Node's REPL is an excellent place to try out, debug, test, or otherwise
+    play with JavaScript code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Because REPL is a native object, programs can also use instances as a context
+    in which to run JavaScript interactively. For example, here, we create our own
+    custom function `sayHello`, add it to the context of an REPL instance, and start
+    REPL, emulating a Node shell prompt:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: Entering `sayHello()` at the prompt will result in `Hello` being sent to `stdout`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What this also means is that your Node process can expose an REPL instance to
+    the outside world that can access that process in some way, providing a *backdoor*
+    through which you can connect to a process, modify its context, change its behavior,
+    or even shut it down if it has gone bad in some way. Let's explore possible applications
+    related to monitoring processes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create two files, `repl_client.js` and `repl_server.js`, using the following
+    code, and run each in its own terminal window so that both terminal windows are
+    visible to you:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `repl_client` file simply creates a new socket connection to port `8080`
+    through `net.connect` and pipes any data coming from `stdin` (your terminal) through
+    that socket. Similarly, any data arriving from the socket is piped to `stdout`
+    (your terminal). It should be clear that we have created a way to take input and
+    send it via a socket to port `8080`, listening for any data that the socket may
+    send back to us. The following code shows this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `repl_server` file closes the loop. We will first create a new **Transmission
+    Control Protocol** (**TCP**) server with `net.createServer`, binding to port `8080`
+    via `.listen`. The callback passed to `net.createServer` will receive a reference
+    to the bound socket. Within the enclosure of that callback, we instantiate a new
+    REPL instance, giving it a nice `prompt` (`'repl_server>'` in this case, but it
+    could be any string), indicating that it should both listen for `input` from,
+    and broadcast `output` to, the passed socket reference, indicating that the socket
+    data should be treated as `terminal` data (which has special encoding).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can now type something, such as `console.log("hello")`, in the client terminal,
+    and see `hello` displayed—the REPL server has executed the command we sent via
+    our REPL client and sent back the evaluated response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To confirm that the execution of our JavaScript commands is occurring in the
+    `repl_server` process, type `process.argv` in the client terminal, and the server
+    will display an object containing the current process path, which will be `/.../repl_server.js`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Additionally, we can add custom methods to the REPL `context` that are then
+    accessible through clients. For example, add the following line to `repl_server.js`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: Restart the server and the client, and enter `sayHello()` in the client terminal.
+    You will see `Hello` displayed. It should be clear from this demonstration that
+    we have created a way to remotely monitor Node processes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, REPL provides custom commands, in particular `.save` and `.load` (the
+    dot (`.`) prefix is intentional). The .`save` command will save the current REPL
+    session to a file—all the commands you have sent to REPL will be written to a
+    specified file, meaning that they can be replayed. To see this in action, open
+    an REPL session and run some commands, building up a session history. Then, enter
+    the following two commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, let's create a demonstration module, which, when included in a process,
+    opens it up to remote management via REPL.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Remotely monitoring and managing Node processes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In your code bundle, you will find the `repl-monitor` package. This module will
+    expose a server on a given port, which will provide the current process memory
+    usage, allowing a remote process to read this information and send instructions
+    to the monitored process. For this example, we'll be able to tell the process
+    to stop storing things in memory when the process heap exceeds a limit and to
+    start storing things again when it is back below the given threshold.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll also demonstrate the usefulness of `.load` to create highly dynamic monitoring
+    solutions that can be adjusted without restarting targeted processes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that creating this sort of access point in the internals of your application
+    should be done with caution. While these techniques are very useful, you must
+    take care to secure access to the various ports, and so on, primarily by limiting
+    access to those within a properly secured private network.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The monitor code is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: This module creates REPL on a specified port and exposes two custom methods
+    via the REPL context that clients can use. The `heapUsed` method returns a specific
+    memory reading, and `send` is used by connecting clients to broadcast messages
+    to monitored processes via the returned `EventEmitter` instance. It is important
+    to note that the `output` pipe for this REPL is the connecting socket (identical
+    to the `input` pipe). As we discussed earlier, this means that the calling process
+    will receive the results of executing the JavaScript code it sends. We will provide
+    more information on this later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we will create a process to be monitored, which will require the monitoring
+    module:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we have a process that keeps adding to an array. Via the monitor module,
+    a client can connect to this process, check memory usage, and broadcast either
+    a start or a stop message, which this process will listen for and act upon.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The last step is to create a client that does remote process management. The
+    control client is straightforward. We connect to REPL via a TCP (net) connection
+    and periodically poll the memory state of the targeted process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Recalling how we added the `heapUsed` method to the monitor''s REPL context,
+    we should expect some value back when we write to the REPL `input` socket. This
+    means that we must add a data listener to `sock`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: When we receive a memory probe reading, it is converted to an integer and checked
+    against the threshold value (based on whatever the first reading was). If the
+    reading exceeds a predetermined limit, we tell the process to stop allocating
+    memory; when the memory frees up, the process is told to resume.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Importantly, the particular opportunity afforded by REPL is the ability to
+    *run a script* in the context of a remote process. Note the commands sent to `socket.write`,
+    each of which loads an external file containing JavaScript:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: While these *one-liners* simply exercise the messaging interface we discussed
+    earlier, there is nothing that stops your implementation from using a much longer
+    list of commands in the service of more realistic deployment needs. Crucially,
+    this decoupling of process control facilitates dynamic process management as the
+    script that you use `.load` on today can be changed in the future without requiring
+    any alteration of the target process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let's take a look at more comprehensive techniques for deep analysis of
+    application performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Profiling processes
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When tracing memory leaks and other hard-to-find bugs, it is useful to have
+    profiling tools at the ready. What we will look at in this section is how to take
+    snapshots of running processes and how to draw useful information out of them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Node already provides some process information natively. Basic tracking of
+    how much memory your Node process is using is easy to fetch with `process.memoryUsage()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are also modules available to track a little more information on processes.
+    For example, the `usage` module ([github.com/arunoda/node-usage](http://github.com/arunoda/node-usage))
+    delivers straightforward memory and CPU usage information. To probe the current
+    process, use the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This delivers the following result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we see the total process memory usage in bytes and the CPU usage percentage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A good resource to learn about JavaScript memory profiling can be found at [https://developer.chrome.com/devtools/docs/javascript-memory-profiling](https://developer.chrome.com/devtools/docs/javascript-memory-profiling).
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is more interesting to be able to get a look into what V8 sees when it is
+    running your process. Any node process can have `v8.log` generated simply by passing
+    the `--prof` (for profile) flag. Let's create a log reader and check its performance
+    using the `tick` module ([https://github.com/sidorares/node-tick](https://github.com/sidorares/node-tick)),
+    which will read v8 logs and generate a breakdown of the execution profile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To begin with, install the package globally:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In your code bundle, under the `/profiling` directory for this chapter, there
+    will be a file called `logreader.js`. This simply reads the `dummy.log` file (also
+    in that folder) and dumps its contents to the console. It''s a good example of
+    how to use a `Transform` stream to process log files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: The important thing to note is that the main functions have been named and prefixed
+    with `$`. This is good practice generally—you should always name your functions.
+    The reason is specifically relevant to debugging. We want those names to show
+    up in the reports we're about to generate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To generate a v8 log, run this script using the `–-prof` (profile) argument
+    and `–-nologfile-per-isolate` to suppress default log file generation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You should now see a log file in the current working directory with the name
+    `v8.log`. Go ahead and take a look at it—the log is somewhat intimidating. This
+    is where the `tick` module comes into play:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This command will generate a more readable profile and dump that to the `profile`
+    file. Open that file and take a look. There is a lot of information and doing
+    a deep dive into what it all means is well beyond the scope of this chapter. However,
+    it is very clear how many ticks are being consumed by various functions in our
+    script, such as `$transform`, and we can also see whether or not the functions
+    are optimized. For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we see that `$transform` occupied 16 ticks and was lazily compiled, and
+    the tilde (`~`) indicates that the function is not optimized—if it was optimized,
+    you would see an asterisk (`*`) prefix.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As an experiment, create a script with the following code and run it with the
+    `--prof` flag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: Let this endless loop run for a while and then terminate the process by using
+    *Ctrl* + *C*. Create a profile file, as we did previously, and view it. It should
+    be clear how easy it would be to catch an expensive function using these profiling
+    tools.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An extremely useful visualization tool available to those running the latest
+    Node.js build (0.11.x or higher and io.js) is accessible simply by running the
+    following in a version of the Chrome browser—`chrome://tracing/`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Profiling processes](img/1403OS_05_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Once you have this ready in your browser, click on the **Load** button and
+    upload your `v8.log` file. The execution timeline is laid out across the top,
+    and, by clicking on the link (V8: V8 PC) on the left, you can access the starburst
+    navigation tool. Starbursts radiate call stacks, nicely visualizing where the
+    work in our application is being done. Note how our `$transform` function is listed
+    to the right—name your functions!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These are a few helpful links if you''d like to learn more about profiling
+    v8:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://developers.google.com/v8/profiler_example](https://developers.google.com/v8/profiler_example)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://groups.google.com/forum/#!msg/nodejs/oRbX5eZvOPg/jM6TINytVhoJ](https://groups.google.com/forum/#!msg/nodejs/oRbX5eZvOPg/jM6TINytVhoJ)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using third-party monitoring tools
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Node is a new technology for which there are few mature application monitoring
+    tools. Some independent developers, along with established companies in the application
+    monitoring space, have jumped in to fill this gap. In this section, we'll look
+    at PM2 as a process manager and monitor and also have a look at Nodetime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PM2
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: PM2 is designed to be an enterprise-level process manager. As discussed elsewhere,
+    Node runs within a Unix process, and its `child_process` and `cluster` modules
+    are used to spawn further processes, typically when scaling an application across
+    multiple cores. PM2 can be used to implement the deployment and monitoring of
+    your Node processes both via the command line and programmatically. Here, I will
+    focus on programmatically using PM2 for process management and show you how to
+    use it to monitor and display process activity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Install PM2 globally:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The most straightforward way to use PM2 is as a simple process runner. The
+    following program will increment and log a value every second:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, we use `fork` on a new process from `script.js`, running it in the background
+    *forever*, until we stop it. This is a great way to run a daemonized process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once the script launches, you should see something like this in your terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![PM2](img/1403OS_05_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The meaning of most of the values should be clear, such as the amount of memory
+    your process is using, whether or not it is online, how long it has been up, and
+    so on (the `mode` and `watching` fields will be explained shortly). The process
+    will continue to run until it is stopped or deleted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To set a custom name for your process when you start it, pass the `--name`
+    argument to PM2 as follows: `pm2 start script.js --name ''myProcessName''`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This overview of all running PM2 processes can be brought up at any time via
+    the `pm2 list` command. PM2 offers other straightforward commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`pm2 stop <app_name | id | all>`: This is used to stop a process by name or
+    ID or stop all processes. A stopped process remains in the process list and can
+    be restarted later.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`pm2 restart <app_name | id | all>`: This is used to restart a process. The
+    number of process restarts is displayed under `restarted` in all process lists.
+    To automatically restart a process when it reaches a maximum memory limit (say,
+    15 M), use the `pm2 start script.js --max-memory-restart 15M` command.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`pm2 delete <app_name | id | all>`: This deletes a process. This process cannot
+    be restarted.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`pm2 info <app_name | id >`: This provides detailed information on a process,
+    as shown here:![PM2](img/1403OS_05_03.jpg)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Note the paths given for error and other logs. Remember that our script increments
+    an integer by one every second and logs that count. If you use `cat /path/to/script/
+    out/log`, your terminal will show what has been written to the `out` log, which
+    should be a list of incrementing numbers. Errors are similarly written to a log.
+    Furthermore, you can stream the output logs in real time with `pm2 logs`. For
+    example, our `script.js` process is still pumping out incremented values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: To clear all logs, use `pm2 flush`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can also use PM2 programmatically. First, you will need to install PM2
+    locally in your application''s `package.json` file with the standard `npm install
+    pm2` command. To replicate the steps we took to run `scripts.js` with PM2, first
+    create the `programmatic.js` script as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: This script will use the `pm2` module to run `script.js` as a process. Go ahead
+    and run it with `node programmatic.js`. Executing a PM2 list should show that
+    `programmed script runner` is alive. To make sure this is so, try `pm2 logs`—you
+    should see numbers being incremented, just as before.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Monitoring
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'PM2 makes process monitoring easy. To view real-time statistics on the CPU
+    and memory usage for your processes, simply enter the command `pm2 monit`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Monitoring](img/1403OS_05_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Here, we see a constantly updated graph of the CPU and memory usage for our
+    process. What could be easier?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'PM2 also makes it easy to create web-based monitoring interfaces—it''s as simple
+    as running `pm2 web`. This command will start a monitored process listening on
+    port `9615`—running `pm2 list` will now list a process named `pm2-http-interface`.
+    Run the web command and then navigate to `localhost:9615` in your browser. You
+    will see a detailed snapshot of your processes, OS, and so on, as a JSON object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: Creating a web-based UI that polls your server every few seconds, fetches process
+    information, and then graphs it is made much simpler due to this built-in feature
+    of PM2.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'PM2 also has an option to set a watcher on all managed scripts so that any
+    changes to the watched script will cause an automatic process restart. This is
+    very useful when developing. As a demonstration, let''s create a simple HTTP server
+    and run it through PM2:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: This server will echo **"Hello World"** whenever `localhost:8080` is hit. Start
+    it using `pm2 start server.js --watch --name 'watchedHTTPServer'`. Note that if
+    you now list the running processes, our named process will show `enabled` in the
+    `watching` column. Bring up this server in your browser. You should see **"Hello
+    World"**. Now, navigate to the `server.js` script and change `"Hello World"` to
+    `"Hello World, I've changed!"`. Reload your browser. Note the change. Run a process
+    list, and you'll see that this server process indicates a restart. Do it a few
+    more times. Live development of your server applications just got easier thanks
+    to PM2.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'A process management tool with features similar to those of PM2 that is more
+    focused on delivering a full-featured web UI out of the box is **Guvnor**: [https://github.com/tableflip/guvnor](https://github.com/tableflip/guvnor).
+    Other popular process monitors can be found at [https://github.com/remy/nodemon](https://github.com/remy/nodemon)
+    and [https://github.com/foreverjs/forever](https://github.com/foreverjs/forever).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will talk about application deployment strategies using PM2 in [Chapter 7](ch07.html
+    "Chapter 7. Deploying and Maintaining"), *Deploying and Maintaining*, including
+    using PM2's `cluster` mode.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Nodetime
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Nodetime is an easy-to-use Node-monitoring tool. Visit [www.nodetime.com](http://www.nodetime.com)
+    and sign up. Once you do so, you will be presented with a page containing code
+    to include in your application. Keep this page open as it will update when we
+    start our application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To begin with, we''ll create a simple HTTP server application that returns
+    `"Hello World"` for every request:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Save this as `server.js`. Execute it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note how, on the Nodetime page in your browser, you will see **monitoring**
+    show up under the **Applications** section. Click on that link—you will now see
+    Nodetime''s monitoring interface:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Nodetime](img/1403OS_05_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Go ahead and hit the server by visiting `localhost:8080` in your browser. After
+    doing that a number of times, go back to your Nodetime interface and use the dropdown
+    listing **OS / Load average**, selecting other useful metrics. Try `Process/V8
+    heap total (MB)` to see how V8 is allocating memory. Other metrics allow you to
+    check the profile of the machine executing this server process, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using New Relic for monitoring
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: New Relic is a well-known tool to monitor servers and applications that has
+    been upgraded to support Node. It is intended to be used by those looking to monitor
+    the memory and CPU usage as well as things such as network activity and the health
+    of your Node processes. In this section, we'll look into how to install it on
+    your server and provide examples of its use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Installation involves applying for a license key from the New Relic website
+    at [newrelic.com](http://newrelic.com). Setting up your account is straightforward.
+    After signing up, you'll be presented with a list of monitoring tools that New
+    Relic provides—you'll want to select New Relic Servers. In the next steps, you'll
+    select Node.js as your development environment and the OS you'll be working within.
+    I'll use CentOS. After selecting your OS, you should see the installation instructions
+    generated for you, with your license key included—just cut and paste.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You are installing and starting a server that will probe system processes and
+    report results to New Relic. This server must authenticate with New Relic by using
+    your license key, and that means you must store that key in an accessible location.
+    For this reason, a configuration file will be stored on your system. For most
+    Unix installs, this file will be stored in `/etc/newrelic/nrsysmond.cfg`. Read
+    through the configuration options described in that file, such as the location
+    of log files.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Many third-party deployment environments/hosts often provide easy integration
+    with New Relic, such as Heroku ([https://devcenter.heroku.com/articles/newrelic](https://devcenter.heroku.com/articles/newrelic)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once New Relic is running, a log file will be created, and if all goes well,
+    that file should contain a line similar to the following, indicating that New
+    Relic is now tracking:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We''ll connect to this server via the `newrelic` package. Once that package
+    is installed into your application directory, you will need to configure it. Somewhat
+    awkwardly, this means copying the `newrelic.js` file from `node_modules/newrelic`
+    into your application''s root folder, modifying its contents, and adding your
+    license key and a name for your application. The log level field corresponds to
+    the log levels used by Bunyan, so you may want to visit the project page for more
+    information: [https://github.com/trentm/node-bunyan](https://github.com/trentm/node-bunyan).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You'll want to avoid storing your license key in the `newrelic.js` file when
+    you go into production. You can pass configuration parameters to New Relic via
+    environment variables rather than hardcoding them via environment variables. For
+    example, you can pass your license key via the `NEW_RELIC_LICENSE_KEY` environment
+    variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `newrelic` package repository can be found at [https://github.com/newrelic/node-newrelic](https://github.com/newrelic/node-newrelic).
+    This project page contains extensive information on New Relic's usage and configuration,
+    environment variables, and so on. Also, there are examples for setting up client-side
+    monitoring.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s add New Relic monitoring to an example application. Create the following
+    Express server:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can add additional routes or change the route names if you'd like. What
+    we're going to do is run this server, hit it a few times, and then check with
+    New Relic to see what it has picked up. Start the server and make some requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once you''ve exercised the server a bit, head over to `newrelic.com` and log
+    in. Across the top of the page, you will see a navigation menu, and you''ll be
+    in the **APM** section. Here is where you can access various monitoring tools
+    for you applications. You should see a list including the application name you
+    set earlier. Click on that name, and you''ll be brought to a dashboard overview
+    (there won''t be much information yet). You should, however, see some information
+    about the server route activity:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using New Relic for monitoring](img/1403OS_05_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Along the left-hand side, there will be a more detailed navigation pane. Go
+    to **Reports** | **Web transactions**, and you'll see more detailed information
+    on the routes you've set up. If you navigate to the **SERVERS** section, you'll
+    see a dashboard for your host containing detailed system information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let's create server load and see how New Relic does with monitoring. If
+    you have a favorite load stress tool, go ahead and send some traffic to your application.
+    If you'd like to learn a simple and common stress-testing tool, learn and use
+    the Apache Bench tool ([http://httpd.apache.org/docs/2.2/programs/ab.html](http://httpd.apache.org/docs/2.2/programs/ab.html)).
+    There are also free online stress-testing services, such as [http://loader.io](http://loader.io)
+    and [https://loadimpact.com](https://loadimpact.com).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once you've started the stress test, return to the New Relic dashboard for your
+    application and host server. You'll see regularly updated statistics as the New
+    Relic monitor reports the effect of requests on the memory, CPU load, and other
+    key metrics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we engaged with one of the most important aspects of deployment—monitoring
+    running processes. Starting at the most basic and necessary level—catching errors—you
+    learned how to trap errors at the individual process level and across processes.
+    After discussing techniques to log errors with both UDP and third-party tools,
+    we looked at how to build remote process monitors using Node's REPL, leading to
+    a deeper discussion on how to do extensive application profiling and memory analysis.
+    Finally, we looked at how to deploy the PM2 process runner in an effort to manage
+    processes and visualize their activity. We also looked at how to use the cloud-based
+    Nodetime and New Relic services to monitor your applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Direct monitoring provides crucial real-time insights into any potential threats,
+    but we must also try to limit the possibility of future errors by writing resilient
+    code that we can be confident of. In the next chapter, we will look at how to
+    build and test our applications such that they inspire confidence. Advice on how
+    best to build and organize your applications so that their design is clear will
+    be presented. This way, applying the remaining chapter content on testing strategies
+    to your application can flow naturally with your ongoing development.
+  prefs: []
+  type: TYPE_NORMAL

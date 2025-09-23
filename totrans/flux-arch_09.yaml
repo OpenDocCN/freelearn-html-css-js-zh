@@ -1,0 +1,641 @@
+- en: Chapter 9. Immutable Stores
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we're going to look at immutable data in Flux stores. Immutability
+    is a term that often coincides with functional programming. Immutable data is
+    data that doesn't change (mutate) once it's been created. The key benefit is that
+    you can predict the root cause of data changes in an application because data
+    can't inadvertently be changed by side-effects. Immutability and Flux get along
+    nicely because they're both about explicitness and predictability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll kick things off by talking about hidden updates or side-effects. Flux
+    by itself discourages such things and immutable data helps enforce the idea. Then,
+    we'll go over what these side-effects entail for the integrity of our Flux architecture.
+    The most severe consequence of side-effects caused by mutating store data are
+    disruptions to the unidirectional data flow of Flux. Next, we'll look at the hidden
+    costs of immutability—these are mostly related to the additional resources required,
+    which can lead to noticeable performance degradation. Finally, we'll look at the
+    `Immutable.js` library for help with performing transformations on immutable data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Renouncing hidden updates
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The unidirectional nature of Flux is what sets it apart from other modern frontend
+    architectures. The reason that the unidirectional data-flow works is because action
+    creators are the only way that new data can enter the system. However, this isn't
+    strictly enforced by Flux, and this means that some errant piece of code has the
+    potential to completely break our architecture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we'll look at how something like this is even possible in Flux.
+    Then we'll look at how views typically get their data from stores and whether
+    or not there's a better way. Finally, we'll think about other components in our
+    Flux architecture and see if anything in addition to store data can be made immutable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to break Flux
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The easiest way to break Flux is by mutating the state of a store without going
+    through the proper channels. The action dispatcher is the gateway for new data
+    entering the system, and it also coordinates the action handlers of our stores.
+    For example, one action might trigger the handler of a couple stores, using the
+    action payload in different ways. This simply won't happen if the state of stores
+    are being mutated directly. We could get lucky and the changes we make don't have
+    any side-effects. But isn't the whole premise of being explicit with actions that
+    we can't predict complex side-effects?
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we lower the bar and start directly manipulating state here and there, what's
+    to stop us from doing this more frequently? The most likely scenario is a view
+    event handler that mutates store data. This is because views typically have direct
+    references to stores, whereas other Flux components typically do not. So when
+    the user clicks a button and our handler simply changes the state of a store instead
+    of dispatching an action, we could find ourselves in trouble.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s walk through an example that highlights just how dangerous operating
+    outside of the Flux playing field can be. We''ll check out the button store first:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Seems pretty simple—control the text and the `disabled` status of the buttons.
+    This is pretty simple, but only if we''re abiding by the Flux rules and dispatching
+    actions to change the state of a store. Now, let''s take a look at a view component
+    that uses this store to render itself:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: What's supposed to happen here is that the button should become disabled when
+    it's clicked, because the button store will change the state accordingly when
+    the `TOGGLE` action is dispatched. This much works as expected. However, the result
+    is that this will never work as expected, due to that one line above the call
+    to `toggle()`. Here, we're directly manipulating the state of a store. This prevents
+    the expected behavior from taking place when the `TOGGLE` action is dispatched,
+    because the state has already been changed, so now it will change back.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It's these little hacks that can cause big trouble down the road if we're not
+    careful. When you look at this view module, the problematic code jumps off the
+    screen. Imagine a real project with many more views that are each much bigger
+    than this one—would you be able to spot this issue before it's too late?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting store data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Given that referencing store state is a dangerous thing, perhaps we could avoid
+    it altogether? This would drastically reduce the potential for errors, as we saw
+    in the previous section. For example, when two stores depend on one another, they
+    use the dispatcher''s `waitFor()` method to ensure that the store we''re dependent
+    on is updated first. Then we can just directly access the store, knowing that
+    its state has already been updated. The approach is visualized as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Getting store data](img/B05419_09_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The dependent store is directly referencing the state of the store that it
+    depends on, which is something that can lead to big problems if we''re not careful.
+    An alternative approach would be to have the dependent store listen to the change
+    event on the store that it depends on. The callback can then use the new state
+    that''s passed to it as an argument. Of course, we would still need to use `waitFor()`
+    or something along those lines to ensure that the stores update in the correct
+    order. This approach is shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Getting store data](img/B05419_09_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: This is starting to look like a view component—views listen to the change event
+    of stores so that they can render UI updates to reflect the changes in state.
+    Views also need to perform an initial rendering of the store data, and this is
+    why they typically reference store state. The problem with any of these ideas
+    is that none of them actually insulate us from directly accessing store state—who
+    knows what kind of reference will be passed in as one of these callback arguments.
+    The other problem is that by introducing callback functions where directly reading
+    a value is possible is an over-complication in design terms. There has to be a
+    better way. Making our store state data immutable is a step in the right direction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In the next chapter, we're going to implement our own dispatcher component.
+    While doing so, we'll think about implementing some safeguards against accessing
+    state data from a store while an update round is happening, but the store hasn't
+    been updated. This will make for easier troubleshooting with dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Everything is immutable
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As the last topic before discussing how we might go about enforcing immutability,
+    let's talk about the idea of everything in a Flux architecture being immutable.
+    Theoretically, this shouldn't be that difficult to do since Flux cordons off state
+    from living anywhere other than inside a store. So, let's start with stores.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Should all our stores be immutable, or perhaps just some of them? Having only
+    some immutable stores isn't a good idea because it promotes inconsistency. What
+    about having immutability in place at all, is it even necessary? Now this is a
+    very important question one has to ask about their architecture because there's
+    no cut-and-dried answer here. The immutability argument works when we need that
+    extra assurance that there will be no surprises with store states later on. The
+    counterargument is that we're disciplined enough as programmers that the immutability
+    mechanisms just add overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll spend the remainder of this chapter arguing in favor of immutable data,
+    simply because the positives outweigh the negatives in almost every case. Regardless
+    of how you feel about immutability, it's good to know what its strengths are in
+    a Flux architecture—even if you're not going to use it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What about view components—can they actually be immutable? Well, it turns out
+    that they cannot, because the DOM API doesn't allow this. Our view components
+    have to actually manipulate the state of the elements on the page. However, if
+    we're using a view technology like React, then we get a veil of immutability because
+    the idea is to always re-render components. So it seems as though we're taking
+    old elements and replacing them with new ones when, all the while React figures
+    out the DOM manipulations for us. This promotes the idea that state has no place
+    within a Flux view.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enforcing unidirectional data flow
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If new data only enters the system via action payloads delivered by the dispatcher
+    and our store data is immutable, we have a unidirectional data-flow. This is the
+    goal, so the questions is, how do we enforce this? Can we simply say that our
+    store data is immutable and be done with it? Well, that's something to shoot for,
+    absolutely, but there's more to it than that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we'll address the concept of data flowing in unintended directions,
+    and what causes this to happen. We'll then consider the notion of having too many
+    stores and not enough actions as contributors to dysfunctional data-flows. Finally,
+    we'll examine some techniques that we can utilize to make our store data immutable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Backwards, sideways, and leaky data flow
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Flux architectures have a unidirectional data-flow—data enters from the left
+    and exits on the right. This is easy to visualize as a flow that moves forward.
+    What are some of the ways this can go wrong then? Take backwards flow, for instance.
+    If a view instance holds a reference to a store instance and proceeds to mutate
+    its state, then the flow is moving from the view to the store. This is the complete
+    opposite of the expected flow direction, so it is moving backwards. Here''s an
+    illustration of what this looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Backwards, sideways, and leaky data flow](img/B05419_09_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: This is obviously not what we'd expect when working with a Flux system. But
+    it's also a likely scenario unless we rule out the possibility by having the store's
+    state return immutable data structures to any other components that want to interact
+    with it. What about stores - can they mutate the state of another store? They
+    shouldn't, and if they do, that would look like a sideways data-flow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**ProTip**: Anything that goes sideways is a bad thing.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s what a sideways data-flow between two Flux stores might look like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Backwards, sideways, and leaky data flow](img/B05419_09_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: This is just as bad as the view component that directly mutates the state of
+    a store, because the state we just changed could impact the next state that's
+    computed. This is the same situation we saw in the first code example we looked
+    at in the chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What about actions—are they capable of directly manipulating the state of a
+    store? This is probably the least likely scenario, because action creator functions
+    are supposed to just dispatch actions after they coordinate any asynchronous behavior.
+    However, an action creator function could incorrectly mutate a store state in
+    an AJAX callback handler, for example. This is what we refer to as *leaky flows*
+    because they''re going around the dispatcher. So, we''re leaking mutations without
+    any traceable actions to show where they originated. Here''s an illustration of
+    the idea:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Backwards, sideways, and leaky data flow](img/B05419_09_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Too many stores?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: There's always a possibility that there are too many Flux stores in our architecture.
+    Perhaps the application has grown beyond what we had originally designed for in
+    terms of features. Now, simply mapping a store to a feature won't suffice because
+    there are dozens of stores.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we're unable to rein in the store count, a possible outcome is more direct
+    state mutations by other components. It's just a matter of convenience, if there's
+    a ton of stores to think about, it means that we're going to have to take care
+    of several other dispatcher-related development activities any time we want to
+    do something. When there's lots of stores, there's the urge to manipulate their
+    state directly. Removing stores reduces this urge.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Not enough actions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Is it possible that our Flux architecture doesn't have enough actions? For example,
+    a view that we're working on needs to change the state of a store. There's no
+    action to handle this for us, so rather than build a new action creator and update
+    the store to handle the logic, we just directly mutate the store. It sounds like
+    an easy enough task—building an action creator function and adding the necessary
+    store update logic. But if we have to keep implementing these one-off action creator
+    functions, eventually we'll just stop caring. There are two ways to fix this issue.
+    The first is to implement more generic actions that apply to more than just one
+    specific situation and can accept parameters. The second is to build a handful
+    of action creator functions that are relevant to the feature that you're working
+    on, even before you need them. When you know that the functions are there, in
+    the back of your mind, you're more likely to use them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enforcing immutability
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let''s explore some different approaches to keeping store state immutable.
+    The goal is that when some external entity references a store''s state, any changes
+    that entity makes to the state doesn''t actually affect the store because the
+    data is immutable. We''ll start by implementing a store that doesn''t actually
+    return a reference to its state—it returns a copy of it using `Object.assign()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, you can see that the actual store state is in a module-level `state`
+    variable. This means that it isn''t accessible directly by the outside world because
+    it isn''t exported. We want the state to be encapsulated like this so that it''s
+    harder for other components to mutate it. If other components need read access
+    to the store''s state properties, they can read the `state` property of the store.
+    Since this is a getter method, it can compute the value that will be returned.
+    In this case, we''ll create a new object on the fly. Now let''s look at a store
+    that stores its state in a constant:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This store has the same structure and patterns as the `Copy` store. The difference
+    is that `state` isn''t a variable—it''s a constant. This means that we shouldn''t
+    be able to mutate it, right? Well, not quite—we just can''t assign new values
+    to it. So this approach has limited value because the `state()` getter returns
+    a direct reference to the constant. We''ll see how this works momentarily, when
+    other components use the store. Let''s look at one more approach, which uses `Object.frozen()`
+    to make objects immutable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `state()` getter is actually returning a reference to the frozen `state`
+    variable. What's interesting about this approach is that we don't necessarily
+    need to make a new copy of the data because our `change()` function has made it
+    immutable. And when the store itself needs to update its state, that's when the
+    state is refrozen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s see how these approaches compare now. First, we''ll import the stores
+    and get references to their states:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: It seems like we were able to successfully change the state of `copyState`.
+    This is sort of true—we changed the state of a copy that doesn't actually reflect
+    the state of the store. The `constantState` change, on the other hand, does have
+    side-effects because any other components that read state from the constant store
+    will see this change.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we try to change `frozenState`, a `TypeError` is thrown. This might actually
+    be the desired outcome, since it''s made explicit that what we''re trying to do
+    with `fronzenState` is not allowed. Similar things happen when we add new properties
+    to the store states—copy fails silently, constant fails, and frozen fails explicitly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, let''s look at the state data that''s sent when the change event is
+    emitted:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `myAction()` function will extend the store state with new data. As we can
+    see once again, the constant approach has failed us because it returns the same
+    reference that was mutated. Generally speaking, none of these approaches are particularly
+    easy to implement in practice. This is another reason why we'll want to seriously
+    consider using a library like `Immutable.js`, where immutability is the default
+    mode and mostly hidden from our code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The cost of immutable data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: By now you are well aware of the advantage immutable data brings to a Flux architecture—a
+    level of assurance about our unidirectional data-flow. This safety net comes at
+    a cost. In this section, we'll discuss how expensive immutability can be and what
+    can be done about it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll start by covering the biggest immutability issue—transient memory allocations
+    and garbage collection. These things are big threats to the performance of our
+    Flux architecture. Next, we'll think about lessening the amount of memory allocations
+    by batching together transformations on immutable data. Finally, we'll think about
+    the ways in which immutable data eliminates code that's only needed to handle
+    scenarios where data is mutable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Garbage collection is expensive
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: One good thing about mutable data structures is that once they're allocated,
+    they tend to stick around for a while. That is, we don't need to copy the properties
+    of an existing structure into a new one, then destroy the old one any time we
+    need to make an update. This is software, so we're going to be making a lot of
+    updates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With immutable data, we face a memory consumption challenge. Every time we mutate
+    an object, we have to allocate a new copy of that object. Imagine we're in a loop,
+    making changes to immutable objects in a collection—this adds up to a lot of memory
+    allocations in a short period of time—a spike if you will. Furthermore, the old
+    objects that have been superseded by the new ones aren't instantaneously deleted
+    from memory. They have to wait for the garbage collector to clean them up.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When our application uses more memory than it needs to, performance suffers.
+    When the garbage collector has to run frequently because of all our memory allocations,
+    performance suffers. It's the garbage collector more than anything else that triggers
+    laggy user experiences, because our JavaScript code can't respond to any pending
+    events while it's running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Maybe there's an approach to immutable data that's less memory-intensive than
+    replacing large objects when all we want is a simple update.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Batched mutations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Luckily for us, stores mutate their own state. This means that store dispatcher
+    callbacks encapsulate everything that happens during state transformations. So
+    if our stores have immutable state data, then the outside world doesn't need to
+    know about any shortcuts the store takes internally in order to cut down on the
+    number of memory allocations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s say that a store receives an action and it has to perform three separate
+    transformations on its state: make a transformation that results in a new object,
+    make another transformation on that new object, and so on. That''s a lot of transient
+    memory allocations for intermediary data that no other component will ever touch.
+    Here''s an illustration of what''s going on:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Batched mutations](img/B05419_09_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'We want the final result to be a new state reference, but the intermediary
+    new state that''s created in between is wasteful. Let''s see if there''s a way
+    that we can batch together these state transformations before the final immutable
+    value is returned:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Batched mutations](img/B05419_09_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Now, we're only allocating one new object, despite making three state transformations.
+    The mutations we're making within a Flux store are absolutely inconsequential
+    to any other component in the system, yet we're maintaining immutability for anything
+    else that wants to access and read this state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Offsetting the cost
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The painful part of mutable data is that components using this data have to
+    account for side-effects. They don't necessarily know when or how this data will
+    mutate. So they need side-effect handling code. While code that handles unexpected
+    side-effects often doesn't utilize more memory, it isn't free to run either. When
+    there's code to handle edge cases all over our source, the performance degradation
+    can add up. With immutable data, we can remove most, if not all, of this extraneous
+    code that checks the state of something, because we can better predict what it's
+    going to be. This helps to offset the cost of extra memory allocations and garbage
+    collection runs. Even if we're not using immutable data in our stores, Flux architectures
+    make the need for side-effect handling code virtually obsolete. A unidirectional
+    data-flow makes Flux very predictable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using Immutable.js
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `Immutable.js` library from Facebook provides immutable JavaScript data
+    structures. This might sound trivial but there's a lot that goes on behind the
+    scenes to make this work, namely creating new instances from transformations as
+    efficiently as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we'll look at immutable lists and maps. These are viable substitutes
+    for arrays and plain objects, respectively, in our Flux store data. Then, we'll
+    look at how `Immutable.js` can compose complex transformations without the need
+    for intermediary representations. Finally, we'll see how `Immutable.js` returns
+    the same instance when there's no mutations after running through a transformation,
+    allowing for efficient change detection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Immutable lists and maps
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We''ll start by looking at lists and maps, since these are fairly common structures
+    that we''ll need to implement in our stores. Lists are kind of like arrays and
+    maps are kind of like plain JavaScript objects. Let''s implement a store that
+    uses a list:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can see that the `state` variable is initialized to an empty `Immutable.List()`
+    instance (the `new` keyword isn't necessary because these are functions that return
+    new instances). Whenever we call a method on this list instance, a new instance
+    is returned. This is why we have to assign the result of calling `push()` and
+    `map()` to `state`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now let''s implement a map store:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you can see, maps follow the same immutability patterns as lists. The main
+    difference is that they''re keyed instead of indexed. Now let''s see how both
+    of these stores are used:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Immutable transformations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Now, it''s time to implement a more involved transformation inside a Flux store.
+    This means chaining together operations on `Immutable.js` structures to create
+    a new structure. But what about intermediary memory allocations—we''ll want to
+    keep an eye on these, right? Here''s a store that attempts to use less memory
+    while making transformations to a store''s state:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `SORT_NAMES` action results in some interesting transformations happening
+    to our immutable list. The idea is to map it to a list of capitalized user names,
+    sorted by user `id`. The technique that's employed here involves converting the
+    list into a sequence once it's sorted, using `toSeq()`. This is done to prevent
+    the `map()` calls from allocating new structures, because we don't actually need
+    a concrete structure till we're done mapping. To do this, we just have to call
+    `toList()`, which will call all the mappings we've set up on the sequence and
+    create the list. This means that the only structures we're creating here, are
+    the new list from `sortBy()`, the new sequence from `toSeq()`, and the new list
+    from `toList()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this particular example, this might be overkill, simply due to the fact
+    that there are three operations done on a three-element list. So, we would just
+    remove `toSeq()` and `toList()` from our code to simplify things. However, as
+    we scale up to larger collections and more complex transformations on them, it
+    doesn''t hurt to know about this technique to reduce the memory footprint of our
+    architecture. Let''s see this store in action now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Change detection
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this final example of the chapter, we''ll see whether we can use `Immutable.js`
+    structures to implement efficient change detection in our Flux stores. Actually,
+    the detection itself will take place in the React view, but this relies on the
+    store state using an `Immutable.js` object. Why would we want to do this—isn''t
+    React already efficient enough at computing diffs using its virtual DOM? React
+    definitely excels here, but it still has to do a fair amount of work to figure
+    out that no re-rendering is needed. We can lend a hand to our React components
+    by providing hints that the store''s state hasn''t actually changed. So without
+    further ado, here''s the store we''ll use:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Nothing fancy is done on our part here; we''re simply using an `Immutable.js
+    Map` as our store state. We''re then assigning the new `Map` instance to state
+    when `set()` is called, since it returns a new instance. Here''s the heuristic
+    we''re interested in—if nothing changes, the same instance is returned. Let''s
+    see how we can use this property of `Immutable.js` data in our a view:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The key piece of this component is the `shouldComponentUpdate()` method, which
+    makes the determination that the store has changed by doing a strict inequality
+    comparison. In cases where this component is being rendered a lot but there''s
+    no need to change anything, this will avoid a lot of virtual DOM tree checking.
+    Now, let''s see how we would go about using this view:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, actions that cause our view to re-render are constantly dispatched.
+    However, since the `set()` call in our store is returning the same instance when
+    nothing changes, the view itself is doing very little work. Then, once we do change
+    the payload value after 5 seconds, the `Immutable.js` map instance changes, and
+    the view updates. This view is rendered a grand total of two times—the initial
+    rendering and the rendering that takes place when the store data actually changes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You may have noticed that this implementation could have gone in another direction,
+    one where the store isn't so naive as to emit changes when nothing has changed.
+    It's all a matter of taste and tradeoffs. The approach we've chosen does require
+    that the views take an active role in optimizing the rendering work-flow. This
+    is easy to do with React components, and it simplifies our store logic. On the
+    other hand, we might prefer to keep our views completely logic-less, including
+    the `shouldComponentUpdate()` checks. If this is the case, we'd simply move this
+    logic back into the store, and not have the change event emitted if the two `Immutable.js`
+    instances are the same.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter introduced you to immutability—both in the general sense of the
+    term and from a Flux architecture viewpoint. We began the chapter with a discussion
+    on the various ways that mutable data can break Flux. In particular, this breaks
+    the crown jewel of any Flux architecture—unidirectional data-flow. Next, we looked
+    at the different types of data-flow that emerge when we start mutating data outside
+    of stores, as these are good things to look for when troubleshooting Flux architectures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are several ways that our code can enforce immutable data in our Flux
+    stores, and we explored many of them. Immutable data comes at a cost—because the
+    garbage collector constantly needs to run, blocking other JavaScript code from
+    running, to collect all these extra copies of objects. We looked at how to minimize
+    these extra memory allocations and how to offset the overall cost of using immutable
+    data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We closed the chapter by implementing several stores that used `Immutable.js`
+    data structures. This library buys us immutability, added functionality, and efficient
+    use of intermediary memory allocations by default. In the next chapter, we'll
+    implement our own dispatcher component.
+  prefs: []
+  type: TYPE_NORMAL

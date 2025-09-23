@@ -1,0 +1,1568 @@
+- en: Chapter 4. Managing Memory and Space
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Today's developer has easy access to surprisingly inexpensive storage solutions.
+    The movement away from monolithic systems toward composed and distributed ones
+    has certain advantages, yet inevitably introduces a few new problems. The availability
+    of cheap storage should not be an excuse to push everything you can into memory
+    or onto a disk without any limit, for instance. Also, where does the state reside
+    in such a system? Does a cluster of servers share a common database connection?
+    How is data synchronized in such a setup? If you are using a *shared-nothing noSQL*
+    architecture, how are state changes communicated across all actors?
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are many considerations. Always seeking to use a minimum of resources
+    is a good guiding principle. In this chapter, we will look at ways to reduce the
+    cost of data storage in your Node programs, including tips on writing efficient,
+    optimized code. Certain strategies for efficiently sharing data across distributed
+    servers will be discussed, including caching strategies, microservices, interprocess
+    messaging, and other techniques to keep your systems fast, light, and scalable.
+    Examples demonstrating how to use tokens to manage user session data efficiently
+    at scale and storing extensive user activity data compactly using Redis will help
+    you put these ideas into practice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dealing with large crowds
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Because Node is designed to make the writing of networked applications easier,
+    those using Node are often building applications composed of many isolated services
+    that are connected via message queues, sockets, REST APIs, and so on. I will describe
+    these as distributed applications composed of isolated services coupled and coordinated
+    through a network into systems that appear integrated to clients. In this section
+    and the sections that follow, we will consider how isolated services can be designed
+    to be memory efficient with a small footprint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the purposes of this section and what follows, the word **microservice**
+    will be used when referring to application architectures composed of many small
+    cooperating services. Generally, we'll explore ideas around how well-designed
+    modularization can often help keep a system from becoming inscrutable by helping
+    maintain expressive, scalable, testable systems that maintain production readiness.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then, we'll put the microservice theory into practice by using Richard Rogers'
+    microservice toolkit for Node, **Seneca** ([https://github.com/rjrodger/seneca](https://github.com/rjrodger/seneca)).
+    Finally, we'll take a look at how to use Redis pub/sub as a cross-process communication
+    system, thus demonstrating another way to compose your own microservice clusters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Microservices
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Any nontrivial, network-based application is composed of several independent
+    subsystems that must cooperate to fulfill the business or other requirements of
+    the larger system. For example, many web applications present browser-based interfaces
+    composed of one or several libraries and/or UI frameworks translating user actions
+    against JavaScript controllers into formalized network requests issued across
+    several web protocols. These ultimately communicate with any number of servers
+    running programs that implement various sorts of business logic—all sharing one
+    or several databases, perhaps across several data centers. These initiate and
+    coordinate even longer chains of requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because there is no absolute *right way* to build software, every design is
+    biased toward one or a few key principles, in particular, principles guiding how
+    a system should scale, which normally affects how it is deployed. A few of the
+    key principles informing the Node community—modular systems composed of small
+    programs that do one thing well and are event-driven, I/O focused, and network
+    focused—align closely with those underpinning microservices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Microservice architecture designs typically respect the following principles:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A system should be broken down into many small services that each do one thing
+    and no more. This helps with clarity.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The code-powering services should be short and simple. A common guideline in
+    the Node community is to limit programs to somewhere near 100 lines of code. This
+    helps with maintainability.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: No service should depend on the existence of another service or even know of
+    the existence of other services. Services are decoupled. This helps with scalability,
+    clarity, and maintainability.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Data models should be decentralized, with a common (but not required) microservice
+    pattern—that each service maintains its own database or a similar model. Services
+    are stateless (this reinforces the previous point).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Independent services are easy to replicate (or cull). Scaling (in both directions)
+    is a natural feature of microservice architectures as new *nodes* can be added
+    or removed as necessary. This also enables easy experimentation, where prototype
+    services can be tested, new features can be tested or deployed temporarily, and
+    so on.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Independent, stateless services can be replaced or upgraded (or downgraded)
+    independently regardless of the state of any system they form a part of. This
+    opens the possibility of more focused, discrete deployments and refactors.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Failure is unavoidable, so systems should be designed to fail gracefully. Localize
+    points of failure (the first and second points of this list), isolate failure
+    (the third and fourth points of this list), and implement recovery mechanisms
+    (easier when error boundaries are clearly defined, small, and noncritical). Promote
+    robustness by reducing the scope of unreliability.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Testing is essential to any nontrivial system. Unambiguous and simple stateless
+    services are easy to test. A key aspect of testing is simulation—the *stubbing*
+    or *mocking* of services in order to test service interoperability. Clearly delineated
+    services are also easy to simulate and can, therefore, be intelligently composed
+    into testable systems.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The idea is simple: smaller services are easy to reason about individually,
+    encouraging correctness of specifications (little or no gray area) and clarity
+    of APIs (constrained sets of output follow constrained sets of input). Being stateless
+    and decoupled, services promote system composability, help with scaling and maintainability,
+    and are easier to deploy. Also, very precise, discrete monitoring of these sorts
+    of systems is possible.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Redis pub/sub
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the previous chapter, we discussed the use of message queues, an excellent
+    technique for rapid cross-process communication. Redis offers an interface allowing
+    connected clients to subscribe to a particular channel and broadcast messages
+    to that channel. This is generally described as a publish/subscribe paradigm.
+    When you do not need more complex message exchanges and brokers but a simple and
+    fast notification network, pub/sub works well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's set up a basic pub/sub example and then move on to an example of using
+    pub/sub to create a microservice architecture where many components doing a particular
+    job are passed requests for their services and pass back results—all coordinated
+    via Redis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, let''s look at the most basic example of pub/sub—a script that demonstrates
+    how to subscribe to a channel and how to publish to that channel:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We are using Matt Ranney's **Redis** npm module. Find out more at [https://github.com/mranney/node_redis](https://github.com/mranney/node_redis).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To create both a publisher and a subscriber, we create two Redis clients. Note
+    that, once a `subscribe` or `psubscribe` (more on `psubscribe` later) command
+    is issued to a client, that client will enter *subscriber mode*, no longer accepting
+    standard Redis commands. Typically, you will create two clients: one listening
+    for messages on subscribed channels and the other a standard Redis client used
+    for all other commands.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Also note that we must wait for the `subscribe` event to be fired on the `subscriber`
+    client prior to publishing any messages. Redis does not hold a queue of published
+    messages, which involves waiting for subscribers. A message for which there are
+    no subscribers is simply dropped. The following is based on the Redis documentation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*"…published messages are characterized into channels, without knowledge of
+    what (if any) subscribers there may be. Subscribers express interest in one or
+    more channels, and only receive messages that are of interest, without knowledge
+    of what (if any) publishers there are. This decoupling of publishers and subscribers
+    can allow for greater scalability and a more dynamic network topology."*'
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: 'So, we must wait for a subscriber prior to publishing. Once that subscription
+    is made, we can publish to the `channel5` channel, and the `subscriber` handle
+    listening `on` that channel receives our message:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Let's take this a little further by creating two distinct Node processes, each
+    performing a simple (micro) service. We'll build a calculator service with two
+    operations—add and subtract. A separate, dedicated process will perform each operation,
+    and the two-way communication between the calculator service and its helper services
+    will be managed by Redis pub/sub.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we design two Node programs, one that adds and one that subtracts. We''ll
+    only show the adder here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The subtraction program is nearly identical, differing only in the channel it
+    listens on and the calculation it performs. These two services exist in the `add.js`
+    and `subtract.js` files.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can see what this service does. When it receives a message on the `service:add`
+    channel, it will fetch the two operands passed to it, add them, and publish the
+    result to the `added` channel. As we'll soon see, the calculator service will
+    listen for results on the `added` channel. Also, you will notice a call to `process.send`—this
+    is used to notify the calculator service that the add service is ready. This will
+    make more sense shortly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let''s build the `calculator.js` service itself:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: The main calculator service forks two new processes running the `add.js` and
+    `subtract.js` microservices. Typically, in a real system, the creation of these
+    other services would be done independently, perhaps even on completely separate
+    machines. This simplification is useful for our example, but it does demonstrate
+    a simple way to create vertical scaling across cores. Clearly, each child process
+    in Node on which `fork` has been used comes with a communication channel built
+    in, allowing child processes to communicate with their parents as seen in the
+    calculator service's use of `add.on(…)` and `substract.on(...)` and in our calculation
+    services with `process.send(…)`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once the calculator service receives notice that its dependent services are
+    ready, it publishes a request for work to be done on the `service:add` and `service:subtract`
+    channels by passing operands. As we saw earlier, each service listens on its own
+    channel and performs the work requested, publishing a result that this calculator
+    service can then receive and use. When `calculator.js` is executed, the following
+    will be displayed in your terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Earlier, we mentioned the `psubscribe` method. The `p` prefix signifies *pattern*
+    and is useful when you want to subscribe to channels using a typical glob pattern.
+    For example, rather than the calculator service subscribing to two channels with
+    the common `result:` prefix, we can simplify it as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, any additional service can publish results with the `result:` prefix and
+    can be picked up by our calculator. Note that the `p` prefix must also be reflected
+    in the `pmessage` event listener.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Microservices with Seneca
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Seneca is a Node-based microservice construction kit that helps you organize
+    your code into distinct **actions** triggered by **patterns**. Seneca applications
+    are composed of services that can accept JSON messages and, optionally, return
+    some JSON. Services register an interest in messages with certain characteristics.
+    For example, a service might run whenever a JSON message displaying `{ cmd: "doSomething"
+    }` is broadcast.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To start, let''s create a service that responds to two patterns, one pattern
+    returning `"Hello!"` and the other returning `"Goodbye!"`. Create a `hellogoodbye.js`
+    file containing the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The call to `seneca()` starts up a service that will listen on port `8080`
+    on `localhost` for patterns rendered in the JSON format—one of either `{ operation:
+    "sayHello" }` or `{ operation: "sayGoodbye" }`. We also create a `client` object
+    connected to the Seneca service on `8080` and have that client act against those
+    patterns. When this program is executed, you will see `Hello!` and `Goodbye!`
+    displayed in your terminal.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Because the Seneca service is listening on HTTP by default, you can achieve
+    the same result by making a direct call over HTTP, operating against the `/act`
+    route:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, let's replicate the calculator application developed earlier, this time
+    using Seneca. We're going to create two services, each listening on a distinct
+    port, with one performing addition and the other performing subtraction. As in
+    the previous calculator example, each will be started as an individual process
+    and called remotely.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create an `add.js` file as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, create a `subtract.js` file identical to `add.js`, changing only its
+    operation parameter and, of course, its algorithm:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Open two terminals, and start both services:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To demonstrate the usage of these services, create a `calculator.js` file that
+    binds a client to each service on its unique port and acts against them. Note
+    that you must create distinct Seneca clients:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Executing this program will result in the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Just as with the previous example, we can make a direct HTTP call:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: By building out your calculator in this way, each operation can be isolated
+    into its own service, and you can add or remove functionality as needed without
+    affecting the overall program. Should a service develop bugs, you can fix and
+    replace it without stopping the general calculator application. If one operation
+    requires more powerful hardware or more memory, you can shift it to its own server
+    without stopping the calculator application or altering your application logic—you
+    only need to change the IP address of the targeted service. In the same way, it
+    is easy to see how, by stringing together the database, authentication, transaction,
+    mapping, and other services, they can be more easily modeled, deployed, scaled,
+    monitored, and maintained than if they were all coupled to a centralized service
+    manager.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reducing memory usage
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: JavaScript was born and raised in the browser environment. For most of its history,
+    this also implied that JavaScript programs were running on desktop systems with
+    an enormous pool of available memory. For this reason, many JavaScript programmers
+    have not traditionally thought much about managing memory in their applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the world of Node, memory is not so cheap. According to Joyent ([https://github.com/joyent/node/wiki/FAQ#what-is-the-memory-limit-on-a-node-process](https://github.com/joyent/node/wiki/FAQ#what-is-the-memory-limit-on-a-node-process)):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*"Currently, by default, v8 has a memory limit of 512 MB on 32-bit systems
+    and 1 GB on 64-bit systems. The limit can be raised by setting --max_old_space_size
+    to a maximum of ~1024 (~1 GB) (32-bit) and ~1741 (~1.7 GiB) (64-bit), but it is
+    recommended that you split your single process into several workers if you are
+    hitting memory limits."*'
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Let's go over possible strategies to reduce the amount of memory your Node programs
+    consume. We'll end with a discussion of how to make use of two memory-efficient
+    data structures supported by Redis when developing your projects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use streams, not buffers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The design and implementation of Node.js native modules follow a simple directive:
+    keep everything asynchronous. This design ethic, by convention, informs the design
+    of modules contributed by the Node community.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When a process operates synchronously, it holds, or locks, the total amount
+    of memory it needs to fully complete, at which point the memory it has held is
+    flushed, usually returning this result to the calling method or process. For example,
+    the following operation will load the entirety of a file into the memory prior
+    to returning it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: When a request is made to `localhost:8000`, the `somefile.js` file is read off
+    the filesystem *in its entirety* and returned to the client. That is the desired
+    effect—but there is a slight problem. Because the entire file is being pushed
+    into a buffer prior to being returned, an amount of memory equal to the byte size
+    of the file must be allocated on each request. While the operation is itself asynchronous
+    (allowing other operations to proceed), just a few requests for a very large file
+    (of several MB, for example) can overflow the memory and take down the Node process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Node excels at creating scalable web services. One of the reasons for this is
+    the focus on providing robust `Stream` interfaces.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A better strategy is to stream the file directly to the HTTP response object
+    (which is a writable stream):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: In addition to requiring less code, data is sent (piped) directly to the out
+    stream, using very little memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, we can use Stream to enable a very nice and composable pipeline
+    of transformations. There are several ways to achieve this goal (such as with
+    `Transform Stream`), but we'll just create our own transformer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This script will take an input from `process.stdin` and convert what is received
+    to uppercase, piping the result back to `process.stdout`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: As much as possible, convert your program logic into discrete stream transformations,
+    and compose useful pipelines that do good things with data without touching the
+    memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding prototypes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: JavaScript is an **Object-oriented** (**OO**) prototype-based language. It is
+    important for you to understand what this means and how this sort of design is
+    more memory efficient than many traditional OO language designs when used correctly.
+    Because the storage of state data within Node processes is a common practice (such
+    as connection data lookup tables within a socket server), we should leverage the
+    prototypal nature of the language to minimize memory usage. What follows is a
+    brief but pointed comparison of the classical inheritance-based object model and
+    the object system that JavaScript provides in terms of memory usage and efficiency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In class-based systems, a **class** contains instructions on how to create instances
+    of itself. In other words, a class describes a set containing objects built according
+    to a class specification, which includes things such as default values for attributes
+    of constructed objects. To create an instance of a class, there must be a class
+    definition that describes how to build that instance. Classes can also inherit
+    properties from each other, creating new instance blueprints that share characteristics
+    with other blueprints—an inheritance model describing the provenance of objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The primary purpose of any OO system is to facilitate the sharing of common
+    knowledge between related objects. For example, this is how you would create two
+    Point instances using an inheritance model:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Understanding prototypes](img/1403OS_04_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Note that both instances now maintain an identical attribute structure. Additionally,
+    the property x of both point instances has been copied from the base point class.
+    Importantly, notice that the value of x has been copied to each instance even
+    though this attribute value is identical in both instances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Objects in a prototypal language do not require a class to define their composition.
+    For example, an object in JavaScript can be created literally:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Not requiring the storage of a class definition prior to creating an object
+    instance is already more memory efficient. Now, consider this use of prototypes
+    to replicate the inheritance-based example discussed previously. In the following
+    code, we see how a single object, `myPoint`, is passed as the first object to
+    `Object.create`, which returns a new object with `myPoint` as its prototype:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '`Object.create` is the preferred method in modern JavaScript (ES5+) to create
+    objects. Older browsers will not support this syntax. For more information on
+    compatibility, visit [http://kangax.github.io/compat-table/es5/#Object.create](http://kangax.github.io/compat-table/es5/#Object.create).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This creates the following object construct:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Understanding prototypes](img/1403OS_04_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Note that each point instance *does not store copies* of attributes, the value
+    of which is not explicitly declared. Prototypal systems employ message delegation,
+    not inheritance. When a point instance receives the message *give me x*, and it
+    cannot satisfy that request, it delegates the responsibility for satisfying that
+    message to its prototype (which, in this case, does have a value for x). It should
+    be obvious that, in real-world scenarios with large and complex objects, the ability
+    to share default values across many instances without redundantly copying identical
+    bytes will lead to a smaller memory footprint. Additionally, these instances can
+    themselves function as prototypes for other objects, continuing a delegation chain
+    indefinitely and enabling elegant object graphs using only as much memory as necessary
+    to distinguish unique object properties.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Memory efficiency also speeds up instantiation. As should be clear from the
+    preceding code, delegating responsibility for messages to a prototype implies
+    that your extended receiver requires a smaller instance footprint—fewer slots
+    need to be allocated per object. The following are two construction function definitions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Even with these simple definitions, many instances built from the first constructor
+    will consume much less memory than an equal number of instances constructed from
+    the second—`new Rec1()` will complete well before `new Rec2()` due to the redundant
+    copying seen in the second prototype-less constructor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You can see a performance comparison of the two instantiation methods at [http://jsperf.com/prototype-speeds](http://jsperf.com/prototype-speeds).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use prototypes intelligently to reduce memory usage in your objects and to lower
+    instantiation times. Determine the static or infrequently changed attributes and
+    methods of your objects and put those into prototypes. This will allow you to
+    create thousands of objects quickly, while reducing redundancy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory-efficient data structures with Redis
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: While you should use the memory allotted to you in each Node process, more memory
+    will likely be needed. In this section, we will look at Redis, an in-memory, high-speed
+    database, and how it can be used to efficiently extend the amount of memory available
+    to your programs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At its most basic, Redis is a fast key-value store. We'll see later how it can
+    be used as a cache for commonly used pieces of data. However, it also provides
+    powerful data structures and an API allowing complex operations on those structures,
+    thus helping with the modeling of sets of data and the relationships between sets
+    of data. Here, we will discuss how to use Redis support for **Bit Operations**
+    (**bitops**) and **HyperLogLog**—two space-efficient and, importantly, space-predictable
+    memory structures to store and analyze the activity of data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using bitwise operations to analyze user actions over time
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: One of the more interesting features Redis provides is the ability to store
+    binary numbers as values for keys. Multiple keys containing binary values can
+    be compared by using the **bitwise operators** AND, OR, and XOR. By applying bitmasks
+    mapping a range of bits to other binary values, you can make very rapid and memory-efficient
+    analytical comparisons. In this section, we will learn some typical examples of
+    how to use this technique.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Any key in a Redis database can store `(2^32 - 1)` bits or just under 512 MiB.
+    This means that there are approximately 4.29 billion columns, or offsets, that
+    can be set per key. This is a large number of data points referenced by a single
+    key. We can set bits along these ranges to describe the characteristics of an
+    item we would like to track, such as the number of users who have viewed a given
+    article. Furthermore, we can use bit operations to gather other dimensions of
+    information, such as what percentage of viewers of an article are female. Let's
+    look at a few examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting, getting, and counting bits
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Let''s assume that we are serving many different articles and each article
+    is assigned a unique identifier. Also assume that we have 100,000 active members
+    on our website, and that each user also has a unique identifier—a number between
+    1 and 100,000\. Using bit operations, we can easily track article view activity
+    on a given day by creating a key in Redis, which can be done by combining the
+    article''s unique key and a date string and setting bits at that key corresponding
+    to the user ID associated with an article view. For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This key represents article 324 on a specific date, efficiently storing the
+    unique user IDs of viewers on that day by *flipping a bit* at an offset corresponding
+    to the user''s assigned ID. Whenever a user views an article, fetch that user''s
+    ID, use that number as an offset value, and use the `setbit` command to set a
+    bit at that offset:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In what follows, we''re going to demonstrate how to use Redis bitops to efficiently
+    store and analyze data. First, let''s create data for three articles:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we simply created three Redis keys, `'article (1-3):today'`, and randomly
+    set 100,000 bits on each key—either 0 or 1\. Using the technique of storing user
+    activity based on user ID offsets, we now have sample data for a hypothetical
+    day of traffic against three articles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We're using Matt Ranney's `node_redis` module ([https://github.com/mranney](https://github.com/mranney)),
+    which supports the Redis **multi** construct, allowing the execution of several
+    instructions in one pipeline rather than suffering the cost of calling each individually.
+    Always use `multi` when performing several operations in order to speed up your
+    operations. Note also how the ordering guarantees provided by Redis ensure ordered
+    execution and how its atomicity guarantees that either all or none of the instructions
+    in a transaction will succeed. See [http://redis.io/topics/transactions](http://redis.io/topics/transactions).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To count the number of users who have viewed an article, we can use `bitcount`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is straightforward: the number of users who saw the article equals the
+    number of bits set on the key. Now, let''s count the total number of article views:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once `multi` returns an array of results corresponding to the results returned
+    by Redis for each operation (a count of bits), we `reduce` the count to a sum
+    representing the total number of views of all our articles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we are interested, instead, in how many articles user 123 has viewed today,
+    we can use `getbit`, which simply returns the value (either 0 or 1) at a given
+    offset. The result will be in the range 0–3:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: These are very useful and direct ways to glean information from bit representations.
+    Let's go a little further and learn about filtering bits using bitmasks and the
+    AND, OR, and XOR operators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bitmasks and filtering results
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Previously, we learned how to count the number of articles user 123 has seen.
+    What if we want to check whether user 123 has read both articles? Using the bitop
+    AND, this is easy to accomplish:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: First, we create a mask that isolates a specific user stored at the key `'user123'`,
+    containing a single positive bit at offset 123 (again, representing the user's
+    ID). The results of an AND operation on two or more bit representations is not
+    returned as a value by Redis but rather written to a specified key, which is given
+    in the preceding example as `'123:sawboth'`. This key contains the bit representation
+    that answers the question whether *both* the article keys contain bit representations
+    that also have a positive bit at the same offset as the 'user123' key.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What if we wanted to find the total number of users who have seen at least
+    one article? The bitop OR works well in this case:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, the `'atleastonearticle'` key flags bits at all offsets that were set
+    in any one of the three articles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can use these techniques to create a simple recommendation engine. For example,
+    if we are able to determine via other means that two articles are similar (based
+    on tags, keywords, and so on), we can find all users that have read one and recommended
+    the other. To do this, we will use XOR in order to find all users that have read
+    the first article or the second article, but not both. We then break that set
+    into two lists: those who have read the first article and those who have read
+    the second article. We can then use these lists to offer recommendations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: While it is not necessary, we also fetch a count of each list and delete the
+    result keys when we are done.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The total number of bytes occupied by a binary value in Redis is calculated
+    by dividing the largest offset by 8\. This means that storing access data for
+    even 1,000,000 users on one article requires 125 KB—not a lot. If you have 1,000
+    articles in your database, you can store full-access data for 1,000,000 users
+    in 125 MB—again, not a very large amount of memory or storage to spend in return
+    for such a rich set of analytics data. Also, the amount of storage needed can
+    be precisely calculated ahead of time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: View the code bundle for an example of building a *like this page* service,
+    where we use a bookmarklet to trigger *likes* on any URL using bit operations
+    to store the time at which each *like* occurs (offsetting by the current second
+    on a given day).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Other useful ways to deploy bitwise ideas are easy to find. Consider that if
+    we allocate 86,400 bits to a key (the number of seconds in a day) and set a bit
+    corresponding to the current second in the day, whenever a particular action is
+    performed (such as a login), we have spent *86400 / 8 / 1000 = 10.8 KB* to store
+    login data that can easily be filtered using bitmasks to deliver analytics data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As an exercise, use bitmasks to demonstrate gender breakdown in article readership.
+    Assume that we have stored two keys in Redis, one reflecting the user IDs identified
+    as female and the other as male:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using bit operations, we filter articles by gender.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using HyperLogLog to count unique anonymous visitors
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: One of the most common things done with databases is storing and counting unique
+    things. How many events of a certain type have occurred? How many tags have been
+    created?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Consider the nearly ubiquitous task of every marketer: counting the number
+    of unique visitors to a web page. Traditionally, counting is done in databases
+    by writing a row of data or in logs by writing a line of text whenever a visitor
+    lands on a page. Each unique visit increments the set length by one. These are
+    simple and straightforward techniques.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'However, there is a problem: what if the same person arrives at the same page
+    more than once? Whenever the user *John* lands on a page, some work must be done
+    to determine whether this is a first-time occurrence (record it), or a repeat
+    occurrence (don''t record it). And there is another problem: the entire sequence
+    of bytes representing a unique identifier—typically a very long hash—must be stored.
+    Each unique item adds to the total memory expended in keeping track of item counts
+    of the cardinality of a set. As we can''t know in advance how many unique hits
+    will occur, we cannot know how much memory will be needed to store this potential
+    activity; we are, therefore, exposed to the risk of our system being overwhelmed
+    when one page or another becomes very popular, goes viral, and so on, overnight.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'HyperLogLog is a probabilistic data structure that allows a nearly infinite
+    number of unique items to be counted within a fixed memory allocation. As Salvatore
+    Sanfilippo puts it at [http://antirez.com/news/75](http://antirez.com/news/75):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*"HyperLogLog is remarkable as it provides a very good approximation of the
+    cardinality of a set even using a very small amount of memory. In the Redis implementation
+    it only uses 12kbytes per key to count with a standard error of 0.81%, and there
+    is no limit to the number of items you can count, unless you approach 2^64 items
+    (which seems quite unlikely)."*'
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: 'In your code bundle, you will find the `/hyperloglog` folder containing a simple
+    counting application. Start this application by running `server.js`, and then,
+    in your browser, visit `localhost:8080`. When you get there, click on the **Send
+    a specific value** button. You should see the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using HyperLogLog to count unique anonymous visitors](img/1403OS_04_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: You have inserted the value `123` into a HyperLogLog key, and the number returned
+    (`1`) is the cardinality of that key's set. Click on the same button a few times—
+    given that this structure maintains a count of unique values, the number should
+    not change. Now, try adding random values. You will see the numbers returned go
+    up. Regardless of how many entries you make in the log key, the same amount of
+    memory will be used. This sort of predictability is great when scaling out your
+    application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can find the `index.html` page describing this client interface in the
+    code bundle. All that the client needs to do is send an XHR request to `localhost:8080/log/<some
+    value>`. Feel free to browse the code. More to the point, let''s look at how the
+    relevant route handler is defined on the server to insert values into HyperLogLog
+    and retrieve log cardinality:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: After validating that we have received a new value on the `/log` route, we add
+    that value to `hyperLLKey` using the `PFADD` command (in Redis, if a key does
+    not exist when performing an insert operation, it is automatically created). Once
+    inserted successfully, the key is queried for its `PFCOUNT`, and the updated set's
+    cardinality is returned to the client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In addition, the `PFMERGE` command lets you merge (create the union of) several
+    HyperLogLog sets and fetch the cardinality of the resulting set. The following
+    code will result in a cardinality value of `10`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: The ability to approximate the cardinality of merged sets brings to mind the
+    sort of efficient analytics possibilities we saw when exploring bitwise operations.
+    Consider HyperLogLog when counts of many unique values are useful analytically
+    and an imprecise but very closely approximated count is sufficient (such as tracking
+    the number of users who logged in today, the total number of pages viewed, and
+    so on).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Taming V8 and optimizing performance
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: V8 manages Node's main process thread. When executing JavaScript, V8 does so
+    in its own process, and its internal behavior is *not* controlled by Node. However,
+    we can write JavaScript in a way that helps V8 achieve optimal compilation results.
+    In this section, we'll focus on how to write efficient JavaScript and take a look
+    at special configuration flags we can pass to V8 that help with keeping our Node
+    process fast and light.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The version of V8 used by your Node installation can be viewed by typing the
+    following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: Optimizing JavaScript
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The convenience of a dynamic language is in avoiding the strictness that compiled
+    languages impose. For example, you need not explicitly define object property
+    types and can actually change those property types at will. This dynamism makes
+    traditional compilation impossible but opens up interesting new opportunities
+    for exploratory languages, such as JavaScript. Nevertheless, dynamism introduces
+    a significant penalty in terms of execution speeds when compared to statically
+    compiled languages. The limited speed of JavaScript has regularly been identified
+    as one of its major weaknesses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'V8 attempts to achieve the sorts of speeds with JavaScript that one observes
+    for compiled languages. V8 attempts to compile JavaScript into native machine
+    code rather than interpreting bytecode or using other just-in-time techniques.
+    Because the precise runtime topology of a JavaScript program cannot be known ahead
+    of time (the language is dynamic), compilation consists of a two-stage, speculative
+    approach:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Initially, a first-pass compiler converts your code into a runnable state as
+    quickly as possible. During this step, type analysis and other detailed analysis
+    of the code is deferred, achieving fast compilation—your JavaScript can begin
+    executing as close to instantly as possible. Further optimizations are accomplished
+    during the second step.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Once the program is up and running, an optimizing compiler then begins its job
+    of watching how your program runs and attempting to determine its current and
+    future runtime characteristics, optimizing and re-optimizing as necessary. For
+    example, if a certain function is called many thousands of times with similar
+    arguments of a consistent type, V8 recompiles that function with optimized code.
+    While the first compile step was conservative with an as-yet unknown and untyped
+    functional signature, this *hot* function's predictable texture impels V8 to assume
+    a certain optimal profile and recompile based on that assumption.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Assumptions help us make decisions more quickly but can lead to mistakes. What
+    if the hot function that V8''s compiler just optimized against a certain type
+    signature is now called with arguments violating that optimized profile? V8 has
+    no choice in that case: it must de-optimize the function—V8 must admit its mistake
+    and roll back the work it has done. It will re-optimize in the future if a new
+    pattern is seen. However, if V8 must again de-optimize at a later time and if
+    this binary switching of optimizing/de-optimizing continues, V8 simply *gives
+    up* and leaves your code in a de-optimized state.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Two areas of focus for the V8 team are achieving fast property access and dynamically
+    creating efficient machine code. Let's look at ways to approach the design and
+    declaration of arrays, objects, and functions so that you are helping, rather
+    than hindering, the compiler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Numbers and tracing optimization/de-optimization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The ECMA-262 specification defines the `Number` value as a *primitive value
+    corresponding to a double-precision, 64-bit binary format IEEE 754 value*. The
+    point is that there is no integer type in JavaScript; there is a `Number` type
+    defined as a double-precision floating-point number.
+  prefs: []
+  type: TYPE_NORMAL
+- en: V8 uses 32-bit numbers for *all* values internally for performance reasons that
+    are too technical to discuss here. It can be said that, should greater width be
+    needed, one bit is used to point to another 32-bit number. Regardless, it is clear
+    that there are two types of values tagged as numbers by V8 and switching between
+    these types will cost you something. Try to restrict your needs to 31-bit signed
+    integers where possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Because of the type ambiguity of JavaScript, switching the types of numbers
+    assigned to a slot is allowed. The following code does not throw an error:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: However, a speculative compiler such as V8 will be unable to optimize this variable
+    assignment given that its *guess* that `a` will always be an integer turned out
+    to be wrong, forcing de-optimization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can demonstrate this using powerful V8 options available to you when executing
+    code: executing V8 native commands in your Node program and tracing how V8 optimizes/de-optimizes
+    your code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Consider the following Node program:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you try to run this normally, you receive an `Unexpected Token` error—the
+    modulo (`%`) symbol cannot be used within an identifier name in JavaScript. What
+    is this strange method with a `%` prefix? It is a V8 native command, and we can
+    turn to the execution of these types of functions using the `--allow-natives-syntax`
+    flag as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You can learn about the available native functions by browsing the V8 source
+    at [https://code.google.com/p/v8/source/browse/trunk/src/runtime.cc?r=22500](https://code.google.com/p/v8/source/browse/trunk/src/runtime.cc?r=22500),
+    and searching for **runtime_function**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, consider the following code, which uses native functions to assert information
+    about the optimization status of the `square` function using the `%OptimizeFunctionOnNextCall`
+    native method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a file using the preceding code and execute it using the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You will see something like the following output returned:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can see that V8 has no problem optimizing the `square` function as the operand
+    is declared once and never changed. Now, append the following lines to your file
+    and run it again:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'On this execution, following the optimization report given earlier, you should
+    now receive something like the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: This very expressive optimization report tells the story very clearly—the once-optimized
+    `square` function was de-optimized following the change we made in one number's
+    type. You are encouraged to spend time writing code and to test it using these
+    methods now and as you move through this section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Objects and arrays
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: As we learned when investigating numbers, V8 works best when your code is predictable.
+    The same holds true with arrays and objects. Nearly all of the following *bad
+    practices* are bad for the simple reason that they create unpredictability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Remember that, in JavaScript, an object and an array are very similar *under
+    the hood*. We won't be discussing those differences but only the important similarities,
+    specifically in terms of how both these data constructs benefit from similar optimization
+    techniques.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Avoid mixing types in arrays. It is always better to have a consistent data
+    type, such as *all integers* or *all strings*. Also, avoid changing types in arrays
+    or in property assignments after initialization, if possible. V8 creates *blueprints*
+    of objects by creating hidden classes to track types, and, when those types change,
+    the optimization blueprints will be destroyed and rebuilt—if you''re lucky. See
+    the following link for more information:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://developers.google.com/v8/design](https://developers.google.com/v8/design)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Don''t create arrays with gaps, an example of which is shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Sparse arrays are bad for this reason: V8 can either use a very efficient *linear
+    storage* strategy to store (and access) your array data, or it can use a hash
+    table (which is much slower). If your array is sparse, V8 must choose the less
+    efficient of the two. For the same reason, always start your arrays at the zero
+    index. Also, don''t ever use `delete` to remove elements from an array. You are
+    simply inserting an `undefined` value at that position, which is just another
+    way of creating a sparse array. Similarly, be careful about populating an array
+    with empty values—ensure that the external data you are pushing into an array
+    is not incomplete.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Try not to pre-allocate large arrays—grow as you go. Similarly, do not pre-allocate
+    an array and then exceed that size. You always want to avoid spooking V8 into
+    turning your array into a hash table.
+  prefs: []
+  type: TYPE_NORMAL
+- en: V8 creates a new hidden class whenever a new property is added to an object
+    constructor. Try to avoid adding properties after an object is instantiated. Initialize
+    all members in constructor functions in the same order. *Same properties + same
+    order = same object*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Remember that JavaScript is a dynamic language that allows object (and object
+    prototype) modifications *after* instantiation. Since the shape and volume of
+    an object can, therefore, be altered *after the fact*, how does V8 allocate memory
+    for objects? It makes certain reasonable assumptions. After a set number of objects
+    is instantiated from a given constructor (I believe 8 is the trigger number),
+    the largest of these is assumed to be of the maximum size, and all further instances
+    are allocated that amount of memory (and the initial objects are similarly resized).
+    A total of 32 *fast property slots* is then allocated to each instance based on
+    this assumed maximum size. Any *extra properties* are slotted into a (slower)
+    overflow property array that can be resized to accommodate any further new properties.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With objects, just as with arrays, try as much as possible to define the shape
+    of your data structures in a *futureproof* manner, with a set number of properties,
+    types, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Functions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Functions are typically called often and should be one of your prime optimization
+    focuses. Functions containing try-catch constructs are *not optimizable*, nor
+    are functions containing other *unpredictable* constructs, such as `with` and
+    `eval`. If, for some reason, your function is not optimizable, keep its use to
+    a minimum.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A very common optimization error involves the use of polymorphic functions.
+    Functions that accept variable function arguments will be de-optimized. Avoid
+    polymorphic functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Caching strategies
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**Caching**, generally, is the strategy of creating easily accessible intermediate
+    versions of assets. When retrieving an asset is expensive—in terms of time, processor
+    cycles, memory, and so on—you should consider caching that asset. For example,
+    if a list of Canadian provinces must be fetched from your database each time a
+    person from that country visits, it is a good idea to store that list in a static
+    format, obviating the expensive operation of running a database query on each
+    visit. A good caching strategy is essential to any web-based application that
+    serves large numbers of rendered data views, be they HTML pages or JSON structures.
+    Cached content can be served cheaply and quickly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Whenever you deploy content that doesn''t change often, you most likely want
+    to cache your files. Two general types of *static* assets are commonly seen. Assets
+    such as a company logo, existing as-is in a content folder, will change very rarely.
+    Other assets do change more often but much less frequently than on every request
+    of the asset. This second class encompasses such things as CSS style sheets, lists
+    of user contacts, latest headlines, and so on. Creating a reliable and efficient
+    caching system is a nontrivial problem:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|   | *"There are only two hard things in Computer Science: cache invalidation
+    and naming things."* |   |'
+  prefs: []
+  type: TYPE_TB
+- en: '|   | --*Phil Karlton* |'
+  prefs: []
+  type: TYPE_TB
+- en: In this section, we'll look at two strategies to cache your application content.
+    First, we'll look at using Redis as an in-memory key-value cache for regularly
+    used JSON data, learning about the Redis key expiry and key scanning. Finally,
+    we'll investigate how to manage your content using the CloudFlare **content delivery
+    network** (**CDN**), in the process learning something about using Node to watch
+    for file changes and then invalidating a CDN cache when change events are detected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using Redis as a cache
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the example session-store implemented earlier, cookie values were stored
+    in Redis and matched against incoming values to provide simple session management.
+    This sort of regular checking of small, in-memory values is a common pattern in
+    multiuser environments, for which technologies such as **memcached** were developed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Redis is fully capable of functioning as a similar in-memory caching system.
+    Let's implement a simple caching layer using Redis that intelligently manages
+    key association and expiry.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Because many types of information will be cached, it is a good idea to namespace
+    your cache keys. We''ll structure our cache library such that individual namespace-aware
+    cache APIs can be instantiated:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Typically, our caching layer will be decoupled from any given server, so here
+    we design a constructor that expects Redis''s connection and authentication information.
+    Note the prefix argument. To instantiate a cache instance, use the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: Also note that we're going to implement the cache API using **Promises** via
+    the `bluebird` library ([https://github.com/petkaantonov/bluebird](https://github.com/petkaantonov/bluebird)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Getting a cached value is straightforward:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'All cache keys will be implemented as Redis hashes, so a `GET` operation will
+    involve calling `hmget` on a key. The Promises-powered API now enables the following
+    easy-to-follow syntax:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Setting a value is simply a matter of passing an object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When `val` is received, we reflect its key-value map in the Redis hash stored
+    at `key`. The optional third argument, `ttl`, allows a flag to be set in Redis
+    to expire this key after a number of seconds, flagging it for deletion. The key
+    bit of code in `this.expire` is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: For more information on Redis `expire`, visit [http://redis.io/commands/expire](http://redis.io/commands/expire).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `remove` method is simply a `del` operation on the Redis keyspace, so there
+    is no need to explain it here. More interesting is the implementation of the `clear`
+    method to remove all keys with a given prefix from Redis:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note the `scan` method we are using to target and delete keys matching our cache
+    prefix. Redis is designed for efficiency, and, as much as possible, its designers
+    aim to avoid adding slow features. Unlike other databases, Redis has no advanced
+    *find* method of searching its keyspace, with developers limited to *keys* and
+    basic glob pattern matching. Because it's common to have many millions of keys
+    in a Redis keyspace, operations using *keys*, unavoidably or through sloppiness,
+    can end up being punitively expensive because a long operation blocks other operations—transactions
+    are atomic, and Redis is single-threaded.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `scan` method allows you to fetch limited ranges of the keyspace in an
+    iterative manner, enabling (nonblocking) asynchronous keyspace scanning. The scan
+    object itself is stateless, passing only a cursor indicating whether there are
+    further records to be fetched. Using this technique, we are able to clean out
+    all keys prefixed with our target cache key (pattern: `this.prefix + ''*''`).
+    On each scan iteration, we queue up any returned keys for deletion using the `multi.del`
+    function, continuing until the scanner returns a zero value (indicating that all
+    sought keys have been returned), at which point we delete all those keys in one
+    command.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Tie these methods together:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is a simple caching strategy to get you started. While managing key expiration
+    yourself is a perfectly valid technique, as you move into larger production implementations,
+    consider configuring Redis''s eviction policies directly. For example, you will
+    want to set the `maxmemory` value in `redis.conf` to some maximum upper bound
+    for the cache memory and configure Redis to use one of the six documented eviction
+    policies when memory limits are reached, such as **Least Recently Used** (**LRU**).
+    For more information, visit: [http://redis.io/topics/lru-cache](http://redis.io/topics/lru-cache).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deploying CloudFlare as a CDN
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A CDN is typically a globe-spanning network of servers leased out to companies
+    unable to fund and build their own network. A CDN is set up to ensure that your
+    application or other content remains available to anyone who wishes to access
+    it, wherever they choose to access it in the world, and that your content is delivered
+    quickly. Akamai is perhaps the most famous CDN, and CloudFlare is a recent arrival
+    with a particular focus on security and "attack proofing" networks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Usefully for our purposes, CloudFlare provides a free tier of service that satisfies
+    the needs of most deployed applications. In the example that follows, you'll learn
+    how to enable caching with CloudFlare. We'll then use the `cloudflare` module
+    to purge your domain files when they change, in the process learning how to use
+    Node's `fs.watch` method to watch for file changes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: CloudFlare has also embarked on an ambitious effort to host *all the JS* on
+    its CDN at [https://cdnjs.com/](https://cdnjs.com/). Unlike other popular hosting
+    services that only host the most popular JavaScript libraries, CloudFlare hosts
+    all projects represented in the open GitHub project at [https://github.com/cdnjs/cdnjs](https://github.com/cdnjs/cdnjs).
+    Consider deploying your JavaScript files via this service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To start, visit [https://www.cloudflare.com/sign-up](https://www.cloudflare.com/sign-up)
+    and set up a free account. You will need a domain to host files on—follow the
+    instructions to configure your name servers and other DNS information. Once signed
+    up, you will receive an authentication token and will use this to add CDN support
+    to your application. CloudFlare does not cache HTML files by default. To enable
+    HTML caching, visit your dashboard, locate your domain, open the options menu,
+    and select **Page rules**. If your domain is `foo.com`, the following page rule
+    will enable full caching: `*foo.com/*`. Finally, locate the **Custom Caching**
+    dropdown on the page rules admin page and select **Cache everything**.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let''s establish a connection with CloudFlare:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In our example, we will serve (and modify) a single `index.html` file. For
+    this example, we will create a simple server:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note how `max-age` is set on the `cache-control` header. This will indicate
+    to CloudFlare that we want this file cached.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With the server set up, we will now add the following `purge` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: When this method is passed a file path, it asks CloudFlare to purge its cache
+    of this file. Note how we must use two purge actions to accommodate subdomains.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With purging set up, all that is left to do is watch the filesystem for changes.
+    This can be accomplished via the `fs.watch` command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, whenever the `index.html` file is changed, our CDN will flush its cached
+    version. Create that file, start up the server, and point your browser to `localhost:8080`,
+    bringing up your index file. In your browser''s developer console, inspect the
+    response headers—you should see a `CF-Cache-Status: MISS` record. This means that
+    **CloudFlare** (**CF**) has fetched and served the original file from your server—on
+    the first call, there is no cached version yet, so the cache was *missed*. Reload
+    the page. The same response header should now read `CF-Cache-Status: HIT`. Your
+    file is cached!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Go ahead and change the index file in some way. When you reload your browser,
+    the changed version will be displayed—its cached version has been purged, the
+    file has been fetched once again from your server, and you will see the `MISS`
+    header value again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You will want to expand this functionality to include a larger group of files
+    and folders. To learn more about `fs.watch`, go to [http://nodejs.org/api/fs.html#fs_fs_watch_filename_options_listener](http://nodejs.org/api/fs.html#fs_fs_watch_filename_options_listener).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Managing sessions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The HTTP protocol is stateless. Any given request has no information about previous
+    requests. For a server, this means that determining whether two requests originated
+    from the same browser is not possible without further work. That's fine for general
+    information, but targeted interactions require a user to be verified via some
+    sort of unique identifier. A uniquely identified client can then be served targeted
+    content—from lists of friends to advertisements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This semipermanent communication between a client (often a browser) and a server
+    persists for a period of time—at least until the client disconnects. That period
+    of time is understood as a *session*. An application that manages sessions must
+    be able to create a unique user session identifier, track the activity of an identified
+    user during that session, and disconnect that user when requested or for some
+    other reason, such as on reaching a session limit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we'll implement a **JSON Web Token** (**JWT**) system for session
+    management. JWT's have an advantage over traditional cookie-based sessions in
+    that they do not require the server to maintain a session store as JWTs are self-contained.
+    This greatly helps with deployments and scaling. They are also mobile friendly
+    and can be shared between clients. While a new standard, JWTs should be considered
+    as a simple and scalable session storage solution for your applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: JSON Web Token authentication and sessions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'A basic authentication system might require a client to send a username and
+    password on each request. To initiate a token-based authenticated session, a client
+    sends credentials just once, receives a token in exchange, and then sends only
+    that token on subsequent requests, gaining any access that token provides. Incessantly
+    passing around sensitive credentials is no longer required, as the following diagram
+    demonstrates:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![JSON Web Token authentication and sessions](img/1403OS_04_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: One particular advantage of JWTs is that servers are no longer responsible for
+    maintaining access to a common database of credentials as only the *issuing authority*
+    needs to validate an initial signin. There is no need to maintain a session store
+    when you are using JWTs. The issued token (think of it as an access card) can,
+    therefore, be used within any domain (or server) that recognizes and accepts it.
+    In terms of performance, the cost of a request is now the cost of decrypting a
+    hash versus the cost of making a database call to validate credentials. We also
+    avoid the problems we can face using cookies on mobile devices, such as cross-domain
+    issues (cookies are domain-bound), certain types of request forgery attacks, and
+    so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's look at the structure of a JWT and build a simple example demonstrating
+    how to issue, validate, and otherwise use JWTs to manage sessions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A JWT token has the following format:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: Each segment is described in the JSON format.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A **header** simply describes the token—its type and encryption algorithm.
+    Take the following code as an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we declare that this is a JWT token, which is encrypted using `HMAC SHA-256`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: See [http://nodejs.org/api/crypto.html](http://nodejs.org/api/crypto.html) for
+    more information about encryption and how to perform encryption with Node. The
+    JWT specification itself can be found at [http://self-issued.info/docs/draft-ietf-oauth-json-web-token.html](http://self-issued.info/docs/draft-ietf-oauth-json-web-token.html).
+    Note that the JWT specification is in a draft state at the time of writing this,
+    so changes may be made in the future.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The **claims** segment outlines security and other constraints that should
+    be checked by any service receiving the JWT. Check the specification for a full
+    accounting. Typically, a JWT claims manifest will want to indicate when the JWT
+    was issued, who issued it, when it expires, who the subject of the JWT is, and
+    who should accept the JWT:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `iat` (issued-at) and `exp` (expires) claims are both set to numeric values
+    indicating the number of seconds since the Unix epoch. The `iss` (issuer) should
+    be a URL describing the issuer of the JWT. Any service that receives a JWT must
+    inspect the `aud` (audience), and that service must reject the JWT if it does
+    not appear in the audience list. The `sub` (subject) of the JWT identifies the
+    subject of the JWT, such as the user of an application—a unique value that is
+    never reassigned, such as the name of the issuing service and a unique user ID.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, useful data is attached using a key-value pairing of your choice. Here,
+    let's call the token data `sessionData`. Note that we need to encrypt this data—the
+    signature segment of a JWT prevents tampering with session data, but JWTs are
+    not themselves encrypted (you can always encrypt the entire token itself though).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last step is to create a signature, which, as mentioned, prevents tampering—a
+    JWT validator specifically checks for mismatches between the signature and the
+    packet received.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What follows is a scaffold server and client example demonstrating how to implement
+    a JWT-driven authentication system. Rather than implementing the various signing
+    and validation steps *by hand*, we'll use the `jwt-simple` package. Feel free
+    to browse the `/jwt` folder in your code bundle, which contains the full code
+    we'll be unpacking next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To ask for a token, we will use the following client code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: We'll implement the server code next. For now, note that we have a `send` method
+    that expects, at some point, to have a global `token` set for it to pass along
+    when making requests. The initial `/login` is where we ask for that token.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using the Express web framework, we create the following server and `/login`
+    route:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that we store `jwtsecret` on the app server. This is the key that is used
+    when we are signing tokens. When a login attempt is made, the server will return
+    the result of `jwt.encode`, which encodes the JWT claims discussed previously.
+    That''s it. From now on, *any* client that mentions this token to the correct
+    audience will be allowed to interact with any services those audience members
+    provide for a period expiring 7 days from the date of issue. These services will
+    implement something like the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we are simply fetching the `Authorization` header (stripping out `Bearer`)
+    and decoding via `jwt.decode`. A service must at least check for token expiry,
+    which we do here by comparing the current number of seconds from the `epoch` to
+    the token's **expiry** time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using this simple framework, you can create an easily scalable authentication/session
+    system using a secure standard. No longer required to maintain a connection to
+    a common credentials database, individual services (deployed perhaps as microservices)
+    can use JWTs to validate requests, incurring little CPU latency or memory cost.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We covered a lot of ground in this chapter. Best practices for writing efficient
+    JavaScript that the V8 interpreter can handle properly were outlined, including
+    an exploration of garbage collection, the advantages of Node streams, and how
+    JavaScript prototypes should be deployed in order to save memory. Continuing with
+    the theme of reducing storage costs, we explored various ways in which Redis can
+    help with storing large amounts of data in a space-efficient way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, we looked at strategies to build composable, distributed systems.
+    In the discussion on microservices, we touched on approaches to network many individual
+    services and build the networks they can use to communicate with each other—from
+    pub/sub to Seneca's pattern and action models. Joined with the examples of caching
+    techniques, a reasonably complete picture of the issues you might want to consider
+    when planning out resource management in your application was established.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After you build up a reasonably sophisticated architecture, it becomes more
+    and more necessary to build probes and other monitoring tools to stay on top of
+    what is going on. In the next chapter, we'll build tools to help you trace the
+    changing topology of running applications.
+  prefs: []
+  type: TYPE_NORMAL

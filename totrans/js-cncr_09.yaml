@@ -1,0 +1,643 @@
+- en: Chapter 9. Advanced NodeJS Concurrency
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 8](ch08.html "Chapter 8. Evented IO with NodeJS"), *Evented IO with
+    NodeJS*, you learned about the concurrency mechanism that's central to NodeJS
+    applications—the IO event loop. In this chapter, we'll dig into some more advanced
+    topics that are both—complimentary to the event loop and contrary to the event
+    loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kicking us off is a discussion on implementing coroutines in Node using the
+    `Co` library. Next, we'll look at creating subprocesses and communicating with
+    these processes. After this, we'll dig into Node's built-in capability to create
+    a process cluster, each with their own event loop. We'll close this chapter with
+    a look at creating clusters at large-scale clusters of Node servers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Coroutines with Co
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We've already seen one approach to implement coroutines in the front-end using
+    generators, in [Chapter 4](ch04.html "Chapter 4. Lazy Evaluation with Generators"),
+    *Lazy Evaluation with Generators*. In this section, we'll use the `Co` library
+    ([https://github.com/tj/co](https://github.com/tj/co)) to implement coroutines.
+    This library also relies on generators and promises.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll start by walking through the general premise of `Co`, and then, we'll
+    write some code that waits for asynchronous values using promises. We'll then
+    look into the mechanics of transferring resolved values from a promise to our
+    coroutine function, asynchronous dependencies, and creating coroutine utility
+    functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generating promises
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'At its core, the `Co` library uses a `co()` function to create a coroutine.
+    In fact, its basic usage looks familiar to the coroutine function that we created
+    earlier in this book. Here''s what it looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Another similarity between the `Co` library and our earlier coroutine implementation
+    is that values are passed in through the `yield` statement. However, instead of
+    calling the returned function to pass in the values, this coroutine uses promises
+    to pass in values. The effect is the same—asynchronous values being passed into
+    synchronous code, as this diagram shows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Generating promises](img/B05133_09_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The asynchronous value actually comes from a promise. The resolved value makes
+    its way into the coroutine. We'll dig deeper into the mechanics of how this works
+    shortly. Even if we don't yield promises, say we yielded a string for instance,
+    the `Co` library will wrap this into a promise for us. But, doing this defeats
+    the purpose of using asynchronous values in synchronous code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: It cannot be understated how valuable it is for us, as programmers, when we
+    find a tool such as `Co`, that encapsulates messy synchronization semantics. Our
+    code inside the coroutine is synchronous and maintainable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Awaiting values
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Coroutines created by the `co()` function work a lot like ES7 asynchronous
+    functions. The `async` keyword marks a function as asynchronous—meaning that it
+    uses asynchronous values within. The `await` keyword, used in conjunction with
+    a promise, pauses the execution of the function till the value resolves. If this
+    feels a lot like what a generator does, it''s because it''s exactly what a generator
+    does. Here''s what the ES7 syntax looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this example, the promises are resolved immediately, so there''s no real
+    need to pause the execution. However, it waits even if the promise resolves a
+    network request that takes several seconds. We''ll go into more depth on resolving
+    promises in the next section. Given that this is ES7 syntax, it''d be nice if
+    we could use the same approach today. Here''s how we would implement the same
+    thing with `Co`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: It should be no surprise that the `Co` library is moving in the direction of
+    ES7; nice move `Co` authors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Resolving values
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'There are at least two places in a given `Co` coroutine where a promise is
+    resolved. First, there''s one or more promises yielded from within the generator
+    function that we''ll pass to `co()`. If there weren''t any promises yielded within
+    this function, there wouldn''t be much point in using `Co`. The return value when
+    calling `co()` is another promise, which is kind of cool because it means that
+    coroutines can have other coroutines as dependencies. We''ll explore this idea
+    in more depth momentarily. For now, let''s look at resolving the promises, and
+    how it''s done. Here''s an illustration of the promise resolution order of a coroutine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Resolving values](img/B05133_09_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The promises are resolved in the same order that they''re named. For instance,
+    the first promise causes the execution of the code within the coroutine to pause
+    execution until it''s value is resolved. Then, the execution is paused again while
+    waiting for the second promise. The final promise that''s returned from `co()`
+    is resolved with the return value of the generator function. Let''s look at some
+    code now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: As we can see, the return value from the generator ends up as the resolved promise
+    value. Recall that returning from a generator will return the same object as yielding
+    does with the `value` and `done` properties. `Co` knows to resolve the promise
+    with the `value` property.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Asynchronous dependencies
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Coroutines made with `Co` really shine when an action depends on an earlier
+    asynchronous value later on in the coroutine. What would otherwise be a tangled
+    mess of callbacks and state is instead just placing the assignments in the correct
+    order. The dependent action is never called until the value is resolved. Here''s
+    an illustration of the idea:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Asynchronous dependencies](img/B05133_09_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Now let''s write some code that has two asynchronous actions, where the second
+    action depends on the result of the first. This can be tricky, even with the use
+    of promises:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: We used a nested coroutine in this example, but it could have been any type
+    of function that required a parameter and returned a promise. This example, if
+    nothing else, serves to highlight the versatility of promises in a concurrent
+    environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Wrapping coroutines
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The last `Co` example that we''ll look at uses the `wrap()` utility to make
+    a plain coroutine function into a reusable function that we can call over and
+    over. As the name suggests, the coroutine is simply wrapped in a function. This
+    is especially useful when we pass arguments to coroutines. Let''s take a look
+    at a modified version of the code example that we built:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: So, instead of a nested coroutine, we used `co.wrap()` to create a reusable
+    coroutine function. That is, it'll create a new coroutine every time it's called,
+    passing it all the arguments that the function gets. There really isn't much more
+    to it than this, but the gains are noticeable and worthwhile. Instead of a nested
+    coroutine function, we have something that can potentially be shared across components.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Child Processes
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We know that NodeJS uses an evented IO loop as its main concurrency mechanism.
+    This is based on the assumption that our application does a lot of IO and very
+    little CPU-intensive work. This is probably true for the majority of handlers
+    in our code. However, there's always a particular edge case that requires more
+    CPU time than usual.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we'll discuss how handlers can block the IO loop, and why all
+    it takes is one bad handler to ruin the experience for everyone else. Then, we'll
+    look at ways to get around this limitation by forking new Node child processes.
+    We'll also look at how to spawn other non-Node processes in order to get the data
+    that we need.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blocking the event loop
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In [Chapter 8](ch08.html "Chapter 8. Evented IO with NodeJS"), *Evented IO with
+    NodeJS*, we saw an example that demonstrated how one handler can block the entire
+    IO event loop while performing expensive CPU operations. We're going to reiterate
+    this point here to highlight the full scope of the problem. It's not just one
+    handler that we're blocking, but all handlers. This could be hundreds, or it could
+    be thousands, depending on the application, and how it's used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Since we''re not processing requests in parallel at the hardware level, which
+    is the case with the multithreaded approach—it only takes one expensive handler
+    to block all handlers. If there''s one request that''s able to cause this expensive
+    handler to run, then we''re likely to receive several of these expensive requests,
+    bringing our application to a standstill. Let''s look at a handler that blocks
+    every other handler that comes in after it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first call to `process.nextTick()`simulates actual client requests by scheduling
+    functions to run after one second. All these lead to a single promise being resolved;
+    and this logs the fact that all the requests have been handled. The next call
+    to `process.nextTick()` is expensive and completely blocks these 500 requests.
+    This definitely isn't good for our application. The only way around scenarios
+    where we run CPU-intensive code inside of NodeJS is to break out of the single-process
+    approach. This topic is covered next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Forking processes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We''ve reached the point in our application where there''s simply no way around
+    it. We have some relatively expensive requests to process. We need to utilize
+    parallelism at the hardware layer. In Node, this means only one thing—forking
+    a child process to handle the CPU-intensive work outside of the main process so
+    that normal requests may continue on uninterrupted. Here''s an illustration of
+    what this tactic looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Forking processes](img/B05133_09_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Now, let''s write some code that uses the `child_process.fork()` function to
+    spawn a new Node process, when we need to process a request that''s CPU-hungry.
+    First, the main module:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The only overhead we face now is that of actually spawning the new process,
+    which pales in comparison to the actual work that we need to perform. We can clearly
+    see that the main IO loop isn''t blocked because the main process isn''t hogging
+    the CPU. The child process, on the other hand, hammers the CPU, but this is okay
+    because it''s probably happening on a different core. Here''s what our child process
+    code looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Spawning external processes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Sometimes, our Node applications need to talk to other programs that aren''t
+    Node processes. These could be other applications we write, but using a different
+    platform or basic system commands. We can spawn these types of processes and talk
+    to them, but they don''t work the same as forking another node process. Here''s
+    a visualization of the difference:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Spawning external processes](img/B05133_09_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: We could use `spawn()` to create a child Node process if we're so inclined,
+    but this puts us at a disadvantage in some cases. For example, we don't get the
+    message-passing infrastructure that's setup automatically for us by `fork()`.
+    However, the best communication path depends on what we're trying to achieve,
+    and most of the time, we don't actually need message-passing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s look at some code that spawns a process and reads the output of that
+    process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The `ls` command that we spawn doesn't exist on Windows systems. I have no other
+    consolatory words of wisdom here—it's just a fact.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inter-process communication
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the example that we just looked at, the child process was spawned, and our
+    main process collected the output, killing the process; but, what about when we
+    write servers and other types of long-lived programs? Under these circumstances,
+    we probably don''t want to constantly spawn and kill child processes. Instead,
+    it''s probably better to keep the process alive alongside the main program and
+    keep feeding it messages, as is illustrated here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Inter-process communication](img/B05133_09_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Even if the worker is synchronously processing requests, it still serves as
+    an advantage to our main application because nothing blocks it from serving requests.
+    For instance, requests that don''t require any heavy-lifting on behalf of the
+    CPU can continue to deliver fast responses. Let''s turn our attention to a code
+    example now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now let''s take a look at the `worker` module that we fork from the main module:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Each number in the arrays that we create is passed to the worker process where
+    the CPU-heavy work is performed. The result is passed back to the main process,
+    and is used to resolve a promise. This technique is very similar to the promise
+    approach that we took with web workers in [Chapter 7](ch07.html "Chapter 7. Abstracting
+    Concurrency"), *Abstracting Concurrency*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are two results we're trying to compute here—one for the `first` array,
+    and one for the `second`. The first one has more array items than the second one,
+    and the numbers are larger. This means that this will take longer to compute,
+    and, in fact, it does. But, if we run this code, we don't see the output from
+    the second array until the first has completed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is because despite requiring less CPU time, the second job is still blocked
+    because the order of the messages sent to the worker is preserved. In other words,
+    all 100 messages from the first array are processed before even starting on the
+    second array. At first glance, this may seem like a bad thing because it doesn't
+    actually solve anything for us. Well, this simply not true.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The only thing that's blocked are the queued messages that arrive at the worker
+    process. Because the worker is busy with the CPU, it can't process messages immediately
+    as they arrive. However, the purpose of this worker is to remove the heavy processing
+    from web request handlers that require it. Not every request handler has this
+    type of heavy load, and guess what? They can continue to run normally because
+    there's nothing in the process that hogs the CPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, as our applications continue to grow larger and more complex due to
+    added features and the ways in which they interact with other features, we'll
+    need a better approach to handling expensive request handlers because we'll have
+    more of them. This is what we're going to cover in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Process Clusters
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the preceding section, we introduced child process creation in NodeJS. This
+    is a necessary measure for web applications when request handlers start consuming
+    more and more CPU, because of the way that this can block every other handler
+    in the system. In this section, we'll build on this idea, but instead of forking
+    a single general-purpose worker process, we'll maintain a pool of general-purpose
+    processes, which is capable of handling any request.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll start by reiterating the challenges posed by manually managing these processes
+    that help us with concurrency scenarios in Node. Then, we'll look at the built-in
+    process clustering capabilities of Node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Challenges with process management
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The obvious problem with manually orchestrating processes within our application
+    is that the concurrent code is right there, out in the open, intermingling with
+    the rest of our application code. We actually experienced the exact same problem
+    earlier in this book when implementing web workers. Without encapsulating the
+    synchronization and the general management of the workers, our code consists mostly
+    of concurrency boilerplate. Once this happens, it's tough to separate the concurrency
+    mechanisms from the code that's essential to the features that make our product
+    unique.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One solution with web workers is to create a pool of workers and hide them behind
+    a unified API. This way, our feature code that needs to do things in parallel
+    can do so without littering our editors with concurrency synchronization semantics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It turns out that NodeJS solves the problem of leveraging the hardware parallelism
+    available on most systems, which is similar to what we did with web workers. Next,
+    we'll jump into how this works.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstracting process pools
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We're able to use the `child_process` module to manually fork our Node process
+    to enable true parallelism. This is important when doing CPU-intensive work that
+    could block the main process, and hence, the main IO event loop that services
+    incoming requests. We could increase the level of parallelism beyond just a single
+    worker process, but that would require a lot of manual synchronization logic on
+    our part.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `cluster` module requires a little bit of setup code, but the actual communication
+    orchestration between worker processes and the main process is entirely transparent
+    to our code. In other words, it looks like we're just running a single Node process
+    to handle our incoming web requests, but in reality, there are several cloned
+    processes that handle them. It's up to the `cluster` module to distribute these
+    requests to the worker nodes, and by default, this uses the round-robin approach,
+    which is good enough for most cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On Windows, the default isn't round-robin. We can manually change the approach
+    we want to use, but the round-robin approach keeps things simple and balanced.
+    The only challenge is when we have request handlers that are substantially more
+    expensive to run than the majority. Then, we can end up distributing requests
+    to an overloaded worker process. This is just something to be aware of when troubleshooting
+    this module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s a visualization showing worker Node processes relative to the main
+    Node process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Abstracting process pools](img/B05133_09_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The main process has two responsibilities in a clustering scenario. First,
+    it needs to establish communication channels with worker processes. Second, it
+    needs to accept incoming connections and distribute them to the worker processes.
+    This is actually trickier to draw and so isn''t represented in the diagram. Let''s
+    look at some code before I try to explain this any further:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: What's really nice about this approach to parallelizing our request handlers
+    is that the concurrent code is unobtrusive. There' are about 10 lines of it in
+    total. At a glance, we can easily see what this code does. If we want to see this
+    application in action, we can open several browser windows and point them to the
+    server at the same time. Since the request handler is expensive in terms of CPU
+    cycles, we should be able to see that each page responds with the value that was
+    computed as well as the worker ID that computed it. If we hadn't forked these
+    worker processes, then we'd probably still be waiting for each of our browser
+    tabs to load.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The only part that's a little tricky is the part where we actually create the
+    HTTP server. Because this same code is run by each of the workers, the same host
+    and port are used on the same computer—how can this be? Well, this is not actually
+    what's happening. The `net` module, the low-level networking library that the
+    `http` module uses, is actually cluster-aware. This means that when we ask the
+    `net` module to listen to a socket for incoming requests, it first checks if it's
+    a worker node. If it is, then it actually shares the same socket handle used by
+    the main process. This is pretty neat. There's a lot of ugly logistics required
+    to distribute requests to worker processes and actually hand off the request,
+    all of which is handled for us by the `cluster` module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Server clusters
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: It's one thing to scale up a single machine that's running our NodeJS application
+    by enabling parallelism through process management. This is a great way to get
+    the most of our physical hardware or our virtual hardware—they both cost money.
+    However, there's an inherent limitation to scaling up just one machine—it can
+    only go so far. At some threshold in some dimension of our scaling problems, we'll
+    hit a wall. Before this happens, we need to think about scaling our Node application
+    to several machines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we'll introduce the idea of proxying our web requests to other
+    machines instead of handling them all on the machine where they arrive. Then,
+    we'll look at implementing microservices, and how they can help compose a sound
+    application architecture. Finally, we'll implement some load balancing code that's
+    tailored to our application; and how it handles requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Proxying requests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A request proxy in NodeJS is exactly what it sounds like. The request arrives
+    at a server where it's handled by a Node process. However, the request isn't fulfilled
+    here—it's proxied to another machine. So the question is, why bother with the
+    proxy at all? Why not go straight to the target machine that actually responds
+    to our requests?
+  prefs: []
+  type: TYPE_NORMAL
+- en: The problem with this idea is that Node applications typically respond to HTTP
+    requests coming from a browser. This means that we generally need a single entry
+    point into the back-end. On the other hand, we don't necessarily want this single
+    entry point to be a single Node server. This gets kind of limiting when our application
+    grows larger. Instead, we want the ability to spread our application or scale
+    it horizontally as they say. Proxy servers remove geographic restrictions; different
+    parts of our application can be deployed in different parts of the world, different
+    parts of the same data center, or even as different virtual machines. The point
+    is that we have the flexibility to change where our application components reside,
+    and how they're configured without impacting other parts of the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another cool aspect of distributing web requests via proxy is that we can actually
+    program our proxy handlers to modify requests and responses. So while the individual
+    services that our proxy depends on can implement one specific aspect of our application,
+    the proxy can implement the generic parts that apply to every request. Here is
+    a visualization of a proxy server and the API endpoints that actually fulfill
+    each request:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Proxying requests](img/B05133_09_08.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Facilitating micro-services
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Depending on the type of application that we're building, our API can be one
+    monolithic service, or it can be composed of several microservices. On the one
+    hand, monolithic APIs tend to be easier to maintain for smaller applications that
+    don't have a large breadth of features and data. On the other hand, APIs for larger
+    applications tend to grow outrageously complex to the point that it's impossible
+    to maintain because there are so many areas that are all intertwined with one
+    another. If we split them out into microservices, it's much easier to deploy them
+    to specific environments suited to their needs and have a dedicated team focus
+    on one service that's working well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Microservice architecture is a huge topic that obviously goes well beyond the
+    scope of this book. The focus here is on microservice enablement—the mechanism
+    more so than the design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We''re going to use the node-http-proxy ([https://github.com/nodejitsu/node-http-proxy](https://github.com/nodejitsu/node-http-proxy))
+    module to implement our proxy servers. This isn''t a core Node module, so our
+    applications need to include it as an `npm` dependency. Let''s look at a basic
+    example that proxies requests to the appropriate service:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This example starts three web servers, each running on different ports.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The two services hello and world aren't actually listed here because all they
+    do is return a single line of plain text for any request. They' listen on ports
+    `8082` and `8083` respectively. The `http-proxy` module makes it easy for us to
+    simply forward the request to the appropriate service using the minimal amount
+    of logic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Informed load balancing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Earlier in this chapter, we looked at process clustering. This is where we use
+    the `cluster` module to create a pool of processes, each capable of handling requests
+    from clients. The main process acts as a proxy in this scenario, and by default,
+    distributes requests to the worker processes in a round-robin fashion. We can
+    do something similar using the `http-proxy` module, but using a less naive approach
+    than round-robin one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, let''s say we have two instances of the same micro service running.
+    Well, one of these services could become busier than the other, which knocks the
+    service off balance because the busy node will continue to receive requests even
+    though it can''t get to them right away. It makes sense to hold onto the requests
+    until the service can handle them. First, we''ll implement a service that randomly
+    takes a while to complete:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now we can start two instances of these processes, listening on different ports.
+    In practice, these will be running on two different machines, but we''re just
+    testing the idea at this point. Now we''ll implement the proxy server that needs
+    to figure out which service worker a given request goes to:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: The key thing to note about the way this proxy works is that requests are only
+    proxied to services that aren't already busy handling a request. This is the informed
+    part—the proxy knows when the server is available because it responds with the
+    last request that it was busy with. When we know which servers are busy, we know
+    not to overload them with yet more work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we looked beyond the event loop as a concurrency mechanism
+    in NodeJS. We started out by implementing coroutines using the `Co` library. From
+    there, we learned about launching new processes, including the difference between
+    forking another Node process and spawning other non-Node processes. Then, we looked
+    at another approach to managing concurrency using the `cluster` module, which
+    makes handling web requests in parallel processes as transparent as possible.
+    Finally, we wrapped up the chapter with a look at using the `node-http-proxy`
+    module to parallelize our web requests at the machine level.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That does it for JavaScript concurrency topics. We've covered a lot of ground,
+    both in the browser and in Node. But, how do these ideas and components all come
+    together to form a concurrent application? In the final chapter of this book,
+    we'll walk through the implementation of a concurrent app.
+  prefs: []
+  type: TYPE_NORMAL

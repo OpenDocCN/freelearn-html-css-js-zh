@@ -1,0 +1,626 @@
+- en: Chapter 8. Evented IO with NodeJS
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: NodeJS leverages V8, the Chrome JavaScript engine, to provide a high-performance
+    server environment. Node isn't limited in scope to just web servers—this is just
+    the original problem space in which it was conceived. In fact, it was created
+    to solve some tough concurrency problems faced by web programmers everywhere.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The aim of this chapter is to explain how Node handles concurrency, and how
+    we need to program our NodeJS code to take full advantage of this environment.
+    The most obvious difference between Node and other web server environments is
+    that it uses a single thread to handle processing requests and relies on evented
+    IO for high levels of concurrency. We'll then dig into why the evented IO approach
+    to concurrency makes sense in a web context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since the IO event loop is grounded in network and file operations, we'll spend
+    the remainder of the chapter looking at various network and file IO examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Single threaded IO
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A common misconception of NodeJS is that it's actually restricted to one CPU
+    and can't achieve true parallelism. The fact is that Node often does use multiple
+    threads of control. We'll explore these concepts later on in the chapter. Perhaps
+    it's the IO event loop that's misleading because it does run in a single thread,
+    on a single CPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The goal of this section is to introduce the concept of an IO loop, why it's
+    a good idea for most web application back-ends, and how it overcomes challenges
+    faced multithreading approaches to concurrency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The following chapter covers more advanced Node concurrency topics, including
+    the ways in which the event loop can bite us. While the event loop is a novel
+    idea, it's not perfect; every solution to a given concurrency problem has negative
+    trade-offs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: IO is slow
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The slowest parts of a given web application infrastructure are the network
+    IO and the storage IO. These operations are reasonably fast, mostly thanks to
+    physical hardware improvements over the past several years, but compared to the
+    software tasks taking place on the CPU, IO is a turtle. What makes web applications
+    so challenging in terms of performance is that there's a lot of IO happening.
+    We constantly read and write from databases and transfer data to a client browser.
+    IO performance is a major headache in the web application arena.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The fundamental breakthrough with evented IO is that it actually takes advantage
+    of the fact that IO is slow. For example, let's say that we have 10 CPU tasks
+    queued, but first, we need to write something to disk. If we had to wait for the
+    write operation to complete before starting on our tasks, they would take much
+    longer than they need to. With evented IO, we issue the write command, but we
+    don't wait for the low-level operating system IO write operation to complete.
+    Instead, we continue executing our 10 CPU tasks while the IO is taking place.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s an illustration of CPU tasks running in a single thread, while the
+    IO tasks happen in the background:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![IO is slow](img/B05133_08_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: It doesn't matter what type of IO operating a given task needs to perform; it
+    will not block other tasks from running. This is how evented IO architectures
+    can get away with running in a single thread. NodeJS excels at this type of concurrency—performing
+    lots of IO work in parallel. However, we do need to know about the state of these
+    IO operations taking place at the operating system level. Up next, we'll look
+    at how Node uses these events to reconcile the state of a given file descriptor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: IO events
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our application code needs some way of knowing that an IO operation has completed.
+    This is where the IO events come into play. For example, if an asynchronous read
+    operation is started somewhere in our JavaScript code, the operating system handles
+    the actual reading of the file. When it's done reading, and the contents are in
+    memory, the operating system triggers an IO event that indicates the IO operation
+    has completed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'All major operating systems support these types of IO events in one form or
+    another. NodeJS uses low-level `C` libraries to manage these events, and it also
+    accounts for the various platform differences. Here''s an illustration of the
+    node IO event loop, sending various IO tasks to the operating system and listening
+    to the corresponding IO events:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![IO events](img/B05133_08_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: As this diagram shows, anything that's IO is handled outside of the event loop.
+    The event loop itself is just a queue with JavaScript code tasks to run. These
+    are generally IO-related tasks. As we can see, the result of an IO event is a
+    callback function that gets pushed onto the queue. In Node, JavaScript doesn't
+    wait for IO to complete. The front-end analog is the rendering engine not waiting
+    for the slower computational tasks to complete in a web worker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Most of this happens transparently to us, within the NodeJS modules that are
+    used to perform IO. We just need to concern ourselves with the callback functions.
+    If callbacks don't sound appealing, it's a good thing that we just spent several
+    chapters addressing concurrency issues related to callback hell. These ideas are
+    mostly applicable in Node; additionally, we'll address some synchronization techniques
+    that are unique to Node in the next chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Multi-threading challenges
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For many years, if the predominant approach to serving web requests has been
+    multithreading, then what's all the fuss about evented IO? Besides, running all
+    our JavaScript code on a single CPU hardly takes advantage of the multi-core systems
+    that we're likely running on. Even if we are running in a virtualized environment,
+    we're likely to have parallelized virtual hardware. The short answer is that there's
+    nothing wrong with either approach as they both solve similar problems using different
+    tactics. We would want to rethink our approach when we move to the extreme in
+    either direction; for example, we start handling a lot more IO or a lot more compute.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a web environment, the common case is to spend more time performing IO than
+    expensive CPU-burning activities. When the users of our application interact with
+    it, we generally need to make API calls over a network, and then we need to read
+    or write to or from the file system. Then, we need to respond over the network.
+    Unless these requests are doing some heavy number crunching in their computations,
+    the majority of the time is spent doing IO operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, what makes IO-intensive applications not well-suited for the multithreaded
+    approach? Well, if we want to spawn new threads or use a pool of threads for that
+    matter, there will be a lot of memory overhead involved. Think of a thread that
+    serves a request as a process with it's own chunk of memory. If we have lots of
+    incoming requests, then we can handle them in parallel. However, we still have
+    to perform IO. It's a little trickier to do the IO synchronization without an
+    event loop because we have to hold the thread open for the current request that
+    we're servicing while we wait for the IO operation to complete.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This model is very difficult to scale once we start getting into very large
+    volumes of IO. But, for the average application, there's no need to abandon it.
+    Likewise, if our application morphs into something that requires a ton of CPU
+    power for any given request, a single-threaded event loop probably isn't going
+    to cut it. Now that we have a basic understanding of what makes the IO event loop
+    a powerful concept for IO-heavy web applications, it's time to look at some other
+    characteristics of the event loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: More connections, more problems
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we'll address the challenges posed by building applications
+    that run in an Internet-connected world. In this turbulent environment, unexpected
+    things can happen; mainly, lots of user uptake translating to a lot of simultaneous
+    user connections. In this section, we'll look at the types of things we need to
+    be worried about when deploying to an Internet-facing environment. Then we'll
+    look at the C10K problem—10,000 users connecting to an application with limited
+    hardware resources. We'll close the section with a closer look at the event handlers
+    that actually run within the NodeJS event loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deploying to the Internet
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The Internet is a rewarding and ruthless environment in which to deploy our
+    applications. Our users need only a browser and a URL. If we deliver something
+    people want, and the demand for this something continues to grow, we'll soon face
+    a connectivity challenge. This could be a gradual increase in popularity, or a
+    sudden spike. In either case, the onus on us to handle these scalability challenges.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since our application faces the public, there's a strong likelihood that we
+    have socially-focused features that are computationally remiss. On the other hand,
+    this usually means that 'there are a high number of connections, each performing
+    their own IO-intensive operations. This sounds like a good fit for an IO event
+    loop, like the one found in NodeJS.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Internet is actually the perfect environment to test the versatility of
+    our application. If ever there were an audience that wanted more for less, you'd
+    find it here. Assuming our application is something useful and in-demand, we can
+    see for ourselves how well we stand up to tens of thousands of connections. We
+    probably don't have a gigantic infrastructure backing us either, so we have to
+    be responsible with our hardware resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Can NodeJS concurrency efficiently cope with such an environment? It certainly
+    can, but beware; this audience has zero-tolerance for failed requests or even
+    sub-optimal performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The C10K problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Dan Kegel first started thinking about the C10K problem back in 1999 ([http://www.kegel.com/c10k.html](http://www.kegel.com/c10k.html)).
+    So the initial idea is fast approaching 20 years of age; hardware has come a long
+    way since then. However, the idea of connecting 10,000 concurrent users to an
+    application is still relevant today. In fact, maybe the modern version of the
+    problem should be C25K because for what most would consider affordable server
+    hardware or virtual hardware, we can squeeze out a lot more performance than we
+    could have in 1999.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second reason that the scope of the problem has grown is due to the growing
+    population of the Internet. There''s an order of magnitude more connected people
+    and devices than there were in 1999\. One thing that hasn''t changed is the nature
+    of C10K—fast performance for a large number of connections without a vast infrastructure
+    needed to support it. For example, here''s a diagram showing incoming requests
+    being mapped to threads on the system:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The C10K problem](img/B05133_08_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'As the numbers of connected users grows, the numbers of requests also grow.
+    We''ll need to scale out our physical infrastructure fairly soon using this approach
+    because it inherently relies on processing requests in parallel. The evented IO
+    loop also processes requests in parallel, but using a different tactic, as is
+    illustrated here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The C10K problem](img/B05133_08_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The point at which our application can't handle the number of connections due
+    to the number of CPUs is much different here. This is because our JavaScript code
+    runs linearly in one thread, on one CPU. However, the type of JavaScript code
+    we write that runs within this IO loop plays an important role, as we'll see next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lightweight event handlers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The assumption with NodeJS is that we don't spend much time, relatively speaking,
+    executing JavaScript code. Put differently, when a request arrives at a Node application,
+    the JavaScript code that handles the request is short-lived. It figures out the
+    IO it needs to perform, perhaps by reading something from the file system and
+    exits, yielding control back to the IO loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, there's nothing to enforce that our JavaScript code be small and efficient.
+    And sometimes, CPU-intensive code is unavoidable due to changes in how our application
+    functions, or the introduction of a new feature that takes the product in another
+    direction. If this does happen, it's imperative that we take the necessary corrective
+    design steps because a runaway JavaScript handler can wreak havoc on all our connections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s take a look at the Node event loop, the types of JavaScript tasks that
+    work well, and the ones that can cause problems:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `process.nextTick()` function is an entry point into the Node IO event loop.
+    In fact, this function is used all over the place by the core Node modules. Each
+    and every event loop iteration is called a tick. So all we're doing by calling
+    this function with a callback is saying—add this function to the queue of functions
+    to be called in the next loop iteration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There could be hundreds or even thousands of callbacks to process in a given
+    loop iteration. This doesn't matter because there's no waiting on IO in any of
+    these callbacks. So, a single thread is sufficient to handle web requests, except
+    for when we start a task that eats a lot of CPU cycles. One of the handlers in
+    the previous example does exactly this. It takes several seconds to return and
+    while this is going on, the event loop is stuck. The handler that we added after
+    the CPU-expensive handler doesn't run. The consequences are disastrous when there
+    are thousands of connected clients waiting for a response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We'll tackle this issue in depth in the next chapter when we look at creating
+    clusters of Node processes, each with their own event loops.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evented network IO
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: NodeJS excels at serving HTTP requests. This is because a given request life-cycle
+    spends much time in transit between the client and the server. During this time,
+    Node processes other requests. In this section, we'll look at some of Node's HTTP
+    networking capabilities, and how they fit into the IO event loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll start with a look at basic HTTP requests, and how they serve as the foundation
+    for many Node modules and projects. Then, we'll move onto streaming responses
+    to the client, instead of sending a giant blob of data all at once. Finally, we'll
+    look at how Node servers can proxy requests to other services.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling HTTP requests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `http` module in NodeJS takes care of all the nitty-gritty details with
+    regard to creating and setting up HTTP servers. It should be no surprise that
+    this module is heavily utilized by many Node projects that create web servers.
+    It even has a helper function that will create the server for us, and setup the
+    callback function that''s used to respond to incoming requests. These callbacks
+    get a `request` argument and a `response` argument. The request contains information
+    that''s sent from the client, and we generally read from this object. The response
+    contains information that''s sent back to the client, and we generally write to
+    this object. Here''s a visualization that puts these two concepts into the context
+    of the IO event loop:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Handling HTTP requests](img/B05133_08_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'It may seem counter-intuitive at first, that the client communicates directly
+    with the event loop. Well, this is actually a close approximation of what''s really
+    going on. The `request` and `response` objects are simply abstractions accessible
+    to us in our JavaScript code. They exist to help us read and write the correct
+    socket data. These abstractions hand off the correct data to the socket or read
+    the correct socket data. In both cases, our code deferrers to the event loop where
+    the real client communication happens:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's take a look at some basic HTTP server code now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this example, we send back plain text to the browser. We run a quick check
+    on the URL and adjust the content accordingly. There's something interesting in
+    the default path though, we're using `setTimeout()` to delay the response by 5
+    seconds. So if we were to visit `http://localhost/`, the page would spin for 5
+    seconds before displaying any content. The idea here is to demonstrate the asynchronous
+    nature of the event loop. While this request waits for something to happen, all
+    other requests get serviced immediately. We can test this by loading the `/hello`
+    URL or the `/world` URL in another tab while this loads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Streaming responses
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The previous example, we wrote the entire HTTP response content with one call.
+    This is generally fine, especially in our case because we were only writing a
+    handful of characters to the connected socket. With some applications, the response
+    to a given request is going to be much larger than this. For example, what if
+    we implement an API call, and the client has asked for a collection of entities,
+    and each entity has several properties?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we transfer large amounts of data to the client from our request handler,
+    we can get ourselves into trouble. Even though we''re not performing CPU-intensive
+    computations, we''re still going to consume the CPU and block other request handlers
+    while we write huge pieces of data to our responses. Here''s an illustration of
+    the problem:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Streaming responses](img/B05133_08_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The problem isn't necessarily responding with one of these large responses,
+    but when there are lots of them. Earlier in the chapter, we discussed the problem
+    of establishing and maintaining a large number of connected users because this
+    is a very likely scenario for our application. So, the problem with returning
+    relatively large amounts of data in each response is the performance degradation
+    of the application overall. Each user will experience non-optimal performance,
+    and this isn't what we want at all.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can tackle this issue using streaming techniques. Rather than writing the
+    whole response at once, we can write it in chunks. As a chunk of data is written
+    to the response stream, the event loop is free to process queued requests. Overall,
+    we can avoid any one request handler from taking more time from the event loop
+    than what is absolutely necessary. Let''s take a look at an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: This example responds to the client request by returning a list of numbers in
+    plain text. If we look at this page in a browser, we can actually see how the
+    numbers are chunked because they're separated by new lines. This is only there
+    for illustrative purposes; in practice, we would probably use the response as
+    one big list. The important thing is that our request handler is no longer greedy,
+    as by using the streaming approach, we're sharing the event loop with other request
+    handlers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Proxy network requests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our main NodeJS web server doesn't need to fulfill every single aspect of every
+    request. Instead, our handlers can reach out to other systems that form the backbone
+    of our application and ask them for data. This is a form of microservices, and
+    it's a topic that exceeds the scope of this discussion. Let's just think of these
+    services as independent parts that help us compose a larger application whole.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Within a Node request handler, we can create other HTTP requests that talk
+    to these external services. These requests utilize the same event loop as the
+    handler that creates them. For example, when the service responds with data, it
+    triggers an IO event, and a corresponding piece of JavaScript code runs. The following
+    illustration shows how this type of setup works:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Proxy network requests](img/B05133_08_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Let''s see if we can write a request handler that''s really a composition of
+    other services that live on different servers. We''ll first implement a users
+    service, which allows us to retrieve specific user information. Then, we''ll implement
+    a preference service, which allows us to fetch preferences set by a specific user.
+    Here''s the user service code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is pretty straightforward. We have some sample user data stored in an
+    array, and when a request arrives, we try to find a specific user object based
+    on ID (the array index). Then, we respond with a JSON string. The preference service
+    uses the exact same approach. Here''s the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Note that each of these servers is started on different ports. If you're following
+    along by running the code in this book, this example requires starting three web
+    servers on the command line. It's probably easiest to open three terminal tabs
+    (if supported, on OSX for instance) or open three terminal windows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now we can write our main server with request handlers that reach out to these
+    services. Here''s what the code looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, we need to make sure that all three services are running—the users service,
+    the preference service, and the main service that users interact with directly.
+    They're all on different ports because they're all running as a web server on
+    the same machine. In practice, these services could be running anywhere—that's
+    part of their appeal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evented file IO
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we have a fairly good handle on network IO in NodeJS, it's time to
+    focus our attention on file system IO. After this section, we'll see how files
+    and network sockets are treated the same inside the event loop. Node takes care
+    of the subtle differences for us, which means we can write consistent code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we'll look at reading form files, followed by writing to files. We'll
+    close the section with a look at streaming from one file to another, performing
+    data transformations in between.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reading from files
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let''s start with a simple example that reads the entire contents of a file
+    into memory. This will help us get a feel for doing asynchronous file IO:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the callback function that we passed to `fs.readFile()`, we have access to
+    the `Buffer` object that holds the file contents in memory. While the operating
+    system does the actual file reading, and the buffer is populated with the result,
+    other handlers in the IO event loop continue to run. This is just like reading
+    from a network socket, and also why there's a callback that's added to the event
+    queue, which gets called once the data has been read.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The problem with reading files in one shot like this is that there could be
+    ramifications outside of node at the OS level. The file that we will use here
+    as an example is fairly modest in size, but what if we try to read from a much
+    larger file? What if several request handlers try to read the same file? Maybe
+    instead of reading the entire file at once, we only read chunks of data at a time?
+    This would ease the resource contention if there were any. Let''s look at an alternative
+    approach:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we get the exact same result, except that we've broken the single `fs.readFile()`
+    call into several smaller `fs.read()`. We also use a promise here to make the
+    callback handling a little more straightforward.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You may be wondering why we're not using a loop to iterate over the chunks and
+    issue the `fs.read()` calls. Instead, we're scheduling the read calls using `process.nextTick()`.
+    If we loop over the chunks, each `read()` call gets added to the event queue in
+    order. So we end up with a bunch of `read()` calls in succession without any other
+    handlers being called. This defeats the purpose of breaking up `fs.readFile()`.
+    Instead, `process.nextTick()` allows other handlers to run in between our `read()`
+    calls.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing to files
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Writing to files works a lot like reading from files. Actually, writing is
+    slightly easier since we don''t have to maintain any data in memory; we just have
+    to worry about writing data that''s already in memory to disk. Let''s start by
+    looking at some code that writes a blob of data to a file with one call. This
+    would be the equivalent of reading the entire file at once only in reverse:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'See, nothing to it. We write the string representation of our array to the
+    file using `fs.writeFile()`. However, this has potential to block other things
+    from happening at the OS level; especially if we''re writing a lot of data all
+    at once. Let''s try breaking up the write operation into several smaller calls
+    just like we did with the read example prior to this one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: This works the same as the approach we took with the chunked read. The main
+    difference is that we write a file instead and that there's less moving parts.
+    Also, the promise is resolved without a value, which is fine, because callers
+    can treat this value as a `null` and still know that the file has been successfully
+    written to disk. In the next section, we'll look at a more streamlined version
+    of reading and writing files.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Streaming reads and writes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: So far, we've addressed reading files in chunks, as well as splitting data into
+    chunks, and writing them to disk one at a time. The advantage is that we yield
+    control to other code, perhaps, other operating system calls during the time that
+    we read or write. The advantage is that when we're working with large amounts
+    of data, one hardware resource is never monopolized by a read or write operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In effect, we were implementing streaming reads and writes. In this section,
+    we''ll look at the streaming interface that NodeJS implements for various components,
+    including files. The code that we wrote in the preceding sections for streaming
+    reads and writes got a little verbose in places. As we know by now, we don''t
+    want boilerplate concurrency code where it can be avoided. We especially don''t
+    want it sprinkled throughout our code base. Let''s look at a different approach
+    to stream file reads and writes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We basically copy one file into another, making a small modification to the
+    data along the way. Thankfully, NodeJS streaming facilities make performing this
+    transformation easy without the need to write a lot of boilerplate code that reads
+    input than writes to the output again. Almost all of this is abstracted away in
+    the Transform class. Here''s an illustration of the pipeline that our previous
+    code just created:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Streaming reads and writes](img/B05133_08_08.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter introduced you to concurrency in NodeJS. The premise is that Node
+    applications will perform a lot of IO, and that IO is slow, relative to other
+    computations that take place in memory. Node implements an IO loop, a mechanism
+    that notifies our code when a given IO resource is ready for input or output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We saw some of the advantages and disadvantages to this model. The alternative
+    approach involves relying on parallelism at the CPU level, which can pose challenges
+    when there's lots of slow IO taking place. Conversely, the IO loop approach isn't
+    impacted the same when there's lots of IO, but suffers greatly when there are
+    expensive CPU tasks to perform.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We spent the remainder of the chapter looking at various network and file IO
+    examples. In the following chapter, we'll continue our exploration of NodeJS by
+    looking at some more advanced topics, some of which can help us scale as our applications
+    grow more computationally expensive.
+  prefs: []
+  type: TYPE_NORMAL

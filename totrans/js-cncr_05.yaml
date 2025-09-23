@@ -1,0 +1,853 @@
+- en: Chapter 5. Working with Workers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Web workers enable true parallelism within a web browser. They've spent time
+    maturing, and have pretty good vendor support today. Before web workers, our JavaScript
+    code was confined to the CPU, where our execution environment started when the
+    page first loaded. Web workers have evolved out of necessity—web applications
+    are growing more capable. They have also started to require more compute power.
+    At the same time, multiple CPU cores are common place today—even on low-end hardware.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we'll walk through the conceptual ideas of web workers, and
+    how they relate to the concurrency principles that we're trying to achieve in
+    our applications. Then, you'll learn how to use web workers by example, so that,
+    later on in the book, we can start tying parallelism to some of the other ideas
+    that we've already explored, such as promises and generators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What are workers?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Before we dive into implementation examples, this section will give us a quick
+    conceptual breakdown of what web workers are. It's good to know exactly how web
+    workers cooperate with the rest of the system under the hood. Web workers are
+    operating system threads—a target where we can dispatch events, and they execute
+    our JavaScript code in a truly parallel fashion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: OS threads
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: At their core, web workers are nothing more than operating system-level threads.
+    Threads are kind of like processes, except they require less overhead because
+    they share memory addresses with the process from which they're created. Since
+    the threads that power web workers are at the level of the operating system, we're
+    at the mercy of the system and its process scheduler. Most of the time, this is
+    exactly what we want—let the kernel figure out when our JavaScript code should
+    run in order to best utilize the CPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s a diagram showing how the browser maps its web workers to OS threads,
+    and how these are mapped to CPU cores:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![OS threads](img/B05133_05_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: At the end of the day, it's best that the operating system be left responsible
+    for handling what it's good at—scheduling software tasks on physical hardware.
+    In more traditional multi-threaded programming environments, our code lives much
+    closer to the operating system kernel. This isn't the case with web workers. While
+    the underlying mechanism is a thread, the exposed programming interface looks
+    more like something you might find in the DOM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Event targets
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Web workers implement the familiar event target interface. This makes web workers
+    behavior similar to other components that we're used to working with, such as
+    DOM elements or XHR requests. Workers trigger events, and this is how we receive
+    data from them back in our main thread. We can also send data to workers, but
+    this uses a simple method call.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we pass data into workers, we actually trigger another event; only this
+    time, it''s in the execution context of the worker and not the main page execution
+    context. There isn''t much more to it than that: data in, data out. There''s no
+    `mutex` construct or anything of this sort. This is actually a good thing because
+    the web browser, as a platform, already has many moving parts. Imagine if we threw
+    in a more complex multi-threading model instead of just a simple event-target-based
+    approach. We already have enough bugs to fix day-to-day.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s a rough idea of how the web worker layout looks, relative to the main
+    thread that spawned these workers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Event targets](img/B05133_05_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: True parallelism
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Web workers are the means to achieving the parallelize principle in our architecture.
+    As we know, workers are operating system threads, meaning that the JavaScript
+    code that's running inside them could possibly be running at the same exact instance
+    as some DOM event handler code in the main thread. The ability to do stuff like
+    this has been a goal of JavaScript programmers for quite a while. Before web workers,
+    true parallelism simply wasn't possible. The best we could do was to fake it,
+    giving a user the impression of many things happening simultaneously.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, there are problems with always running on the same CPU core. We're
+    fundamentally restricted in how many computations we can execute within a given
+    time window. This restriction changes when true parallelism is introduced because
+    the time window, in which computations may be run, grows with each CPU core that's
+    added.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That being said, for most of the things that our application does, the single
+    thread model works just fine. Machines today are powerful. We can get a lot done
+    in a small time window. The problem arises when we experience spikes. These could
+    be any event that disrupts the processing efficiency of our code. Our applications
+    are constantly being asked to do more—more features, more data, more this, and
+    more that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The simple idea that we can make better use of the hardware that's sitting right
+    in front of us, is what web workers are all about. Web workers, if used right,
+    don't have to be this insurmountable new thing that we'll never use in our projects
+    because it has concepts that fall outside of our comfort zone.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Types of workers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: There are three types of web workers that we're likely to encounter during the
+    development of concurrent JavaScript applications. In this section, we'll compare
+    the three types so that we can understand which type of worker makes sense in
+    any given context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dedicated workers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Dedicated workers are probably the most common worker type. They're considered
+    the default type of web worker. When our page creates a new worker, it's dedicated
+    to the page's execution context and nothing else. When our page goes away, so
+    do all the dedicated workers created by the page.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The communication path between the page and any dedicated worker that it creates
+    is straightforward. The page posts messages to the workers, which in turn post
+    messages back to the page. The exact orchestration of these messages is dependent
+    on the problem that we're trying to solve using web workers. We'll dig into more
+    of these messaging patterns throughout the book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The terms main thread and page are synonymous in this book. The main thread
+    is your typical execution context, where we can manipulate the page and listen
+    for input. The web worker context is largely the same, only with access to fewer
+    components. We will go over these restrictions shortly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s a depiction of the page communicating with its dedicated workers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Dedicated workers](img/B05133_05_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: As we can see, dedicated workers are, well, dedicated. They only exist to help
+    serve the page that created them. They don't directly communicate with other workers,
+    and they can't communicate with any other page.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sub-workers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Sub-workers are very similar to dedicated workers. The main difference is that
+    they're created by a dedicated worker, not by the main thread. For example, if
+    a dedicated worker has a task that would benefit from parallel execution, it can
+    spawn its own workers and orchestrate the execution of the task between the sub-workers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Apart from having a different creator, sub-workers share the same characteristics
+    of a dedicated worker. Sub-workers don''t communicate directly with JavaScript
+    running in the main thread. It''s up to the worker that creates the sub-workers
+    to facilitate their communication. Here''s an illustration of how sub-workers
+    fit into the scheme of things:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Sub-workers](img/B05133_05_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Shared workers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The third type of web worker is called a shared worker. Shared workers are named
+    so because multiple pages can share the same instance of this type of worker.
+    The pages that can access a given shared worker instance are restricted by the
+    same-origin policy, which means, if a page was served from a different domain
+    than the worker, the worker isn't allowed to communicate with this page.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Shared workers solve different type of problem than those solved by dedicated
+    workers. Think of dedicated workers as functions without side-effects. You pass
+    data to them and get different data in return. Think of shared workers as an application
+    object following the singleton pattern. They're a means to sharing state between
+    different browsing contexts. So, for instance, we wouldn't create a shared worker
+    for the sole purpose of crunching numbers; we can use a dedicated worker for this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It makes sense to use shared workers when there''s application data in memory
+    that we want from access from any page from the same application. Think about
+    a user opening links in a new tab. This creates a new browsing context. It also
+    means that our JavaScript components need to go through the process of fetching
+    all the data required for the page, doing all the initialization steps, and so
+    on. This gets repetitive and wasteful. Why not conserve these resources by sharing
+    them between different browsing contexts? Here is an illustration of multiple
+    pages from the same application communicating with a shared worker instance:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Shared workers](img/B05133_05_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: There's actually a fourth type of web worker called a service worker. These
+    are shared workers embellished with additional capabilities related to caching
+    network resources and offline functionality. Service workers are still in the
+    early stages of their specification, but they look promising. Anything that we
+    can learn about shared workers today will be applicable to service workers should
+    they ever become a viable web technology.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another important factor to consider here is the added complexity of service
+    workers. The communication mechanism between the main thread and a service worker
+    involves using ports. Likewise, the code running within the shared worker needs
+    to make sure it's communicating over the correct port. We'll cover shared worker
+    communication in much more depth later on in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Worker environments
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Web worker environments aren't same as the typical JavaScript environment, where
+    our code usually runs. In this section, we'll point out critical differences between
+    the JavaScript environment of the main thread and web worker threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What's available, what isn't?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A common misconception of web workers is that they're radically different environments
+    from the default JavaScript execution context. It's true that they're different,
+    but not so different as to be unapproachable. Perhaps, it's for this reason that
+    JavaScript developers shy away from using web workers when they could be beneficial.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The obvious gap is the DOM—it doesn't exist in web worker execution environments.
+    Its absence was a conscious decision on the part of specification writers. By
+    avoiding DOM integration into worker threads, browser vendors can avoid many potential
+    edge cases. We all value browser stability over convenience, or at least, we should.
+    And would it really be all that convenient to have DOM access from within web
+    workers? We'll see throughout the next few chapters of this book that workers
+    are good at lots of other tasks, which ultimately contribute to successfully implementing
+    concurrency principles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With no DOM access in our web worker code, we're less likely to shoot ourselves
+    in the foot. It actually forces us to really think about why we're using the workers
+    in the first place. And we might actually take a step back and rethink our approach.
+    Apart from the DOM, most of what we use on a day-to-day basis is exactly where
+    we expect it to be. This includes using our favorite libraries inside web workers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: For a more detailed breakdown of what's missing from web worker execution environments,
+    see this page [https://developer.mozilla.org/en-US/docs/Web/API/Worker/Functions_and_classes_available_to_workers](https://developer.mozilla.org/en-US/docs/Web/API/Worker/Functions_and_classes_available_to_workers).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Loading scripts
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We would never write our entire application in a single JavaScript file. Instead,
+    we will promote modularity by dividing our source code into files in a way that
+    logically decomposes the design into something we can map mentally. Likewise,
+    we probably don't want to compose web workers that consist of thousands of lines
+    of code. Luckily, web workers come with a mechanism that allows us to import code
+    into our web workers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first scenario is importing our own code into a web worker context. We
+    are likely to have many low-level utilities that are specifically tailored for
+    our application. There''s a high probability that we''ll need to use these utilities
+    in both: a regular scripting context and within a worker thread. We want to keep
+    our code modular, and we want our code to function the same way in workers as
+    it would in any other context.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second scenario is loading third-party libraries in web workers. It''s
+    the same principle as loading our own modules into web workers—our code will work
+    in any context with a few exceptions, like DOM code. Let''s look at an example
+    that creates a web worker and loads the `lodash` library. First, we''ll launch
+    the worker:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we''ll use the `loadScripts()` function to bring the `lodash` library
+    into our library:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: We don't need to worry about waiting for the script to load before we can start
+    using it—`importScripts()` is a blocking operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Communicating with workers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The preceding example created a web worker, which indeed ran in its own thread.
+    But, this is not very helpful to us because we need to be able to communicate
+    with the workers that we create. In this section, we'll cover the basic mechanisms
+    involved with sending and receiving messages from web workers, including how these
+    messages are serialized.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Posting messages
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'When we want to pass data into a web worker, we use the `postMessage()` method.
+    As the name suggests, this method posts the given message to the worker. If there
+    are any message event handlers set up within the worker, they''ll respond to this
+    call. Let''s look at a basic example that sends a string to a worker:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now let''s look at the worker that responds to this message by setting up an
+    event handler for the message event:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The `addEventListener()` function is implicitly called on something called a
+    global dedicated worker context. We can think of this as the window object for
+    web workers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Message serialization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The message data that gets passed from the main thread to worker threads goes
+    through a serialization transformation. When this serialized data arrives at the
+    worker thread, it's deserialized, and the data is usable as a JavaScript primitive
+    type. The same process is in place when the worker thread wants to send data back
+    to the main thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Needless to say, this is an added step that adds overhead to our possibly already
+    over-worked application. Therefore, some thought must be put into passing data
+    back and forth between threads, as this is not a free operation in terms of CPU
+    cost. Throughout the web worker code examples in this book, we'll treat message
+    serialization as a key factor in our concurrency decision-making process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So the question is—why go to such lengths? If the workers that we're using in
+    our JavaScript code are simply threads, we should technically be able to use the
+    same objects, since these threads use the same section of memory addresses. When
+    threads share resources, such as objects in memory, challenging resource contention
+    scenarios are likely to occur. For example, if one worker locks an object and
+    another tries to use it, then this is an error. We have to implement logic that
+    gracefully waits for the object to become available, and we have to implement
+    logic in the worker that frees the locked resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In short, this is an error prone headache that we''re much better off without.
+    Thankfully, there''s no resources shared between threads—only serialized messages.
+    This means that we''re limited in terms of what types of things can actually be
+    passed to a worker. The rule of thumb is that it''s generally safe to pass something
+    that can be encoded as a JSON string. Remember, the worker has to reconstruct
+    the object from this serialized string, so a string representation of a function
+    or a class instance, simply will not work. Let''s look at an example to see how
+    this works. First, a simple worker to log the messages it receives:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now let''s see what kind of data we can serialize and send to this worker using
+    `postMessage()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: As we can see, there's a slight problem when we try to pass a function to `postMessage()`.
+    This type cannot be reconstructed once it arrives on the worker thread, and so,
+    `postMessage()` simply throws an exception. These types of restrictions may seem
+    overly limiting, but they do eliminate the possibility of many concurrency issues.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Receiving messages from workers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Without the ability to pass data back into the main thread, workers aren't all
+    that useful to us. At some point, the work performed by a worker needs to be reflected
+    in the UI. We may recall that worker instances are event targets. This means that
+    we can listen for the message event and respond accordingly when the worker sends
+    back data. Think of this as the inverse of sending data to the worker. The worker
+    simply treats the main thread as another worker by posting messages to it, while
+    the main thread listens for messages. The same serialization restrictions that
+    we explored in the preceding section are relevant here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s look at some worker code that sends a message back to the main thread:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As we can see, this worker starts, and after 2 seconds, sends a string back
+    to the main thread. Now, let''s see how we can handle these incoming messages
+    in the main page JavaScript:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You may have noticed that we do not explicitly terminate any of our worker threads.
+    This is okay. When the browsing context is terminated, all active worker threads
+    are terminated with it. We can explicitly terminate workers using the `terminate()`
+    method, which will explicitly stop the thread without waiting for any existing
+    code to complete. However, it's rare to explicitly terminate workers. Once created,
+    workers generally survive the duration of the page. Spawning workers isn't free,
+    it incurs overhead, so we should aim to only do this once, if possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sharing application state
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we'll introduce shared workers. First, we'll look at how the
+    same data objects in memory can be accessed by multiple browsing contexts. Then,
+    we'll look at fetching remote resources, and how to notify multiple browsing contexts
+    about the arrival of new data. Finally, we'll look at how shared workers can be
+    leveraged to allow for direct messaging between browser contexts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Consider this section advanced material for experimental coding. The browser
+    support for shared workers isn't that great at the moment (only Firefox and Chrome).
+    Web workers are still in the candidate recommendation phase at the W3C. Once they
+    become a recommendation and better browser support is in place for shared workers,
+    we'll be ready to use them. For extra motivation, as the service worker spec matures,
+    shared worker proficiency will be all the more relevant.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sharing memory
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The serialization mechanism that we've seen so far with web workers is in place
+    because we cannot directly reference the same object from more than one thread.
+    However, shared workers have a memory space that's not restricted to just one
+    page, which means that we can indirectly access these objects in memory through
+    various message-passing methods. In fact, this is a good opportunity to demonstrate
+    how we pass messages using ports. Let's get down to it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The notion of a port is necessary with shared workers. Without them, there would
+    be no governing mechanism to control the inflow and outflow of messages from shared
+    workers. For example, let's say we had three pages using the same shared worker,
+    then we would have to create three ports to communicate with this worker. Think
+    of a port as a gateway into the worker from the outside world. It's a minor indirection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s a basic shared worker to give us an idea of what''s involved with setting
+    up these types of workers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There''s a `connect` event that gets triggered once a page connects with this
+    worker. The `connect` event has a `source` property, and this is a message port.
+    We have to tell it that the worker is ready to communicate with it by calling
+    `start()`. Notice that we have to call `postMessage()` on a port, not in the global
+    context. How else would the worker know which page to send the message to? The
+    port acts as a proxy between the worker and the page, as illustrated in the following
+    diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Sharing memory](img/B05133_05_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Now let''s see how we can use this shared worker from more than one page:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are only two major differences between this shared worker and a dedicated
+    worker. They are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have a `port` object that we can use to communicate with the worker by posting
+    messages and attaching event listeners.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We tell the worker that we're ready to start communication by calling the `start()`
+    method on the port, just like the worker does. Think of these two `start()` calls
+    as a handshake between the shared worker, and its new client.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Fetching resources
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The preceding example gave us a taste of how different pages from the same
+    application can share data, avoiding the need to allocate the exact same structure
+    twice any time a page is loaded. Let''s build on this idea and use a shared worker
+    to fetch remote resources to share the result with any pages that depend on it.
+    Here''s the worker code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Instead of responding to the port when the page connects to the worker, we simply
+    store a reference to it in the `ports` array. This is how we keep track of the
+    pages connected to the worker, which is important here because not all messages
+    follow the command-response pattern. In this case, we want to broadcast the updated
+    API resource to any page that maybe listening to it. A common case will be one
+    page, but in the case where there are many browser tabs open looking at the same
+    application, we can use the same data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, if the API resource were a large JSON array that needed to be
+    parsed, this would get wasteful if the exact same data needs to be parsed by three
+    different browser tabs. Another savings is that we''re not polling the API 3 times
+    per second, which would be the case if each page was running its own polling code.
+    When it''s in the shared worker context, it only happens once, and the data is
+    distributed out to the connected pages. This is less taxing on the back-end as
+    well because in the aggregate, there are far fewer requests made. Let''s look
+    at the code that uses this worker now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Communicating between pages
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: So far, we've treated data within shared workers as a central resource. That
+    is, it comes from a centralized place, such as an API, and then it is read by
+    the pages connected to the worker. We haven't actually modified any data directly
+    from a page yet. For instance, let's say we're not even connected to a back-end,
+    and a page is manipulating a data structure in the shared worker. Other pages
+    would then need to know about these changes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But then, let''s say the user switches to one of these pages and makes some
+    adjustments. We have to support bidirectional updating. Let''s take a look at
+    how we will go about implementing such capabilities using a shared worker:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This worker is nothing more than a satellite; it simply transmits anything
+    it receives to all connected ports. This is all we need, so why add more? Let''s
+    take a look at the page code that connects to this worker:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Interesting! So now, if we go ahead and open up two or more browser tabs with
+    this page inside, any changes we make to the input value will be reflected in
+    other pages—instantly. What's neat about this design is that it works the same;
+    no matter which page is performing the update, any other page receives the updated
+    data. In other words, the pages take on the dual role of data producer and data
+    consumer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You may have noticed that the worker in this last example sends a message to
+    to all ports, including the port that sent the message. We probably don't want
+    to do this. To avoid sending messages to the sender, we would need to somehow
+    exclude the sending port in the `for..of` loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This actually isn't easy to do since no port-identifying information is sent
+    with the `message` event. We can establish port identifiers and have messages
+    contain IDs. There's a lot of work here, and the benefit isn't all that great.
+    The concurrency design trade-off here is to simply check in the page code that
+    the message is actually relevant to the page.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Performing sub-tasks with sub-workers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: All the workers that we've created so far in this chapter—dedicated workers
+    and shared workers—were launched by the main thread. In this section, we'll address
+    the idea of sub-workers. They're similar to dedicated workers, only with a different
+    creator. For example, a sub-worker can't directly interact with the main thread,
+    only by proxy through the thread that spawned the sub-worker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll look at dividing larger tasks into smaller ones, and we'll also look at
+    some challenges surrounding sub-workers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dividing work into tasks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The job of our web workers is to carry out tasks in such a way that the main
+    thread can continue to service things, such as DOM events, without interruption.
+    Some tasks are straightforward for a web worker thread to handle. They take input,
+    compute a result, and return that result as output. But, what if the task is larger?
+    What if it involves a number of smaller discrete steps, allowing us to breakdown
+    the larger task into smaller ones?
+  prefs: []
+  type: TYPE_NORMAL
+- en: With tasks like these, it makes sense to break them down into smaller sub-tasks
+    so that we can further leverage all available CPU cores. However, decomposing
+    the task into smaller ones can itself incur a heavy performance penalty. If the
+    decomposition is left in the main thread, our user experience could suffer. One
+    technique that we would utilize here involves launching a web worker whose job
+    is to break down a task into smaller steps and launch a sub-worker for each of
+    these steps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s create a worker that searches an array for a specific item and returns
+    true if the item exists. If the input array is large, we would split it into several
+    smaller arrays, each of which is searched in parallel. These parallel search tasks
+    will be created as sub-workers. First, we''ll take a look at the sub-worker:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: So, we now have a sub-worker that can take a chunk of an array and return a
+    result. This is pretty simple. Now for the tricky part, let's implement the worker
+    that divides the input array into smaller inputs, which are then fed into the
+    sub-workers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: What's neat about this approach is that once we have a positive result, we can
+    terminate all the existing sub-workers. So, if we work through an especially large
+    data set, we can avoid having one or more sub-workers churn needlessly in the
+    background.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The approach that we've taken here is to slice the input array into four proportional
+    (25%) chunks. This way, we limit the concurrency level to four. In the next chapter,
+    we'll further address subdividing tasks and tactics for determining the concurrency
+    level to use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For now, let''s complete our example by writing some code to use this worker
+    on our page:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: We're able to talk to the worker, passing it an input array and data to search
+    for. The results are passed by to the main thread, and they include the search
+    term, so we're able to reconcile the output with the original message that we
+    sent to the worker. However, there are some significant hurdles to overcome here.
+    While this is really useful, being able to subdivide tasks to make better use
+    of multi-core CPUs, there's a lot of complexity involved. Once we have the results
+    from each subworker, we have to deal with reconciliation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If this simple example can grow as complex as it has, then imagine similar code
+    in the context of a large application. There are two angles from which we can
+    tackle these concurrency issues. The first is the up-front design challenges around
+    concurrency. These are tackled in the next chapter. Then, there are the synchronization
+    challenges—how do we avoid callback hell? This topic is addressed in depth, in
+    [Chapter 7](ch07.html "Chapter 7. Abstracting Concurrency"), *Abstracting Concurrency*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A word of caution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: While the preceding example is a powerful concurrency technique that can offer
+    huge performance gains, there are a couple downsides to be aware of. So before
+    diving into an implementation that involves sub-workers, consider some of these
+    challenges and the trade-offs that you'll have to make.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sub-workers don't have a parent page to directly communicate with. This complicates
+    designs because even a simple response from a sub-worker needs to be proxied through
+    a worker that was created directly by JavaScript running in the main thread. What
+    this leads to is a pile of tangled communication paths. In other words, it's easy
+    to complicate the design by adding more moving parts than might actually be warranted.
+    So, before deciding on sub-workers as a design option, let's first rule out an
+    approach that can rely on dedicated workers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second problem is that since web workers are still a candidate W3C recommendation,
+    not all browsers implement certain aspects of web workers consistently. Shared
+    workers and sub-workers are the two areas we're likely to encounter cross-browser
+    issues. On the other hand, dedicated workers have great browser support and behave
+    consistently across most vendors. Once again, start with a simple dedicated worker
+    design, and if that doesn't work, think about introducing shared workers, and
+    sub-workers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Error handling in web workers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: All the code in this chapter has made a naive assumption that the code running
+    in our workers was error-free. Obviously, our workers will encounter situations
+    where exceptions are thrown, or we'll just write buggy code during development—it's
+    the reality we face as programmers. However, without proper error event handlers
+    in place, web workers can be difficult to debug. Another approach we can take
+    is to explicitly send back a message that identifies itself as being in an error
+    state. We'll cover these two error-handling topics in this section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Error condition checking
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let''s say our main application code sends a message to a worker thread and
+    expects to get some data in return. What if something goes wrong and the code
+    that was expecting data needs to know about it? One possibility is to still send
+    the message that the main thread is expecting; only that it has a field that indicates
+    the errant state of the operation. The following illustration gives us an idea
+    of what this looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Error condition checking](img/B05133_05_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Now let''s look at some code that implements this approach. First, the worker
+    that determines the state of the message to return either a successful or an error
+    state:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This worker will always respond by posting a message, but it doesn''t always
+    compute a result. First, it checks to make sure that the input value is acceptable.
+    If it doesn''t get the array it''s expecting, it posts a message with the error
+    state set. Otherwise, it posts the result like normal. Now, let''s write some
+    code to use this worker:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Exception handling
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Even if we explicitly check for error conditions in our workers, as we did in
+    the last example, there are cases where exceptions might be thrown. From the perspective
+    of our main application thread, we need to handle these types of uncaught errors.
+    Without the proper error-handling mechanism in place, our web workers will fail
+    silently. Sometimes, it seems that the workers don't even load—dealing with this
+    radio silence is a nightmare to debug.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s take a look at an example that listens to the `error` event of a web
+    worker. Here''s a web worker that tries to access a non-existent property:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There''s no error-handling code here. All we''re doing is responding to a message
+    by reading the `name` property and sending it back. Let''s take a look at some
+    code that uses this worker, and how it can respond to exceptions raised in this
+    worker:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we can see that the first message posted to the worker results in an exception
+    being thrown within the worker. However, this exception is encapsulated within
+    the worker—it isn't thrown in our main thread. Since we're listening to the `error`
+    event in our main thread, we can respond accordingly. In this case, we simply
+    log the error message. However, in other cases, we may need to take more elaborate
+    corrective action, such as freeing resources or posting a different message to
+    the worker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we introduced the concept of parallel execution using web workers.
+    Before web workers, there were no means for our JavaScript to utilize the multiple
+    CPU cores found on most hardware today.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We started off with a high-level overview of what web workers are. They're operating-system-level
+    threads at their foundation. From a JavaScript perspective, they're event targets
+    where we can post messages and listen to `message` events. Workers come in three
+    varieties—dedicated, shared, and sub-workers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You then learned how to communicate with web workers by posting messages and
+    listening to events. You learned that there's a limitation in place in terms of
+    what can be passed in a message. This is due to the fact that all message data
+    is serialized and reconstructed in the target thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We wrapped up the chapter with a look at how to go about handling errors and
+    exceptions in web workers. In the following chapter, we'll address the practical
+    aspects of parallelization—the types of work should we perform in parallel, and
+    the best way to implement it.
+  prefs: []
+  type: TYPE_NORMAL

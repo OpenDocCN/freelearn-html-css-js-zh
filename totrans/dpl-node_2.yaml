@@ -1,0 +1,1249 @@
+- en: Chapter 2. Installing and Virtualizing Node Servers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Recall the story from [Chapter 1](ch01.html "Chapter 1. Appreciating Node"),
+    *Appreciating Node*, about how Walmart ran all of its *Black Friday* mobile traffic
+    through Node, which was deployed across *the equivalent of 2 CPUs and 30 gigs
+    of RAM*. This demonstrates that Node processes I/O so efficiently that even Walmart-level
+    traffic on *Black Friday* can be handled with only a few servers. This means that,
+    for many people, running your Node application on a single server is all you'll
+    ever need to do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Nevertheless, it is often good to have several servers at your disposal, such
+    as redundant servers to ensure failover recovery, a distinct database server,
+    specialized media servers, one hosting a message queue, and so on. In keeping
+    with the idea of separating concerns into many independent processes, Node-based
+    applications are often composed of many lightweight servers spread across a data
+    center, possibly even spread across several data centers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we will look at the basics of setting up single Node servers
+    concretely and virtually. The goal is to explore your options for *mass producing*
+    servers in response to scaling needs and to see how you can connect these together.
+    You will learn how to set up an HTTP/S server yourself as well as how to do tunneling
+    and proxying with Node. We'll then look at a few popular cloud-hosting solutions
+    and how to set up Node servers on those. We'll close with a discussion on **Docker**,
+    an exciting new technology to create lightweight virtual services.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting a basic Node server up and running
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: HTTP is a data transfer protocol built upon a request/response model. Normally,
+    a client makes a request to a server, receives a response, makes another request,
+    and so on. HTTP is stateless, which simply means that each request or response
+    maintains no information on previous requests or responses. Facilitating this
+    sort of rapid-pattern network communication is the sort of I/O that Node is designed
+    to excel at. While Node represents a much more interesting technology stack overall,
+    it does help engineers in creating networked protocol servers. In this section,
+    we will move through a general overview of how to set up a basic HTTP server and
+    then into a few more specialized uses of the protocol.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hello world
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'An HTTP server responds to connection attempts and manages data as it arrives
+    and as it is sent along. A Node server is typically created using the `createServer`
+    method of the HTTP module:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The object returned by `http.createServer` is an instance of `http.Server`,
+    which extends `EventEmitter` and broadcasts network events as they occur, such
+    as a client connection or request. Most server implementations using Node use
+    this method of instantiation. However, listening for event broadcasts by an `http.Server`
+    instance can be a more useful, even natural, way to organize server/client interactions
+    within a Node program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here, we create a basic server that simply reports when a connection is made
+    and when it is terminated:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: When building multiuser systems, especially authenticated multiuser systems,
+    this point in the server-client transaction is an excellent place for client validation
+    and a tracking code. Cookies can be set and read, along with other session variables.
+    A client arrival event can be broadcast to other concurrent clients interacting
+    within real-time applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'By adding a listener for requests, we arrive at the more common request/response
+    pattern, handled as a `Readable` stream. When a client posts data, we can catch
+    that data, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Send this server some data using **curl**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using connection events, we can nicely separate our connection-handling code,
+    grouping it into clearly defined functional domains, which are correctly described
+    as executing in response to particular events.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, we can set timers on server connections. Here, we can terminate
+    client connections that fail to send new data within a roughly 2-second window:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Making HTTP requests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: HTTP servers are often called upon to perform HTTP services for clients making
+    requests. Most commonly, this sort of proxying was done on behalf of web applications
+    running in browsers with restrictions on cross-domain requests. Node provides
+    an easy interface to make external HTTP calls.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, the following code will fetch the front page of [google.com](http://google.com):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we simply dump a `Readable` stream to the terminal, but this stream could
+    easily be piped to a `Writable` stream, perhaps bound to a file handle. Note that
+    you must always signify that you're done with a request using the `request.end`
+    method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'A popular Node module to manage HTTP requests is Mikeal Rogers'' **request**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://github.com/mikeal/request](https://github.com/mikeal/request)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Because it is common to use `HTTP.request` in order to GET external pages,
+    Node offers a shortcut:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Let's now look at a few more advanced implementations of HTTP servers, where
+    we perform general network services for clients.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Proxying and tunneling
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Sometimes, it is useful to provide a means for one server to function as a proxy,
+    or broker, for other servers. This would allow one server to distribute requests
+    to other servers, for example. Another use would be to provide access to a secured
+    server to users who are unable to connect to that server directly—this is often
+    seen in countries that place restrictions on Internet access. It is also common
+    to have one server answering for more than one URL using a proxy; that one server
+    can forward requests to the right recipient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Because Node has consistent network interfaces implemented as evented streams,
+    we can build a simple HTTP proxy in just a few lines of code. For example, the
+    following program will set up an HTTP server on port `8080`, which will respond
+    to any request by fetching the front page of Google and piping that back to the
+    client:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once this server receives the client socket, it is free to push content from
+    any readable stream back to the client. Here, the result of the GET of [www.google.com](http://www.google.com)
+    is so streamed. One can easily see how an external content server managing a caching
+    layer for your application might become a proxy endpoint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using similar ideas, we can create a tunneling service using Node''s native
+    CONNECT support:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We''ve set up a proxy server that responds to clients requesting an HTTP CONNECT
+    method [`on("connect")`], which contains the request object, the network socket-binding
+    client and server, and the ''head'' (the first packet) of the tunneling stream.
+    When a CONNECT request is received from a client, we parse out `request.url`,
+    fetch the requested host information, and open the requested network socket. By
+    piping remote data to the client and client data to the remote connection, a bidirectional
+    data tunnel is established. Now we need only make the CONNECT request to our proxy,
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once a status 200 confirmation of our CONNECT request is received, we can push
+    request packets down this tunnel, catching responses and dumping those to `stdout`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: HTTPS, TLS (SSL), and securing your server
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Web applications have grown in size, importance, and complexity. The security
+    of web applications has, therefore, become an important topic. For one reason
+    or another, early web applications were allowed to venture into the experimental
+    world of client-side business logic, unsecured password transmission, and open
+    web services while shielded by only a diaphanous curtain. This is becoming harder
+    to find among users interested in the security of their information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As Node is regularly deployed as a web server, it is imperative that the community
+    begins to accept responsibility for securing these servers. HTTPS is a secure
+    transmission protocol—essentially, encrypted HTTP formed by layering the HTTP
+    protocol on top of the SSL/TLS protocol. Let's learn how to secure our Node deployments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a self-signed certificate for development
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In order to support SSL connections, a server will need a properly signed certificate.
+    While developing, it is much easier to simply create a self-signed certificate,
+    allowing us to use Node's HTTPS module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These are the steps needed to create a certificate for development. Remember
+    that this process does not create a real certificate, and the generated certificate
+    is *not secure*—it simply allows us to develop within an HTTPS environment from
+    a terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'These keys can now be used to develop HTTPS servers. The contents of these
+    files need simply be passed along as options to a Node server running on the (default)
+    SSL port `443`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Free **low-assurance** SSL certificates are available from [http://www.startssl.com/](http://www.startssl.com/)
+    for cases where self-signed certificates are not ideal during development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Installing a real SSL certificate
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In order to move a secure application out of a development environment and into
+    an Internet-exposed environment, a real certificate will need to be purchased.
+    The prices of these certificates have been dropping year by year, and it should
+    be easy to find providers of reasonably priced certificates with a high enough
+    level of security. Some providers even offer free personal-use certificates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Setting up a professional certificate simply requires changing the HTTPS options
+    we introduced previously. Different providers will have different processes and
+    filenames. Typically, you will need to download or, otherwise, receive a private
+    `#key` file from your provider, your signed domain certificate `#crt` file, and
+    a general bundle `#ca` describing certificate chains:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: It is important to note that the `#ca` parameter must be sent as an *array*
+    even if the bundle of certificates has been concatenated into one file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here are the key takeaways of this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: HTTP sockets are abstracted into evented streams. This is true for all network
+    interfaces provided by Node. These streams can easily be connected to one another.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Because stream activity is evented, those events can be recorded. Very precise
+    logging information on the behavior of a system can be recorded either in event
+    handlers or by piping streams through a `PassThrough Stream` parameter that might
+    listen for and record events.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Node excels as an I/O service. Node servers can act as dispatchers solely interested
+    in brokering communication between a client and any number of remote services
+    or even specialized processes running on a local OS.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Now that you know how to set up an HTTP server and work with the protocol within
+    Node, go ahead and experiment. Create a small application on your local machine
+    that allows users to read a Twitter feed or connect to a public data API. Get
+    used to authenticating remote services over the wire and interacting with them
+    either through their API or by otherwise acting as a proxy for their data. Get
+    used to composing network applications by integrating remote network services
+    using Node as a broker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running your own servers in production can be expensive and time consuming,
+    especially if you aren't familiar with systems administration. For this reason,
+    a large number of cloud-hosting companies have sprung up and many are designed
+    specifically for the Node developer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's take a look at a few of them. By way of comparison, the same Node application
+    will be deployed on each—an editable JSON document stored in **MongoDB** bound
+    to a simple browser-based **User Interface** (**UI**). You are encouraged to try
+    these services out in order, which is not necessary though.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Installing applications on Heroku
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Heroku is a mature PaaS cloud-hosting solution that supports the development
+    of Node applications. To get started, visit [http://www.heroku.com](http://www.heroku.com)
+    and submit an e-mail address. Heroku is free to start with. After you've confirmed
+    your account, you can start deploying apps right away.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scaling Heroku applications involves increasing the number of *dynos* that you
+    are paying for. Each **dyno** is an isolated container running your application
+    and you are able to increase or decrease the number of dynos your application
+    uses with ease. In this way, there aren't any hosting *packages* to buy—you simply
+    scale as needed by asking for more, or fewer, dynos.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heroku allows you to deploy applications on many platforms and languages—it
+    is not Node-centric. This is something to keep in mind should you anticipate the
+    need to add services to your application not written in Node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To control Heroku remote instances, you will use a local *utility belt* application.
+    Once you've joined Heroku and confirmed your signup, log in and go to the **Apps**
+    section of your dashboard. There should be instructions there on installing Heroku
+    Toolbelt ([https://toolbelt.heroku.com/](https://toolbelt.heroku.com/)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The `heroku` command-line client will be installed in `/usr/local/heroku` and
+    `/usr/local/heroku/bin` will be added to your path.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once you have Toolbelt installed, open a terminal and log in to Heroku with
+    `heroku login`. Since this is your first time, you will most likely be asked to
+    generate a public key. Once this key is generated and uploaded, you are secure,
+    and, going forward, you can administer your Heroku deployments via Toolbelt and
+    the command line.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Heroku recognizes your application as a Node application if it finds a `package.json`
+    file in the root directory of your application folder. Our sample app already
+    contains one, so there is no need to create another. However, as Heroku is not
+    an exclusive Node host, it does not automatically find the start script for our
+    -- `server.js` -- application at the `start` attribute of that package file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Instead, Heroku requires what is called **Procfile**. Create a `Procfile` file
+    in the root directory of our sample application and insert the following text
+    into it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: It's slightly different, but we can see that the effect is ultimately the same.
+    Procfile declares that we want a "web" process—the process that will be spun up
+    after the command `node server.js` is executed will expect to have HTTP traffic
+    routed to it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'When you installed Heroku Toolbelt, another application was also installed:
+    **Foreman**. Foreman helps you manage Procfile-based applications. Its primary
+    importance for us is that it allows you to start Heroku applications locally.
+    While you can simply update the `scripts` attribute of your Node package and run
+    your application directly through Node, it does save a step. Try `foreman start`
+    and visit `localhost:8080`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the following sections, we will look at how a repository is installed and
+    managed on Heroku, and how to add to our applications on MongoDB, and we'll deploy
+    a JSON editing application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add-ons
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: On Heroku, databases are understood as one of many add-ons. From logging tools,
+    to caching layers, to databases, Heroku offers dozens of add-ons. Since we need
+    a MongoDB instance to run our application, let's install one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that, while a developer (sandbox) MongoDB instance from MongoLab is free,
+    Heroku requires you to verify your account with a credit card. If you don't have
+    a credit card, it is still possible to get a free MongoDB cloud account through
+    other services and use those credentials for your Heroku application. In the end,
+    we simply need a MongoDB endpoint somewhere to connect to.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To add a MongoDB account, run the `heroku addons:add mongolab` command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Use `heroku addons:docs mongolab` to view documentation in your browser.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You just added a configuration option to your Heroku instance. Not surprisingly,
+    you can view this information via `heroku config`, which will return you something
+    like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: With our database established, let's now push our application into Heroku and
+    get it running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Git
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Deploying applications on Heroku involves pushing your local version into the
+    remote application repository you just provisioned. There is no `heroku deploy`
+    command; what you do is push to **Git**, thus triggering post-receive hooks at
+    Heroku's end. These deploy your app.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you're unfamiliar with Git, visit [http://git-scm.com/book/en/Getting-Started-Git-Basics](http://git-scm.com/book/en/Getting-Started-Git-Basics).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s try it out. Within your code bundle, there exists a `json-editor` folder.
+    First, enter that folder and update the MongoDB connection and authentication
+    code in `server.js` so that we can use the database connection defined earlier:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, run the following commands in your terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: This initializes our application as a proper Git repository. Now, we need to
+    inform Heroku of our new application and our new Git repository. Let's deploy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'From within the `json-editor` folder of your code bundle, use Heroku Toolbelt
+    to create your first Heroku app:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If all goes well, you should see something like this in your terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you visit that URL immediately, you will receive an error message. We haven''t
+    pushed our repository, so there is nothing deployed, which means there is nothing
+    to show. To deploy an application to Heroku, push your local Git repo:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This should result in a lot of build output, clearly informing you of what
+    is happening:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Deploying to Heroku, therefore, naturally combines the actual container deployment
+    with the application version management via Git. What is more, pushing changes
+    on your Git repository to Heroku will automatically update a running application,
+    allowing "hot" code refreshes. Being able to continuously deploy your application
+    can be of great benefit in some circumstances, as we'll see in later chapters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before we begin, take note that the URL of your deployed app has no port number.
+    Heroku automatically assigns a port through which the web process communicates
+    with your application—this is not in our control. However, it is made available
+    to your Node process via `process.env.PORT`. For this reason, you will need to
+    change the `}).listen(8081);` line in `server.js` to `}).listen(process.env.PORT
+    || 8081);`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We are now ready to start up our application. Remember that we are deploying
+    a Procfile-based application—processes are defined as being of a certain type.
+    In our case, that type is "web". We also need to assign dynos to our deployment—we
+    need to requisition a process from Heroku to run our app within. The command to
+    start up such an application is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: This tells Heroku to give us one (`1`) dyno (also known as a process) of the
+    *web type*. You could also ask for two, or more, depending on your needs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Run that command. You should see something like the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This tells us that everything is running fine and we have `1` dyno that is
+    `1x` in size handling our application. You can check that your process is running
+    with the `heroku ps` command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our application is running! Visit the Heroku URL you were given earlier. You
+    should see a JSON editor and our MongoDB document:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Git](img/1403OS_02_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'This is a JSON editor reading the MongoDB document created on our server. It
+    doesn''t do much other than letting you change the value of the `for` attribute.
+    If you look at the JavaScript code in `index.html`, you''ll see that we''ve structured
+    our client to send updates to the server via an `/update` path whenever values
+    are changed in this document:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Try it out. Use the editor to change `Deploying NodeJS` to something else.
+    If you open your browser''s console, you should see **POST RESPONSE: OK** on each
+    change you make to this value. After you''ve made a change, reload your browser.
+    You''ll see the new value—the changes you''ve made are being persisted on MongoDB
+    via our Heroku instance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Managing configuration variables
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: It is normal for certain aspects of an application to be configurable. For example,
+    an application deployed for production will most likely be configured differently
+    than one being built in a development environment. Also, authentication credentials
+    (such as the one we are using for our MongoDB connection) will be included in
+    environment variables.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As many configuration variables are sensitive, it is a bad idea to include
+    them in an application repository or in a public file. How can variables be shared
+    across multiple processes in a secure way? One solution is to pass environment
+    variables when starting a Node process via the command line. If we wanted to inform
+    a Node process that it should execute as a production server, for example, we
+    can do something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Within that script, we can access the value via `process.env`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: While passing configuration variables in this way works very well in terms of
+    privacy, it can be tedious to do this repeatedly for every process, especially
+    if there are many variables.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Heroku provides an interface to help with managing environment variables. If
+    you log in to your Heroku instance and visit the **Settings** section, you will
+    see something like the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Managing configuration variables](img/1403OS_02_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: These environment variables will be passed to your application automatically
+    when it is started and/or restarted. Using the **Edit** button, you can add or
+    remove additional settings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Managing your deployment
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'If your application crashes for any reason, `heroku ps` will indicate this.
+    You also have access to your process logs via `heroku logs`. Just as when you
+    are starting your process, stopping your process involves scaling your dynos down
+    to zero:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: Heroku allows you to very precisely scale and configure your process, scale
+    to many dynos, add various workers, and change the size of the dynos themselves.
+    In our example, we use the basic **1x** dyno, which has the smallest memory and
+    compute power, and is the cheapest. For more information, visit [https://devcenter.heroku.com/articles/dyno-size](https://devcenter.heroku.com/articles/dyno-size)
+    and [https://devcenter.heroku.com/articles/process-model](https://devcenter.heroku.com/articles/process-model).
+  prefs: []
+  type: TYPE_NORMAL
+- en: From time to time, you might commit a change that is incorrect or want to redeploy
+    a previous release. Don't worry! Toolbelt allows you to manage your releases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To list releases, use `heroku releases`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can get specific information on a release:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Rolling back to the immediately previous version is accomplished with a simple
+    Heroku rollback. You can also roll back to a specific release:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: Just as when pushing changes, the version rolled back to will automatically
+    "go live".
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You can open your application right from the command line with `heroku open`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Installing applications on OpenShift
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Red Hat, the enterprise Linux company, operates OpenShift, a cloud-hosting solution.
+    OpenShift offers several options for how you want to deploy your apps—via a web-based
+    interface, via the command line, or through an online IDE. As we've worked on
+    the command line for our other deployment examples, we'll do the same with OpenShift.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once you''ve joined and confirmed your account, you will need to install the
+    OpenShift client tools—`rhc`. For the purposes of this section, I''ll use the
+    Mac OS X client. Regardless of which package you happen to choose, the command
+    set remains the same:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: This will install the client and update it to the latest version.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once installed, you will need to set up your SSH keys and authenticate with
+    the system by running an `rhc` setup. Just enter your authentication information,
+    confirm the installation of keys, and confirm the upload of credentials.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You will then be asked to enter a namespace. This will serve as your identifier
+    in the system, among other things forming the subdomain of your deployed instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: OpenShift works on the idea of **Gears** and **Cartridges**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Gears are, roughly, containers with a certain allocation of compute units, memory,
+    disk, bandwidth, and so on, with a given capacity of cartridges. Larger gears
+    are more performant and (generally) can support a greater number of cartridges.
+    You can think of your installation as a collection of managed runtimes (cartridges),
+    fully isolated and deployed to one or more gears. As your application needs to
+    grow, you will add gears and cartridges. When you add cartridges, the OpenShift
+    system deploys your cartridge to the correct gear within your deployment—certain
+    cartridges with access to only their own gear and others with access to all gears.
+    Pricing depends on the number of gears used and, depending on the characteristic
+    of those gears, the implied number of cartridge slots.
+  prefs: []
+  type: TYPE_NORMAL
+- en: OpenShift supports many types of development environments, open source repositories,
+    web frameworks, databases, and so on—a very rich ecosystem of tools, many more
+    than are available in the providers we've looked at so far. You can even develop
+    your own cartridges or use community cartridges.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The system makes it easy to dynamically scale your deployment in terms of gears,
+    or cartridges, or both. The free tier we will use offers three small gears.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Installing a Node application and MongoDB
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the OpenShift ecosystem, Node is not a special citizen (as it is with NodeJitsu)
+    or one of a fixed set of process types (as with Heroku). Because of the modularity
+    that this concept of gears and cartridges offers, creating a sample Node application
+    with access to a MongoDB instance can be accomplished in one line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, your deployment is powerfully configured, allowing SSH access
+    and HTTP access, and is ready as a Git repo—if you look inside your json-editor
+    folder, a new folder, `myapp/`, has been created. Go ahead and visit your URL.
+    Full instructions on how to use Git are provided as well as how to access your
+    application via other means.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We want to now replace this sample Node app with our own `json-editor` app.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deploying your app
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We, of course, do not want to use the sample app provided by OpenShift. Rather
+    than reconfiguring, let''s keep the `.git` remote configuration in `myapp/` and
+    copy the following files and folders in our `json-editor/` folder into the `myapp`
+    folder:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: These will overwrite any similar files that OpenShift created, while preserving
+    the others. Make sure you have changed the directory to myapp/ as we'll be working
+    from there from now on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As we did when installing on Heroku, we will need to consult the `process.env`
+    object when starting our Node server. Open `server.js` and go to this line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, change the line to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We are now ready to deploy our app. Update Git with all local files, commit
+    them, and push to OpenShift:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If all goes well, you should see the following at the tail end of the resulting
+    output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can see how both Node and MongoDB are cartridges (not special processes or
+    add-ons) and how a successful post-receive hook will automatically deploy and
+    activate our app (not unlike what we saw when deploying to Heroku).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Should anything go wrong, we have direct access to our deployment logs. To
+    connect to your application (`myapp`) via SSH, use the `rhc` tool:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once connected, jump to your log directory using `cd $OPENSHIFT_LOG_DIR`. You
+    should see two logs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: These are standard Linux log files and you can read or otherwise manipulate
+    them, for example, by tailing them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can also tail your logs via `rhc`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: When you are remotely logged in to your virtual container, you can jump to the
+    root directory of your app via `cd $OPENSHIFT_REPO_DIR`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Controlling your application is easily done via `rhc`. Several commands are
+    available via `rhc app <command>`. These are a few commonly used commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**delete**: This deletes an application from the server'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**force-stop**: This stops all application processes'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**reload**: This reloads the application''s configuration'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**restart**: This restarts the application'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**show**: This shows information about an application'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**start**: This starts the application'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**stop**: This stops the application'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**tidy**: This cleans out logs and `tmp` directories and tidies up the `git`
+    repo on the server'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenShift offers a flexible option for those who want a little more control
+    over the application they are deploying—power tools for power users.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using Docker to create lightweight virtual containers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'This image from the Docker website ([http://www.docker.com/](http://www.docker.com/))
+    gives information on how and why the Docker team feels their technology fits into
+    the future of application development:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using Docker to create lightweight virtual containers](img/1403OS_02_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The preceding image, concisely describing the generational shift in application
+    architecture we are now experiencing, can just as easily be used to describe the
+    how and why of Node's design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Docker, according to the website, *…is an open source engine that automates
+    the deployment of any application as a lightweight, portable, self-sufficient
+    container that will run virtually anywhere*. Once you have created a Docker image
+    of your application, a running instance of that image can be spun in milliseconds.
+    Yes, that''s right: a few milliseconds. Docker lets you create even hundreds of
+    deployments of your application in a few seconds.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Docker ecosystem has three main components. Here''s some information about
+    the components from the documentation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Docker containers**: Docker containers are like directories. A Docker container
+    holds everything that is needed for an application to run. Each container is created
+    from a Docker image. Docker containers can be run, started, stopped, moved, and
+    deleted. Each container is an isolated and secure application platform. You can
+    consider Docker containers to be the `run` portion of the Docker framework.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Docker images**: The Docker image is a template, for example, an Ubuntu operating
+    system with Apache and your web application installed. Docker containers are launched
+    from images. Docker provides a simple way to build new images or update existing
+    images. You can consider Docker images to be the `build` portion of the Docker
+    framework.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Docker registries**: Docker registries hold images. These are public (or
+    private) stores that you can upload or download images to and from. These images
+    can be images you create yourself, or you can make use of images that others have
+    previously created. Docker registries allow you to build simple and powerful development
+    and deployment workflows. You can consider Docker registries to be the `share`
+    portion of the Docker framework.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You can create images of applications to be run in any number of isolated containers,
+    sharing those images with others if you'd like. The concept of composing Node
+    applications out of many independent processes naturally aligns with the philosophy
+    behind Docker. Docker containers are sandboxed, with their own filesystems, and
+    so on, and are unable to execute instructions on their host without your knowledge.
+    They can expose a port to their host OS, however, and later in this chapter, we'll
+    learn how to use Node to link together many independent virtual containers into
+    a larger application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, some Unix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Docker is a new technology, and at the time of this writing, it is not yet available
+    on all flavors of Unix (although the team is working hard to make that a reality
+    in the near future). I will install Docker on CentOS. The Docker website ([https://www.docker.io/](https://www.docker.io/))
+    is regularly updated with information on how to install on your favorite flavor
+    of Unix.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Knowing the details of your OS is important. To find out your OS distribution
+    name and version, use `cat /etc/*-release`, which should return something like
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Or you can try `cat /proc/version`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: When you begin to create virtual machines and bind to ports, it will be necessary
+    to check the status of your network on occasion. You should definitely install
+    a good process viewer, such as **HTOP** ([http://hisham.hm/htop/](http://hisham.hm/htop/)),
+    as this will let you quickly scan/search through your open process list.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To get a quick list of stats on the network connections for your box, use `netstat`,
+    which will return a list somewhat like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![First, some Unix](img/1403OS_02_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'You can see that port `8080` is bound to the Node process `31878`. You can
+    also directly ask for the process ID associated with a port:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To get more information on a process, type `ls -l /proc/31878/exe`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To get more information on a port user, try `lsof`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: Keeping on top of who is listening where, and to what, will serve you well as
+    you move through this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting started with Docker
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: First, you will need to install Docker. Installation instructions for all supported
+    Linux distributions can be found at [http://docs.docker.io/installation/](http://docs.docker.io/installation/).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once you have the Docker service installed, you will need to start it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, stop the Docker service:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If everything is working, this command should tell you something about your
+    Docker installation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: A Docker container runs an image of your application. You can create these images
+    yourself, of course, but there does exist a large ecosystem of existing images.
+    Let's create our own image of a Node server running Express.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To search the Docker image repository, visit [https://index.docker.io/](https://index.docker.io/).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we''ll need to build an application to run. Create a folder to put your
+    application files into. Just as with all Node applications, we''ll need to create
+    a `package.json` file for npm to parse:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we need a program that will start an Express HTTP server. Create the
+    following file and name it `server.js`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, install and start your application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can now point your browser to your host on port `8087` and see **You just
+    deployed some Node!** displayed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, we will look at how we can build these files into a virtual container using
+    Docker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a Dockerfile
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our goal is to describe the environment this application executes within such
+    that Docker can reproduce that environment in a container. Also, we want to add
+    the source files of our application to run in this newly virtualized environment.
+    Docker can act as a builder that follows the instructions you provide on how to
+    build an image of your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To begin with, you should have a folder containing your application files. This
+    is your source code repository. Within this repository, create a `./src` folder.
+    We will shortly learn why this folder is created. If this folder is the one where
+    your test application was built, remove the `node_modules` folder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A Dockerfile is a list of instructions to build an application. You can build
+    Docker images manually, of course, but it is likely that you will want to repeat
+    those actions many times. A Dockerfile describes a build process. What you will
+    normally declare in a Dockerfile is the Linux version that the container will
+    run and any OS installations you might need to do—such as Node and npm. Additionally,
+    you will indicate where the source code for your application resides: within the
+    `./src` folder created earlier.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A Dockerfile is always built upon another Docker image. Normally, you will
+    build upon an OS image. We''ll use CentOS 6.4 for this example. My Dockerfile
+    starts with a comment about the version of Docker I am building on and the name
+    of the image this image will be built from:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We have now established an OS to run in the container. Now we will simply list
+    typical Unix commands to set up a build environment. First, we''ll need Node and
+    npm:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Great! Now our container knows how to build Node and npm. Now let''s bundle
+    our application into the `./src` directory of our container using the `ADD` directive:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that our application files are bundled into `./src`, let''s enter that
+    directory and install the application package:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our app is now installed. Note that in `app.js` we are exposing an Express
+    server on port `8087`. A container can''t know this, so we have to tell the container
+    to set up the port redirection on the host system:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, the container is told to start the Node application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs: []
+  type: TYPE_PRE
+- en: That's it. Now, create a file named (exactly) `Dockerfile`, containing the preceding
+    instructions. We can now use this Dockerfile to build a Docker image.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building and running a Docker image
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The command to build a Docker image is `docker build`. Docker will look in
+    the current folder for a Dockerfile and build an image based on the instructions
+    contained therein. Since we will most likely reuse this image, it is a good idea
+    to tag it with a special name. To give an image a name, use the `–t` directive,
+    followed by the tag of your choice, followed by a path to the Dockerfile (here,
+    the current directory):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs: []
+  type: TYPE_PRE
+- en: When you run that command, you will see a lot of output to your terminal as
+    the requested packages are downloaded and installed. This may take some time.
+    Thankfully, Docker caches these installs—the next build using this Dockerfile,
+    or others containing identical install instructions, will be much faster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If the build went well, your image can be listed, with the `docker images`
+    command outputting something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE62]'
+  prefs: []
+  type: TYPE_PRE
+- en: To remove an image, use `docker rmi <image id>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our application is now containerized. We can run it using the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE63]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `–d` directive instructs Docker to run this image in detached mode—to run
+    it in the background. The `49001:8087` segment is necessary to map the *virtual*
+    port that our Express server is listening to *within the container* (`8087`) to
+    an actual port on our host machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Open your browser and point it to the host machine at port `49001`. You should
+    see **You just deployed some Node!** displayed. The Node application we created
+    earlier is now running in a container.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To demonstrate the point of Docker, execute the same `run` instruction given
+    earlier, but change the port mapping to something like `49002:8087`. Open a different
+    browser window on your application by changing the port accordingly. You now have
+    two identical copies of your application running on the same host in isolated
+    containers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: More details on run directives can be found at [http://docs.docker.io/reference/run/](http://docs.docker.io/reference/run/).
+  prefs: []
+  type: TYPE_NORMAL
+- en: To learn more about port redirection, visit [http://docs.docker.io/use/port_redirection/#port-redirection](http://docs.docker.io/use/port_redirection/#port-redirection).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You will want to be able to check for the running Docker instances. The command
+    to do this is `docker ps`, which will display information similar to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Building and running a Docker image](img/1403OS_02_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Here we see our two running containers, including information about what they
+    are running and how they are mapped. To stop a running container, use `docker
+    stop <container id>`. You can use `docker start <container id>` to either restart
+    a stopped container or, of course, start a new one. This implies that stopping
+    a container does not destroy the container. To do that, use `docker rm <container
+    id>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: For a full list of Docker commands, simply type `docker` in your terminal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, you learned how to create Node servers and applications, both
+    locally and *in the cloud*. Having deployed a simple document-editing application
+    using Node and MongoDB across three different PaaS providers, you have an early
+    sense of what is available to the Node developer who is looking to scale their
+    application. You were introduced to Docker, which offers a powerful new containerization
+    technology, allowing us to make many cheap clones of our applications; wherever
+    there is Linux, there exists a deploy target for Docker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will take these simple ideas about scaling farther and
+    deeper by exploring in more detail how Node can be scaled both vertically and
+    horizontally—across cores and across many machines.
+  prefs: []
+  type: TYPE_NORMAL
