@@ -1,0 +1,233 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;10.&#xA0;Guaranteeing Your Code's Quality with Unit and UI Testing"><div class="titlepage"><div><div><h1 class="title"><a id="ch10"/>Chapter 10. Guaranteeing Your Code's Quality with Unit and UI Testing</h1></div></div></div><p>Being confident in our code's quality and functionality is of utmost importance when we come to add new features, refactor existing features, and ultimately, ship our product.</p><p>Without any process in place to automatically check our code, we will always be nervous about the impact our changes will have on the rest of the application. The time between bugs being introduced and them being discovered is extended, resulting in the cost of resolving them rising dramatically.</p><p>This chapter will focus on how we can ensure that our code is of a high standard and that it functions as it should at all times. We will explore the following topics:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Best practices for writing testable JavaScript</li><li class="listitem" style="list-style-type: disc">Development approaches that will put testing front and center</li><li class="listitem" style="list-style-type: disc">Introduction to the Siesta testing framework</li><li class="listitem" style="list-style-type: disc">How to write unit tests</li><li class="listitem" style="list-style-type: disc">How to write UI tests</li><li class="listitem" style="list-style-type: disc">How to integrate testing into the development workflow</li></ul></div><div class="section" title="Writing testable JavaScript"><div class="titlepage"><div><div><h1 class="title"><a id="ch10lvl1sec74"/>Writing testable JavaScript</h1></div></div></div><p>JavaScript <a id="id415" class="indexterm"/>has always been a language that has been difficult to test. This has largely been down to the unstructured nature in which it was used and the tendency to sprinkle it into pages to add small effects and pieces of functionality. This meant that isolating small sections of code to test them was extremely difficult and so, it tended to just not be done.</p><p>These days, JavaScript is used to write serious applications, and developers are building upon frameworks, such as Ext JS, to introduce a more rigid architecture to their projects. This structure makes testing units of functionality much easier and gives us much simpler scenarios to work with and construct tests around.</p><p>Although by<a id="id416" class="indexterm"/> writing an application using Ext JS you have already taken a big step towards more testable code, there are some good practices to follow to ensure things are even easier, which we will explore in this section.</p><div class="section" title="Single responsibility"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec116"/>Single responsibility</h2></div></div></div><p>By<a id="id417" class="indexterm"/> ensuring that your classes and methods are only responsible for a single piece of functionality, means that testing that functionality is much easier as the inputs and outputs are much more clear-cut.</p><p>For example, having a method that, on a button click, will update three parts of your application in one big method will be complex to test. To test that single method, we would need to have all three areas available and check for the appropriate result in each.</p><p>If we extracted this into three separate methods, we could test each in isolation and concentrate on that function and its results.</p></div><div class="section" title="Accessible code"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec117"/>Accessible code</h2></div></div></div><p>If a<a id="id418" class="indexterm"/> function in our code base is <span class="strong"><strong>private</strong></span> (that is, inaccessible<a id="id419" class="indexterm"/> to outside code via a closure, for example) then we will be unable to test it or mock it. This approach makes it impossible to test these private functions and very difficult to test methods that rely on them as they may need to be mocked.</p><p>It is therefore, sometimes necessary to make these private functions publicly accessible to aid testing.</p></div><div class="section" title="Nested callbacks"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec118"/>Nested callbacks</h2></div></div></div><p>Deeply <a id="id420" class="indexterm"/>nested callback functions are extremely difficult to test as they are all private and rely on lots of conditions to align to exercise them all. This relates closely to the previous point of making code accessible. Rather than nesting lots of callbacks, consider extracting them into member functions. The following example shows how the functions handling the <code class="literal">async</code> calls can't be tested:</p><div class="informalexample"><pre class="programlisting">Ext.define('MyClass', {
+  doAction: function(){
+    Ext.Ajax.request({
+      url: 'action.php',
+      success: function(response){
+        OtherClass.async(response.value, function(newValue){
+          AnotherClass.async(newValue, function(){
+          // finished!
+          });
+        });
+      }
+    });
+  }
+});</pre></div><p>This could be refactored to use member functions that can all be tested individually. In addition, the<a id="id421" class="indexterm"/> code is much cleaner and avoids lots of nested callbacks.</p><div class="informalexample"><pre class="programlisting">Ext.define('MyClass', {
+  doAction: function(){
+    Ext.Ajax.request({
+      url: 'action.php',
+      success: this.onActionSuccess
+    });
+  },
+  onActionSuccess: function(response){
+    OtherClass.async(response.value, this.onOtherClassAsync);
+  },
+  onOtherClassAsync: function(newValue){
+    AnotherClass.async(newValue, this.onAnotherClassSync);
+  },
+  onAnotherClassSync: function(){
+  // finished!
+  }
+});</pre></div></div><div class="section" title="Separate event handlers from actions"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec119"/>Separate event handlers from actions</h2></div></div></div><p>When<a id="id422" class="indexterm"/> attaching functionality to an event, we often carry out the action within the same function. The following example shows a button click handler that makes an AJAX request to delete a user, based on the selected row in a grid:</p><div class="informalexample"><pre class="programlisting">onDeleteButtonClick: function(btn) {
+  var grid = btn.up('gridpanel'),
+  selectedUserModel = grid.getSelection()[0];
+  Ext.Ajax.request({
+    url : 'deleteUser.php',
+    params : {
+      userID: selectedUserModel.get('userID')
+    },
+    success: this.onUserDeleteSuccess,
+    failure: this.onUserDeleteFailure,
+    scope : this
+  });
+}</pre></div><p>The problem with this code is that to test deleting a user, we need to have a grid available and a row selected, which is cumbersome to set up. What would be better is to extract the action from the handler so that the action can be tested without the need for the setup code. It also has the added benefit of being able to be executed from a different context; for example, from a delete key handler.</p><div class="informalexample"><pre class="programlisting">onDeleteButtonClick: function(btn) {
+  var grid = btn.up('gridpanel'),
+  selectedUserModel = grid.getSelection()[0];
+  this.doUserDelete(selectedUserModel.get('userID'));
+},
+doUserDelete: function(userID){
+  Ext.Ajax.request({
+    url : 'deleteUser.php',
+    params : {
+      userID: userID
+    },
+    success: this.onUserDeleteSuccess,
+    failure: this.onUserDeleteFailure,
+    scope : this
+  });
+}</pre></div></div></div></div>
+<div class="section" title="Testing frameworks"><div class="titlepage"><div><div><h1 class="title"><a id="ch10lvl1sec75"/>Testing frameworks</h1></div></div></div><p>There are<a id="id423" class="indexterm"/> a large number of JavaScript testing frameworks which would all work well with Ext JS applications. They each offer different ways of doing things and a<a id="id424" class="indexterm"/> different feature set. We will discuss Jasmine (<a class="ulink" href="http://jasmine.github.io/">http://jasmine.github.io/</a>) and<a id="id425" class="indexterm"/> Siesta (<a class="ulink" href="http://www.bryntum.com/products/siesta/">http://www.bryntum.com/products/siesta/</a>) in this section, and move on to explain Siesta in detail in subsequent sections.</p><div class="section" title="Jasmine"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec120"/>Jasmine</h2></div></div></div><p>Jasmine is <a id="id426" class="indexterm"/>a simple, free, BDD-style framework which is widely used across the industry, including Sencha, to develop Ext JS and Sencha Touch.</p><p>This framework<a id="id427" class="indexterm"/> takes a very descriptive approach to outlining tests:</p><div class="informalexample"><pre class="programlisting">describe("Test Suite Title", function() {
+  var a;
+  it("Spec Description", function() {
+    a = MyClass.doSomething();
+    expect(a).toBe(true);
+  });
+});</pre></div><p>Test suites and specs are just simple functions which should execute the test code and then assert whether the outcome was correct.</p><p>The <code class="literal">describe</code> method lets us define a test suite, which can include multiple specs (or indeed nested test suites). Specs are defined with the <code class="literal">it</code> method, which accepts a description of the spec and a function that forms the test. Within this function, our test is set up and executed, and its results analyzed to ensure the correct result was achieved.</p><p>Jasmine has a test harness page which executes all of the included test suites and displays the results. It can also be executed headlessly with a tool such as PhantomJS. This makes it perfect to integrate with your CI process.</p></div><div class="section" title="Siesta"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec121"/>Siesta</h2></div></div></div><p>Siesta is<a id="id428" class="indexterm"/> a powerful testing framework which is focused on testing Ext JS <a id="id429" class="indexterm"/>and Sencha Touch applications. It allows us to write unit and UI tests for our applications, also boasting a powerful event recorder built in to record and test interactions with specific UI elements. Having a Sencha slant means it has helper methods to assist testing of common components and also supports Sencha style constructs, such as Component Queries and <code class="literal">Ext.Loader</code>.</p><p>This Sencha focus makes Siesta perfect for testing Ext JS applications and makes tasks much simpler because of its knowledge of the framework. An added bonus is that it is written with Ext JS and tested using itself, so developers are using their product in anger everyday giving this framework a high degree of developer focus.</p><p>Siesta allows you to include multiple specs in a single suite with each spec testing an area of your application:</p><div class="informalexample"><pre class="programlisting">StartTest(function(t) {
+  t.diag("MyClass Test");
+  var a = MyClass.doSomething();
+  t.is(a, true, 'MyClass.doSomething returned true');
+  t.done();
+});</pre></div><p>The function <a id="id430" class="indexterm"/>passed to <code class="literal">StartTest</code> contains all of the test logic, including<a id="id431" class="indexterm"/> the test steps and the assertions. The object <code class="literal">t</code> passed into this function gives us access to a large number of assertion methods which we will explore later.</p><p>We recommend using Siesta as your testing framework because of its close integration with Ext JS, which makes it extremely easy to implement tests quickly and effectively.</p></div></div>
+<div class="section" title="Writing unit tests"><div class="titlepage"><div><div><h1 class="title"><a id="ch10lvl1sec76"/>Writing unit tests</h1></div></div></div><p>Siesta<a id="id432" class="indexterm"/> allows us to create unit test suites which allow us to exercise non-UI logic. We will write some simple tests for our <code class="literal">BizDash.config.Config</code> class to test its methods. A slightly cut down version of this class is shown here:</p><div class="informalexample"><pre class="programlisting">Ext.define('BizDash.config.Config', {
+  extend: 'Ext.util.Observable',
+  singleton: true,
+  config: { version: '0.0.1-0' ... },
+  ...
+  getBuildNumber: function() {
+    var versionSplit = this.getVersion().split('-');
+    return versionSplit[1];
+  },
+  applyVersion: function(newVersion, oldVersion){
+    return newVersion;
+  },
+  updateVersion: function(newVersion, oldVersion){
+    if(this.hasListeners) {
+      this.fireEvent('versionchanged', newVersion, oldVersion);
+    }
+  }
+});</pre></div><div class="section" title="Testing project structure"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec122"/>Testing project structure</h2></div></div></div><p>We will <a id="id433" class="indexterm"/>start by adding the Siesta framework files to our<a id="id434" class="indexterm"/> project folder; these can be downloaded from the Siesta website (<a class="ulink" href="http://www.bryntum.com/products/siesta/">http://www.bryntum.com/products/siesta/</a>).</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note06"/>Note</h3><p>Siesta offers a Lite version, which can be used for free but is limited in its feature set. The standard license gives you access to extra features and support.</p></div></div><p>We then create a tests folder where we will keep our test suites. Our folder structure should look something like the following image:</p><div class="mediaobject"><img src="graphics/3717_10_01.jpg" alt="Testing project structure"/></div><p>Next, we<a id="id435" class="indexterm"/> will create a test suite for the <code class="literal">Config</code> class. We will mirror the app's folder structure and have a folder named the same as the class being tested, prefixed with an underscore. In this case, we end up with the following:</p><div class="mediaobject"><img src="graphics/3717_10_02.jpg" alt="Testing project structure"/></div><p>By following this convention, the tests are grouped by their class and so can be easily navigable. This is purely a suggested structure and your test suite can follow an entirely different pattern if you wish.</p></div><div class="section" title="Creating the test harness"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec123"/>Creating the test harness</h2></div></div></div><p>To run <a id="id436" class="indexterm"/>Siesta tests, we must have a test definition script (like the one we created in the previous section) and an HTML page that loads the Siesta framework and the definition script.</p><p>Our test definition should contain the following code and be within the <code class="literal">index.js</code> file:</p><div class="informalexample"><pre class="programlisting">var Harness = Siesta.Harness.Browser.ExtJS;
+Harness.configure({
+  title: 'Config Tests',
+  preload: [
+    '../../../MyWorkspace/build/testing/BizDash/resources/BizDash-all.css',
+    '../../../MyWorkspace/build/testing/BizDash/app.js' ]
+  });
+  Harness.start(
+    {
+      group: 'Config',
+      items: [
+    ]
+  }
+);</pre></div><p>The first section configures Siesta with a test suite title and tells it to preload the built versions of our application (the ones that are created after running <code class="literal">sencha app build</code>).</p><p>Next, we <a id="id437" class="indexterm"/>tell the harness to start running our tests, which we will structure in groups. At the moment we have no tests to run, but when we do, we will reference the files in the <code class="literal">items</code> array.</p><p>Our HTML page is extremely simple and just loads in the Siesta and Ext JS frameworks and our test definition script.</p><div class="informalexample"><pre class="programlisting">&lt;!DOCTYPE html&gt;
+    &lt;html&gt;
+    &lt;head&gt;
+        &lt;link rel="stylesheet" type="text/css" href="http://cdn.sencha.io/ext/gpl/4.2.0/resources/css/ext-all.css"&gt;
+        &lt;link rel="stylesheet" type="text/css" href="../../siesta/resources/css/siesta-all.css"&gt;
+
+        &lt;script type="text/javascript" src="http://cdn.sencha.io/ext/gpl/4.2.0/ext-all.js"&gt;&lt;/script&gt;
+        &lt;script type="text/javascript" src="../../siesta/siesta-all.js"&gt;&lt;/script&gt;
+        &lt;script type="text/javascript" src="index.js"&gt;&lt;/script&gt;
+    &lt;/head&gt;
+    &lt;body&gt;
+    &lt;/body&gt;
+    &lt;/html&gt;</pre></div></div><div class="section" title="Adding the first test"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec124"/>Adding the first test</h2></div></div></div><p>We <a id="id438" class="indexterm"/>will start by adding a test for the <code class="literal">getBuildNumber</code> method. Add a new file called <code class="literal">010_getBuildNumber.t.js</code>.</p><p>The naming convention we use here is not required but is used throughout the Siesta documentation. The numbering allows the tests to run in a specific order, with the name referring to the method or feature under test. The <code class="literal">.t.js</code> extension is used as a way of identifying a test file.</p><p>In this file, we call the <code class="literal">StartTest</code> method:</p><div class="informalexample"><pre class="programlisting">StartTest(function(t) {
+  t.diag("Config.getBuildNumber");
+  t.done();
+});</pre></div><p>Next, we call the <code class="literal">getBuildNumber</code> method and check that the result we get back is correct:</p><div class="informalexample"><pre class="programlisting">StartTest(function(t) {
+  t.diag("Config.getBuildNumber");
+  var buildNumber = BizDash.config.Config.getBuildNumber();
+  t.expect(buildNumber).toEqual('0');
+  t.done();
+});</pre></div><p>Finally, we must reference this new file in the <code class="literal">index.js</code> <code class="literal">items</code> array:</p><div class="informalexample"><pre class="programlisting">Harness.start(
+  {
+    group: 'Config',
+    items: [
+      '010_getBuildNumber.t.js'
+    ]
+  }
+);</pre></div></div><div class="section" title="Executing tests"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec125"/>Executing tests</h2></div></div></div><p>To run <a id="id439" class="indexterm"/>our tests, we simply open <code class="literal">index.html</code> in our browser and click the <span class="strong"><strong>Run All</strong></span> button at the bottom left of the screen. Siesta will then execute each test listed and display the results as seen in the following screenshot:</p><div class="mediaobject"><img src="graphics/3717_10_03.jpg" alt="Executing tests"/></div></div><div class="section" title="Extending tests"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec126"/>Extending tests</h2></div></div></div><p>We can <a id="id440" class="indexterm"/>add as many assertions and tests to this initial file as we wish, but it is often wise to put different test types in different files to keep things organized and to ensure a clean environment, unsullied by previous tests.</p><p>We will now add some new test files to test some edge cases. Each of these files should be added to the <code class="literal">index.js</code> file, so they are included in test runs.</p><p>Our next spec, <code class="literal">020_getBuildNumber_emptyString.t.js</code>, will test the output when the version number is set to an empty string. We use the <code class="literal">toBeUndefined</code> method to check the output:</p><div class="informalexample"><pre class="programlisting">StartTest(function(t) {
+  t.diag("Config.getBuildNumber");
+  BizDash.config.Config.setVersion('');
+  var buildNumber = BizDash.config.Config.getBuildNumber();
+  t.expect(buildNumber).toBeUndefined();
+  t.done();
+});</pre></div><p>Finally, we will use our poor implementation of the <code class="literal">getBuildNumber</code> method to demonstrate how to test that a method should throw an exception when the <code class="literal">version</code> config is <a id="id441" class="indexterm"/>null. To do this, we use the <code class="literal">toThrow</code> assertion, passing to it the method to test:</p><div class="informalexample"><pre class="programlisting">StartTest(function(t) {
+  t.diag("Config.getBuildNumber");
+  BizDash.config.Config.setVersion(null);
+  t.expect(BizDash.config.Config.getBuildNumber).toThrow();
+  t.done();
+});</pre></div><p>The framework will automatically call the method we pass into <code class="literal">expect</code> and pass the test if it throws an exception.</p></div></div>
+<div class="section" title="Testing UI interaction"><div class="titlepage"><div><div><h1 class="title"><a id="ch10lvl1sec77"/>Testing UI interaction</h1></div></div></div><p>One of the <a id="id442" class="indexterm"/>big benefits of Siesta is its ability to test real UI interactions, allowing us to create automated, repeatable tests, based on the way the application is actually rendered and how a real user would interact with it.</p><p>In this section, we will test the product grid that we created in <a class="link" href="ch07.html" title="Chapter 7. Constructing Common UI Widgets">Chapter 7</a>, <span class="emphasis"><em>Constructing Common UI Widgets</em></span>. We will look at testing how it has been rendered and then move on to testing clicks on the grid row's <span class="strong"><strong>Details</strong></span> button.</p><div class="section" title="Testing cell contents"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec127"/>Testing cell contents</h2></div></div></div><p>To<a id="id443" class="indexterm"/> kick off, we are going to test whether each cell <a id="id444" class="indexterm"/>of the grid renders the correct values based on the data in the store it is bound to. This will catch any issues with field names changing and grid column configurations.</p><p>We start by creating a new test suite, like we did in the previous section, and a new test file called <code class="literal">010_GridCellContents.t.js</code>. Our folder structure will look like the following:</p><div class="mediaobject"><img src="graphics/3717_10_04.jpg" alt="Testing cell contents"/></div><p>Be careful <a id="id445" class="indexterm"/>to update all the paths in your <code class="literal">index.html</code> and <code class="literal">index.js</code> files to suit the new location.</p><p>In these<a id="id446" class="indexterm"/> test suites, we will include the entire <code class="literal">app.js</code> file, which means the application will be launched as it would be if you opened it in the browser. This means we can interact with the UI straightaway.</p><p>If you expand the DOM panel on the right-hand side of the Siesta interface, it will display the UI as it appears during the test. If you watch this area when tests are running, you will see the interactions happening in real time.</p><div class="section" title="Setting up expected data"><div class="titlepage"><div><div><h3 class="title"><a id="ch10lvl3sec62"/>Setting up expected data</h3></div></div></div><p>It is <a id="id447" class="indexterm"/>important that we know what data our grid is rendering, so we can check whether it is correct. For that reason, our first step is to populate our products' store with known test data:</p><div class="informalexample"><pre class="programlisting">StartTest(function(t) {
+  t.diag("Product Grid Contents");
+  var productsStore = Ext.getStore('Products');
+  productsStore.removeAll();
+  productsStore.add([
+    {
+      "id" : 1,
+      "Name" : "Product 1",
+      "Description": "Product 1 Description",
+      "Quantity" : 1,
+      "Price" : 9.99
+    },
+    {
+      "id" : 2,
+      "Name" : "Product 2",
+      "Description": "Product 2 Description",
+      "Quantity" : 5,
+      "Price" : 2.99
+    },
+    {
+      "id" : 3,
+      "Name" : "Product 3",
+      "Description": "Product 3 Description",
+      "Quantity" : 1000,
+      "Price" : 5.49
+    }
+  ]);
+});</pre></div></div><div class="section" title="Checking cell contents"><div class="titlepage"><div><div><h3 class="title"><a id="ch10lvl3sec63"/>Checking cell contents</h3></div></div></div><p>Now we<a id="id448" class="indexterm"/> can use the built-in <code class="literal">matchGridCellContent</code> method available to us via the <code class="literal">t</code> parameter. This method accepts a grid instance (or Component Query to find one), the cell row and column, the value expected, and a description of the test.</p><p>We can add a test to check whether the first column (containing the product's name) has the correct value, based on the data we added into our store:</p><div class="informalexample"><pre class="programlisting">// test Row 0, Cell 0
+t.matchGridCellContent('product-ProductGrid', 0, 0, 'Product 1', 'Cell 0, 0 contents are correct');
+// test Row 1, Cell 0
+t.matchGridCellContent('product-ProductGrid', 1, 0, 'Product 2', 'Cell 1, 0 contents are correct');</pre></div></div></div><div class="section" title="Simulating clicks"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec128"/>Simulating clicks</h2></div></div></div><p>Next, we<a id="id449" class="indexterm"/> will test the product editing process following <a id="id450" class="indexterm"/>a click on one of the grid row's <span class="strong"><strong>Details</strong></span> button. We want to test after this interaction, whether:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">A new product form is created and shown</li><li class="listitem" style="list-style-type: disc">The form is populated with the correct record details</li><li class="listitem" style="list-style-type: disc">The grid is updated in real time after editing the <code class="literal">Name</code> field</li><li class="listitem" style="list-style-type: disc">The form is hidden and the record committed after clicking on the <span class="strong"><strong>Save</strong></span> button</li></ul></div><p>We start by creating a new test file (<code class="literal">020_ProductEdit.t.js</code>) and including the same initial store population code as we did in the last section.</p><p>Now, we need to get a reference to the cell that holds the <code class="literal">Details</code> button. We do this using the <code class="literal">getCell</code> method, passing it a Component Query to find the grid and the row/cell indexes:</p><div class="informalexample"><pre class="programlisting">var cell = t.getCell('product-ProductGrid', 0, 4);</pre></div><p>For this test, we are going to perform multiple actions in sequence which may be asynchronous. We could use callback methods to chain these items, but instead, we will use the chain method which makes this process much easier.</p><p>First, we will instigate a click on the cell and then confirm that a <code class="literal">ProductForm</code> component has been created. We do this using the <code class="literal">cqExists</code> (Component Query exists) method:</p><div class="informalexample"><pre class="programlisting">...
+t.chain( function (next) {
+  // click the button
+  t.click(cell);
+  // check ProductForm is created
+    t.cqExists('product-ProductForm', 'Product Form is displayed');
+    next();
+  }
+  ...
+);</pre></div><p>Each function we pass to the <code class="literal">chain</code> method is passed a <code class="literal">next</code> method that should be called at the end, so that the next item in the chain is then executed.</p><p>We now want to check if the form has been populated with the correct values from the chosen record. First, we add a small pause of 10 milliseconds in the chain to allow the form time <a id="id451" class="indexterm"/>to populate, and then we call the <code class="literal">fieldHasValue</code> method for each field. We pass it in a Component Query to find the desired <a id="id452" class="indexterm"/>field, the value we expect it to have, and a description of the test:</p><div class="informalexample"><pre class="programlisting">...
+{
+  waitFor: 'Ms',
+  args: 10
+},
+function (next) {
+  t.fieldHasValue('product-ProductForm textfield[fieldLabel="Name"]', 'Product 1', 'Name field has correct value');
+
+  t.fieldHasValue('product-ProductForm textfield[fieldLabel="Description"]', 'Product 1 Description', 'Description field has correct value');
+
+  t.fieldHasValue('product-ProductForm textfield[fieldLabel="Quantity"]', '1', 'Quantity field has correct value');
+
+  t.fieldHasValue('product-ProductForm textfield[fieldLabel="Price"]', '9.99', 'Price field has correct value');
+
+  next();
+}
+...</pre></div><p>The next step we want to test is what happens when one of the fields is updated. To do this, we add another step to our chain and update the <code class="literal">Name</code> field. We then check whether the grid has updated accordingly and that the model instance is now marked as dirty (that is, it has a change waiting to be committed):</p><div class="informalexample"><pre class="programlisting">function(next){
+  var nameField = Ext.ComponentQuery.query('product-ProductForm textfield[fieldLabel="Name"]')[0];
+
+  nameField.setValue('Updated Product 1');
+
+  t.matchGridCellContent('product-ProductGrid', 0, 0, 'Updated Product 1', 'Cell 0, 0 contents are correct');
+
+  t.expect(Ext.getStore('Products').getAt(0).dirty).toEqual(true);
+
+  next();
+}</pre></div><p>Finally, we test the save process. We simulate a click on the <code class="literal">Save</code> button and test that the product form is closed and the changes to the record are committed. Finally, we call the done method to tell the harness that our tests are complete:</p><div class="informalexample"><pre class="programlisting">function(){
+  t.click('&gt;&gt;button[text="Save"]');
+  t.cqNotExists('product-ProductForm');
+  t.expect(Ext.getStore('Products').getAt(0).dirty).toEqual(false);
+  t.done();
+}</pre></div><p>The <code class="literal">&gt;&gt;</code> prefixed should be used to denote a Component Query string. If omitted, the query will be interpreted as a CSS style selector.</p></div><div class="section" title="Event recorder"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec129"/>Event recorder</h2></div></div></div><p>In the <a id="id453" class="indexterm"/>preceding example, we have performed very simple steps in <a id="id454" class="indexterm"/>our tests. However, hand coding all of the Component Queries for each button and the order of the interactions can get cumbersome. Siesta Standard features an event recorder that allows us to record a series of interactions and generate the code required to include these steps in a test. It is worth noting that this code is rarely used "as-is"; instead, it is usually modified and enhanced before being added to a test script.</p><p>To launch the event recorder, click the video camera icon in the test results window, which will show an empty list of steps, as seen in the following screenshot:</p><div class="mediaobject"><img src="graphics/3717_10_05.jpg" alt="Event recorder"/></div><p>We will use the event recorder to test the cancel process of the product form. We start by running the <code class="literal">ProductEdit</code> test so that we have an interface to interact with and record against. We then click the record button (the small red circle) and start interacting with the interface in the DOM panel.</p><p>We will perform the following actions:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Click on the <span class="strong"><strong>Details</strong></span> button.</li><li class="listitem">Edit the <span class="strong"><strong>Name</strong></span> field in the product form.</li><li class="listitem">Click on the <span class="strong"><strong>Cancel</strong></span> button.</li></ol></div><p>Once we <a id="id455" class="indexterm"/>do these, we will click on the stop button and<a id="id456" class="indexterm"/> the steps will populate the grid.</p><div class="mediaobject"><img src="graphics/3717_10_06.jpg" alt="Event recorder"/></div><p>You will see each action shown as a row with the action type, the target of the action (in this case the Component Query used to target the element or the text typed), and the offset of the action.</p><p>If you would like to alter the target used, you can click on the cell and choose a different query from the given list, or modify it manually.</p><p>Once you are happy with the steps, you can generate the code to include in the test spec. Simply click on the <span class="strong"><strong>Generate Code</strong></span> button and the code will be displayed, which can be copied and pasted into our test file.</p><p>The output of the recorder generally uses the more condensed, declarative syntax for chain steps. Both are perfectly valid and result in the same outcome.</p><p>In most cases, this is enough to get us started, and we can add more steps to the chain which will check for the right outcome after each action.</p><p>Taking our <a id="id457" class="indexterm"/>example, we may construct the following <a id="id458" class="indexterm"/>test assertions around the recorded steps:</p><div class="informalexample"><pre class="programlisting">t.chain( { click : "button[text=Details] =&gt; .x-btn-button", offset : [10, 13] },
+function(next) {
+  t.cqExists('product-ProductForm', 'Product Form is displayed');
+  next();
+},
+{
+  click : "product-ProductForm[title=Product 1] textfield[inputType=text] =&gt; .x-form-text", offset : [127, 10] },
+{
+action : "type", text : " Updated"
+},
+function(next) {
+  t.matchGridCellContent('product-ProductGrid', 0, 0, 'Product 1 Updated', 'Cell 0, 0 contents are correct');
+  t.expect(Ext.getStore('Products').getAt(0).dirty).toEqual(true);
+  next();
+},
+{
+  click : "button[text=Cancel] =&gt; .x-btn-inner", offset : [16, 1] },
+  function() {
+    t.cqNotExists('product-ProductForm');
+    t.expect(Ext.getStore('Products').getAt(0).dirty).toEqual(false);
+    t.done();
+  }
+);</pre></div></div></div>
+<div class="section" title="Test automation and integration"><div class="titlepage"><div><div><h1 class="title"><a id="ch10lvl1sec78"/>Test automation and integration</h1></div></div></div><p>So far, we <a id="id459" class="indexterm"/>have only run our Siesta unit tests in a browser using the <a id="id460" class="indexterm"/>Siesta interface, which is great for development. However, we will generally want to run these tests as part of an automated build process.</p><p>We can very easily run our test suites from a command line using PhantomJS or WebDriver. We will now demonstrate how to use WebDriver to run cross-browser tests from the command line.</p><p>WebDriver is a tool that allows cross-browser test automation and comes bundled with Siesta, making it extremely easy to get it working. In their simplest form, we can run the tests we have just created, which must be available from a server or localhost, in Google Chrome using the following code:</p><div class="informalexample"><pre class="programlisting">siesta/bin/webdriver http://localhost/tests/view/product/_ProductGrid/index.html --browser=chrome</pre></div><p>By executing this code from our root project directory, an instance of Google Chrome will be launched, the tests run, and the outcome is printed in the Terminal/Command Prompt window.</p><div class="mediaobject"><img src="graphics/3717_10_07.jpg" alt="Test automation and integration"/></div><p>You can<a id="id461" class="indexterm"/> extend this to include FireFox, Safari, Chrome, and Internet Explorer by using the <code class="literal">--browser=*</code> option. This will open each browser in turn and execute the tests—perfect for cross-browser testing.</p><div class="section" title="Test reports"><div class="titlepage"><div><div><h2 class="title"><a id="ch10lvl2sec130"/>Test reports</h2></div></div></div><p>It is also <a id="id462" class="indexterm"/>possible to generate a test report after each run that you can include in your build assets, for example. To do this, we include the <code class="literal">--report-format=json and --report-file=BuildReport.json</code> options at the end of our command, to save a JSON version of our test results.</p></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch10lvl1sec79"/>Summary</h1></div></div></div><p>This chapter has focused on how we can write better, more testable JavaScript code, and then moved on to how we can use testing frameworks to execute repeatable tests on this code.</p><p>We dove into the Siesta testing framework and demonstrated how to write simple unit tests as well as more complex UI tests that test our applications as if users were interacting with them.</p><p>Finally, we saw how our test suites can be run to test cross-browser effectiveness as part of a build process from the command line.</p></div></body></html>
