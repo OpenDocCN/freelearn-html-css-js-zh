@@ -1,0 +1,1053 @@
+<html><head></head><body>
+		<div id="_idContainer063">
+			<h1 id="_idParaDest-188" class="chapter-number"><a id="_idTextAnchor188"/>10</h1>
+			<h1 id="_idParaDest-189"><a id="_idTextAnchor189"/>Ensuring Purity – Immutability</h1>
+			<p>In <a href="B19301_04.xhtml#_idTextAnchor069"><span class="No-Break"><em class="italic">Chapter 4</em></span></a>, <em class="italic">Behaving Properly</em>, when we considered pure functions and their advantages, we saw that side effects such as modifying a received argument or a global variable were frequent causes of impurity. Now, after several chapters dealing with many aspects and tools of FP, let’s talk about the concept of <em class="italic">immutability</em> – how to work with objects in such a way that accidentally modifying them will become harder or, even <span class="No-Break">better, impossible.</span></p>
+			<p>We cannot force developers to work in a safe, guarded way. Still, if we find some way to make data structures immutable (meaning that they cannot be directly changed, except through some interface that never allows us to modify the original data and produces new objects instead), then we’ll have an enforceable solution. In this chapter, we will look at two distinct approaches to working with such immutable objects and <span class="No-Break">data structures:</span></p>
+			<ul>
+				<li><em class="italic">Basic JavaScript ways</em>, such as freezing objects, plus cloning to create new ones instead of modifying <span class="No-Break">existing objects</span></li>
+				<li><em class="italic">Persistent data structures</em>, with methods that allow us to update them without changing the original and without the need to clone everything either, for <span class="No-Break">higher performance</span></li>
+			</ul>
+			<p class="callout-heading">Warning!</p>
+			<p class="callout">The code in this chapter isn’t production-ready; I wanted to focus on the main points and not on all the myriad details concerning properties, getters, setters, lenses, prototypes, and so on that you should take into account for a full, bulletproof solution. For actual development, I recommend going with a third-party library, but only after checking that it really applies to your situation. We’ll be recommending several such libraries, but of course, there are many more that you <span class="No-Break">could use.</span></p>
+			<h1 id="_idParaDest-190"><a id="_idTextAnchor190"/>Going the straightforward JavaScript way</h1>
+			<p>One of the biggest causes of side effects was the possibility of a function modifying its arguments or global objects. All non-primitive objects are passed as references, so if/when you modify them, the original objects will be changed. If we want to stop this (without just depending on the goodwill and clean coding of our developers), we may want to consider some <a id="_idIndexMarker784"/>straightforward JavaScript techniques to prohibit those <span class="No-Break">side effects:</span></p>
+			<ul>
+				<li>Avoiding mutator functions that directly modify the object that they are <span class="No-Break">applied to</span></li>
+				<li>Using <strong class="source-inline">const</strong> declarations to prevent variables from <span class="No-Break">being changed</span></li>
+				<li>Freezing objects so that they can’t be modified in <span class="No-Break">any way</span></li>
+				<li>Creating (changed) clones of objects to avoid modifying <span class="No-Break">the original</span></li>
+				<li>Using getters and setters to control what is changed <span class="No-Break">and how</span></li>
+				<li>Using a functional concept – <em class="italic">lenses</em> – to access and <span class="No-Break">set attributes</span></li>
+			</ul>
+			<p>Let’s take a look at each technique in <span class="No-Break">more detail.</span></p>
+			<h2 id="_idParaDest-191"><a id="_idTextAnchor191"/>Mutator functions</h2>
+			<p>A common source<a id="_idIndexMarker785"/> of unexpected problems is that several JavaScript methods are mutators that modify the underlying object. (Refer to <a href="http://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array#Mutator_methods">developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array#Mutator_methods</a> for more on mutators.) In this case, by merely using these methods, you will be causing a side effect that you may not even be aware of. Arrays are the most basic sources of problems, and the list of troublesome methods <span class="No-Break">isn’t short:</span></p>
+			<ul>
+				<li><strong class="source-inline">copyWithin()</strong> lets you copy elements within <span class="No-Break">an array</span></li>
+				<li><strong class="source-inline">fill()</strong> fills an array with a <span class="No-Break">given value</span></li>
+				<li><strong class="source-inline">push()</strong> and <strong class="source-inline">pop()</strong> let you add or delete elements at the end of <span class="No-Break">an array</span></li>
+				<li><strong class="source-inline">shift()</strong> and <strong class="source-inline">unshift()</strong> work in the same way as <strong class="source-inline">push()</strong> and <strong class="source-inline">pop()</strong> but at the beginning of <span class="No-Break">an array</span></li>
+				<li><strong class="source-inline">splice()</strong> lets you add or delete elements anywhere within <span class="No-Break">an array</span></li>
+				<li><strong class="source-inline">reverse()</strong> and <strong class="source-inline">sort()</strong> modify an array in place, reversing or sorting <span class="No-Break">its elements</span></li>
+			</ul>
+			<p>Let’s take a look at an <a id="_idIndexMarker786"/>example we saw in the <em class="italic">Argument mutation</em> section of <a href="B19301_04.xhtml#_idTextAnchor069"><span class="No-Break"><em class="italic">Chapter 4</em></span></a><em class="italic">, </em><span class="No-Break"><em class="italic">Behaving Properly</em></span><span class="No-Break">:</span></p>
+			<pre class="source-code">
+// maxStrings.ts
+const maxStrings = (a: string[]) =&gt; a.sort().pop();
+const countries = [
+  "Argentina",
+  "Uruguay",
+  "Brasil",
+  "Paraguay",
+];
+console.log(maxStrings(countries)); // "Uruguay"</pre>
+			<p>Our <strong class="source-inline">maxStrings()</strong> function returns the highest value in an array, but also modifies the original array; this is a side effect of the <strong class="source-inline">sort()</strong> and <strong class="source-inline">pop()</strong> mutator functions. In this case and others, you might generate a copy of the array and then work with that; both the spread operator and <strong class="source-inline">.slice()</strong> <span class="No-Break">are useful:</span></p>
+			<pre class="source-code">
+const maxStrings2 = (a: string[]): string =&gt;
+  <strong class="bold">[...a]</strong>.sort().pop() as string;
+const maxStrings3 = (a: string[]): string =&gt;
+  <strong class="bold">a.slice()</strong>.sort().pop() as string;
+console.log(maxStrings2(countries)); // "Uruguay"
+console.log(maxStrings3(countries)); // "Uruguay"
+console.log(countries);
+// ["Argentina", "Uruguay", "Brasil", "Paraguay"]
+// unchanged</pre>
+			<p>Both new versions of our <strong class="source-inline">maxStrings()</strong> functions are now functional, without side effects, because the mutator methods have been applied to copies of the original argument. By the way, if you are wondering about the <strong class="source-inline">as string</strong> part in both new functions, it’s because TypeScript warns you that the array might be empty, and I’m telling it that I guarantee the array won’t <span class="No-Break">be so.</span></p>
+			<p>Of course, setter <a id="_idIndexMarker787"/>methods are also mutators and will logically produce side effects because they can do just about anything. If this is the case, you’ll have to go for some of the other solutions described later in <span class="No-Break">this chapter.</span></p>
+			<h2 id="_idParaDest-192"><a id="_idTextAnchor192"/>Constants</h2>
+			<p>If the mutations<a id="_idIndexMarker788"/> don’t happen because of the use of some JavaScript methods, then we might want to attempt to use <strong class="source-inline">const</strong> definitions, but unfortunately, that just won’t work. In JavaScript, <strong class="source-inline">const</strong> means that the <em class="italic">reference</em> to the object or array cannot change (you cannot assign a different object to it), but you can still modify its properties. We can see this in the <span class="No-Break">following code:</span></p>
+			<pre class="source-code">
+const myObj = { d: 22, m: 9 };
+console.log(myObj);
+// {d: 22, m: 9}
+myObj = { d: 12, m: 4 };
+<strong class="bold">// Uncaught TypeError: Assignment to constant variable.</strong>
+myObj.d = 12; // but this is fine!
+myObj.m = 4;
+console.log(myObj);
+<strong class="bold">// {d: 12, m: 4}</strong></pre>
+			<p>You cannot modify the value of <strong class="source-inline">myObj</strong> by assigning it a new value, but you can modify its current value so that only the reference to an object is constant, not the object’s values themselves. (By the way, this would have also happened with arrays.) So, if you use <strong class="source-inline">const</strong> everywhere, you will only be safe against direct assignments to objects and arrays. More modest side effects, such as changing an attribute or an array element, will still be possible, so this is not <span class="No-Break">a solution.</span></p>
+			<p>Two methods can work – <em class="italic">freezing</em> to provide unmodifiable structures, and <em class="italic">cloning</em> to produce modified new ones. These are probably not the best ways to go about forbidding objects<a id="_idIndexMarker789"/> from being changed, but they can be used as a makeshift solution. Let’s look at them in more detail, starting <span class="No-Break">with freezing.</span></p>
+			<h2 id="_idParaDest-193"><a id="_idTextAnchor193"/>Freezing</h2>
+			<p>If we want to avoid the possibility of a programmer accidentally or willingly modifying an object, freezing it is a valid<a id="_idIndexMarker790"/> solution. After an object has been frozen, any attempts at modifying it will silently fail – JavaScript won’t report an error or throw an exception, but it won’t alter the <span class="No-Break">object either.</span></p>
+			<p>In the following example, if we attempt to make the same changes we made in the previous section, they won’t have any effect, and <strong class="source-inline">myObj</strong> will <span class="No-Break">be unchanged:</span></p>
+			<pre class="source-code">
+const myObj2 = { d: 22, m: 9 };
+console.log(myObj2);
+// {d: 22, m: 9}
+<strong class="bold">Object.freeze(myObj2);</strong>
+myObj2.d = 12; // won't have effect...
+myObj2.m = 4;
+console.log(myObj2);
+<strong class="bold">// Object {d: 22, m: 9}</strong></pre>
+			<p class="callout-heading">Sealing or freezing?</p>
+			<p class="callout">Don’t confuse freezing with sealing – <strong class="source-inline">Object.seal()</strong>, when applied to an object, prohibits you from adding or deleting properties to it. This means that the object’s structure is immutable, but the attributes themselves can be changed. <strong class="source-inline">Object.freeze()</strong> covers not only sealing properties but also making them unchangeable. See <a href="http://developer.mozilla.org/en/docs/Web/JavaScript/Reference/Global_Objects/Object/seal">developer.mozilla.org/en/docs/Web/JavaScript/Reference/Global_Objects/Object/seal</a> and <a href="http://developer.mozilla.org/en/docs/Web/JavaScript/Reference/Global_Objects/Object/freeze">developer.mozilla.org/en/docs/Web/JavaScript/Reference/Global_Objects/Object/freeze</a> for more <span class="No-Break">on this.</span></p>
+			<p>There is only one problem with this solution – freezing an object is a shallow operation that freezes the attributes themselves, similar to what a <strong class="source-inline">const</strong> declaration does. If any of the attributes<a id="_idIndexMarker791"/> are objects or arrays themselves they can still be modified. We will only be considering data here; you may also want to freeze, say, functions, but for most use cases, it’s data you want <span class="No-Break">to protect:</span></p>
+			<pre class="source-code">
+const myObj3 = {
+  d: 22,
+  m: 9,
+  o: { c: "MVD", i: "UY", f: { a: 56 } },
+};
+Object.freeze(myObj3);
+console.log(myObj3);
+<strong class="bold">// {d:22, m:9, o:{c:"MVD", i:"UY", f:{ a:56}}}</strong></pre>
+			<p>This is only partially successful, as we can see when we try changing <span class="No-Break">some attributes:</span></p>
+			<pre class="source-code">
+myObj3.d = 8888;     // won't work, as earlier
+myObj3.o.f.a = 9999; // oops, does work!!
+console.log(myObj3);
+// {d:22, m:9, o:{c:"MVD", i:"UY", f:{ <strong class="bold">a:9999</strong> }}}</pre>
+			<p>Modifying <strong class="source-inline">myObj3.d</strong> doesn’t work because the object is frozen, but that doesn’t extend to objects within <strong class="source-inline">myObj3</strong>, so changing <strong class="source-inline">myObj3.o.f.a</strong> <span class="No-Break">does work.</span></p>
+			<p>If we want to achieve real immutability for our object, we need to write a routine that will freeze all the levels of an object. Fortunately, it’s easy to achieve this by applying recursion. (We saw similar applications of recursion in the <em class="italic">Traversing a tree structure</em> section of the previous chapter.) Mainly, the idea is to freeze the object itself and then recursively freeze each of its properties. We must ensure that we only freeze the object’s own properties; we shouldn’t mess with the prototype of the object, <span class="No-Break">for example:</span></p>
+			<pre class="source-code">
+// deepFreeze.ts
+const deepFreeze = &lt;O extends OBJ&gt;(obj: O): O =&gt; {
+  if (
+    obj &amp;&amp;
+    typeof obj === "object" &amp;&amp;
+    !Object.isFrozen(obj)
+  ) {
+    Object.freeze(obj);
+    Object.getOwnPropertyNames(obj).forEach((prop) =&gt;
+      deepFreeze(obj[prop])
+    );
+  }
+  return obj;
+};</pre>
+			<p>Note that, in the same way that <strong class="source-inline">Object.freeze()</strong> works, <strong class="source-inline">deepFreeze()</strong> also freezes the object in place. I wanted to keep the original semantics of the operation so that the returned object would always be the original one. If we wanted to work in a purer fashion, we <a id="_idIndexMarker792"/>should make a copy of the original object first (we’ll learn how to do this in the next section) and then freeze that. As for TypeScript, the returned value is the same type as the input; the object being frozen makes no difference with regard <span class="No-Break">to types.</span></p>
+			<p>A small possible problem remains, but with a very bad result – what would happen if an object included a reference to itself? We can avoid this if we skip freezing already frozen objects; backward circular references would be ignored, since the objects they refer to would already be frozen. So, the logic we wrote took care of that problem, and there’s nothing more to <span class="No-Break">be done!</span></p>
+			<p>If we apply <strong class="source-inline">deepFreeze()</strong> to an object, we can safely pass it to any function, knowing there is no way in which it can be modified. You can also use this property to test whether a function modifies its arguments – deep-freeze them, call the function, and if the function depends on modifying its arguments, it won’t work because the changes will be silently ignored. So, how can we return a result from a function if it involves a received object? This can be solved in many ways. A simple one uses cloning, as <span class="No-Break">we’ll see.</span></p>
+			<p>In this section, we dealt with one of the methods we can use to avoid changes in objects. (Check the <em class="italic">Questions</em> section<a id="_idIndexMarker793"/> at the end of this chapter for another way of freezing objects by means of proxies.) Now, let’s look at an alternative <span class="No-Break">involving cloning.</span></p>
+			<h2 id="_idParaDest-194"><a id="_idTextAnchor194"/>Cloning and mutating</h2>
+			<p>If mutating an object isn’t allowed, you must create a new one. For example, if you use Redux, a reducer is a function that receives the current state and an action (essentially, an object with new data) and produces the new state. Modifying the current state is totally forbidden, and we could<a id="_idIndexMarker794"/> avoid this error by always working with frozen objects, as we saw in the previous section. To fulfill the reducer’s requirements, we have to be able to clone the original state, as well as mutate it according to the received action. The resulting object will become the <span class="No-Break">new state.</span></p>
+			<p>To round things off, we should also freeze the returned object, just like we did with the original state. But let’s start at the beginning – how do we clone an object? Of course, you can always do this by hand, but that’s not something you’d want to consider when working with large, complex objects. (You may want to revisit the <em class="italic">More general looping</em> section of <a href="B19301_05.xhtml#_idTextAnchor084"><span class="No-Break"><em class="italic">Chapter 5</em></span></a>, <em class="italic">Programming Declaratively</em>, where we wrote a basic <strong class="source-inline">objCopy()</strong> function that provides a different approach from the one we’ll show here.) For example, if you wanted to clone <strong class="source-inline">oldObject</strong> to produce <strong class="source-inline">newObject</strong>, doing it by hand would imply a lot <span class="No-Break">of code:</span></p>
+			<pre class="source-code">
+const oldObject = {
+  d: 22,
+  m: 9,
+  o: { c: "MVD", i: "UY", f: { a: 56 } },
+};
+const newObject = {
+  d: oldObject.d,
+  m: oldObject.m,
+  o: {
+    c: oldObject.o.c,
+    i: oldObject.o.i,
+    f: { a: oldObject.o.f.a },
+  },
+};</pre>
+			<p>This manual solution is obviously a lot of work, and error-prone as well; you could easily forget an attribute! Going for more automatic solutions, there are a couple of straightforward ways of copying arrays or objects in JavaScript, but they have the same shallowness problem. You can make a (shallow) copy of an object with <strong class="source-inline">Object.assign()</strong> or <span class="No-Break">by spreading:</span></p>
+			<pre class="source-code">
+const myObj = { d: 22, m: 9 };
+const newObj1 = <strong class="bold">Object.assign({}, myObj)</strong>;
+const newObj2 = <strong class="bold">{ ...myObj }</strong>;</pre>
+			<p>To create a (shallow) copy<a id="_idIndexMarker795"/> of an array, you can either use <strong class="source-inline">slice()</strong> or spreading, as we saw in the <em class="italic">Mutator functions</em> section earlier in <span class="No-Break">this chapter:</span></p>
+			<pre class="source-code">
+const myArray = [1, 2, 3, 4];
+const newArray1 = <strong class="bold">myArray.slice()</strong>;
+const newArray2 = <strong class="bold">[...myArray]</strong>;</pre>
+			<p>What’s the problem with these solutions? If an object or array includes objects (which may themselves include objects), we get the same problem that we had when freezing – objects are copied by reference, which means that a change in the new object will also change the <span class="No-Break">old object:</span></p>
+			<pre class="source-code">
+const oldObject = {
+  d: 22,
+  m: 9,
+  o: { c: "MVD", i: "UY", f: { a: 56 } },
+};
+const newObject2 = <strong class="bold">Object.assign({}, oldObject)</strong>;
+newObject2.d = 8888;
+newObject2.o.f.a = 9999;
+console.log(newObject2);
+// {d:8888, m:9, o: {c:"MVD", i:"UY", f: {a:9999}}} -- ok
+console.log(oldObject);
+// {d:22, m:9, o: {c:"MVD", i:"UY", f: {a:<strong class="bold">9999</strong>}}} -- oops!!</pre>
+			<p>In this case, note what happened when we changed some properties of <strong class="source-inline">newObject</strong>. Changing <strong class="source-inline">newObject.d</strong> worked fine, but changing <strong class="source-inline">newObject.o.f.a</strong> also impacted <strong class="source-inline">oldObject</strong>, since <strong class="source-inline">newObject.o</strong> and <strong class="source-inline">oldObject.o</strong> actually refer to the very <span class="No-Break">same object.</span></p>
+			<p class="callout-heading">New age, old section</p>
+			<p class="callout">Since 2022, a new <strong class="source-inline">structuredClone()</strong> function has been available, so if your browser supports it, the code on these pages won’t be needed. For more information, check <span class="No-Break">out </span><a href="http://developer.mozilla.org/en-US/docs/Web/API/structuredClone"><span class="No-Break">developer.mozilla.org/en-US/docs/Web/API/structuredClone</span></a><span class="No-Break">.</span></p>
+			<p>There is a simple solution to<a id="_idIndexMarker796"/> this, based on JSON. If we <strong class="source-inline">stringify()</strong> the original object and then <strong class="source-inline">parse()</strong> the result, we’ll get a new object that’s totally separate from the <span class="No-Break">old one:</span></p>
+			<pre class="source-code">
+// deepCopy.ts
+const jsonCopy = &lt;O extends OBJ&gt;(obj: O): O =&gt;
+  <strong class="bold">JSON.parse(JSON.stringify(obj))</strong>;</pre>
+			<p>By using <strong class="source-inline">JSON.stringify()</strong>, we can convert our object into a string. Then, <strong class="source-inline">JSON.parse()</strong> creates a (new) object out of that string – simple! This works with both arrays and objects, but there’s a problem. If any object’s properties have a constructor, they won’t be invoked; the result will always be composed of plain JavaScript objects. (This is not the only problem with <strong class="source-inline">jsonCopy()</strong>; see <em class="italic">Question 10.2</em>.) We can see this very simply <span class="No-Break">with </span><span class="No-Break"><strong class="source-inline">Date()</strong></span><span class="No-Break">:</span></p>
+			<pre class="source-code">
+const myDate = new Date();
+const newDate = jsonCopy(myDate);
+console.log(typeof myDate, typeof newDate);
+// <strong class="bold">object string</strong></pre>
+			<p>While <strong class="source-inline">myDate</strong> is an object, <strong class="source-inline">newDate</strong> turns out to be a string with a value, the date and time at the moment we did the <span class="No-Break">conversion, "</span><span class="No-Break"><strong class="source-inline">2023-01-15T09:23:55.125Z</strong></span><span class="No-Break">".</span></p>
+			<p>We could do a recursive solution, just like we did with deep freezing, and the logic is quite similar. Whenever we find a property that is really an object, we invoke the <span class="No-Break">appropriate constructor:</span></p>
+			<pre class="source-code">
+// continued...
+const deepCopy = &lt;O extends OBJ&gt;(obj: O): O =&gt; {
+  let aux: O = obj;
+  if (obj &amp;&amp; typeof obj === "object") {
+    aux = new (obj as any).constructor(); // TS hack!
+    Object.getOwnPropertyNames(obj).forEach((prop) =&gt; {
+      aux[prop as keyof O] = deepCopy(obj[prop]);
+    });
+  }
+  return aux;
+};</pre>
+			<p>Whenever we find<a id="_idIndexMarker797"/> that a property of an object is actually another object, we invoke its constructor before continuing. This solves the problem we found with dates or, in fact, with any object! If we run the preceding code but use <strong class="source-inline">deepCopy()</strong> instead of <strong class="source-inline">jsonCopy()</strong>, we’ll get <strong class="source-inline">object object</strong> as output, as it should be. If we check the types and constructors, everything <span class="No-Break">will match.</span></p>
+			<p>There’s a need for a minor hack because TypeScript works better with classes than with constructor functions – writing <strong class="source-inline">obj as any</strong> gets type checking to work, but it’s not very nice. Also, we need to write <strong class="source-inline">prop as keyof O</strong> because, otherwise, TypeScript would protest that <strong class="source-inline">prop</strong> could be anything, not necessarily a key of the <span class="No-Break">original type.</span></p>
+			<p>The data-changing experiment will also work <span class="No-Break">fine now:</span></p>
+			<pre class="source-code">
+let oldObject = {
+  d: 22,
+  m: 9,
+  o: { c: "MVD", i: "UY", f: { a: 56 } },
+};
+let newObject = deepCopy(oldObject);
+newObject.d = 8888;
+newObject.o.f.a = 9999;
+console.log(newObject);
+// {d:8888, m:9, o:{c:"MVD", i:"UY", f:{a:9999}}}
+console.log(oldObject);
+// {d:22, m:9, o:{c:"MVD", i:"UY", f:{a:56}}} -- unchanged!</pre>
+			<p>Let’s check out the last few lines. Modifying <strong class="source-inline">newObject</strong> had no impact on <strong class="source-inline">oldObject</strong>, so both objects are <span class="No-Break">completely separate.</span></p>
+			<p>Now that we know<a id="_idIndexMarker798"/> how to copy an object, we can follow <span class="No-Break">these steps:</span></p>
+			<ol>
+				<li>Receive a (frozen) object as <span class="No-Break">an argument.</span></li>
+				<li>Make a copy of it, which won’t <span class="No-Break">be frozen.</span></li>
+				<li>Take values from that copy that we can use in <span class="No-Break">our code.</span></li>
+				<li>Modify the copy <span class="No-Break">at will.</span></li>
+				<li><span class="No-Break">Freeze it.</span></li>
+				<li>Return it as the result of <span class="No-Break">the function.</span></li>
+			</ol>
+			<p>All of this is viable, though a bit cumbersome. Also, there are some limitations – we won’t be able to duplicate private properties or properties that involve symbols, we won’t duplicate getters and setters, and metadata-related features will also be missing. Let’s accept that, and add a couple of functions that will help bring <span class="No-Break">everything together.</span></p>
+			<h2 id="_idParaDest-195"><a id="_idTextAnchor195"/>Getters and setters</h2>
+			<p>When following the steps provided at the end of the previous section, you may have noticed that every time you want to update a field, things become troublesome and prone to errors. Let’s use a common technique to add a pair of functions: getters and setters. They are <span class="No-Break">as follows:</span></p>
+			<ul>
+				<li><em class="italic">Getters</em> can be used to <a id="_idIndexMarker799"/>get values from a frozen object by unfreezing them so that they can <span class="No-Break">be used.</span></li>
+				<li><em class="italic">Setters</em> allow you to modify any property of an object. You can do this by creating a new and <a id="_idIndexMarker800"/>updated version, leaving the <span class="No-Break">original untouched.</span></li>
+			</ul>
+			<p>Let’s build our getters <span class="No-Break">and setters.</span></p>
+			<h3>Getting a property</h3>
+			<p>In the <em class="italic">Getting a property from an object</em> section in <a href="B19301_06.xhtml#_idTextAnchor107"><span class="No-Break"><em class="italic">Chapter 6</em></span></a>, <em class="italic">Producing Functions</em>, we wrote a simple <strong class="source-inline">getField()</strong> function that <a id="_idIndexMarker801"/>could handle getting a single attribute from an object. (See <em class="italic">Question 6.13</em> in that chapter for the missing companion <strong class="source-inline">setField()</strong> function.) Let’s take a look at how we can code this. We can have a straightforward version <span class="No-Break">as follows:</span></p>
+			<pre class="source-code">
+// getByPath.ts
+const getField =
+  &lt;O extends OBJ&gt;(f: keyof O) =&gt;
+  (obj: O) =&gt;
+    obj[f];</pre>
+			<p>We can even go one better by applying currying so that we have a more <span class="No-Break">general version:</span></p>
+			<pre class="source-code">
+// continued...
+const getField2 = curry(getField);</pre>
+			<p>We could get a deep attribute from an object by composing a series of <strong class="source-inline">getField()</strong> applications, but that would be rather cumbersome. Instead, let’s create a function that will receive a path – an array of field names – and return the corresponding part of the object, or be undefined if the path doesn’t exist. Using recursion is appropriate here and simplifies coding! Observe the <span class="No-Break">following code:</span></p>
+			<pre class="source-code">
+// continued...
+const getByPath = &lt;O extends OBJ&gt;(
+  arr: string[],
+  obj: O
+): any =&gt; {
+  if (arr[0] in obj) {
+<strong class="bold">    return arr.length &gt; 1</strong>
+<strong class="bold">      ? getByPath(arr.slice(1), obj[arr[0]])</strong>
+<strong class="bold">      : deepCopy(obj[arr[0]]);</strong>
+  } else {
+    return undefined;
+  }
+};</pre>
+			<p>Basically, we look for the first string in the path to see whether it exists in the object. If it doesn’t, the operation fails, so we return <strong class="source-inline">undefined</strong>. If successful, and we still have more strings in the<a id="_idIndexMarker802"/> path, we use recursion to keep digging into the object; otherwise, we return a deep copy of the <span class="No-Break">attribute’s value.</span></p>
+			<p>Once an object has been frozen, we cannot defrost it, so we must resort to making a new copy of it; <strong class="source-inline">deepCopy()</strong> is appropriate for doing this. Let’s try out our <span class="No-Break">new function:</span></p>
+			<pre class="source-code">
+const myObj4 = deepFreeze({
+  d: 22,
+  m: 9,
+  o: { c: "MVD", i: "UY", f: { a: 56 } },
+});
+console.log(getByPath(["d"], myObj4));
+<strong class="bold">// 22</strong>
+console.log(getByPath(["o"], myObj4));
+<strong class="bold">// {c: "MVD", i: "UY", f: {a: 56}}</strong>
+console.log(getByPath(["o", "c"], myObj4));
+<strong class="bold">// "MVD"</strong>
+console.log(getByPath(["o", "f", "a"], myObj4));
+<strong class="bold">// 56</strong></pre>
+			<p>We can also check that returned objects are <span class="No-Break">not frozen:</span></p>
+			<pre class="source-code">
+const fObj = getByPath(["o", "f"], myObj4);
+console.log(fObj);
+<strong class="bold">// {a: 56}</strong>
+fObj.a = 9999;
+console.log(fObj);
+<strong class="bold">// {a: 9999} -- it's not frozen</strong></pre>
+			<p>Here, we can see that we could directly update the <strong class="source-inline">fObj</strong> object, which means it wasn’t frozen. Now that we’ve<a id="_idIndexMarker803"/> written our getter, we can create <span class="No-Break">a setter.</span></p>
+			<h3>Setting a property by path</h3>
+			<p>Now, we can code a similar <strong class="source-inline">setByPath()</strong> function that will take a path, a value, and an object and <a id="_idIndexMarker804"/>update an object. This is not a pure function, but we’ll use it to write a pure one – wait and see! Here is <span class="No-Break">the code:</span></p>
+			<pre class="source-code">
+// setByPath.ts
+const setByPath = &lt;O extends OBJ&gt;(
+  arr: string[],
+  value: any,
+  obj: O
+): O =&gt; {
+  if (!(arr[0] in obj)) {
+    (obj as any)[arr[0]] =
+      arr.length === 1
+        ? null
+        : Number.isInteger(arr[1])
+        ? []
+        : {};
+  }
+  if (arr.length &gt; 1) {
+    return setByPath(arr.slice(1), value, obj[arr[0]]);
+  } else {
+    obj[arr[0] as keyof O] = value;
+    return obj;
+  }
+};</pre>
+			<p>Here, we are using recursion to get into the object, creating new attributes if needed, until we have traveled the entire length of the path. One crucial detail when creating attributes is whether we need an array or an object. (And why the <strong class="source-inline">as any</strong> cast for <strong class="source-inline">obj</strong>? That’s an issue with TypeScript, which objects to <strong class="source-inline">obj[arr[0]]</strong>, so we must “trick” it. Weirdly, using <strong class="source-inline">Reflect.set()</strong> also works!) We can determine that by checking the next element in the path – if it’s a number, then we need an array; otherwise, an object <span class="No-Break">will do.</span></p>
+			<p>When we get to the<a id="_idIndexMarker805"/> end of the path, we assign the new <span class="No-Break">given value.</span></p>
+			<p class="callout-heading">Seamless, immutable objects</p>
+			<p class="callout">If you like this way of doing things, check out the <strong class="source-inline">seamless-immutable</strong> library, which works in this fashion. The seamless part of the name alludes to the fact that you still work with normal objects – albeit frozen – which means you can use <strong class="source-inline">map()</strong>, <strong class="source-inline">reduce()</strong>, and so on. You can read more about this <span class="No-Break">at </span><a href="http://github.com/rtfeldman/seamless-immutable"><span class="No-Break">github.com/rtfeldman/seamless-immutable</span></a><span class="No-Break">.</span></p>
+			<p>Now, you can write a function that will be able to take a frozen object and update an attribute within it, returning a new, also <span class="No-Break">frozen, object:</span></p>
+			<pre class="source-code">
+// continued...
+const updateObject = &lt;O extends OBJ&gt;(
+  arr: string[],
+  obj: O,
+  value: any
+) =&gt; {
+  const newObj = deepCopy(obj);
+  setByPath(arr, value, newObj);
+  return deepFreeze(newObj);
+};</pre>
+			<p>Let’s check out how it works. To do this, we’ll run several updates on the <strong class="source-inline">myObj3</strong> object we have <span class="No-Break">been using:</span></p>
+			<pre class="source-code">
+const myObj3 = {
+  d: 22,
+  m: 9,
+  o: { c: "MVD", i: "UY", f: { a: 56 } },
+};
+const new1 = updateObject(["m"], myObj3, "sep");
+console.log(new1);
+<strong class="bold">// {d: 22, m: "sep", o: {c: "MVD", i: "UY", f: {a: 56}}};</strong>
+const new2 = updateObject(["b"], myObj3, 220960);
+console.log(new2);
+<strong class="bold">// {d: 22, m: 9, o: {c: "MVD", i: "UY", f: {a: 56}}, b:</strong>
+<strong class="bold">  220960};</strong>
+const new3 = updateObject(["o", "f", "a"], myObj3, 9999);
+console.log(new3);
+<strong class="bold">// {d: 22, m: 9, o: {c: "MVD", i: "UY", f: {a: 9999}}};</strong>
+const new4 = updateObject(
+  ["o", "f", "j", "k", "l"],
+  myObj3,
+  "deep"
+);
+console.log(new4);
+<strong class="bold">// {d: 22, m: 9, o: {c: "MVD", i: "UY", f: {a: 56, j: {k:</strong>
+<strong class="bold">  "deep"}}}};</strong></pre>
+			<p>Given this pair of <a id="_idIndexMarker806"/>functions, we have finally gotten ourselves a way to <span class="No-Break">keep immutability:</span></p>
+			<ul>
+				<li>Objects must be frozen from <span class="No-Break">the beginning</span></li>
+				<li>Getting data from objects is done <span class="No-Break">with </span><span class="No-Break"><strong class="source-inline">getByPath()</strong></span></li>
+				<li>Setting data is done with <strong class="source-inline">updateObject()</strong>, which internally <span class="No-Break">uses </span><span class="No-Break"><strong class="source-inline">setByPath()</strong></span></li>
+			</ul>
+			<p>In this section, we learned how to get and set values from an object in a way that keeps objects immutable. Let’s now look at a variation of this concept – <strong class="bold">lenses</strong> – that will allow us to not only get and set values but also apply a function to <span class="No-Break">the data.</span></p>
+			<h2 id="_idParaDest-196"><a id="_idTextAnchor196"/>Lenses</h2>
+			<p>There’s another way to<a id="_idIndexMarker807"/> get and set values, which goes by the name of <em class="italic">optics</em>, and includes <em class="italic">lenses</em> (which we’ll study now) and <em class="italic">prisms</em> (which we’ll look at later in this chapter). What are lenses? They are functional ways of focusing (another optical term!) on a given spot in an object so that we can access or modify its value in a non-mutating way. In this section, we’ll look<a id="_idIndexMarker808"/> at some examples of the usage of lenses and consider two implementations – first, a simple one based on objects, and then a more complete one that’s interesting because of some of the techniques we will <span class="No-Break">be using.</span></p>
+			<h3>Working with lenses</h3>
+			<p>Both implementations <a id="_idIndexMarker809"/>will share basic functionality, so let’s start by skipping what lenses are or how they are built and look at some examples of their usage instead. First, let’s create a sample object that we will work with – some data about a writer (his name sounds familiar...) and <span class="No-Break">his books:</span></p>
+			<pre class="source-code">
+const author = {
+  user: "fkereki",
+  name: {
+    first: "Federico",
+    middle: "",
+    last: "Kereki",
+  },
+  books: [
+    { name: "Google Web Toolkit", year: 2010 },
+    { name: "Functional Programming", year: 2017 },
+    { name: "Javascript Cookbook", year: 2018 },
+  ],
+};</pre>
+			<p>We shall assume that several functions exist; we’ll see how they are implemented in upcoming sections. A lens depends on having a getter and a setter for a given attribute, and we can build one by directly using <strong class="source-inline">lens()</strong>, or <strong class="source-inline">lensProp()</strong> for briefer coding. Let’s create a lens for the <span class="No-Break"><strong class="source-inline">user</strong></span><span class="No-Break"> attribute:</span></p>
+			<pre class="source-code">
+const lens1 = lens(getField("user"), setField("user"));</pre>
+			<p>This defines a lens that focuses on the <strong class="source-inline">user</strong> attribute. Since this is a common operation, it can also be written <span class="No-Break">more compactly:</span></p>
+			<pre class="source-code">
+const lens1 = lensProp("user");</pre>
+			<p>Both these lenses allow us to focus on the <strong class="source-inline">user</strong> attribute of whatever object we use them with. With lenses, there are three basic operations, and we’ll follow tradition by using the names that most (if not all) <span class="No-Break">libraries follow:</span></p>
+			<ul>
+				<li><strong class="source-inline">view()</strong>: Used to access the value of <span class="No-Break">an attribute</span></li>
+				<li><strong class="source-inline">set()</strong>: Used to modify the value of <span class="No-Break">an attribute</span></li>
+				<li><strong class="source-inline">over()</strong>: Used to apply a function to an attribute and change <span class="No-Break">its value</span></li>
+			</ul>
+			<p>Let’s assume the functions <a id="_idIndexMarker810"/>are curried, as we saw in the previous chapter. So, to access the <strong class="source-inline">user</strong> attribute, we can write <span class="No-Break">the following:</span></p>
+			<pre class="source-code">
+console.log(view(lens1)(author));
+<strong class="bold">// fkereki</strong></pre>
+			<p>The <strong class="source-inline">view()</strong> function takes a lens as its first parameter. When applied to an object, it produces the value of whatever the lens focuses on – in our case, the <strong class="source-inline">user</strong> attribute. Of course, you could apply sequences of <strong class="source-inline">view()</strong> functions to get to deeper parts of <span class="No-Break">the object:</span></p>
+			<pre class="source-code">
+console.log(
+  view(lensProp("last"))(view(lensProp("name"))(author))
+);
+<strong class="bold">// Kereki</strong></pre>
+			<p>In this section on optics, we’ll always go with fully curried functions, not only for variety but because that’s usually how those functions are applied, as you’ll see in <span class="No-Break">any textbook.</span></p>
+			<p>Instead of writing such a series of <strong class="source-inline">view()</strong> calls, we’ll compose lenses so that we can focus more deeply on an object. Let’s take a look at one final example, which shows how we access <span class="No-Break">an array:</span></p>
+			<pre class="source-code">
+const lensBooks = lensProp("books");
+console.log(
+  "The author wrote " +
+    view(lensBooks)(author).length +
+    " book(s)"
+);
+<strong class="bold">// The author wrote 3 book(s)</strong></pre>
+			<p>In the future, should there be any change in the author structure, a simple change in the <strong class="source-inline">lensBooks</strong> definition would be enough to keep the rest of the <span class="No-Break">code unchanged.</span></p>
+			<p class="callout-heading">Lenses elsewhere?</p>
+			<p class="callout">You can also use lenses to access other structures; refer to <em class="italic">Question 10.8</em> for a way to use lenses with arrays, and <em class="italic">Question 10.9</em> for how to use lenses so that they work <span class="No-Break">with maps.</span></p>
+			<p>Moving on, the <strong class="source-inline">set()</strong> function <a id="_idIndexMarker811"/>allows us to set the value of the focus of <span class="No-Break">the lens:</span></p>
+			<pre class="source-code">
+console.log(<strong class="bold">set(lens1)("FEFK")(author)</strong>);
+/*
+{
+  user: '<strong class="bold">FEFK</strong>',
+  name: { first: 'Federico', middle: '', last: 'Kereki' },
+  books: [
+    { name: 'Google Web Toolkit', year: 2010 },
+    { name: 'Functional Programming', year: 2017 },
+    { name: 'Javascript Cookbook', year: 2018 }
+  ]
+}
+*/</pre>
+			<p>The result of <strong class="source-inline">set()</strong> is a new object with a changed value. Using this function in a fully curried style may be surprising, but if we used our <strong class="source-inline">curry()</strong> or <strong class="source-inline">partialCurry()</strong> function from earlier chapters, we could write <strong class="source-inline">set(lens1, "FEFK", author)</strong> <span class="No-Break">as well.</span></p>
+			<p>Using <strong class="source-inline">over()</strong> is similar in that a new object is returned, but in this case, the value is changed by applying a mapping function <span class="No-Break">to it:</span></p>
+			<pre class="source-code">
+const triple = (x: string): string =&gt; x + x + x;
+const newAuthor = <strong class="bold">over(lens1)(triple)(author)</strong>;
+console.log(newAuthor);
+/*
+{
+  user: '<strong class="bold">fkerekifkerekifkereki</strong>',
+  name: { first: 'Federico', middle: '', last: 'Kereki' },
+  books: [
+    { name: 'Google Web Toolkit', year: 2010 },
+    { name: 'Functional Programming', year: 2017 },
+    { name: 'Javascript Cookbook', year: 2018 }
+  ]
+}
+*/</pre>
+			<p>A fundamental question is, why is <strong class="source-inline">user</strong> equal to <strong class="source-inline">"fkerekifkerekifkereki"</strong> and not <strong class="source-inline">"FEFKFEFKFEFK"</strong>?  Our lens does not modify an object when using the setter but instead provides a<a id="_idIndexMarker812"/> new one, so we’re applying <strong class="source-inline">triple()</strong> to the original object’s <span class="No-Break">user attribute.</span></p>
+			<p>There are more functions you can do with lenses, but we’ll just go with these three for now. (Here’s a suggestion – take a look at <em class="italic">Question 10.7</em> for an interesting idea on how to use lenses to access virtual attributes that don’t actually exist in <span class="No-Break">an object.)</span></p>
+			<p>To finish this section, I’d recommend looking at some third-party optics libraries (<a href="http://github.com/stoeffel/awesome-fp-js#lenses">github.com/stoeffel/awesome-fp-js#lenses</a> and <a href="http://tinyurl.com/jslenses">tinyurl.com/jslenses</a> have several suggestions) to get a glimpse into all the available functionality. Now that we have an idea of what to expect when using lenses, let’s learn how to <span class="No-Break">implement them.</span></p>
+			<h3>Implementing lenses with objects</h3>
+			<p>The simplest way to<a id="_idIndexMarker813"/> implement a lens is by representing it with an object with just two properties – a getter and a setter. In this case, we’d have something <span class="No-Break">like this:</span></p>
+			<pre class="source-code">
+// lensesWithObjects.ts
+const getField =
+  &lt;O extends OBJ&gt;(attr: string) =&gt;
+  (obj: O) =&gt;
+    obj[attr];
+const setField =
+  &lt;O extends OBJ&gt;(attr: string) =&gt;
+  (value: any) =&gt;
+  (obj: O): O =&gt; ({ ...obj, [attr]: value });</pre>
+			<p>We’ve already seen similar <strong class="source-inline">getField()</strong> and <strong class="source-inline">setField()</strong> functions; the former gets a specific attribute from an object, and the latter returns a new object with a single changed attribute. We <a id="_idIndexMarker814"/>can now define <span class="No-Break">our </span><span class="No-Break"><strong class="source-inline">lens</strong></span><span class="No-Break">:</span></p>
+			<pre class="source-code">
+// continued...
+type GET&lt;O extends OBJ&gt; = ReturnType&lt;typeof getField&lt;O&gt;&gt;;
+type SET&lt;O extends OBJ&gt; = ReturnType&lt;typeof setField&lt;O&gt;&gt;;
+const lens = &lt;O extends OBJ&gt;(
+  getter: GET&lt;O&gt;,
+  setter: SET&lt;O&gt;
+) =&gt; ({
+  getter,
+  setter,
+});
+const lens = (getter: GET, setter: SET): LENS =&gt; ({
+  getter,
+  setter,
+});
+const lensProp = (attr: string) =&gt;
+  lens((getField as any)(attr), setField(attr));</pre>
+			<p>This is easy to understand – given a getter and a setter, <strong class="source-inline">lens()</strong> creates an object with those two attributes, and <strong class="source-inline">lensProp()</strong> creates a getter/setter pair by using <strong class="source-inline">getField()</strong> and <strong class="source-inline">setField()</strong> with <strong class="source-inline">lens()</strong>, which is very straightforward. Now that we have our lens, how do we implement the three basic functions we saw in the previous section? Viewing an attribute requires applying the getter; to maintain a curried style, let’s do currying <span class="No-Break">by hand:</span></p>
+			<pre class="source-code">
+// continued...
+type LENS&lt;O extends OBJ&gt; = ReturnType&lt;typeof lens&lt;O&gt;&gt;;
+const view =
+  &lt;O extends OBJ&gt;(someLens: LENS&lt;O&gt;) =&gt;
+  (someObj: O) =&gt;
+    someLens.getter(someObj);</pre>
+			<p>The generic <strong class="source-inline">LENS&lt;&gt;</strong> type is the type of whatever the <strong class="source-inline">lens()</strong> <span class="No-Break">function returns.</span></p>
+			<p>Similarly, setting an attribute<a id="_idIndexMarker815"/> is a matter of applying <span class="No-Break">the setter:</span></p>
+			<pre class="source-code">
+// continued...
+const set =
+  &lt;O extends OBJ&gt;(someLens: LENS&lt;O&gt;) =&gt;
+  (newVal: any) =&gt;
+  (someObj: O) =&gt;
+    someLens.setter(newVal)(someObj);</pre>
+			<p>Finally, applying a mapping function to an attribute is a <em class="italic">two-for-one</em> operation – we use the getter to get the current value of the attribute, we apply the function to it, and we use the setter to store the <span class="No-Break">calculated result:</span></p>
+			<pre class="source-code">
+// continued...
+const over =
+  &lt;O extends OBJ&gt;(someLens: LENS&lt;O&gt;) =&gt;
+  (mapFn: (arg: any) =&gt; any) =&gt;
+  (someObj: O) =&gt;
+    someLens.setter(mapFn(someLens.getter(someObj)))(
+      someObj
+    );</pre>
+			<p>This needs to be studied carefully. We use the lens’s <strong class="source-inline">getter()</strong> function to get some attribute from the input object, we apply the mapping function to the obtained value, and we use the lens’s <strong class="source-inline">setter()</strong> function to produce a new object with the <span class="No-Break">changed attribute.</span></p>
+			<p>Now that we can do all three operations, we have working lenses! What about composition? Lenses have a peculiar characteristic – they’re composed backward, left to right, so you start with the most generic and end with the most specific. That certainly goes against intuition; we’ll learn about this in more detail in the next section, but for now, we’ll keep <span class="No-Break">with tradition:</span></p>
+			<pre class="source-code">
+// continued...
+const composeTwoLenses = &lt;O extends OBJ&gt;(
+  lens1: LENS&lt;O&gt;,
+  lens2: LENS&lt;O&gt;
+) =&gt; ({
+  getter: (obj: O) =&gt; lens2.getter(lens1.getter(obj)),
+  setter: (newVal: any) =&gt; (obj: O) =&gt;
+    lens1.setter(lens2.setter(newVal)(lens1.getter(obj)))(
+      obj
+    ),
+});</pre>
+			<p>The code is sort <a id="_idIndexMarker816"/>of impressive but not too hard to understand. The getter for the composition of two lenses is the result of using the first lens’s getter and then applying the second lens’s getter to that result. The setter for the composition is a tad more complex, but follows along the same lines; can you see how it works? Now, we can compose lenses easily; let’s start with an invented <span class="No-Break">nonsensical object:</span></p>
+			<pre class="source-code">
+const deepObject = {
+  a: 1,
+  b: 2,
+  c: {
+    d: 3,
+    e: {
+      f: 6,
+      g: { i: 9, j: { k: 11 } },
+      h: 8,
+    },
+  },
+};</pre>
+			<p>Now, we can define a <span class="No-Break">few lenses:</span></p>
+			<pre class="source-code">
+const lC = lensProp("c");
+const lE = lensProp("e");
+const lG = lensProp("g");
+const lJ = lensProp("j");
+const lK = lensProp("k");</pre>
+			<p>We can try composing our new lens in a couple of ways, just for variety, to check that <span class="No-Break">everything works:</span></p>
+			<pre class="source-code">
+const lJK = composeTwoLenses(lJ, lK);
+const lGJK = composeTwoLenses(lG, lJK);
+const lEGJK = composeTwoLenses(lE, lGJK);
+const lCEGJK1 = composeTwoLenses(lC, lEGJK);
+console.log(view(lCEGJK1)(deepObject));
+const lCE = composeTwoLenses(lC, lE);
+const lCEG = composeTwoLenses(lCE, lG);
+const lCEGJ = composeTwoLenses(lCEG, lJ);
+const lCEGJK2 = composeTwoLenses(lCEGJ, lK);
+console.log(view(lCEGJK2)(deepObject));
+/*
+11 both times
+*/</pre>
+			<p>With <strong class="source-inline">lCEGJ1</strong>, we <a id="_idIndexMarker817"/>composed some lenses, starting with the latter ones. With <strong class="source-inline">lCEGJ2</strong>, we started with the lenses at the beginning, but the results are the same. Now, let’s try setting some values. We want to get down to the <strong class="source-inline">k</strong> attribute and set it to <strong class="source-inline">60</strong>. We can do this by using the same lens we <span class="No-Break">just applied:</span></p>
+			<pre class="source-code">
+const setTo60 = set(lCEGJK1)(60)(deepObject);
+/*
+{
+  a: 1,
+  b: 2,
+  c: {
+    d: 3,
+    e: {
+      f: 6,
+      g: { i: 9, j: { <strong class="bold">k: 60</strong> } },
+      h: 8,
+    },
+  },
+};
+*/</pre>
+			<p>The composed lens worked perfectly, and the value was changed. (Also, a new object was returned; the original is unmodified, as we wanted.) To finish, let’s verify that we can use <strong class="source-inline">over()</strong> with our lens and try to duplicate the <strong class="source-inline">k</strong> value so that it becomes <strong class="source-inline">22</strong>. Just for variety, let’s use the other composed lens, even though we know that it works in the <span class="No-Break">same way:</span></p>
+			<pre class="source-code">
+const setToDouble = over(lCEGJK2)((x) =&gt; x * 2)(deepObject);
+/*
+{
+  a: 1,
+  b: 2,
+  c: {
+    d: 3,
+    e: {
+      f: 6,
+      g: { i: 9, j: { <strong class="bold">k: 22</strong> } },
+      h: 8,
+    },
+  },
+};
+*/</pre>
+			<p>Now, we have learned how to implement lenses in a simple fashion. However, let’s consider a different way<a id="_idIndexMarker818"/> of achieving the same objective by using actual functions to represent a lens. This will allow us to do composition in the standard way, without needing any special <span class="No-Break">lens function.</span></p>
+			<h3>Implementing lenses with functions</h3>
+			<p>The previous implementation of lenses <a id="_idIndexMarker819"/>with objects works well, but we want to look at a different way of doing things that will let us work with more advanced functional ideas. This will involve some concepts we’ll be analyzing in more detail in <a href="B19301_12.xhtml#_idTextAnchor221"><span class="No-Break"><em class="italic">Chapter 12</em></span></a>, <em class="italic">Building Better Containers</em>, but here, we’ll use just what we need so that you don’t have to go and read that chapter now! Our lenses will work the same way the preceding ones did, except that since they will be functions, we’ll be able to compose them with no special <span class="No-Break">composing code.</span></p>
+			<p>What’s the key concept here? A lens will be a function, based on a getter and a setter pair, that will construct a <em class="italic">container</em> (actually an object, but let’s go with the container name) with a <strong class="source-inline">value</strong> attribute and a <strong class="source-inline">map</strong> method (in <a href="B19301_12.xhtml#_idTextAnchor221"><span class="No-Break"><em class="italic">Chapter 12</em></span></a>, <em class="italic">Building Better Containers</em>, we’ll see that this is a <em class="italic">functor</em>, but you don’t need to know that now). By having specific mapping methods, we’ll implement our <strong class="source-inline">view()</strong>, <strong class="source-inline">set()</strong>, and <span class="No-Break"><strong class="source-inline">over()</strong></span><span class="No-Break"> functions.</span></p>
+			<p>Our <strong class="source-inline">lens()</strong> function is <a id="_idIndexMarker820"/>as follows. We’ll explain the details of <span class="No-Break">this later:</span></p>
+			<pre class="source-code">
+// lensesWithFunctions.ts
+const lens =
+  &lt;O extends OBJ&gt;(getter: GET&lt;O&gt;, setter: SET&lt;O&gt;) =&gt;
+  (fn: FN) =&gt;
+  (obj: O) =&gt;
+    fn(getter(obj)).map((value: any) =&gt;
+      setter(value)(obj));</pre>
+			<p>Let’s consider <span class="No-Break">its parameters:</span></p>
+			<ul>
+				<li>The <strong class="source-inline">getter</strong> and <strong class="source-inline">setter</strong> parameters are the same <span class="No-Break">as before.</span></li>
+				<li>The <strong class="source-inline">fn</strong> function is the “magic sauce” that makes everything work; depending on what we want to do with the lens, we’ll provide a specific function. There’ll be more on <span class="No-Break">this later!</span></li>
+				<li>The <strong class="source-inline">obj</strong> parameter is the object we want to apply the <span class="No-Break">lens to.</span></li>
+			</ul>
+			<p>Let’s code our <strong class="source-inline">view()</strong> function. For this, we’ll need an auxiliary class, <strong class="source-inline">Constant</strong>, that, given a value, <strong class="source-inline">v</strong>, produces a container with that value and a <strong class="source-inline">map</strong> function that returns the very <span class="No-Break">same container:</span></p>
+			<pre class="source-code">
+// continued...
+class Constant&lt;V&gt; {
+  private value: V;
+  map: FN;
+  constructor(v: V) {
+    this.value = v;
+    this.map = () =&gt; this;
+  }
+}</pre>
+			<p>With this, we<a id="_idIndexMarker821"/> can now <span class="No-Break">code </span><span class="No-Break"><strong class="source-inline">view()</strong></span><span class="No-Break">:</span></p>
+			<pre class="source-code">
+// continued...
+const view =
+  &lt;O extends OBJ, V&gt;(someLens: LENS&lt;O&gt;) =&gt;
+  (obj: O) =&gt;
+    someLens(<strong class="bold">(x: V) =&gt; new Constant(x)</strong>)(obj).value;
+const user = view(lensProp("user"), author);
+/*
+fkereki
+*/</pre>
+			<p>What happens here? Let’s follow this step by step; it’s a <span class="No-Break">bit tricky!</span></p>
+			<ol>
+				<li value="1">We use <strong class="source-inline">lensProp()</strong> to create a lens focusing on the <span class="No-Break"><strong class="source-inline">user</strong></span><span class="No-Break"> attribute.</span></li>
+				<li>Our <strong class="source-inline">view()</strong> function passes the constant-building function <span class="No-Break">to </span><span class="No-Break"><strong class="source-inline">lens()</strong></span><span class="No-Break">.</span></li>
+				<li>Our <strong class="source-inline">lens()</strong> function uses the getter to access the user attribute in the <span class="No-Break"><strong class="source-inline">author</strong></span><span class="No-Break"> object.</span></li>
+				<li>Then, the value we receive is used to create a <span class="No-Break">constant container.</span></li>
+				<li>The <strong class="source-inline">map()</strong> method is invoked, which returns the very <span class="No-Break">same container.</span></li>
+				<li>The <strong class="source-inline">value</strong> attribute of the container is accessed, and that’s the value that the getter retrieved in <em class="italic">step </em><span class="No-Break"><em class="italic">3</em></span><span class="No-Break">. Wow!</span></li>
+			</ol>
+			<p>With that under our belt, let’s move on to <strong class="source-inline">set()</strong> and <strong class="source-inline">over()</strong>, which will require a different auxiliary function to create a container whose value <span class="No-Break">may vary:</span></p>
+			<pre class="source-code">
+// continued...
+class Variable&lt;V&gt; {
+  private value: V;
+  map: FN;
+  constructor(v: V) {
+    this.value = v;
+    this.map = (fn) =&gt; new Variable(fn(v));
+  }
+}</pre>
+			<p>In this case (as opposed to <strong class="source-inline">Constant</strong> objects), the <strong class="source-inline">map()</strong> method really does something – when provided with a function, it applies it to the value of the container and returns a new <strong class="source-inline">Variable</strong> object, with the resulting value. The <strong class="source-inline">set()</strong> function can be <span class="No-Break">implemented </span><span class="No-Break"><a id="_idIndexMarker822"/></span><span class="No-Break">now:</span></p>
+			<pre class="source-code">
+// continued...
+const set =
+  &lt;O extends OBJ, V&gt;(someLens: LENS&lt;O&gt;) =&gt;
+  (newVal: V) =&gt;
+  (obj: O) =&gt;
+    someLens(<strong class="bold">() =&gt; new Variable(newVal)</strong>)(obj).value;
+const changedUser = set(lensProp("user"))("FEFK")(author);
+/*
+{
+  <strong class="bold">user: 'FEFK'</strong>,
+  name: { first: 'Federico', middle: '', last: 'Kereki' },
+  books: [
+    { name: 'Google Web Toolkit', year: 2010 },
+    { name: 'Functional Programming', year: 2017 },
+    { name: 'Javascript Cookbook', year: 2018 }
+  ]
+}
+*/</pre>
+			<p>In this case, when the lens invokes the container’s <strong class="source-inline">map()</strong> method, it will produce a new container with a new value, which makes all the difference. To understand how this works, follow the same six steps we saw for <strong class="source-inline">get()</strong> – the only difference will be in <em class="italic">step 5</em>, where a new, different container <span class="No-Break">is produced.</span></p>
+			<p>Now that we’ve survived this (tricky indeed!) code, the <strong class="source-inline">over()</strong> function is simple, and the only difference is that instead of mapping to a given value, you use the mapping <strong class="source-inline">mapfn</strong> function provided to compute the new value for <span class="No-Break">the container:</span></p>
+			<pre class="source-code">
+// continued...
+const over =
+  &lt;O extends OBJ, V&gt;(someLens: LENS&lt;O&gt;) =&gt;
+  (mapfn: FN) =&gt;
+  (obj: O) =&gt;
+    someLens(<strong class="bold">(x: V) =&gt; new Variable(mapfn(x))</strong>)(obj).value;
+const newAuthor = over(lensProp("user"))(triple)(author);
+/*
+{
+  <strong class="bold">user: 'fkerekifkerekifkereki'</strong>,
+  name: { first: 'Federico', middle: '', last: 'Kereki' },
+  books: [
+    { name: 'Google Web Toolkit', year: 2010 },
+    { name: 'Functional Programming', year: 2017 },
+    { name: 'Javascript Cookbook', year: 2018 }
+  ]
+}
+*/</pre>
+			<p>As you can see, the difference between <strong class="source-inline">set()</strong> and <strong class="source-inline">over()</strong> is that, in the former case, you provide a value to<a id="_idIndexMarker823"/> replace the original one, while in the latter case, you provide a function to calculate the new value. Other than that, both <span class="No-Break">are similar.</span></p>
+			<p>To finish, let’s verify that <strong class="source-inline">compose()</strong> can be applied to our <span class="No-Break">functor-based lenses:</span></p>
+			<pre class="source-code">
+// continued...
+const lastName = view(
+  <strong class="bold">compose(lensProp("name"), lensProp("last"))</strong>
+)(author);
+/*
+<strong class="bold">Kereki</strong>
+*/</pre>
+			<p>Here, we created two individual lenses for <strong class="source-inline">name</strong> and <strong class="source-inline">last</strong>, and we composed them with the very same <strong class="source-inline">compose()</strong> function that we developed back in <a href="B19301_08.xhtml#_idTextAnchor148"><span class="No-Break"><em class="italic">Chapter 8</em></span></a>, <em class="italic">Connecting Functions</em>. Using this composite lens, we focused on the author’s last name without any problem, so everything worked <span class="No-Break">as expected.</span></p>
+			<p class="callout-heading">Wrong direction?</p>
+			<p class="callout">It seems to go against logic that lenses should be composed from left to right; this appears to be backward. This is something that troubles developers, and if you google for an explanation, you’ll find many. To answer this question on your own, I suggest spelling out how <strong class="source-inline">compose()</strong> works in full – two functions will be enough – and then substitute the definitions of lenses; you’ll see why and how everything <span class="No-Break">works out.</span></p>
+			<p>Now that we’ve looked at<a id="_idIndexMarker824"/> lenses, we can move on and look at <strong class="bold">prisms</strong>, another <span class="No-Break">optics tool.</span></p>
+			<h2 id="_idParaDest-197"><a id="_idTextAnchor197"/>Prisms</h2>
+			<p>As we saw in the previous<a id="_idIndexMarker825"/> section, lenses are useful for working with product types. However, prisms are useful for working with <em class="italic">sum</em> types. But what are they? (We’ll look at products and unions in more detail in the last chapter of the book.) Whereas a product type is always built out of the same options, such as an object from a class, a sum type will likely have different structures – extra or missing attributes, for example. When you use a lens, you assume that the object you’ll be applying it to has a known structure with no variations, but what do you use if the object has different structures? The answer is prisms. Let’s look at how they are used first; then, we’ll examine <span class="No-Break">their implementation.</span></p>
+			<h3>Working with prisms</h3>
+			<p>Working with prisms is<a id="_idIndexMarker826"/> similar to using lenses, except for what happens when an attribute is not present. Let’s take a look at an example from the <span class="No-Break">previous section:</span></p>
+			<pre class="source-code">
+const author = {
+  user: "fkereki",
+  name: {
+    first: "Federico",
+    middle: "",
+    last: "Kereki",
+  },
+  books: [
+    { name: "Google Web Toolkit", year: 2010 },
+    { name: "Functional Programming", year: 2017 },
+    { name: "Javascript Cookbook", year: 2018 },
+  ],
+};</pre>
+			<p>If we wanted to access the <strong class="source-inline">user</strong> attribute using prisms, we would write something like the following (and don’t worry about the <span class="No-Break">details now):</span></p>
+			<pre class="source-code">
+const pUser = prismProp("user");
+console.log(preview(pUser, author).toString());
+/*
+fkereki
+*/</pre>
+			<p>Here, we define a prism using a <strong class="source-inline">prismProp()</strong> function, which parallels our previous <strong class="source-inline">lensProp()</strong>. Then, we <a id="_idIndexMarker827"/>use the prism with the <strong class="source-inline">preview()</strong> function, which is analogous to <strong class="source-inline">get()</strong> with lenses, and the result is the same as if we had used lenses – no surprises there. What would have happened if we had asked for a non-existing pseudonym attribute? <span class="No-Break">Let’s see:</span></p>
+			<pre class="source-code">
+const pPseudonym = prismProp("pseudonym");
+console.log(preview(pPseudonym, author).toString());
+/*
+undefined
+*/</pre>
+			<p>So far, we may not see any differences, but let’s see what happens if we try to compose lenses or prisms with several missing attributes. Say you wanted to access a (missing!) <strong class="source-inline">pseudonym.usedSince</strong> attribute with lenses, without taking precautions and checking that the attributes exist. Here, you would get the <span class="No-Break">following output:</span></p>
+			<pre class="source-code">
+const lPseudonym = lensProp("pseudonym");
+const lUsedSince = lensProp("usedSince");
+console.log(
+  "PSEUDONYM, USED SINCE",
+  view(compose(lPseudonym, lUsedSince))(author)
+);
+/*
+<strong class="bold">TypeError: Cannot read property 'usedSince' of undefined</strong>
+<strong class="bold">.</strong>
+<strong class="bold">. many more error lines, snipped out</strong>
+<strong class="bold">.</strong>
+*/</pre>
+			<p>On the other hand, since prisms already take missing values into account, this would cause no problems, and we’d get an <strong class="source-inline">undefined</strong> result; that’s why <strong class="source-inline">preview()</strong> is sometimes <span class="No-Break">called </span><span class="No-Break"><strong class="source-inline">getOptional()</strong></span><span class="No-Break">:</span></p>
+			<pre class="source-code">
+const pUsedSince = prismProp("usedSince");
+console.log(
+  preview(compose(pPseudonym, pUsedSince))(
+    author
+  ).toString()
+);
+/*
+<strong class="bold">undefined</strong>
+*/</pre>
+			<p>What happens if we <a id="_idIndexMarker828"/>want to set a value? The analogous function to <strong class="source-inline">set()</strong> is <strong class="source-inline">review()</strong>; let’s look at how it would work. The idea is that whatever attribute we specify will be set if, and only if, the attribute already exists. So, if we attempt to change the <strong class="source-inline">user.name</strong> attribute, this <span class="No-Break">will work:</span></p>
+			<pre class="source-code">
+const fullAuthor2 = review(
+  compose(prismProp("name"), prismProp("first")),
+  "FREDERICK",
+  author
+);</pre>
+			<p>However, if we try to modify the (non-existent) <strong class="source-inline">pseudonym</strong> attribute, the original, unchanged object will <span class="No-Break">be returned:</span></p>
+			<pre class="source-code">
+const fullAuthor3 = review(pPseudonym, "NEW ALIAS", author);
+// returns author, unchanged</pre>
+			<p>So, using prisms takes care of all possible missing or optional fields. How do we implement this new optics type? New names are used (<strong class="source-inline">preview()</strong> and <strong class="source-inline">review()</strong> instead of <strong class="source-inline">get()</strong> and <strong class="source-inline">set()</strong>), but that difference is minor. Let’s take <span class="No-Break">a look.</span></p>
+			<h3>Implementing prisms</h3>
+			<p>How do we implement prisms? We will take our cue from our lens implementation and make a few changes. When getting an attribute, we must check whether the object we are processing is not <strong class="source-inline">null</strong> or <strong class="source-inline">undefined</strong> and whether the attribute we want is in the object. We can make do with small changes to our original <span class="No-Break"><strong class="source-inline">getField()</strong></span><span class="No-Break"> function:</span></p>
+			<pre class="source-code">
+// prisms.ts
+const getFieldP =
+  &lt;O extends OBJ&gt;(attr: string) =&gt;
+  (obj: O) =&gt;
+    <strong class="bold">obj &amp;&amp; attr in obj ? obj[attr] : undefined;</strong></pre>
+			<p>Here, we’re checking for the<a id="_idIndexMarker829"/> existence of the object and the attribute – if everything’s okay, we return <strong class="source-inline">obj[attr]</strong>; otherwise, we return <strong class="source-inline">undefined</strong>. The changes for <strong class="source-inline">setField()</strong> are <span class="No-Break">very similar:</span></p>
+			<pre class="source-code">
+// continued...
+const setFieldP =
+  &lt;O extends OBJ&gt;(attr: string) =&gt;
+  (value: any) =&gt;
+  (obj: O): O =&gt;
+    <strong class="bold">obj &amp;&amp; attr in obj</strong>
+<strong class="bold">      ? { ...obj, [attr]: value }</strong>
+<strong class="bold">      : { ...obj }</strong>;</pre>
+			<p>If the object and the attribute both exist, we return a new object by changing the attribute’s value; otherwise, we return a copy of the object. That’s all there is to it! Defining the other functions is directly based on <strong class="source-inline">lens()</strong>, <strong class="source-inline">lensProp()</strong>, and so on, so we’ll <span class="No-Break">skip that.</span></p>
+			<p>Now that we’ve learned how to access objects in functional ways, let’s analyze persistent data structures that can be modified very efficiently without the need for a full copy of the <span class="No-Break">original object.</span></p>
+			<h1 id="_idParaDest-198"><a id="_idTextAnchor198"/>Creating persistent data structures</h1>
+			<p>If you want to change something in a data structure and you just go and change it, your code will be full <a id="_idIndexMarker830"/>of side effects. On the other hand, copying complete structures every time is a waste of time and space. There’s a middle ground to this that has to do with persistent data structures, which, if handled correctly, let you apply changes while creating new <span class="No-Break">structures efficiently.</span></p>
+			<p>Given that there are many possible data structures you could work with, let’s just take a look at a <span class="No-Break">few examples:</span></p>
+			<ul>
+				<li>Working with lists, one of the simplest <span class="No-Break">data structures</span></li>
+				<li>Working with objects, a very common necessity in <span class="No-Break">JavaScript programs</span></li>
+				<li>Dealing with arrays, which will prove to be harder to <span class="No-Break">work with</span></li>
+			</ul>
+			<p>Let’s <span class="No-Break">get started!</span></p>
+			<h2 id="_idParaDest-199"><a id="_idTextAnchor199"/>Working with lists</h2>
+			<p>Let’s consider a <a id="_idIndexMarker831"/>simple procedure – suppose you have a list and want to add a new element to it. How would you do this? Here, we can assume that each node is a <span class="No-Break"><strong class="source-inline">NodeList</strong></span><span class="No-Break"> object:</span></p>
+			<pre class="source-code">
+// lists.ts
+class ListNode&lt;T&gt; {
+  value: T;
+  next: ListNode&lt;T&gt; | null;
+  constructor(value: any, next = null) {
+    this.value = value;
+    this.next = next;
+  }
+}</pre>
+			<p>A possible list would be as shown in the following figure – a <strong class="source-inline">list</strong> variable would point to the first element. Look at the following diagram; can you tell what is missing in the list, <span class="No-Break">and where?</span></p>
+			<div>
+				<div id="_idContainer057" class="IMG---Figure">
+					<img src="image/Figure_10.1_B19301.jpg" alt="Figure 10.1 – The initial list"/>
+				</div>
+			</div>
+			<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 10.1 – The initial list</p>
+			<p>If you wanted to add D between B and F (the sample list represents a concept that musicians will understand, the <em class="italic">Circle of Thirds</em>, but with the D note missing), the simplest solution would be to add a new node and change an existing one. This would result in <span class="No-Break">the following:</span></p>
+			<div>
+				<div id="_idContainer058" class="IMG---Figure">
+					<img src="image/Figure_10.2_B19301.jpg" alt="Figure 10.2 – The list now has a new element – we had to modify an existing one to perform the addition"/>
+				</div>
+			</div>
+			<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 10.2 – The list now has a new element – we had to modify an existing one to perform the addition</p>
+			<p>However, working<a id="_idIndexMarker832"/> in this way is obviously non-functional, and we are clearly modifying data. There is a different way of working – creating a persistent data structure in which all the alterations (insertions, deletions, and modifications) are done separately, being careful not to modify existing data. On the other hand, if some parts of the structure can be reused, this is done to gain performance. Doing a persistent update would return a new list, with some nodes that are duplicates of some previous ones but no changes whatsoever to the original list. This can be seen in the <span class="No-Break">following diagram:</span></p>
+			<div>
+				<div id="_idContainer059" class="IMG---Figure">
+					<img src="image/Figure_10.3_B19301.jpg" alt="Figure 10.3 – The dotted elements show the newly returned list, which shares some elements with the old one"/>
+				</div>
+			</div>
+			<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 10.3 – The dotted elements show the newly returned list, which shares some elements with the old one</p>
+			<p>Updating a structure this way requires duplicating some elements to avoid modifying the original structure, but part of the list <span class="No-Break">is shared.</span></p>
+			<p>Of course, we will also deal with updates or deletions. Starting again with the list shown in the following diagram, if we wanted to update its fourth element, the solution would imply creating a new<a id="_idIndexMarker833"/> subset of the list, up to and including the fourth element, while keeping the <span class="No-Break">rest unchanged:</span></p>
+			<p class="IMG---Figure"><img src="image/Figure_10.4_B19301.png" alt="Figure 10.4 – Our list, with a changed element"/></p>
+			<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 10.4 – Our list, with a changed element</p>
+			<p>Removing an element would also be similar. Let’s do away with the third element, F, in the original list, <span class="No-Break">as follows:</span></p>
+			<div>
+				<div id="_idContainer061" class="IMG---Figure">
+					<img src="image/Figure_10.5_B19301.jpg" alt="Figure 10.5 — The original list, after removing the third element in a persistent way"/>
+				</div>
+			</div>
+			<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 10.5 — The original list, after removing the third element in a persistent way</p>
+			<p>Working with lists or other structures can always be solved to provide data persistence. For now, focus on what will probably be the most important kind of work for us – dealing with simple JavaScript objects. After all, all data structures are JavaScript objects, so if we can work with objects, we can work with <span class="No-Break">other structures.</span></p>
+			<h2 id="_idParaDest-200"><a id="_idTextAnchor200"/>Updating objects</h2>
+			<p>This method <a id="_idIndexMarker834"/>can also be applied to more common requirements, such as modifying an object. This is a very good idea for, say, Redux users – a reducer can be programmed to receive the old state as a parameter and produce an updated version with the minimum needed changes, without altering the original state in <span class="No-Break">any way.</span></p>
+			<p>Imagine you had the <span class="No-Break">following object:</span></p>
+			<pre class="source-code">
+myObj = {
+    a: ...,
+    b: ...,
+    c: ...,
+    d: {
+        e: ...,
+        f: ...,
+        g: {
+            h: ...,
+            i: ...
+        }
+    }
+};</pre>
+			<p>Let’s assume you wanted to modify the value of the <strong class="source-inline">myObj.d.f</strong> attribute but in a persistent way. Instead of copying the entire object (with the <strong class="source-inline">deepCopy()</strong> function we wrote earlier), we could<a id="_idIndexMarker835"/> create a new object, with several attributes in common with the previous object but new ones for the modified ones. This can be seen in the <span class="No-Break">following diagram:</span></p>
+			<div>
+				<div id="_idContainer062" class="IMG---Figure">
+					<img src="image/Figure_10.6_B19301.jpg" alt="Figure 10.6 – A persistent way of editing an object – that is, by sharing some attributes and creating others"/>
+				</div>
+			</div>
+			<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 10.6 – A persistent way of editing an object – that is, by sharing some attributes and creating others</p>
+			<p>The old and new objects share most of the attributes, but there are new <strong class="source-inline">d</strong> and <strong class="source-inline">f</strong> attributes, so you <a id="_idIndexMarker836"/>managed to minimize the changes when creating the <span class="No-Break">new object.</span></p>
+			<p>If you want to do this by hand, you would have to write, in a very cumbersome way, something like the following. Most attributes are taken from the original object, but <strong class="source-inline">d</strong> and <strong class="source-inline">d.f</strong> <span class="No-Break">are new:</span></p>
+			<pre class="source-code">
+newObj = {
+  a: myObj.a,
+  b: myObj.b,
+  c: myObj.c,
+  d: {
+    e: myObj.d.e,
+    f: <strong class="bold">the new value</strong>,
+    g: myObj.d.g,
+  },
+};</pre>
+			<p>We saw some similar code earlier in this chapter when we decided to work on a cloning function. Here, let’s<a id="_idIndexMarker837"/> go for a different type of solution. In fact, this kind of update can <span class="No-Break">be automated:</span></p>
+			<pre class="source-code">
+// objects.ts
+const setIn = &lt;O extends OBJ&gt;(
+  arr: (string | number)[],
+  value: any,
+  obj: O
+): O =&gt; {
+  const newObj = Number.isInteger(arr[0]) ? [] : {};
+  Object.keys(obj).forEach((k) =&gt; {
+    (newObj as any)[k] = k !== arr[0] ? obj[k] : null;
+  });
+  (newObj as any)[arr[0]] =
+    arr.length &gt; 1
+      ? setIn(arr.slice(1), value, obj[arr[0]])
+      : value;
+  return newObj as O;
+};</pre>
+			<p>The logic is recursive, but not too complex. First, we figure out, at the current level, what kind of object we need – an array or an object. Then, we copy all the attributes from the original object to the new one, except the property we are changing. Finally, we set that property to the given value (if we have finished with the path of property names), or we use recursion to go deeper with <span class="No-Break">the copy.</span></p>
+			<p class="callout-heading">Ordering parameters</p>
+			<p class="callout">Note the order of the parameters – first, the path, then the value, and finally, the object. We are applying the<a id="_idIndexMarker838"/> concept of putting the most stable parameters first and the most variable last. If you curry this function, you can apply the same path to several different values and objects, and if you fix the path and the value, you can still use the function with <span class="No-Break">different objects.</span></p>
+			<p>Let’s give this logic a try. We’ll start with a nonsensical object but with several levels, and even an array of objects <span class="No-Break">for variety:</span></p>
+			<pre class="source-code">
+const myObj1 = {
+  a: 111,
+  b: 222,
+  c: 333,
+  d: {
+    e: 444,
+    f: 555,
+    g: {
+      h: 666,
+      i: 777,
+    },
+    j: [{ k: 100 }, { k: 200 }, { k: 300 }],
+  },
+};</pre>
+			<p>We can test this<a id="_idIndexMarker839"/> by changing <strong class="source-inline">myObj.d.f</strong> to a <span class="No-Break">new value:</span></p>
+			<pre class="source-code">
+let myObj2 = setIn(["d", "f"], 88888, myObj1);
+/*
+{
+  a: 111,
+  b: 222,
+  c: 333,
+  d: {
+    e: 444,
+    f: <strong class="bold">88888</strong>,
+    g: { h: 666, i: 777 },
+    j: [{ k: 100 }, { k: 200 }, { k: 300 }],
+  }
+}
+*/
+console.log(myObj1.d === myObj2.d);     // false
+console.log(myObj1.d.f === myObj2.d.f); // false
+console.log(myObj1.d.g === myObj2.d.g); // true</pre>
+			<p>The logs at the bottom verify that the algorithm is working correctly – <strong class="source-inline">myObj2.d</strong> is a new object, but <strong class="source-inline">myObj2.d.g</strong> is reusing the value <span class="No-Break">from </span><span class="No-Break"><strong class="source-inline">myObj1</strong></span><span class="No-Break">.</span></p>
+			<p>Updating the array in the <a id="_idIndexMarker840"/>second object lets us test how the logic works in <span class="No-Break">those cases:</span></p>
+			<pre class="source-code">
+const myObj3 = setIn(["d", "j", 1, "k"], 99999, myObj2);
+/*
+{
+  a: 111,
+  b: 222,
+  c: 333,
+  d: {
+    e: 444,
+    f: 88888,
+    g: { h: 666, i: 777 },
+    j: [{ k: 100 }, { k: <strong class="bold">99999</strong> }, { k: 300 }],
+  }
+}
+*/
+console.log(myObj1.d.j === myObj3.d.j);       // false
+console.log(myObj1.d.j[0] === myObj3.d.j[0]); // true
+console.log(myObj1.d.j[1] === myObj3.d.j[1]); // false
+console.log(myObj1.d.j[2] === myObj3.d.j[2]); // true</pre>
+			<p>We can compare the elements in the <strong class="source-inline">myObj1.d.j</strong> array with the ones in the newly created object. You will see that the array is a new one, but two of the elements (the ones that weren’t updated) are still the same objects that were <span class="No-Break">in </span><span class="No-Break"><strong class="source-inline">myObj1</strong></span><span class="No-Break">.</span></p>
+			<p>This obviously isn’t enough to get by. Our logic can update an existing field or even add it if it wasn’t there, but you’d also need to eliminate an old attribute. Libraries usually provide many more functions, but let’s work on the deletion of an attribute for now so that we can look at<a id="_idIndexMarker841"/> some of the other important structural changes we can make to <span class="No-Break">an object:</span></p>
+			<pre class="source-code">
+// continued...
+const deleteIn = &lt;O extends OBJ&gt;(
+  arr: (string | number)[],
+  obj: O
+): O =&gt; {
+  const newObj = Number.isInteger(arr[0]) ? [] : {};
+  Object.keys(obj).forEach((k) =&gt; {
+    if (k !== arr[0]) {
+      (newObj as any)[k] = obj[k];
+    }
+  });
+  if (arr.length &gt; 1) {
+    (newObj as any)[arr[0]] = deleteIn(
+      arr.slice(1),
+      obj[arr[0]]
+    );
+  }
+  return newObj as O;
+};</pre>
+			<p>The logic here is similar to that of <strong class="source-inline">setIn()</strong>. The difference is that we don’t always copy all the attributes<a id="_idIndexMarker842"/> from the original object to the new one; we only do that if we haven’t arrived at the end of the array of path properties. Continuing with the series of tests after the updates, we get <span class="No-Break">the following:</span></p>
+			<pre class="console">
+const myObj4 = deleteIn(["d", "g"], myObj3);
+const myObj5 = deleteIn(["d", "j"], myObj4);
+console.log(myObj5);
+// { a: 111, b: 222, c: 333, d: { e: 444, f: 88888 } }</pre>
+			<p>With this pair of functions, we can manage to work with persistent objects by making changes, additions, and deletions in an efficient way that won’t create new <span class="No-Break">objects needlessly.</span></p>
+			<p class="callout-heading">A tip</p>
+			<p class="callout">The most well-known library for working with immutable objects is the appropriately named <strong class="source-inline">immutable.js</strong>, which can be found at <a href="http://immutable-js.com/">immutable-js.com/</a>. The only weak point about it is its notoriously obscure documentation. However, there’s an easy solution – check out <em class="italic">The Missing Immutable.js Manual</em> with all the examples you’ll ever need at <a href="http://untangled.io/the-missing-immutable-js-manual/">untangled.io/the-missing-immutable-js-manual/</a>, and you won’t have <span class="No-Break">any</span><span class="No-Break"><a id="_idIndexMarker843"/></span><span class="No-Break"> trouble!</span></p>
+			<h2 id="_idParaDest-201"><a id="_idTextAnchor201"/>A final caveat</h2>
+			<p>Working with persistent data structures requires some cloning, but how would you implement a persistent<a id="_idIndexMarker844"/> array? If you think about this, you’ll realize that, in that case, there would be no way out apart from cloning the whole array after each operation. This would mean that an operation such as updating an element in an array, which took a constant time, would now take a length of time proportional to the size of <span class="No-Break">the array.</span></p>
+			<p class="callout-heading">Complexity concerns</p>
+			<p class="callout">In algorithm complexity terms, updates went from being O(1) operations to O(<em class="italic">n</em>) ones. Similarly, access to an element may become an O(<em class="italic">log n</em>) operation, and similar slowdowns might be observed for other operations, such as mapping <span class="No-Break">and reducing.</span></p>
+			<p>How do we avoid this? There’s no easy solution. For example, you may find that an array is internally represented as a binary search tree (or even more complex data structures) and that the persistence library provides the necessary interface so that you’ll still be able to use it as an array, not noticing the <span class="No-Break">internal difference.</span></p>
+			<p>When using this kind of library, the advantages of having immutable updates without cloning may be partially offset by some operations that may become slower. If this becomes a bottleneck in<a id="_idIndexMarker845"/> your application, you might have to go so far as changing the way you implement immutability or even work out how to change your basic data structures to avoid the time loss, or at least <span class="No-Break">minimize it.</span></p>
+			<h1 id="_idParaDest-202"><a id="_idTextAnchor202"/>Summary</h1>
+			<p>In this chapter, we looked at two different approaches (used by commonly available immutability libraries) to avoiding side effects by working with immutable objects and data structures – one based on using JavaScript’s object freezing, plus some special logic for cloning, and the other based on applying the concept of persistent data structures with methods that allow all kinds of updates, without changing the original or requiring <span class="No-Break">full cloning.</span></p>
+			<p>In <a href="B19301_11.xhtml#_idTextAnchor204"><span class="No-Break"><em class="italic">Chapter 11</em></span></a>, <em class="italic">Implementing Design Patterns</em>, we will focus on a question often asked by object-oriented programmers – how are design patterns used in FP? Are they required, available, or usable? Are they still practiced but with a new focus on functions rather than on objects? We’ll answer these questions with several examples, showing where and how they are equivalent or how they differ from the usual <span class="No-Break">OOP practices.</span></p>
+			<h1 id="_idParaDest-203"><a id="_idTextAnchor203"/>Questions</h1>
+			<p>10.1 <strong class="bold">Not just date problems</strong>: We saw that our <strong class="source-inline">jsonCopy()</strong> function has problems with dates, but that’s not all. What happens if we try to copy objects that include maps? Sets? Regular <span class="No-Break">expressions? Functions?</span></p>
+			<p>10.2 <strong class="bold">The mote in jsonCopy’s eye…</strong>: The previous question pointed out some problems of <strong class="source-inline">jsonCopy()</strong>; how does <strong class="source-inline">deepCopy()</strong> fare with the same kind of objects? Can it <span class="No-Break">be enhanced?</span></p>
+			<p>10.3 <strong class="bold">Going in circles</strong>: Objects may have circular references that point to themselves, and <strong class="source-inline">JSON.stringify()</strong> will protest if dealing with such. How could you fix our <strong class="source-inline">deepCopy()</strong> function to avoid that problem? We did deal with that issue in the <strong class="source-inline">deepFreeze()</strong> function, but that solution cannot be used here; something different <span class="No-Break">is required.</span></p>
+			<p>10.4 <strong class="bold">Freezing by proxying</strong>: In the <em class="italic">Chaining and fluent interfaces</em> section of <a href="B19301_08.xhtml#_idTextAnchor148"><span class="No-Break"><em class="italic">Chapter 8</em></span></a>, <em class="italic">Connecting Functions</em>, we used a proxy to get operations to provide automatic chaining. By using a proxy for setting and deleting operations, you can do your own freezing (if, instead of setting an object’s property, you’d rather throw an exception). Implement a <strong class="source-inline">freezeByProxy(obj)</strong> function that will apply this idea to forbid all kinds of updates (adding, modifying, or deleting properties) for an object. Remember to work recursively if an object has other objects <span class="No-Break">as properties!</span></p>
+			<p>10.5 <strong class="bold">Inserting into a list, persistently</strong>: In the <em class="italic">Working with lists</em> section, we described how an algorithm could add a new node to a list, but in a persistent way, by creating a new list. Implement an <strong class="source-inline">insertAfter(list, newKey, oldKey)</strong> function that will create a new list, but add a new node with <strong class="source-inline">newKey</strong> just after the node with <strong class="source-inline">oldKey</strong>. Here, you’ll need to assume that the nodes in the list were created by the <span class="No-Break">following logic:</span></p>
+			<pre class="source-code">
+type MUSICAL_KEY = string;
+class Node {
+  key: MUSICAL_KEY;
+  next: Node | null;
+  constructor(key: MUSICAL_KEY, next: Node | null) {
+    this.key = key;
+    this.next = next;
+  }
+}
+const c3 =
+  new Node("G",
+    new Node("B",
+      new Node("F",
+        new Node("A",
+          new Node("C",
+            new Node("E", null)
+          )
+        )
+      )
+    )
+  );</pre>
+			<p>10.6 <strong class="bold">Composing many lenses</strong>: Write a <strong class="source-inline">composeLenses()</strong> function that will allow you to compose as many simple lenses as you want, instead of only two, as in <strong class="source-inline">composeTwoLenses()</strong>, along the same lines as what we did in <a href="B19301_08.xhtml#_idTextAnchor148"><span class="No-Break"><em class="italic">Chapter 8</em></span></a><em class="italic">, Connecting Functions</em><em class="italic">,</em><em class="italic"> </em>when we moved from <strong class="source-inline">composeTwo()</strong> to a generic <span class="No-Break"><strong class="source-inline">compose()</strong></span><span class="No-Break"> function.</span></p>
+			<p>10.7 <strong class="bold">Lenses by path</strong>: In this chapter, we created lenses using <strong class="source-inline">getField()</strong> and <strong class="source-inline">setField()</strong>. Then, we used composition to access deeper attributes. Can you create a lens by giving a path, allowing <span class="No-Break">shorter code?</span></p>
+			<p>10.8 <strong class="bold">Accessing virtual attributes</strong>: By using lenses, you can view (and even set) attributes that don’t actually exist in an object. Here are some tips to let you develop that. First, can you write a getter that will access an object such as <strong class="source-inline">author</strong> and return the author’s full name in LAST NAME, FIRST NAME format? Second, can you write a setter that, given a full name, will split it in half and set its first and last names? With those two functions, you could write <span class="No-Break">the following:</span></p>
+			<pre class="source-code">
+const fullNameLens = lens(
+...your getter...,
+...your setter...
+);
+console.log(view(fullNameLens, author));
+/*
+Kereki, Federico
+*/
+console.log(set(fullNameLens, "Doe, John", author));
+/*
+{
+  user: 'fkereki',
+  name: { <strong class="bold">first: ' John'</strong>, middle: '', <strong class="bold">last: 'Doe'</strong> },
+…
+}
+*/</pre>
+			<p>10.9 <strong class="bold">Lenses for arrays?</strong> What would happen if you created a lens like in the following code and applied it to an array? If there’s a problem, could you <span class="No-Break">fix it?</span></p>
+			<pre class="source-code">
+const getArray = curry((ind, arr) =&gt; arr[ind]);
+const setArray = curry((ind, value, arr) =&gt; {
+  arr[ind] = value;
+  return arr;
+});
+const lensArray = (ind) =&gt;
+  lens(getArray(ind), setArray(ind));</pre>
+			<p>10.10 <strong class="bold">Lenses into maps</strong>: Write a <strong class="source-inline">lensMap()</strong> function to create a lens you can use to access and modify maps. You may want to look at the following for more information about cloning maps: <a href="http://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map">developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map</a>. Your function should be declared as follows. You’ll have to write a couple of auxiliary functions <span class="No-Break">as well:</span></p>
+			<pre class="source-code">
+const lensMap = key =&gt; lens(getMap(key), setMap(key));</pre>
+		</div>
+	</body></html>
