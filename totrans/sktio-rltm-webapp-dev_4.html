@@ -1,0 +1,633 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;4.&#xA0;Making It More Fun!"><div class="titlepage"><div><div><h1 class="title"><a id="ch04"/>Chapter 4. Making It More Fun!</h1></div></div></div><p>In the previous chapter, we created a chat room. In this chapter, we are going to improve on that chat room by giving our users a name, having multiple chat rooms, and integrating the express and socket.io sessions.</p><div class="section" title="Giving names to users"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec32"/>Giving names to users</h1></div></div></div><p>Without a name for our users, chatting becomes difficult. It is impossible to identify who sent the message. So let us provide our users with a method by which they can set a nickname for themselves, so that a message from<a id="id115" class="indexterm"/> them can be identified with their name.</p><p>We have already worked with the <code class="literal">message</code> event in socket.io to send and receive messages. We also saw the socket.io module's predefined events. In this section, we will learn more about those events and also see how we can work with our own events. We will also see how we can save some information for the session.</p><p>Let us start by creating the user interface required for accepting a name from the user when they come to our chat room. To do this, we will modify the <code class="literal">index.jade</code> file by adding the following code to it:</p><div class="informalexample"><pre class="programlisting">//EXISTING LAYOUT
+  section#nameform.modal
+    div.backdrop
+    div.popup
+      div.pophead Please enter a nickname
+      div.popbody
+        input#nickname(type='text')
+        input#setname(type='button', value='Set Name')</pre></div><p>What we are doing here is adding a new section for the <code class="literal">modal</code> overlay. This section has a backdrop <code class="literal">div</code> tag and then a <code class="literal">div</code> tag for the actual form. The look and feel of this will again be defined in the <code class="literal">style.css</code> file, so let's update that too. Refer to the following code block while modifying the stylesheet:<a id="id116" class="indexterm"/>
+</p><div class="informalexample"><pre class="programlisting">//EXISTING CSS
+.modal{
+  -moz-box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  height: -moz-calc(100% - 102px);
+  height: -webkit-calc(100% - 102px);
+  height: calc(100% - 102px);
+  left: 0;
+  position: absolute;
+  top: 62px;
+  width: 100%;
+  z-index: 1000;
+}
+
+.backdrop{
+  width: 100%;
+  height:100%;
+  background-color: #777777;
+}
+
+.popup {
+  position: absolute;
+  height: 100px;
+  width: 300px;
+  left: -moz-calc(50% - 150px);
+  left: -webkit-calc(50% - 150px);
+  left: calc(50% - 150px);
+  top: -moz-calc(50% - 50px);
+  top: -webkit-calc(50% - 50px);
+  top: calc(50% - 50px);
+  background: #FFFFFF;
+}
+
+.pophead {
+  background-color: #4192C1;
+  color: #FFFFFF;
+  font-weight: bold;
+  padding: 8px 3px;
+  vertical-align: middle;
+}
+
+.popbody {
+  padding: 10px 5px;
+}</pre></div><p>Now when we refresh the UI, it will look like this:</p><div class="mediaobject"><img src="graphics/0786_04_02.jpg" alt="Giving names to users"/><div class="caption"><p>The username form</p></div></div><p>Next, what we will want to do is when<a id="id117" class="indexterm"/> the user enters a name and clicks on the <span class="strong"><strong>Set Name</strong></span> button, send the name to the server, store it there, and prefix it to every message sent by that user. First, we will change the document ready handler to attach an event handler to the <span class="strong"><strong>Set Name</strong></span> button. For this, edit <code class="literal">public/javascripts/chat.js</code>:</p><div class="informalexample"><pre class="programlisting">$(function(){
+  $('#setname').click(function(){
+<span class="strong"><strong>    socket.emit("set_name", {name: $('#nickname').val()});</strong></span>
+  });
+});</pre></div><p>In the previous code, we see a new socket.io API and concept, namely <code class="literal">socket.emit</code>. This is used to trigger custom events. The call for <code class="literal">emit</code> is as follows:</p><div class="informalexample"><pre class="programlisting">socket.emit(&lt;event_name&gt;, &lt;event_data&gt;);</pre></div><p>We trigger a <code class="literal">set_name</code> event<a id="id118" class="indexterm"/> and pass on the value entered in the username box by the user. We also remove the send message event handler from the <code class="literal">socket.emit</code> declaration. We will come back to this later.<a id="id119" class="indexterm"/>
+</p><p>The events emitted on a socket on one side (server) will be handled on the other side of the socket (client). In our case, that is, in the previous code snippet, we trigger the <code class="literal">set_name</code> event on the client, so we will handle it on the server. To do this, we will edit <code class="literal">routes/sockets.js</code> as follows:</p><div class="informalexample"><pre class="programlisting">var io = require('socket.io');
+
+
+exports.initialize = function(server) {
+
+  io = io.listen(server);
+
+  io.sockets.on("connection", function(socket){
+
+    socket.on('message', function(message){
+
+      message= JSON.parse(message);
+
+      if(message.type == "userMessage"){
+
+        socket.get('nickname', function(err, nickname){
+
+          message.username=nickname;
+
+          socket.broadcast.send(JSON.stringify(message));
+
+          message.type = "myMessage";
+
+          socket.send(JSON.stringify(message));
+
+        });        
+
+      }
+
+    });
+
+<span class="strong"><strong>    socket.on("set_name", function(data){</strong></span>
+
+<span class="strong"><strong>      socket.set('nickname', data.name, function(){</strong></span>
+
+<span class="strong"><strong>        socket.emit('name_set', data);</strong></span>
+
+<span class="strong"><strong>    socket.send(JSON.stringify({type:'serverMessage', </strong></span>
+<span class="strong"><strong>    message: 'Welcome to the most interesting chat room on earth!'}));        </strong></span>
+
+<span class="strong"><strong>      });</strong></span>
+
+<span class="strong"><strong>    });</strong></span>
+
+  });
+
+}</pre></div><p>In the practice of keeping it simple, socket.io <a id="id120" class="indexterm"/>uses the same <code class="literal">socket.on</code> API, which we used earlier to handle the <code class="literal">connection</code> or <code class="literal">message</code> events, to handle custom events. The data passed to the handler function will contain the data we had sent when we triggered the event.</p><p>This brings us to a new feature of socket.io, that is, attaching additional information to the socket for the session. This is achieved using the <code class="literal">socket.set</code> function. The call for this function is as follows:</p><div class="informalexample"><pre class="programlisting">socket.set(&lt;name&gt;, &lt;value&gt;, &lt;optional_callback&gt;);</pre></div><p>In the preceding line of code, <code class="literal">&lt;name&gt;</code> is the name of the key we want to set and <code class="literal">&lt;value&gt;</code> is the value we want to set. The call to <code class="literal">set</code> is asynchronous; it won't be blocked till the value has been set. To perform an action where you want to ensure that the value has been set, we can pass a callback to the <code class="literal">set</code> method. In the previous code, we are passing the <code class="literal">callback</code> function that will emit another <code class="literal">name_set</code> custom event, and will also send the welcome message. Like the <code class="literal">set_name</code> event, the <code class="literal">name_set</code> event will be handled on the other side of the socket, which in this case is the client.</p><p>This is great. Now that the name is set, let us put it to some real use by showing it with every message so that people in our chat room know who sent the message.</p><p>To get a value set on the socket, socket.io provides a <code class="literal">get</code> method. We will use this <code class="literal">get</code> method to get the username from the socket and append it to the previous message.</p><p>Let us rework <code class="literal">public/javscripts/chat.js</code> to handle the <code class="literal">name_set</code> event and then start the actual communication:</p><div class="informalexample"><pre class="programlisting">var socket = io.connect('/');
+
+socket.on('name_set', function(data){
+<span class="strong"><strong>  $('#nameform').hide();</strong></span>
+<span class="strong"><strong>  $('#messages').append('&lt;div class="systemMessage"&gt;' + </strong></span>
+<span class="strong"><strong>                                               'Hello '+data.name+'&lt;/div&gt;');</strong></span>
+  $('#send').click(function(){
+    var data = {
+      message: $('#message').val(),
+      type:'userMessage'
+    };
+    socket.send(JSON.stringify(data));
+    $('#message').val('');
+  });
+  socket.on('message', function (data) {
+    data = JSON.parse(data);
+<span class="strong"><strong>    if(data.username){</strong></span>
+<span class="strong"><strong>      $('#messages').append('&lt;div class="'+data.type+</strong></span>
+<span class="strong"><strong>                             '"&gt;&lt;span class="name"&gt;' + </strong></span>
+<span class="strong"><strong>                             data.username + ":&lt;/span&gt; " + </strong></span>
+<span class="strong"><strong>                              data.message + '&lt;/div&gt;');</strong></span>
+    }else{
+      $('#messages').append('&lt;div class="'+data.type+'"&gt;' + 
+                                                     data.message + '&lt;/div&gt;');
+    }
+  });
+});
+
+$(function(){
+
+  $('#setname').click(function(){
+
+    socket.emit("set_name", {name: $('#nickname').val()});
+
+  });
+
+});</pre></div><p>In the previous code snippet, we add two new lines of code to hide the overlay and to append the greeting to the <code class="literal">messages</code> area. Apart from this, we have also moved the code to handle the sending and receiving of messages<a id="id121" class="indexterm"/> to this handler, so that it is set up only after the user has set the name and avoids people from just hiding the overlay using Firebug or other similar tools. There is one last change in the message received handler; we need to check for the presence of a username in the incoming data and prefix it to the displayed message if it is.</p><p>To see the code in action, let's restart our node server and refresh the browser. Once you enter the name, it will bring up the chat room and show the greeting with the name you just entered along with the welcome message:<a id="id122" class="indexterm"/>
+</p><div class="mediaobject"><img src="graphics/0786_04_03.jpg" alt="Giving names to users"/><div class="caption"><p>Greeting with name</p></div></div><p>Open our chat room in another browser window and sign in as <span class="strong"><strong>Friend</strong></span> this time. Enter a message in the new message box and click <span class="strong"><strong>Send</strong></span>. <a id="id123" class="indexterm"/>The message appears in the message area in both the browsers. Try it from the first chat room you have opened:</p><div class="mediaobject"><img src="graphics/0786_04_04.jpg" alt="Giving names to users"/><div class="caption"><p>Chat with names</p></div></div></div></div>
+<div class="section" title="More on events"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec33"/>More on events</h1></div></div></div><p>In the previous section, we saw how we can use custom events over a socket. The interesting thing is that just like your messages, events can also be broadcast. Let us see how we can use an event broadcast to announce the entry of a participant in our chat room.</p><p>For this, the first thing we will do is start emitting a new<a id="id124" class="indexterm"/> <code class="literal">user_entered</code> event <a id="id125" class="indexterm"/>from the server, with the name of the user in the data once the user has joined the chat. Let us change our <code class="literal">routes/socket.js</code> file to do this. We will add our code to broadcast the <code class="literal">user_entered</code> event <a id="id126" class="indexterm"/>once the username is set.</p><div class="informalexample"><pre class="programlisting">    socket.on("set_name", function(data){
+      socket.set('nickname', data.name, function(){
+         socket.emit('name_set', data);
+     socket.send(JSON.stringify({type:'serverMessage', 
+                  message: 'Welcome to the most interesting" +  
+                                              "chat room on earth!'}));
+<span class="strong"><strong>     socket.broadcast.emit('user_entered', data);</strong></span>
+      });
+    });</pre></div><p>To send a broadcast to all the clients connected on this socket, we use the <code class="literal">emit</code> method, but on <code class="literal">socket.broadcast</code> rather than on <code class="literal">socket</code> itself. The signature of the method is the same.<a id="id127" class="indexterm"/>
+</p><p>Now, the <code class="literal">user_entered</code> event <a id="id128" class="indexterm"/>will be sent to all the connected clients, so we will need to add an event handler in the client <code class="literal">chat.js</code> file.</p><div class="informalexample"><pre class="programlisting">socket.on('name_set', function(data){
+
+  // EXISTING CODE
+
+<span class="strong"><strong>  socket.on("user_entered", function(user){</strong></span>
+<span class="strong"><strong>    $('#messages').append('&lt;div class="systemMessage"&gt;' + </strong></span>
+<span class="strong"><strong>                       user.name + ' has joined the room.' + '&lt;/div&gt;');</strong></span>
+<span class="strong"><strong>  });</strong></span>
+});</pre></div><p>Here, we are adding an event handler for the <code class="literal">user_entered</code> event and then displaying the message to the user. Let us start our server once again and log in to our chat room:</p><div class="mediaobject"><img src="graphics/0786_04_05.jpg" alt="More on events"/><div class="caption"><p>The first user's chat room</p></div></div><p>Now open another browser window and log in with a different name:</p><div class="mediaobject"><img src="graphics/0786_04_06.jpg" alt="More on events"/><div class="caption"><p>The second user's chat room</p></div></div><p>As you will notice, in the first user's window, we will see the entrance message for both <span class="strong"><strong>Friend001</strong></span> and <span class="strong"><strong>Friend002</strong></span>, and for <span class="strong"><strong>Friend002</strong></span> in the second user's (<span class="strong"><strong>Friend001</strong></span>) window.</p></div>
+<div class="section" title="Working with namespaces"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec34"/>Working with namespaces</h1></div></div></div><p>In this section, we won't be adding any new functionality to our chat room, but instead we will just use a feature of socket.io to make our application design better and our code easier to maintain.<a id="id129" class="indexterm"/>
+</p><p>We are sending different messages between the client and the server and differentiating them by <code class="literal">type</code>. Wouldn't it be better that we send different messages on different messaging channels? Our current approach also doesn't play well and may cause conflicts when our application or module is part of a larger system. But then there are questions, what will be the cost of opening multiple connections? What will be the effect on performance?</p><p>This is where namespaces come to the rescue. A namespace provides a way to multiply a socket.io connection, so that we get different channels for different types of messages without adding a big overhead to the system and its performance. Let us see how we can use namespaces in our chat system.</p><p>In our chat application, we have two different types of messages or events being sent. These are infrastructural, such as setting the name and welcome messages, and communication between the users.<a id="id130" class="indexterm"/>
+</p><p>So let us go ahead and create two namespaces, namely <code class="literal">chat_com</code> and <code class="literal">chat_infra</code>. We will send the communication messages (user messages) on <code class="literal">chat_com</code> and the infrastructural messages (welcome, user entry, and so on) on <code class="literal">chat_infra</code>. For this, let us first edit the <code class="literal">socket.js</code> file, which is on the server:</p><div class="informalexample"><pre class="programlisting">var io = require('socket.io');
+
+exports.initialize = function (server) {
+  io = io.listen(server);
+
+<span class="strong"><strong>  var chatInfra = io.of("/chat_infra")</strong></span>
+<span class="strong"><strong>      .on("connection", function(socket){</strong></span>
+        socket.on("set_name", function (data) {
+          socket.set('nickname', data.name, function () {
+            socket.emit('name_set', data);
+            socket.send(JSON.stringify({type:'serverMessage',
+              message:'Welcome to the most interesting ' +
+              'chat room on earth!'}));
+            socket.broadcast.emit('user_entered', data);
+          });
+        });
+      });
+
+<span class="strong"><strong>  var chatCom = io.of("/chat_com")</strong></span>
+<span class="strong"><strong>      .on("connection", function (</strong></span>
+<span class="strong"><strong>socket) {</strong></span>
+        socket.on('message', function (message) {
+          message = JSON.parse(message);
+          if (message.type == "userMessage") {
+            socket.get('nickname', function (err, nickname) {
+              message.username = nickname;
+              socket.broadcast.send(JSON.stringify(message));
+              message.type = "myMessage";
+              socket.send(JSON.stringify(message));
+            });
+          }
+        });
+      });
+}</pre></div><p>As we can see from the preceding code, most of the code remains the same, apart from the highlighted snippets and some code reorganization.<a id="id131" class="indexterm"/>
+</p><p>What we are doing here is separating the messages and events into two code blocks corresponding to their namespaces. We use the <a id="id132" class="indexterm"/>
+<code class="literal">io.of</code> method to create a new namespace. Upon creation of the namespace, it can be used as any socket's object.</p><p>In our case, we are creating two namespaces and adding a <code class="literal">connection</code> event handler to both of them. One for <code class="literal">chat_infra</code>, as shown in the following code snippet:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>  var chatInfra = io.of("/chat_infra")</strong></span>
+      .on("connection", function(socket){</pre></div><p>And another for <code class="literal">chat_com</code>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>  var chatCom = io.of("/chat_com")</strong></span>
+      .on("connection", function (socket) {</pre></div><p>Once the connection is established, we will get a <code class="literal">socket</code> object in the <code class="literal">connection</code> event handler, which we will use just as we did earlier. In case of <code class="literal">chat_infra</code>, we add all the messaging and events that are not part of the user-to-user communication:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>        socket.on("set_name", function (data) {</strong></span>
+          socket.set('nickname', data.name, function () {
+<span class="strong"><strong>            socket.emit('name_set', data);</strong></span>
+<span class="strong"><strong>            socket.send(JSON.stringify({type:'serverMessage',</strong></span>
+              message:'Welcome to the most interesting ' +
+              'chat room on earth!'}));
+<span class="strong"><strong>            socket.broadcast.emit('user_entered', data);</strong></span>
+          });
+        });</pre></div><p>So, we are moving the <code class="literal">set_name</code> handler, the event emitter for <code class="literal">name_set</code>, messaging for <code class="literal">serverMessage</code>, and the event broadcaster for <code class="literal">user_entered</code> to the <code class="literal">chat_infra</code> namespace.</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>        socket.on('message', function (message) {</strong></span>
+          message = JSON.parse(message);
+          if (message.type == "userMessage") {
+            socket.get('nickname', function (err, nickname) {
+              message.username = nickname;
+<span class="strong"><strong>              socket.broadcast.send(JSON.stringify(message));</strong></span>
+              message.type = "myMessage";
+<span class="strong"><strong>              socket.send(JSON.stringify(message));</strong></span>
+            });
+          }
+        });</pre></div><p>This leaves only the standard <code class="literal">User</code> messaging components on the <code class="literal">chat_com</code> namespace.</p><p>Let us now see how this affects our client code:<a id="id133" class="indexterm"/>
+</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>var chatInfra = io.connect('/chat_infra'),</strong></span>
+<span class="strong"><strong>    chatCom = io.connect('/chat_com');</strong></span>
+
+<span class="strong"><strong>chatInfra.on('name_set', function (data) {</strong></span>
+<span class="strong"><strong>  chatInfra.on("user_entered", function (user) {</strong></span>
+    $('#messages').append('&lt;div class="systemMessage"&gt;' + user.name
+        + ' has joined the room.' + '&lt;/div&gt;');
+  });
+
+<span class="strong"><strong>  chatInfra.on('message', function (message) {</strong></span>
+    var message = JSON.parse(message);
+    $('#messages').append('&lt;div class="' + message.type + '"&gt;'
+        + message.message + '&lt;/div&gt;');
+  });
+
+<span class="strong"><strong>  chatCom.on('message', function (message) {</strong></span>
+    var message = JSON.parse(message);
+      $('#messages').append('&lt;div class="' + 
+    message.type + '"&gt;&lt;span class="name"&gt;' +
+     message.username + ':&lt;/span&gt; ' +
+           message.message + '&lt;/div&gt;');
+  });
+
+  $('#nameform').hide();
+  $('#messages').append('&lt;div class="systemMessage"&gt;Hello ' +
+     data.name + '&lt;/div&gt;');
+
+  $('#send').click(function () {
+    var data = {
+      message:$('#message').val(),
+      type:'userMessage'
+    };
+<span class="strong"><strong>    chatCom.send(JSON.stringify(data));</strong></span>
+    $('#message').val('');
+  });
+});
+
+$(function () {
+  $('#setname').click(function () {
+<span class="strong"><strong>    chatInfra.emit("set_name", {name:$('#nickname').val()});</strong></span>
+  });
+});</pre></div><p>The first and the most important thing we see in the previous code is that we are connecting two sockets:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>var chatInfra = io.connect('/chat_infra'),</strong></span>
+    chatCom = io.connect('/chat_com');</pre></div><p>In fact, socket.io will establish a single socket connection and multiplex the two namespaces over it. But establishing these two connections will give us the ability to handle the <code class="literal">chat_infra</code> and <code class="literal">chat_com</code> namespaces' messages or events separately.</p><p>In the following code snippet, we are adding the handlers that correspond to the emitters for <code class="literal">chat_infra</code> that we added on the server. The <code class="literal">name_set</code> handler will be on the <code class="literal">chat_infra</code> namespace:<a id="id134" class="indexterm"/>
+</p><div class="informalexample"><pre class="programlisting">chatInfra.on('name_set', function (data) {</pre></div><p>We will also do the same for the <code class="literal">user_entered</code> handler:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>  chatInfra.on("user_entered", function (user) {</strong></span>
+    $('#messages').append('&lt;div class="systemMessage"&gt;' + user.name
+        + ' has joined the room.' + '&lt;/div&gt;');
+  });</pre></div><p>Next, we add the <code class="literal">on</code> handler to listen for the messages on <code class="literal">chat_infra</code>; this will receive all the server messages:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>  chatInfra.on('message', function (message) {</strong></span>
+    var message = JSON.parse(message);
+    $('#messages').append('&lt;div class="' + message.type + '"&gt;'
+        + message.message + '&lt;/div&gt;');
+  });</pre></div><p>We also emit the <code class="literal">set_name</code> event on <code class="literal">chat_infra</code>:</p><div class="informalexample"><pre class="programlisting">    chatInfra.emit("set_name", {name:$('#nickname').val()});</pre></div><p>On the <code class="literal">chat_com</code> namespace, we send the user message, as shown in the following code:</p><div class="informalexample"><pre class="programlisting">$('#send').click(function () {
+    var data = {
+      message:$('#message').val(),
+      type:'userMessage'
+    };
+    chatCom.send(JSON.stringify(data));</pre></div><p>Also, we will attach the handler to receive the user messages relayed from the server by using the following code snippet:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>  chatCom.on('message', function (message) {</strong></span>
+    var message = JSON.parse(message);
+      $('#messages').append('&lt;div class="' + 
+     message.type + '"&gt;&lt;span class="name"&gt;' +
+     message.username + ':&lt;/span&gt; ' +
+           message.message + '&lt;/div&gt;');
+  });</pre></div><p>Now that we understand namespaces and have made use of them to clean up our design and code, let us go ahead and add some new features.<a id="id135" class="indexterm"/>
+</p></div>
+<div class="section" title="Rooms"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec35"/>Rooms</h1></div></div></div><p>In this section we will use another multiplexing feature of socket.io, called <span class="strong"><strong>rooms</strong></span>.<a id="id136" class="indexterm"/> And we will use it to do just what the name says, create rooms. A chat room will be very noisy and confusing if everyone in the network is chatting in the same room. So as the first step, let's move our chat away from the landing page of our website to <code class="literal">/chatroom</code>. For this, we should move our code from <code class="literal">index.jade</code> to <code class="literal">chatroom.jade</code> and put the following code in <code class="literal">index.jade</code>:</p><div class="informalexample"><pre class="programlisting">extends layout
+
+block content
+  section#welcome
+    div Welcome
+    a#startchat(type="button", class="btn", href="/chatroom") Start now</pre></div><p>Basically, we will create a landing page with a welcome message and a link to go to the chat room. Let's also add the following styles for the landing page in <code class="literal">style.css</code>:</p><div class="informalexample"><pre class="programlisting">#welcome div{
+  font-family: fantasy;
+  font-size: 100px;
+  margin-left: 20px;
+  margin-top: 100px;
+}
+
+.btn {
+    background-color: #5BB75B;
+    background-image: linear-gradient(to bottom, #62C462, #51A351);
+    background-repeat: repeat-x;
+    border-color: rgba(0, 0, 0, 0.1) rgba(0, 0, 0, 0.1) rgba(0, 0, 0, 0.25);
+    color: #FFFFFF;
+    text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25);
+    border-image: none;
+    border-radius: 4px 4px 4px 4px;
+    border-style: solid;
+    border-width: 1px;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2) inset, 
+          0 1px 2px rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+    display: inline-block;
+    font-size: 14px;
+    line-height: 20px;
+    margin-bottom: 0;
+    padding: 4px 12px;
+    text-align: center;
+    vertical-align: middle;
+    position: absolute;
+    right: 40px;
+    bottom: 80px;
+    text-decoration: none;
+}</pre></div><p>Now our landing page will look like this:<a id="id137" class="indexterm"/>
+</p><div class="mediaobject"><img src="graphics/0786_04_07.jpg" alt="Rooms"/><div class="caption"><p>The landing page</p></div></div><p>The <span class="strong"><strong>Start now</strong></span> link will send you to the chat room, but there is nothing there yet. So let us modify our <code class="literal">routes/index.js</code> file to serve <code class="literal">chatroom</code>. Add the following snippet to the end of the file:<a id="id138" class="indexterm"/>
+</p><div class="informalexample"><pre class="programlisting">exports.chatroom = function(req, res){
+  res.render('chatroom', { title: 'Express Chat' });
+}</pre></div><p>We will also have to add the mapping to <code class="literal">app.js</code>:</p><div class="informalexample"><pre class="programlisting">app.get('/chatroom', routes.chatroom);</pre></div><p>Now that we have a landing page, we are ready to add multiple rooms. We will now add support for the chat room page so that it can accept a <code class="literal">room</code> parameter and will connect to that room when requested. So the call to connect to enter the chat room will look like this:</p><div class="informalexample"><pre class="programlisting">http://localhost:3000/chatroom?room=jsconf </pre></div><p>For this we need to edit our <code class="literal">chat.js</code> client script file:</p><div class="informalexample"><pre class="programlisting">var chatInfra = io.connect('/chat_infra'),
+    chatCom = io.connect('/chat_com');
+
+<span class="strong"><strong>var roomName = decodeURI(</strong></span>
+<span class="strong"><strong>  (RegExp("room" + '=' + '(.+?)(&amp;|$)').exec(location.search) </strong></span>
+<span class="strong"><strong>    || [, null])[1]);</strong></span>
+
+<span class="strong"><strong>if (roomName) {</strong></span>
+  chatInfra.on('name_set', function (data) {
+<span class="strong"><strong>    chatInfra.emit('join_room', {'name':roomName});</strong></span>
+
+    //EXISTING CODE
+  });
+}
+
+$(function () {
+  $('#setname').click(function () {
+    chatInfra.emit("set_name", {name:$('#nickname').val()});
+  });
+});</pre></div><p>The first thing is to parse the URL query to get the room name, here is how this is done:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>var roomName = decodeURI(</strong></span>
+<span class="strong"><strong>  (RegExp("room" + '=' + '(.+?)(&amp;|$)').exec(location.search) </strong></span>
+    || [, null])[1]);</pre></div><p>Here, in the preceding code, we are creating a regex to parse out the value between <code class="literal">room=</code> and <code class="literal">&amp;</code> or to the end of the content. In the next line, we check if a room name was provided and once the user has entered the name, we will join the room.</p><p>To join the room, we emit the <a id="id139" class="indexterm"/>
+<code class="literal">join_room</code> event with <code class="literal">roomName</code> as a parameter. This event will be handled on the server:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>if (roomName) {</strong></span>
+  chatInfra.on('name_set', function (data) {
+    chatInfra.emit('join_room', {'name':roomName});</pre></div><p>Since we will use the room only to restrict the broadcast messages (others are anyhow sent only to the recipient's socket), this is all we need to do on the client.</p><p>Now we will edit the <code class="literal">sockets.js</code> file on our server to handle the <code class="literal">join_room</code> event on <code class="literal">chat_infra</code> and to change the broadcasts to send messages in the room they are meant for. Let us take a look at the changes in <code class="literal">sockets.js</code>:</p><div class="informalexample"><pre class="programlisting">var io = require('socket.io');
+
+exports.initialize = function (server) {
+  io = io.listen(server);
+<span class="strong"><strong>  var self = this;</strong></span>
+
+<span class="strong"><strong>  this.chatInfra = io.of("/chat_infra");</strong></span>
+<span class="strong"><strong>  this.chatInfra.on("connection", function (socket) {</strong></span>
+    //EXISTING CODE
+    });
+<span class="strong"><strong>    socket.on("join_room", function (room) {</strong></span>
+<span class="strong"><strong>      socket.get('nickname', function (err, nickname) {</strong></span>
+<span class="strong"><strong>        socket.join(room.name);</strong></span>
+<span class="strong"><strong>        var comSocket = self.chatCom.sockets[socket.id];</strong></span>
+<span class="strong"><strong>        comSocket.join(room.name);</strong></span>
+<span class="strong"><strong>        comSocket.room = room.name;</strong></span>
+<span class="strong"><strong>        socket.in(room.name).broadcast</strong></span>
+<span class="strong"><strong>    .emit('user_entered', {'name':nickname});</strong></span>
+<span class="strong"><strong>      });</strong></span>
+<span class="strong"><strong>    });</strong></span>
+  });
+
+<span class="strong"><strong>  this.chatCom = io.of("/chat_com");</strong></span>
+<span class="strong"><strong>  this.chatCom.on("connection", function (socket) {</strong></span>
+    socket.on('message', function (message) {
+      message = JSON.parse(message);
+      if (message.type == "userMessage") {
+        socket.get('nickname', function (err, nickname) {
+          message.username = nickname;
+<span class="strong"><strong>          socket.in(socket.room).broadcast.send(JSON.stringify(message));</strong></span>
+          message.type = "myMessage";
+          socket.send(JSON.stringify(message));
+        });
+      }
+    });
+  });
+}</pre></div><p>So this brings in some minor structural changes. Since we will need to refer <code class="literal">chatCom</code> in <code class="literal">chatInfra</code>, we add them both to the current object, which is also stored as itself, so that they are accessible in the closures. In the <code class="literal">chat_infra</code> connection handler, we register a new event handler for <code class="literal">join_room</code>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>    socket.on("join_room", function (room) {</strong></span>
+<span class="strong"><strong>      socket.get('nickname', function (err, nickname) {</strong></span>
+<span class="strong"><strong>        socket.join(room.name);</strong></span>
+<span class="strong"><strong>        var comSocket = self.chatCom.sockets[socket.id];</strong></span>
+<span class="strong"><strong>        comSocket.join(room.name);</strong></span>
+<span class="strong"><strong>        comSocket.room = room.name;</strong></span>
+<span class="strong"><strong>        socket.in(room.name).broadcast</strong></span>
+<span class="strong"><strong>    .emit('user_entered', {'name':nickname});</strong></span>
+<span class="strong"><strong>      });</strong></span>
+<span class="strong"><strong>    });</strong></span>
+</pre></div><p>In the handler, we are receiving the <code class="literal">room</code> object, which will in turn have the name of the room to join. Next we connect the <code class="literal">chat_infra</code> socket to the room. This is done using the <code class="literal">join</code> method of the <code class="literal">socket</code> object:</p><div class="informalexample"><pre class="programlisting">        socket.join(room.name);</pre></div><p>The <code class="literal">join</code> method takes a name string for the room. The room will be created if not present, else the socket will be connected to an existing room.</p><p>Now, once our client joins the room, it will get all the messages intended for the specific room in the <code class="literal">chat_infra</code> namespace. But, this will not be useful until we also join the room in the <code class="literal">chat_com</code> namespace. For this, we will need to obtain the <code class="literal">socket</code> object, corresponding to the current <code class="literal">socket</code> object in the <code class="literal">chat_com</code> namespace and then call the same <code class="literal">join</code> method on it:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>        var comSocket = self.chatCom.sockets[socket.id];</strong></span>
+        comSocket.join(room.name);</pre></div><p>To get the corresponding <code class="literal">socket</code> object on <code class="literal">chat_com</code>, we fetch it using the current <code class="literal">socket</code> object's ID (as it will be similar) from the <code class="literal">sockets</code> array in the <code class="literal">chatCom</code> namespace object. The next line simply calls the <code class="literal">join</code> method on it. Now both have joined the room in both the namespaces. But when we receive the messages in the <code class="literal">chat_com</code> namespace, we will need the name of the room this socket is connected to. For this, we will set the <code class="literal">room</code> property on the <code class="literal">comSocket</code> object to the room it is connected to:</p><div class="informalexample"><pre class="programlisting">    comSocket.room = room.name;</pre></div><p>Now that all is set up, we will announce in the room that the user has joined:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>        socket.in(room.name).broadcast</strong></span>
+<span class="strong"><strong>    .emit('user_entered', {'name':nickname});</strong></span>
+      });</pre></div><p>As we did earlier, we still use <code class="literal">broadcast.emit</code>, but instead of calling it on the socket, we restrict it to be sent only in the room, using <code class="literal">in(room.name)</code>. Another change we make will be that of broadcasting the user messages again by restricting them to the room:</p><div class="informalexample"><pre class="programlisting">  socket.in(socket.room).broadcast.send(JSON.stringify(message));</pre></div><p>Now you can open the chat room by going to the following URL:</p><div class="informalexample"><pre class="programlisting">http://localhost:3000/chatroom?room=test001 </pre></div><p>Open this in two browser windows and log in with different names. Open another chat room in another browser window using the following URL:</p><div class="informalexample"><pre class="programlisting">http://localhost:3000/chatroom?room=test002</pre></div><p>The messages and alerts sent only in the room <code class="literal">test001</code> will be visible in the first two browsers, while the one connected to <code class="literal">test002</code> will not be able to see them:</p><div class="mediaobject"><img src="graphics/0786_04_08.jpg" alt="Rooms"/><div class="caption"><p>User one connected to the room test001</p></div></div><p>Here is the second user connected to the room <code class="literal">test001</code>:<a id="id140" class="indexterm"/>
+</p><div class="mediaobject"><img src="graphics/0786_04_09.jpg" alt="Rooms"/><div class="caption"><p>User two connected to the room test001</p></div></div><a id="id141" class="indexterm"/><p>Here, in the following screenshot, the third user is shown connected to the room <code class="literal">test002</code>:</p><div class="mediaobject"><img src="graphics/0786_04_10.jpg" alt="Rooms"/><div class="caption"><p>User three connected to the room test002</p></div></div></div>
+<div class="section" title="Listing the rooms"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec36"/>Listing the rooms</h1></div></div></div><p>Now that we have support for creating multiple rooms, let us go ahead and add a page to list, join, and create new rooms. <a id="id142" class="indexterm"/>We will begin by adding a Jade view named <code class="literal">rooms.jade</code> with the following code:</p><div class="informalexample"><pre class="programlisting">extends layout
+
+block append head
+  script(type='text/javascript', src='/socket.io/socket.io.js')
+  script(type='text/javascript', src='/javascripts/rooms.js')
+
+block content
+  section#chatrooms
+    div#new_room
+      span Start a new Room
+      input#new_room_name(type="text")
+      input#new_room_btn(type="button", value="Start")
+    div#allrooms
+      div#header Or join a room
+      div#rooms_list</pre></div><p>This view has an input box to accept a new room name and a <code class="literal">div</code> tag to add the list of existing rooms. We are also adding <a id="id143" class="indexterm"/>scripts for <code class="literal">socket.io.js</code> and a new script file for our client-side code for listing rooms, namely <code class="literal">rooms.js</code>. Next, create the <code class="literal">rooms.js</code> script file with the following code:</p><div class="informalexample"><pre class="programlisting">var chatInfra = io.connect('/chat_infra');
+
+chatInfra.on("connect", function(){
+<span class="strong"><strong>   chatInfra.emit("get_rooms", {});</strong></span>
+<span class="strong"><strong>   chatInfra.on("rooms_list", function(rooms){</strong></span>
+    for(var room in rooms){
+      var roomDiv = '&lt;div class="room_div"&gt;&lt;span class="room_name"&gt;'     + room + '&lt;/span&gt;&lt;span class="room_users"&gt;[ ' 
+           + rooms[room] + ' Users ] &lt;/span&gt;'
+           + '&lt;a class="room" href="/chatroom?room=' + room 
+           + '"&gt;Join&lt;/a&gt;&lt;/div&gt;';
+
+      $('#rooms_list').append(roomDiv);
+    }
+  });
+});
+
+$(function(){
+  $('#new_room_btn').click(function(){
+<span class="strong"><strong>      window.location = '/chatroom?room=' + </strong></span>
+<span class="strong"><strong>    $('#new_room_name').val();</strong></span>
+  });
+});</pre></div><p>In the preceding code, we are connecting based on the <code class="literal">chat_infra</code> namespace, requesting the chat rooms on it, and rendering them in the view. Let us take a quick look at an important step happening here:</p><div class="informalexample"><pre class="programlisting">  chatInfra.emit("get_rooms", {});</pre></div><p>As shown in the preceding code, the first thing we do after connecting is emit an event to <code class="literal">get_rooms</code>. This will request the list of rooms from the server. Next, we set a listener to receive the list of rooms and render them:</p><div class="informalexample"><pre class="programlisting">   chatInfra.on("rooms_list", function(rooms){</pre></div><p>In the handler, as shown in the following code block, we are looping over the map of rooms and number of users in them and appending it to the room list:</p><div class="informalexample"><pre class="programlisting">for(var room in rooms){
+      var roomDiv = '&lt;div class="room_div"&gt;&lt;span class="room_name"&gt;'     + room + '&lt;/span&gt;&lt;span class="room_users"&gt;[ ' 
+           + rooms[room] + ' Users ] &lt;/span&gt;'
+           + '&lt;a class="room" href="/chatroom?room=' + room 
+           + '"&gt;Join&lt;/a&gt;&lt;/div&gt;';
+
+      $('#rooms_list').append(roomDiv);
+    }</pre></div><p>Finally, we have the code to create a new room. To create a new room, all we need to do is redirect to the chat room, <a id="id144" class="indexterm"/>with the name for the new room in the URL parameters:</p><div class="informalexample"><pre class="programlisting">  $('#new_room_btn').click(function(){
+<span class="strong"><strong>      window.location = '/chatroom?room=' + </strong></span>
+<span class="strong"><strong>    $('#new_room_name').val();</strong></span>
+  });</pre></div><p>Next, we need to add a <code class="literal">get_rooms</code> handler on the server to return the list of the rooms. For this, we will add the handler on the <code class="literal">chat_infra</code> namespace in <code class="literal">sockets.js</code>:</p><div class="informalexample"><pre class="programlisting">this.chatInfra.on("connection", function (socket) {
+    //EXISTING CODE
+
+    socket.on("get_rooms", function(){
+      var rooms = {};
+<span class="strong"><strong>      for(var room in io.sockets.manager.rooms){</strong></span>
+        if(room.indexOf("/chat_infra/") == 0){
+          var roomName = room.replace("/chat_infra/", "");
+<span class="strong"><strong>          rooms[roomName] = io.sockets.manager</strong></span>
+<span class="strong"><strong>      rooms[room].length;</strong></span>
+        }
+      }
+<span class="strong"><strong>      socket.emit("rooms_list", rooms);</strong></span>
+    });
+  });</pre></div><p>We can get the list of all the rooms using <code class="literal">io.sockets.manager</code> and then we can build the map expected by our client by looping over the list. In our case, we filter to get rooms only from <code class="literal">chat_infra</code> as they will also be created in <code class="literal">chat_com</code>, and we don't want duplicates. Once we have the map, we will emit it as <code class="literal">rooms_list</code>. Following this we will need to add the entry to our <code class="literal">routes/index.js</code> file, as shown here:</p><div class="informalexample"><pre class="programlisting">exports.rooms = function(req, res){
+  res.render('rooms', { title: 'Express Chat' });
+}</pre></div><p>We also need to add the mapping in <code class="literal">app.js</code> to server rooms at <code class="literal">/rooms</code>:</p><div class="informalexample"><pre class="programlisting">app.get('/rooms', routes.rooms);</pre></div><p>Finally, let us add some CSS styling for our new room's page in <code class="literal">style.css</code>:</p><div class="informalexample"><pre class="programlisting">#chatrooms{
+    margin: 20px;
+}
+
+#new_room {
+    font-size: 17px;
+}
+
+#new_room span{
+    padding-right: 15px;
+}
+
+#allrooms #header{
+    border-bottom: 1px solid;
+    border-top: 1px solid;
+    font-size: 17px;
+    margin-bottom: 10px;
+    margin-top: 16px;
+    padding: 5px 0;
+}
+
+.room_div {
+    border-bottom: 1px solid #CCCCCC;
+    padding-bottom: 5px;
+    padding-top: 12px;
+}
+
+
+.room_name {
+    display: inline-block;
+    font-weight: bold;
+    width: 165px;
+}
+
+.room_div a{
+    position: absolute;
+    right: 40px;
+}</pre></div><p>Go to <code class="literal">/rooms</code> and create a few<a id="id145" class="indexterm"/> rooms, and then when you open the room's page in a new browser, you'll see something similar to this:</p><div class="mediaobject"><img src="graphics/0786_04_11.jpg" alt="Listing the rooms"/><div class="caption"><p>List of rooms on our chat server</p></div></div></div>
+<div class="section" title="Sharing the session"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec37"/>Sharing the session</h1></div></div></div><p>Now we have support for multiple rooms, but it is very clumsy to enter a nickname every time we enter a room. Let us modify our system to accept the nickname once when entering the system and use it in all the rooms.<a id="id146" class="indexterm"/>
+</p><p>For this, let us start by modifying the landing page to add an input box to accept a nickname and add a JavaScript file to add the logic:</p><div class="informalexample"><pre class="programlisting">extends layout
+
+<span class="strong"><strong>block append head</strong></span>
+<span class="strong"><strong>  script(type='text/javascript', src='/javascripts/landing.js')</strong></span>
+
+block content
+  section#welcome
+    div Welcome
+<span class="strong"><strong>    span</strong></span>
+<span class="strong"><strong>      input#nickname(type="text", </strong></span>
+<span class="strong"><strong>    placeholder="Enter a nickname")</strong></span>
+      a#startchat(class="btn") Login</pre></div><p>Here, in the preceding code, we are adding a script entry to add <code class="literal">landing.js</code> and replacing the <span class="strong"><strong>Start now</strong></span> button with the field to enter a name and a <span class="strong"><strong>Login</strong></span> button. Next, let us take a look at <code class="literal">landing.js</code>:</p><div class="informalexample"><pre class="programlisting">$(function(){
+   $('#startchat').click(function(){
+<span class="strong"><strong>     document.cookie = "nickname=" + $('#nickname').val() </strong></span>
+<span class="strong"><strong>              + ";; path=/";</strong></span>
+     window.location = "/rooms";
+   });
+});</pre></div><p>In the previous code, <a id="id147" class="indexterm"/>we are attaching a <code class="literal">click</code> handler to the <code class="literal">startchat</code> button. In the handler, we are adding the nickname entered by the user to the cookie and redirecting the user to <code class="literal">/rooms</code>. We will be reading this cookie information while connecting the socket and then setting it on the socket. Before this cookie information can be accessed in the socket connection, we need to lay down some ground work to enable cookies in the Express.js application. For this, edit the <code class="literal">app.js</code> code by referring to the following code block:</p><div class="informalexample"><pre class="programlisting">var express = require('express')
+  , routes = require('./routes')
+  , http = require('http')
+  , path = require('path')
+<span class="strong"><strong>  , connect = require('connect');</strong></span>
+
+var app = express();
+
+<span class="strong"><strong>var sessionStore = new connect.session.MemoryStore();</strong></span>
+
+app.configure(function(){
+  //EXISTING CODE
+  app.use(express.bodyParser());
+<span class="strong"><strong>  app.use(express.cookieParser('somesuperspecialsecrethere'));</strong></span>
+<span class="strong"><strong>  app.use(express.session({ key: 'express.sid', </strong></span>
+<span class="strong"><strong>                  store: sessionStore}));</strong></span>
+  app.use(express.methodOverride());
+  app.use(app.router);
+  app.use(express.static(path.join(__dirname, 'public')));
+});
+
+//EXISTING CODE</pre></div><p>The first step is to add <code class="literal">connect</code> as a dependency in the <code class="literal">package.json</code> file and the <code class="literal">require</code> keyword in <code class="literal">app.js</code>. The <code class="literal">connect</code> keyword is used to create a session store; in this case, an in-memory session store:</p><div class="informalexample"><pre class="programlisting">var sessionStore = new connect.session.MemoryStore();</pre></div><p>We also enable the <code class="literal">cookieParser</code> middleware and the <code class="literal">session</code> module in the express application. Express' <code class="literal">cookieParser</code>
+<a id="id148" class="indexterm"/> middleware will take a <code class="literal">secret</code> parameter, which will be used to encrypt the cookies. The express' <code class="literal">session</code> module is initialized along with passing it the key (<code class="literal">express.sid</code> is the key for a session) and a store where the session should be maintained. In the following code, we are passing it an in-memory store, which we created in the previous step:</p><div class="informalexample"><pre class="programlisting">  app.use(express.bodyParser());
+<span class="strong"><strong>  app.use(express.cookieParser('somesuperspecialsecrethere'));</strong></span>
+<span class="strong"><strong>  app.use(express.session({ key: 'express.sid', </strong></span>
+<span class="strong"><strong>                  store: sessionStore}));</strong></span>
+  app.use(express.methodOverride());
+  app.use(app.router);</pre></div><p>One important point to note about the previous code is the order of adding these two middleware components. These should be added after adding the <code class="literal">bodyParser</code> middleware and before adding the <code class="literal">router</code> middleware. If you open the browser and browse to the landing page now, you can see the cookie with the <code class="literal">express.sid</code> key in the browser's debugging tools under the <span class="strong"><strong>Cookies</strong></span> tab. If you enter a name and click the <span class="strong"><strong>Enter</strong></span> button, you will again see a new cookie, named after your nickname, being set:</p><div class="informalexample"><pre class="programlisting">var io = require('socket.io');
+
+exports.initialize = function (server) {
+  io = io.listen(server);
+
+<span class="strong"><strong>  io.set('authorization', function (data, accept) {</strong></span>
+<span class="strong"><strong>    if (data.headers.cookie) {</strong></span>
+<span class="strong"><strong>      data.cookie = require('cookie').parse(data.headers.cookie);</strong></span>
+<span class="strong"><strong>      data.sessionID = data.cookie['express.sid'].split('.')[0];</strong></span>
+<span class="strong"><strong>      data.nickname = data.cookie['nickname'];</strong></span>
+<span class="strong"><strong>    } else {</strong></span>
+<span class="strong"><strong>      return accept('No cookie transmitted.', false);</strong></span>
+<span class="strong"><strong>    }</strong></span>
+<span class="strong"><strong>    accept(null, true);</strong></span>
+<span class="strong"><strong>  });</strong></span>
+
+  var self = this;
+
+  this.chatInfra = io.of("/chat_infra");
+  this.chatInfra.on("connection", function (socket) {
+<span class="strong"><strong>    socket.on("join_room", function (room) {</strong></span>
+<span class="strong"><strong>      var nickname = socket.handshake.nickname;</strong></span>
+<span class="strong"><strong>      socket.set('nickname', nickname, function () {</strong></span>
+<span class="strong"><strong>        socket.emit('name_set', {'name':</strong></span>
+<span class="strong"><strong>       socket.handshake.nickname});</strong></span>
+<span class="strong"><strong>        socket.send(JSON.stringify({type:'serverMessage',</strong></span>
+<span class="strong"><strong>          message:'Welcome to the most interesting ' +</strong></span>
+<span class="strong"><strong>              'chat room on earth!'}));</strong></span>
+         socket.join(room.name);
+         var comSocket = self.chatCom.sockets[socket.id];
+         comSocket.join(room.name);
+         comSocket.room = room.name;
+         socket.in(room.name).broadcast.emit('user_entered', 
+                      {'name':nickname});
+      });
+    });
+
+    //EXISTING CODE
+}</pre></div><p>The first change in the <a id="id149" class="indexterm"/>preceding code block introduces us to a new feature in socket.io; this change is shown in the following highlighted code block:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>  io.set('authorization', function (data, accept) {</strong></span>
+<span class="strong"><strong>    if (data.headers.cookie) {</strong></span>
+<span class="strong"><strong>      data.cookie = require('cookie').parse(data.headers.cookie);</strong></span>
+<span class="strong"><strong>      data.sessionID = data.cookie['express.sid'].split('.')[0];</strong></span>
+<span class="strong"><strong>      data.nickname = data.cookie['nickname'];</strong></span>
+<span class="strong"><strong>    } else {</strong></span>
+<span class="strong"><strong>      return accept('No cookie transmitted.', false);</strong></span>
+<span class="strong"><strong>    }</strong></span>
+<span class="strong"><strong>    accept(null, true);</strong></span>
+  });</pre></div><p>In this code snippet, we are setting an <code class="literal">authorization</code> method for the socket. This method will get two parameters, the data that contains all the HTTP request information and the <code class="literal">accept</code> method callback. The <a id="id150" class="indexterm"/>
+<code class="literal">authorization</code> method is called when a socket.io connection is requested but before it is established.</p><p>We can use this method for actually performing an authorization, but in our case we will just use it to get the nickname from the cookies, as this is the only socket.io method that will have the HTTP data available with it.</p><p>We are reading the cookie headers from the HTTP data and are parsing it using the <code class="literal">cookie</code> module's <code class="literal">parse</code> method. From the cookie, we are extracting the <code class="literal">sessionID</code> value and the nickname and setting it to the <code class="literal">data</code> object. This object is available on the socket as the<a id="id151" class="indexterm"/> <code class="literal">handshake</code> property. Finally, we will call the <code class="literal">accept</code> callback, which accepts two parameters, first a message and another a Boolean variable, indicating whether the authorization was successful or not.<a id="id152" class="indexterm"/>
+</p><p>We will remove the <code class="literal">set_name</code> handler, as this handler need not be called because we already have the name with us. We will move the logic from the <code class="literal">set_name</code> handler to the <code class="literal">join_room</code> handler:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>    socket.on("join_room", function (room) {</strong></span>
+<span class="strong"><strong>      var nickname = socket.handshake.nickname;</strong></span>
+<span class="strong"><strong>      socket.set('nickname', nickname, function () {</strong></span>
+<span class="strong"><strong>        socket.emit('name_set', {'name': nickname});</strong></span>
+<span class="strong"><strong>        socket.send(JSON.stringify({type:'serverMessage',</strong></span>
+<span class="strong"><strong>          message:'Welcome to the most interesting ' +</strong></span>
+<span class="strong"><strong>              'chat room on earth!'}));</strong></span>
+         socket.join(room.name);
+         var comSocket = self.chatCom.sockets[socket.id];
+         comSocket.join(room.name);
+         comSocket.room = room.name;
+         socket.in(room.name).broadcast.emit('user_entered', 
+                      {'name':nickname});
+      });
+    });</pre></div><p>In the <code class="literal">join_room</code> handler, we will fetch the nickname from the <code class="literal">socket.handshake</code> map and set it as a property on the socket. On setting the <code class="literal">nickname</code> property, we will still trigger the <code class="literal">name_set</code> event <a id="id153" class="indexterm"/>so as to keep the changes on the client to a minimum:</p><div class="informalexample"><pre class="programlisting">var chatInfra = io.connect('/chat_infra'),
+    chatCom = io.connect('/chat_com');
+
+var roomName = decodeURI((RegExp("room" + '=' + '(.+?)(&amp;|$)').exec(location.search) || [, null])[1]);
+
+if (roomName) {
+<span class="strong"><strong>  chatInfra.emit('join_room', {'name':roomName});</strong></span>
+
+  chatInfra.on('name_set', function (data) {
+  //EXISTING CODE
+  });
+}</pre></div><p>As the <code class="literal">join_room</code> handler is the initializer for the room on the server, we will take it out of the <code class="literal">name_set</code> handler and directly call it during the page load. The rest of the code remains as is.</p><p>To try this code, you will have to open two different browsers or browsers in different incognito sessions as the cookies/sessions will be shared for the same browser.</p></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec38"/>Summary</h1></div></div></div><p>In this chapter, we saw how to set data for a session, how to work with namespaces and rooms, and how to integrate with the express sessions. Here we have completed a good and working chat system. It will be a nice exercise for you to build more functionality in this, based on the concepts we learned here. Some interesting features to build can be user exist alert, user list for the rooms, private chats, and so on. In the next chapter, we will take a look at the socket.io protocol and understand its workings.</p></div></body></html>
