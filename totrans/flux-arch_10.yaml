@@ -1,60 +1,80 @@
 - en: Chapter 10. Implementing a Dispatcher
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第10章 实现分发器
 - en: Up until this point in the book, we've relied on the reference implementation
     of the Flux dispatcher. There's nothing wrong with doing this—it's a functional
     piece of software, and the dispatcher doesn't have many moving parts. On the other
     hand, it is just a reference implementation of a larger idea—that actions need
     to be dispatched to stores, and store dependencies need to be managed.
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，本书中我们一直依赖于 Flux 分发器的参考实现。这样做并没有什么问题——它是一块功能性的软件，分发器没有太多可移动的部分。另一方面，它只是更大想法的一个参考实现——动作需要被分发到存储中，存储依赖项需要被管理。
 - en: We'll kick things off by talking about the abstract dispatcher interface that's
     required by Flux architectures. Next, we'll discuss some of the motivations behind
     implementing our own dispatcher. Finally, we'll devote the remainder of the chapter
     to implementing our own dispatcher module, and then improving our store components
     so that they're able to seamlessly interact with the new dispatcher.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将从讨论 Flux 架构所需的抽象分发器接口开始。接下来，我们将讨论实现我们自己的分发器的动机。最后，我们将在本章的剩余部分致力于实现我们自己的分发器模块，并改进我们的存储组件，以便它们能够无缝地与新的分发器交互。
 - en: Abstract dispatcher interface
+  id: totrans-3
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 抽象分发器接口
 - en: The idea with any reference implementation is to directly illustrate, using
     code, how something is supposed to work. The Facebook reference implementation
     of the Flux dispatcher does just that—we can use it in a real Flux architecture
     and get results. We also gain an understating of the abstract dispatcher interface.
     Put another way, the reference implementation is kind of like software requirements,
     expressed in code form.
+  id: totrans-4
   prefs: []
   type: TYPE_NORMAL
+  zh: 任何参考实现的思路都是直接通过代码来展示某物应该如何工作。Facebook 对 Flux 分发器的参考实现正是如此——我们可以在实际的 Flux 架构中使用它并获得结果。我们还获得了对抽象分发器接口的理解。换句话说，参考实现有点像软件需求，只是以代码的形式表达。
 - en: In this section, we'll try to better understand what these minimum requirements
     are before we dive into our own dispatcher implementation. The first essential
     piece of functionality that the dispatcher must implement is store registration
     so that the dispatcher can dispatch payloads to it. Then, we need the actual dispatching
     mechanism, which iterates over the registered stores and delivers payloads. Finally,
     we have the dependency semantics to think about while we're dispatching payloads.
+  id: totrans-5
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们深入自己的分发器实现之前，本节将尝试更好地理解这些最小要求。分发器必须实现的第一项基本功能是存储注册，以便分发器可以向其分发有效载荷。然后，我们需要实际的分发机制，它遍历已注册的存储并交付有效载荷。最后，我们在分发有效载荷时需要考虑依赖语义。
 - en: Store registration
+  id: totrans-6
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 存储注册
 - en: 'When we instantiate a store, we have to tell the dispatcher about it. Otherwise,
     the dispatcher doesn''t know about the store''s existence. The pattern generally
     looks something like this:'
+  id: totrans-7
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们实例化一个存储时，我们必须告诉分发器关于它的信息。否则，分发器不知道存储的存在。通常的模式看起来像这样：
 - en: '![Store registration](img/B05419_10_01.jpg)'
+  id: totrans-8
   prefs: []
   type: TYPE_IMG
+  zh: '![存储注册](img/B05419_10_01.jpg)'
 - en: The dispatcher maintains an internal collection of callbacks to run whenever
     an action is dispatched. It simply needs to iterate over this collection of callback
     functions, calling each of them in turn. This really is as easy as it sounds,
     when everything during a Flux update round is synchronous. The question is, what
     would we want to change about the way the store registration process works?
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
+  zh: 分发器维护一个内部回调集合，以便在分发动作时运行。它只需要遍历这个回调函数集合，依次调用每个函数。这听起来真的很简单，当 Flux 更新周期中的所有操作都是同步的时候。问题是，我们想改变存储注册过程的方式吗？
 - en: Maybe instead of registering a callback function within the store constructor,
     we were to pass the dispatcher a reference to the store instance itself? Then,
     when it comes time to notify the store about an action that's been dispatched,
@@ -62,40 +82,54 @@
     predefined method. The advantage to this approach would be that since the dispatcher
     has a reference to the store, it could access other metadata about the store,
     such as its dependencies.
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 也许我们不是在存储构造函数内部注册回调函数，而是将存储实例本身的引用传递给分发器？那么，当需要通知存储有关已分发的动作时，分发器将遍历存储实例的集合并调用一些预定义的方法。这种方法的优点是，由于分发器有存储的引用，它可以访问存储的其他元数据，例如其依赖项。
 - en: We'll explore this idea further once we start writing code, a bit later on in
     the chapter. The bottom line is this—we need a means to tell the dispatcher that
     a given store instance would like to receive action notifications.
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们开始编写代码时，我们将在本章稍后进一步探讨这个想法。底线是——我们需要一种方法来告诉调度器，给定的存储实例希望接收动作通知。
 - en: Dispatching payloads
+  id: totrans-12
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 分发有效载荷
 - en: 'The actual dispatching of payloads is quite simple. The only complicated part
     is handling dependencies between stores—we''ll talk about that next. For now,
     just imagine an architecture where there are no inter-store dependencies. It''s
     just a simple collection to iterate over, calling each function with the action
     payload as the argument. Here''s an illustration of the process:'
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: 实际上分发有效载荷相当简单。唯一复杂的部分是处理存储之间的依赖关系——我们将在下一节讨论这个问题。现在，只需想象一个没有存储间依赖关系的架构。它只是一个简单的集合，可以迭代，每个函数都使用动作有效载荷作为参数。以下是这个过程的一个说明：
 - en: '![Dispatching payloads](img/B05419_10_02.jpg)'
+  id: totrans-14
   prefs: []
   type: TYPE_IMG
+  zh: '![分发有效载荷](img/B05419_10_02.jpg)'
 - en: Apart from dependency management, is there anything else that's missing from
     this picture? Well, there is one situation we could find ourselves in—nested dispatches.
     These are strictly forbidden in Flux architectures as they would disrupt the synchronous
     unidirectional update rounds. In fact, the reference implementation of the dispatcher
     by Facebook tracks the state of any given update round and will catch this if
     it happens.
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: 除了依赖管理之外，这幅图景中是否还缺少其他内容？嗯，我们可能会遇到一种情况——嵌套调度。在Flux架构中，嵌套调度是严格禁止的，因为它们会破坏同步单向更新轮次。实际上，Facebook对调度器的参考实现会跟踪任何给定更新轮次的状态，并在发生这种情况时捕获它。
 - en: This doesn't mean that a dispatcher component that we implement has to check
     for such conditions. However, it's never a bad idea to fail fast when something
     so disruptive to the nature of the architecture is taking place.
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 这并不意味着我们实现的调度器组件必须检查这种条件。然而，当发生如此破坏架构本质的事情时，快速失败从不是个坏主意。
 - en: Something else worth thinking about is the necessity of calling every registered
     store in a given update round. Sure, it makes sense as far as consistency goes—treat
     every store the same and notify them about *all the things*. On the other hand,
@@ -104,67 +138,91 @@
     When we implement our own dispatcher component, we're free to think about how
     we can implement such heuristics that benefit our application while staying true
     to the principles of Flux.
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 值得思考的另一件事是在给定更新轮次中调用每个已注册存储的必要性。当然，从一致性角度来看，这样做是有意义的——对待每个存储都一样，并通知他们关于*所有事情*。另一方面，我们可能有一个拥有数百个动作被分发的庞大应用。总是向那些从未对这些动作做出响应的存储分发动作有意义吗？当我们实现自己的调度器组件时，我们可以自由地思考如何实现这样的启发式方法，以使我们的应用受益，同时保持对Flux原则的忠诚。
 - en: Handling dependencies
+  id: totrans-18
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 处理依赖关系
 - en: 'Perhaps the most challenging aspect of dispatching actions is making sure that
     store dependencies are handled correctly. On the other hand, the dispatcher just
     has to make sure that the store action handlers are called in the correct order.
     Dispatching actions with dependencies in mind is illustrated here:'
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 分发动作最具挑战性的方面可能是确保存储依赖被正确处理。另一方面，调度器只需确保以正确的顺序调用存储动作处理器。考虑到依赖关系的动作分发在此处得到说明：
 - en: '![Handling dependencies](img/B05419_10_03.jpg)'
+  id: totrans-20
   prefs: []
   type: TYPE_IMG
+  zh: '![处理依赖关系](img/B05419_10_03.jpg)'
 - en: As long as stores that fall on the right-hand side of `waitFor()` calls get
     the dispatch notifications first, then all is well. So in essence, store dependencies
     are an ordering problem as far as the dispatcher is concerned. Order the callbacks
     in such a way that satisfies the dependency graph, then iterate and call each
     handler.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 只要`waitFor()`调用右侧的存储在收到调度通知，那么一切就绪。所以从本质上讲，对于调度器来说，存储依赖是一个排序问题。以满足依赖图的方式排序回调，然后迭代并调用每个处理器。
 - en: Here's the thing—do we really want to rely on the `waitFor()` dispatcher method
     as a means to manage store dependencies? Possibly a better way to handle this
     would be to declare an array of stores that we depend on. This would then be passed
     to the dispatcher at registration time, and we would no longer require the `waitFor()`
     calls.
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 问题是——我们真的想依赖`waitFor()`调度器方法来管理存储依赖吗？可能有一种更好的方法来处理这个问题，那就是声明一个我们依赖的存储数组。这样，在注册时就会将其传递给调度器，我们就不再需要`waitFor()`调用。
 - en: We have the basic blueprint of what's required to implement our own dispatcher.
     But before we go ahead with the implementation, let's spend a little more time
     discussing the challenges faced with the Facebook dispatcher.
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们已经有了实现我们自己的分发器所需的基本蓝图。但在我们开始实施之前，让我们花更多的时间讨论一下面对 Facebook 分发器所遇到的挑战。
 - en: Challenges with the dispatcher
+  id: totrans-24
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 分发器的挑战
 - en: In the preceding section, we caught a glimpse of some of the potential challenges
     with the Facebook reference implementation of a Flux dispatcher. In this section,
     we'll elaborate on some some of this reasoning, in an attempt to provide motivation
     to implement our own custom dispatcher.
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 在上一节中，我们瞥见了 Facebook Flux 分发器参考实现的一些潜在挑战。在本节中，我们将详细阐述一些这种推理，试图提供实施我们自己的自定义分发器的动机。
 - en: In this section, we'll reiterate the fact that the Flux NPM package mainly exists
     as an educational tool. Depending on a package like this is fine, especially since
     it does the job, but we'll go over some of the risks that something like this
     carries in a production context. Then, we'll talk about the fact that dispatcher
     components are singleton instances and they probably don't need to be.
+  id: totrans-26
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将重申 Flux NPM 包主要作为一个教育工具而存在的事实。依赖这样的包是可以的，特别是因为它完成了工作，但我们将讨论一些这种东西在生产环境中可能带来的风险。然后，我们将讨论分发器组件是单例实例的事实，它们可能并不需要是单例。
 - en: We'll then think about the store registration process and the fact that it's
     a more manual process than it needs to be. Finally, we'll touch on the store dependency
     management problem again with a discussion on `waitFor()` and possible declarative
     alternatives.
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: 然后，我们将思考存储注册过程，以及它比必要的更手动的事实。最后，我们将再次讨论存储依赖管理问题，并讨论 `waitFor()` 和可能的声明式替代方案。
 - en: Educational purposes
+  id: totrans-28
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 教育目的
 - en: The Facebook Flux NPM package, as we know, provides a reference implementation
     of a dispatcher. The best way to learn how such a component is supposed to work
     is to write code that uses it. It's for educational purposes, in other words.
@@ -174,8 +232,11 @@
     Code is highly educational though, and serves as a form of documentation. Even
     if we decide that we're not crazy about how the dispatcher is implemented, we
     can at least read the code to figure out what the dispatcher is supposed to do.
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 如我们所知，Facebook Flux NPM 包提供了一个分发器的参考实现。了解这样一个组件应该如何工作的最佳方式是编写使用它的代码。换句话说，这是为了教育目的。这使我们能够快速起步，因为我们找到了编写
+    Flux 代码的最佳方式。Facebook 本可以省略分发器实现，让阅读 Flux 文档的程序员自己找出这一点。代码是非常有教育意义的，它也充当了一种文档形式。即使我们决定我们并不喜欢分发器的实现方式，我们至少可以阅读代码来了解分发器应该做什么。
 - en: So is there any risk involved if we were to use this package in a production
     setting? If we use the default Flux dispatcher in our project, and everything
     we've developed against it works, there's no reason we couldn't use it in a production
@@ -186,53 +247,70 @@
     this technology moves forward and improves upon itself. This simply isn't the
     case with a reference dispatcher implementation. Rolling our own is definitely
     worth thinking about, especially if there's room for improvement.
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果我们在生产环境中使用这个包，会有任何风险吗？如果我们使用项目中默认的 Flux 分发器，并且针对它开发的一切都正常工作，那么我们没有理由不能在生产应用程序中使用它。如果它工作，它就工作。然而，这个参考实现是为了教育目的而设计的，这很可能意味着它没有进行严肃的开发。以
+    React 为反例，数百万人在生产环境中使用这个软件。这种技术向前推进并自我改进是有动力的。然而，对于参考分发器实现来说，情况并非如此。自己动手实现肯定值得考虑，尤其是如果还有改进的空间的话。
 - en: Singleton dispatchers
+  id: totrans-31
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 单例分发器
 - en: If we use the Flux dispatcher from Facebook, we have to instantiate it, as it's
     just a class. However, since there's only one update round happening at any given
     time, there's no need for more than one dispatcher instance across the entire
     application. This is the singleton pattern, and it isn't always the best pattern
     to use. For one thing, it's needless indirection.
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果我们使用Facebook的Flux分发器，我们必须实例化它，因为它只是一个类。然而，由于在任何给定时间只有一个更新轮次发生，整个应用程序中不需要超过一个分发器实例。这是单例模式，而且并不总是最好的模式。一方面，它是无用的间接引用。
 - en: 'For example, any time we want to dispatch an action, we need to access the
     `dispatch()` method of the dispatcher. This means that we have to import the dispatcher
     instance and invoke the method using the instance as the context, like this: `dispatcher.dispatch()`.
     The same is true with the `register()` method; when a store wants to register
     itself with the dispatcher, it first needs to access the instance before it calls
     the method.'
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，每次我们想要派发一个动作时，我们需要访问分发器的`dispatch()`方法。这意味着我们必须导入分发器实例，并使用实例作为上下文调用方法，就像这样：`dispatcher.dispatch()`。`register()`方法也是一样；当存储想要将自己注册到分发器时，它首先需要访问实例，然后再调用方法。
 - en: So, it would seem that this singleton dispatcher instance serves no real purpose
     other than to get in the way and make for more verbose code. What if instead of
     a singleton class instance, the dispatcher were just a simple module that exported
     the relevant functions? This would greatly simplify the code in places where the
     dispatcher is required, which is probably quite a few if our application has a
     lot of stores and actions.
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，似乎这个单例分发器实例除了妨碍和使代码更加冗长之外，没有真正的作用。如果我们不是使用单例类实例，而是将分发器仅仅作为一个导出相关函数的简单模块，会怎么样呢？这将大大简化需要分发器的地方的代码，如果我们的应用程序有很多存储和动作，那么这个地方可能相当多。
 - en: Manual store registration
+  id: totrans-35
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 手动存储注册
 - en: One invariant of Flux architectures is that stores are connected to dispatchers.
     There's no other way to change the state of a store, other than by dispatching
     an action. So unless we want a static store that never changes state, we need
     to register it with the dispatcher. All the example stores we've looked at in
     this book so far set up their dispatcher handlers in the constructor. This is
     where we handle actions that could potentially change the state of a store.
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: Flux架构的一个不变量是存储连接到分发器。除了通过派发动作之外，没有其他方式可以改变存储的状态。所以除非我们想要一个永远不会改变状态的静态存储，否则我们需要将其注册到分发器上。我们在这本书中迄今为止看到的所有示例存储都在构造函数中设置了它们的分发器处理器。这就是我们处理可能改变存储状态的动作的地方。
 - en: Since dispatcher registration is a given, do we really need to explicitly register
     a callback function when every store is created? An alternative approach might
     involve a base store class that takes care of this registration for us; this isn't
     necessarily a dispatcher-specific problem.
+  id: totrans-37
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于分发器注册是既定的，我们真的需要在每个存储创建时显式注册一个回调函数吗？另一种方法可能涉及一个基类存储，它会为我们处理这个注册；这并不一定是分发器特定的一个问题。
 - en: The other aspect of store registration that feels unnecessary for the most part
     is managing dispatcher IDs. For example, if we implement a store that depends
     on another store, we have to reference that other store's dispatch ID. The reason
@@ -240,20 +318,26 @@
     to use the dispatcher to map the callback ID to the store. The whole approach
     just feels messy, so when we implement our own dispatcher, we can do away with
     these dispatch IDs entirely.
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 存储注册的另一个方面，大部分情况下感觉是不必要的，是管理分发器ID。例如，如果我们实现一个依赖于另一个存储的存储，我们必须引用那个其他存储的派发ID。使用ID的原因很简单——回调函数不能识别存储。因此，我们必须使用分发器将回调ID映射到存储。整个方法感觉非常混乱，所以当我们实现自己的分发器时，我们可以完全去掉这些派发ID。
 - en: Error-prone dependency management
+  id: totrans-39
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 容易出错的依赖管理
 - en: The final gripe that we'll want to address with the default Facebook Flux dispatcher
     is the way that dependencies between stores are handled. The `waitFor()` mechanism
     does its job in that it blocks further execution of the handler until all its
     dependencies have handled the action. This way, we know that the store that we
     depend on is always up to date. The trouble is that `waitFor()` feels kind of
     error-prone.
+  id: totrans-40
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们还希望解决默认Facebook Flux分发器处理存储之间依赖关系的方式。`waitFor()`机制完成了它的任务，即在所有依赖都处理了动作之前，它会阻塞处理器的进一步执行。这样，我们知道我们依赖的存储总是最新的。问题是`waitFor()`感觉有点容易出错。
 - en: For one thing, it always has to be in the same place—right at the top of the
     store action handler. We have to remember to use the dispatch IDs from the stores
     that we depend on so that `waitFor()` knows which stores to process next. A more
@@ -262,12 +346,16 @@
     are declared outside of the actual callback function and are a little more obvious.
     We'll figure out a way to implement this in our dispatcher, which we'll now get
     started on.
+  id: totrans-41
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，它必须始终位于相同的位置——存储动作处理器的顶部。我们必须记住使用我们所依赖的存储的调度ID，这样 `waitFor()` 才知道要处理哪些存储。一种更声明式的方法意味着我们可以将存储的依赖项设置为一个存储引用数组或类似的东西。这样，依赖关系就在实际的回调函数之外声明，并且更加明显。我们将找出在我们的调度器中实现这一方法的方式，我们现在就开始着手。
 - en: Building a dispatcher module
+  id: totrans-42
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 构建调度器模块
 - en: In this section, we're going to implement our own dispatcher module. This will
     serve as a replacement for the Facebook reference implementation that we've relied
     upon so far in this book. First, we'll think about how the dispatcher will track
@@ -275,12 +363,17 @@
     needs to expose, followed by a walk-through of the `dispatch()` implementation.
     Lastly, we'll figure out how we want to handle dependency management with this
     dispatcher module.
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将实现我们自己的调度器模块。这将成为我们迄今为止在这本书中依赖的Facebook参考实现的替代品。首先，我们将考虑调度器将如何跟踪存储模块的引用。然后，我们将讨论该模块需要公开的函数，接着将介绍
+    `dispatch()` 的实现过程。最后，我们将确定我们想要如何使用这个调度器模块来处理依赖关系管理。
 - en: Encapsulating store references
+  id: totrans-44
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 封装存储引用
 - en: 'The first aspect of our dispatcher module to consider are the stores themselves.
     With Facebook''s reference implementation, there are no references to stores—only
     references to callback functions. That is, when we register with Facebook''s dispatcher,
@@ -288,98 +381,137 @@
     itself. Our dispatcher module will hold onto store references instead of just
     callback functions. Here''s a diagram that illustrates the approach taken by the
     reference implementation:'
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们需要考虑的调度器模块的第一个方面是存储本身。在Facebook的参考实现中，没有存储的引用——只有回调函数的引用。也就是说，当我们向Facebook的调度器注册时，我们传递的是
+    `register()` 方法的一个函数，而不是存储实例本身。我们的调度器模块将保留存储引用，而不仅仅是回调函数。以下是一个说明参考实现采用的方法的图表：
 - en: '![Encapsulating store references](img/B05419_10_04.jpg)'
+  id: totrans-46
   prefs: []
   type: TYPE_IMG
+  zh: '![封装存储引用](img/B05419_10_04.jpg)'
 - en: 'Each time `register()` is called, it adds a callback function to the list of
     callbacks to be processed by the dispatcher any time an action is dispatched.
     However, the downside is that the dispatcher might need access to the store for
     more advanced capabilities that we want to implement, as we''ll see shortly. So
     we''ll want to register the store instance itself, rather than just a callback
     function. This approach is illustrated here:'
+  id: totrans-47
   prefs: []
   type: TYPE_NORMAL
+  zh: 每次调用 `register()` 时，它都会将一个回调函数添加到回调函数列表中，该列表将由调度器在任何动作被调度时处理。然而，缺点是调度器可能需要访问存储以获取我们想要实现的高级功能，正如我们很快就会看到的。因此，我们将想要注册存储实例本身，而不仅仅是回调函数。这里展示了这种方法：
 - en: '![Encapsulating store references](img/B05419_10_05.jpg)'
+  id: totrans-48
   prefs: []
   type: TYPE_IMG
+  zh: '![封装存储引用](img/B05419_10_05.jpg)'
 - en: The list of callback functions is now a list of store instances, and when an
     action is dispatched, the dispatcher now has access to store data, which is useful
     for things, such as methods and dependency lists. The trade-off here is that callback
     functions are more generic, and they're simply called by the dispatcher. As we'll
     see momentarily, there are advantages to this approach that make for simplified
     store code.
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 回调函数列表现在是一个存储实例的列表，当动作被调度时，调度器现在可以访问存储数据，这对于像方法和依赖列表这样的功能非常有用。这里的权衡是回调函数更通用，它们只是被调度器调用。正如我们很快就会看到的，这种方法有一些优势，可以使存储代码更加简化。
 - en: Handling dependencies
+  id: totrans-50
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 处理依赖关系
 - en: The first thing we'll think about in terms of our dispatcher implementation
     is how dependencies between stores are managed. The standard approach is to implement
     a `waitFor()` method that blocks execution in the store handler function until
     the stores it depends on have been handled. As you're now aware, this approach
     can be problematic due to the fact that it's used within the handler function.
     A more declarative approach is what we're shooting for with our implementation.
+  id: totrans-51
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们的调度器实现方面，我们首先考虑的是存储之间的依赖关系是如何管理的。标准的方法是实现一个`waitFor()`方法，该方法在存储处理函数中阻塞执行，直到它所依赖的存储被处理。如您现在所意识到的，这种方法由于它在处理函数中使用，可能会出现问题。我们正在追求的实现是一个更声明性的方法。
 - en: 'The idea is that the list of stores that are depended upon are declared as
     a property of the store. This allows the store to be queried for other stores
     that it depends on. It also takes the dependency management aspect of stores out
     of the handler code that''s supposed to focus on actions. Here''s a visual comparison
     of the two approaches:'
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 策略是，依赖于存储的列表被声明为存储的一个属性。这允许存储查询它所依赖的其他存储。它还把存储的依赖管理方面从应该专注于动作的处理代码中分离出来。以下是两种方法的视觉比较：
 - en: '![Handling dependencies](img/B05419_10_06.jpg)'
+  id: totrans-53
   prefs: []
   type: TYPE_IMG
+  zh: '![处理依赖关系](img/B05419_10_06.jpg)'
 - en: Trying to access dependencies that are specified in `waitFor()` is like peeling
     back an onion—they're hidden. Our goal is to separate the handler code from the
     dependency specification. So how do we do that exactly?
+  id: totrans-54
   prefs: []
   type: TYPE_NORMAL
+  zh: 尝试访问在`waitFor()`中指定的依赖关系就像剥洋葱——它们是隐藏的。我们的目标是分离处理代码和依赖关系指定。那么我们到底该如何做呢？
 - en: 'Rather than trying to handle dependencies during the dispatching process, we
     could sort out our dependencies as stores are registered. If a store has its dependencies
     listed in a property, then the dispatcher can organize the store list in such
     a way that satisfies those dependencies. Here''s an implementation of a `register()`
     function for our dispatcher module:'
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 而不是在调度过程中尝试处理依赖关系，我们可以在存储注册时解决我们的依赖关系。如果一个存储在其属性中列出了依赖项，那么调度器可以组织存储列表，以满足这些依赖项。以下是我们的调度器模块的`register()`函数的一个实现：
 - en: '[PRE0]'
+  id: totrans-56
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: This is the function that stores can use to register themselves. The first thing
     this function does is it checks if the store has already been registered with
     the dispatcher. This is an easy check to perform, because the references are stored
     in an array; we can use the `includes()` method. If the store hasn't already been
     registered, then we can push the store onto the array.
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是存储可以使用来注册自己的函数。这个函数首先做的事情是检查存储是否已经通过调度器进行了注册。这是一个简单的检查，因为引用存储在一个数组中；我们可以使用`includes()`方法。如果存储尚未注册，那么我们可以将存储推送到数组中。
 - en: 'Next, we handle store dependencies. Every time a store is registered, we re-sort
     the `stores` array. This sort is based on the `deps` property of the store. This
     is where the dependencies of the store are declared. The sort comparator is straightforward.
     It''s based on whether **Store A** depends on **Store B** or vice-versa. For example,
     let''s say these stores were registered in the following order:'
+  id: totrans-58
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们处理存储依赖关系。每次存储注册时，我们都会重新排序`stores`数组。这个排序基于存储的`deps`属性。这就是存储的依赖关系被声明的地方。排序比较器很简单。它基于**存储A**是否依赖于**存储B**或反之。例如，假设这些存储按照以下顺序注册：
 - en: '![Handling dependencies](img/B05419_10_07.jpg)'
+  id: totrans-59
   prefs: []
   type: TYPE_IMG
+  zh: '![处理依赖关系](img/B05419_10_07.jpg)'
 - en: 'Now, let''s assume that the follow store dependencies have been declared:'
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们假设以下存储依赖关系已经被声明：
 - en: '![Handling dependencies](img/B05419_10_08.jpg)'
+  id: totrans-61
   prefs: []
   type: TYPE_IMG
+  zh: '![处理依赖关系](img/B05419_10_08.jpg)'
 - en: 'This means that **Store A** depends on both **Store B** and **Store D**. After
     each of these stores have been registered, the order of the store list in our
     dispatcher modules would be as follows:'
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 这意味着**存储A**依赖于**存储B**和**存储D**。在所有这些存储都注册后，我们的调度器模块中存储列表的顺序如下：
 - en: '![Handling dependencies](img/B05419_10_09.jpg)'
+  id: totrans-63
   prefs: []
   type: TYPE_IMG
+  zh: '![处理依赖关系](img/B05419_10_09.jpg)'
 - en: Now the store list is in an order that satisfies the dependencies of the stores.
     When the dispatcher iterates over the store list and calls each store handler,
     it will be done in the correct order. Since **Store A** depends on **Store C**
@@ -387,12 +519,16 @@
     The order of **Store A** and **Store C** are inconsequential since there's no
     dependency declared between them. Now, let's see how to implement the dispatching
     logic of our module.
+  id: totrans-64
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在商店列表的顺序满足商店的依赖关系。当调度器遍历商店列表并调用每个商店处理程序时，它将按正确的顺序完成。由于**商店A**依赖于**商店C**和**商店D**，唯一重要的是这两个商店首先被处理。**商店A**和**商店C**的顺序无关紧要，因为它们之间没有声明依赖关系。现在，让我们看看如何实现我们模块的分派逻辑。
 - en: Dispatching actions
+  id: totrans-65
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 分派操作
 - en: 'In the Facebook reference implementation of a Flux dispatcher, the dispatching
     mechanism is a method of a dispatcher instance. Since there''s really no need
     for a singleton dispatcher instance, our dispatcher is a simple module with a
@@ -400,11 +536,15 @@
     dependency sorting logic, we''ve implemented in the `register()` function; the
     work-flow of `dispatch()` will be nice and straightforward. Let''s take a look
     at this code now:'
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 在Facebook对Flux调度器的参考实现中，分派机制是调度器实例的一个方法。由于实际上并不需要一个单例调度器实例，我们的调度器是一个简单的模块，公开了一些函数，包括一个`dispatch()`函数。多亏了我们在`register()`函数中实现的依赖关系排序逻辑，`dispatch()`的工作流程将非常直接。现在让我们看看这段代码：
 - en: '[PRE1]'
+  id: totrans-67
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: You can see that there's a `busy` variable that's checked at the top of the
     function. This is set just before we start calling store handlers. Essentially,
     this checks for anything that calls `dispatch()` as a result of a store handling
@@ -412,18 +552,24 @@
     from a view that's listening to a store. This is not allowed as it breaks the
     unidirectional data-flow of our Flux architecture. When this happens, it's better
     to detect it and fail fast than it is to let nested update rounds run their course.
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 您可以看到，在函数顶部有一个检查的`busy`变量。这正是在我们开始调用商店处理程序之前设置的。本质上，这是检查是否有任何调用`dispatch()`作为商店处理操作的后果。例如，我们可能不小心从商店或从监听商店的视图中调用`dispatch()`。这是不允许的，因为它破坏了我们Flux架构的单向数据流。当这种情况发生时，检测它并快速失败比让嵌套更新轮次运行要好。
 - en: 'Aside from the busy state handling logic, this function iterates over the stores
     collection and checks if there''s an appropriate method to call. The method name
     is based on the action type. For example, if the action is `MY_ACTION` and store
     has a method of the same name, then that method is invoked with the payload as
     an argument. The process is visualized here:'
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: 除了忙状态处理逻辑之外，这个函数遍历商店集合，并检查是否有适当的方法可以调用。方法名称基于操作类型。例如，如果操作是`MY_ACTION`并且商店有相同名称的方法，那么该方法将使用有效载荷作为参数被调用。这个过程在这里被可视化：
 - en: '![Dispatching actions](img/B05419_10_10.jpg)'
+  id: totrans-70
   prefs: []
   type: TYPE_IMG
+  zh: '![分派操作](img/B05419_10_10.jpg)'
 - en: 'This is quite the departure from the standard `switch` statement approach we''ve
     been using in this book so far. Instead, it''s up to the dispatcher to locate
     the appropriate code to run within the store. This means that if the store doesn''t
@@ -433,27 +579,37 @@
     case checking. In the next section, we''ll see how our stores can work with this
     new dispatcher implementation. But first, here''s the dispatcher module in its
     entirety, so you can see how everything fits together:'
+  id: totrans-71
   prefs: []
   type: TYPE_NORMAL
+  zh: 这与我们在本书中迄今为止使用的标准`switch`语句方法有很大的不同。相反，找到在商店中运行的适当代码的责任在于调度器。这意味着如果商店没有实现与已分发的操作相对应的方法，它将被商店忽略。这是我们商店分派处理程序中经常发生的事情，但现在它更高效，因为它绕过了`switch`情况检查。在下一节中，我们将看到我们的商店如何与这种新的调度器实现一起工作。但首先，这里是完整的调度器模块，这样您就可以看到所有内容是如何结合在一起的：
 - en: '[PRE2]'
+  id: totrans-72
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: Improving store registration
+  id: totrans-73
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 改进商店注册
 - en: We can't improve the work-flow of the dispatcher without improving the work-flow
     of our stores. Thankfully, the hard work has already been implemented by the dispatcher.
     We just need to implement our stores in a way that best utilizes the improvements
     we've made to the dispatcher. In this section, we'll discuss implementing a base
     store class, followed by some example implementations of stores that extend it
     and implement their own action methods.
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们不能在不改进存储的工作流程的情况下改进分发器的工作流程。幸运的是，分发器已经实现了这项艰苦的工作。我们只需要以最佳方式实现我们的存储，以充分利用我们对分发器所做的改进。在本节中，我们将讨论实现基础存储类，然后是一些扩展它的存储的示例实现，这些存储实现了它们自己的动作方法。
 - en: Base store class
+  id: totrans-75
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 基础存储类
 - en: The new dispatcher we've just implemented has some important differences from
     Facebook's reference implementation. The two key differences are that the store
     registers an instance of itself instead of a callback function, and that the store
@@ -461,49 +617,70 @@
     register itself with the dispatcher when it's created. This would mean that stores
     extending this base class wouldn't need to worry about the dispatcher at all—just
     implementing action methods that change the state of the store accordingly.
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们刚刚实现的新分发器与Facebook的参考实现有一些重要的不同之处。两个关键的区别是，存储注册了一个自身的实例而不是回调函数，以及存储需要实现动作方法。基础存储类应该能够在创建时自动与分发器注册。这意味着扩展此基础类的存储不需要担心分发器——只需实现相应改变存储状态的动作方法。
 - en: 'The layout of the dispatcher, the base store, and stores that extend it is
     illustrated here:'
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 分发器、基础存储以及扩展它的存储的布局在此图中展示：
 - en: '![Base store class](img/B05419_10_11.jpg)'
+  id: totrans-78
   prefs: []
   type: TYPE_IMG
+  zh: '![基础存储类](img/B05419_10_11.jpg)'
 - en: 'Let''s go ahead and look at the implementation of our base store class now.
     Then, we''ll implement some stores that extend it so that we can see our new dispatcher
     module in action:'
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们继续查看我们基础存储类的实现。然后，我们将实现一些扩展它的存储，这样我们就可以看到我们的新分发器模块的实际应用：
 - en: '[PRE3]'
+  id: totrans-80
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: That's it, pretty simple right? The constructor accepts the initial state of
     the store and an array of store dependencies. Both of these arguments are optional—they
     have default argument values. This is especially important for the `deps` property
     because our dispatcher module expects it to be there. Then, we call the `register()`
     function so that the dispatcher is automatically aware of any stores. Remember,
     a Flux store is of no use if it's unable to handle actions as they're dispatched.
+  id: totrans-81
   prefs: []
   type: TYPE_NORMAL
+  zh: 就这样，很简单对吧？构造函数接受存储的初始状态和存储依赖项的数组。这两个参数都是可选的——它们有默认参数值。这对于 `deps` 属性尤为重要，因为我们的分发器模块期望它存在。然后，我们调用
+    `register()` 函数，以便分发器自动了解任何存储。记住，如果分发器无法处理分发的动作，那么Flux存储就没有任何用处。
 - en: We've also added a handy little `change()` method that updates the state and
     emits the change event for us. Now that we have a base store class, we're free
     to implement little helper methods like this in order to reduce duplicate store
     code.
+  id: totrans-82
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们还添加了一个方便的小 `change()` 方法，它会更新状态并为我们发出更改事件。现在我们有了基础存储类，我们可以自由地实现这样的小辅助方法，以减少重复的存储代码。
 - en: An action method
+  id: totrans-83
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 动作方法
 - en: 'Let''s complete our example that''s been running through a few sections now.
     To do so, we''ll implement a few stores that extend the base store we''ve just
     created. Here''s the first store:'
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们完成现在已经讨论了几段的示例。为了做到这一点，我们将实现几个扩展我们刚刚创建的基础存储的存储。这是第一个存储：
 - en: '[PRE4]'
+  id: totrans-85
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'This store has all of the relevant moving parts to work with our new base store
     class and our new dispatcher module. You can see in the constructor that we''re
     passing the `initialState` and the `deps` values to the `Store` constructor. You
@@ -511,22 +688,32 @@
     and `BAR()`. This means that if any actions with a type of `FOO` or `BAR` are
     dispatched, this store will respond to them. Now let''s implement the two stores
     that this store depends on:'
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个存储拥有所有与我们的新基础存储类和新分发器模块一起工作的相关组件。您可以在构造函数中看到，我们正在将 `initialState` 和 `deps`
+    值传递给 `Store` 构造函数。您还可以看到，在这个存储中实现了两个动作方法：`FOO()` 和 `BAR()`。这意味着如果有任何类型为 `FOO`
+    或 `BAR` 的动作被分发，这个存储将响应它们。现在让我们实现这个存储所依赖的两个存储：
 - en: Note
+  id: totrans-87
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: If you absolutely can't stand the look of all-caps method names, feel free to
     change the case of the action types that get dispatched. Another alternative is
     to implement case-insensitive matching in the dispatcher. The trade-off working
     against this latter option is that we'd lose the direct mapping from action type
     to method name. Be careful what you wish for.
+  id: totrans-88
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果你实在无法忍受全大写的方法名外观，你可以随意更改要派发的动作类型的大小写。另一个选择是在派发器中实现不区分大小写的匹配。反对这种后者的权衡是我们将失去从动作类型到方法名的直接映射。小心你所期望的。
 - en: '[PRE5]'
+  id: totrans-89
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: 'The `Second` store is similar to the `First` store. It extends the base `Store`
     class and sets a default state. It also responds to two actions, as we can see
     by the two method names. However, this store doesn''t declare any dependencies,
@@ -535,51 +722,71 @@
     of stores held by the dispatcher. If we declare `third` as a dependency, then
     we know for certain that it''ll always be updated before this store. Let''s look
     at our last store now:'
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: '`Second`存储类似于`First`存储。它扩展了基`Store`类并设置了一个默认状态。它还响应两个动作，正如我们可以通过两个方法名看到的那样。然而，这个存储没有声明任何依赖关系，但它显然依赖于`BAR()`动作处理器中的第三个存储。这可能会或可能不会工作，这取决于`third`存储在派发器持有的存储集合中的位置。如果我们声明`third`为依赖项，那么我们可以确定它将始终在存储之前更新。现在让我们看看我们的最后一个存储：'
 - en: '[PRE6]'
+  id: totrans-91
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: 'Once again, this store follows the same patterns as its two successors. The
     key difference being that it has no `BAR()` action handler. This means that nothing
     in this store will be called when `BAR` actions are dispatched. This is in contrast
     to our earlier handlers where every action would have *funnelled* through a `switch`
     statement only to be ignored. Finally, let''s look at `main.js` to tie this all
     together:'
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 再次强调，这个存储遵循其两个后继者的相同模式。关键区别在于它没有`BAR()`动作处理器。这意味着当派发`BAR`动作时，这个存储中的任何内容都不会被调用。这与我们早期的处理器形成对比，其中每个动作都会通过一个`switch`语句进行过滤，然后被忽略。最后，让我们看看`main.js`来将这些内容串联起来：
 - en: '[PRE7]'
+  id: totrans-93
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: Note that the output of `foo()` reflects the correct dependency order and that
     the output of `bar()` reflects the missing action handler in `Third`.
+  id: totrans-94
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意`foo()`的输出反映了正确的依赖顺序，而`bar()`的输出反映了`Third`中缺失的动作处理器。
 - en: Summary
+  id: totrans-95
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: In this chapter, you learned about some of the limitations that are inherent
     with the Facebook Flux component. For starters, it's not targeted for production
     environments, because it's a reference implementation for the Flux patterns. We're
     free to implement these dispatcher patterns however we like.
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，你了解了一些与Facebook Flux组件固有的局限性。首先，它并不是针对生产环境设计的，因为它是对Flux模式的参考实现。我们可以自由地以我们喜欢的方式实现这些派发模式。
 - en: The essential aspects of a dispatcher are the ability to register store code
     that handles actions as they're dispatched and the ability to perform the dispatches.
     Given the simplicity of the requirements, it doesn't make sense to implement another
     singleton class. Instead, the dispatcher only needs to expose a `register()` and
     `dispatch()` function.
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
+  zh: 派发器的本质方面是能够注册处理派发动作的存储代码，以及执行派发的能力。鉴于要求的简单性，实现另一个单例类是没有意义的。相反，派发器只需要公开一个`register()`和`dispatch()`函数。
 - en: The big change with our implementation was with regard to dependency management.
     Instead of figuring out dependencies every time an action is dispatched, the `register()`
     function sorts the `stores` collection in such a way that satisfies the store
     dependencies. We then implemented a base store class that's used to simplify our
     store code by automatically registering the store with the dispatcher for us.
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们实现中的重大变化是关于依赖管理。不是每次派发动作时都确定依赖关系，而是`register()`函数以满足存储依赖关系的方式对`stores`集合进行排序。然后我们实现了一个基类存储，它通过自动为我们注册存储到派发器来简化我们的存储代码。
 - en: In the next chapter, we'll look at view components that rely on technologies
     other than ReactJS to render themselves.
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: 在下一章中，我们将探讨依赖于除ReactJS以外的技术来渲染自己的视图组件。
