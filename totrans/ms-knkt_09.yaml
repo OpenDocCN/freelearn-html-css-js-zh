@@ -1,0 +1,957 @@
+- en: Chapter 9. Under the Hood
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We have covered the Knockout basics, learned how to extend Knockout''s binding
+    system, and seen how to organize applications. Now, it''s time to indulge our
+    inner tinkerers. In this chapter, we will look at the internals of Knockout to
+    see what makes it tick. By the end of this chapter, you should be familiar with
+    how Knockout handles the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dependency tracking
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The prototype chain
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Parsing binding attribute expressions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Applying bindings
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Templating
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In addition to this, we will also look at the `ko.utils` namespace, which provides
+    lots of useful tools for common actions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Note that all of the code discussed in this chapter is based on the Knockout
+    3.2 release. It is possible, and likely, that parts of this will change in the
+    future.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dependency tracking
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Binding handlers and computed observables need to re-evaluate when their observable
+    dependencies update. This means keeping track of dependencies and subscribing
+    to them. Three objects make up the dependency-tracking feature: observables, computed
+    observables, and the dependency-detection module.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here's the basic overview. When a computed is evaluated, it asks `ko.dependencyDetection`
+    to start tracking things. When observables are accessed, they register themselves
+    with `ko.dependencyDetection`. When the computed is done evaluating, it records
+    all of the registered dependencies and subscribes to each of them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Okay, now let's look at some code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ko.dependencyDetection
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The dependency detection module is very small—small enough to reproduce here
+    in its entirety, actually:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code is using the revealing module pattern to hide the internal
+    variables for `outerFrames`, `currentFrame`, `lastId`, and the `getId` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: For more information on the revealing module pattern, check out Todd Motto's
+    blog at [http://toddmotto.com/mastering-the-module-pattern](http://toddmotto.com/mastering-the-module-pattern).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The idea here is that `begin` is called with either a frame that can be used
+    for tracking, or it is called with nothing to disable tracking. When `end` is
+    called, the previous frame is popped off and set to the current frame. A **frame**
+    is a layer that tracks dependencies; a frame exists inside of another frame, but
+    only the current frame will register dependencies when they are accessed. This
+    allows dependency tracking to occur recursively, while each layer receives only
+    its immediate dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `options` object that is passed to `begin` should expose the following
+    properties:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`callback`: This is a function that receives a dependency and its ID when a
+    dependency registers itself'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`computed`: This is the computed observable that performs the dependency tracking
+    on the frame'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`isInitial`: This is a Boolean that indicates whether this is the first time
+    dependency tracking has been requested for the current frame'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When `registerDependency` is called, the current frame's callback is passed
+    to the dependency and its ID. The ID is a sequentially generated number, which
+    is assigned to the dependency if it is missing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `ignore` function provides an easy wrapper around `begin` and `end` inside
+    a `try`/`finally` block. The call to `begin` has no options, so it will not trigger
+    dependency detection. This makes it easy to evaluate data in situations where
+    you know dependency detection will not, or should not, be used. Knockout does
+    this inside several binding handlers as well as inside the `notifySubscribers`
+    function of subscribables.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last two properties, which are `getDependenciesCount` and `isInitial`, expose
+    the properties of the same name on the current frame.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Registering dependencies
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When an observable is read, it has to notify `ko.dependencyDetection` in order
+    to indicate that a dependency has been accessed. Because computeds and observables
+    are both descendants of subscribables, which do not register dependencies, each
+    of them has their own similar dependency registration logic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The observable implementation happens when the observable is called with no
+    arguments:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After registering itself as a dependency, it returns its current value. The
+    computed version is almost identical:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The only difference here is that because computeds can be evaluated asynchronously,
+    the `read` function checks whether a re-evaluation is needed before returning
+    its value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There isn't much else to say regarding this. The observable array type makes
+    no changes to the registration process. In fact, it couldn't make any changes.
+    Dependency registration is an internal logic for observables; it can't be overridden.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Subscribing to dependencies
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The prototype for all observables is the subscribable. The subscribable prototype
+    provides two functions for dependency work: `subscribe` and `notifySubscribers`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `subscrib`e function creates a subscription on the subscribable. The subscription
+    doesn''t do anything on its own, it''s just an object with a `callback` and `dispose`
+    property (it has other properties; these are just the relevant ones). The subscription
+    is stored in the `_subscriptions` object and the internal-use property. As subscriptions
+    can be attached to named events, the subscriptions object has an array for each
+    event:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When a subscription is created without a name, it is attached to the change
+    event by default. The other standard event is the `beforeChange` event, which
+    is fired by observables just before they update. This is the write logic from
+    the observable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Before an observable is updated, it calls `valueWillMutate`, and afterwards,
+    it calls `valueHasMutated`. Both of these are wrappers around the `notifySubscribers`
+    function, with the first providing the `beforeChange` event name:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once again, the event name is optional and defaults to `change` when omitted.
+    It also checks to make sure subscriptions for the event exist before it starts.
+    Then, it disables dependency detection. If it didn't disable dependency detection,
+    then a false dependency would be established between the original writer of the
+    new value and subscribers of the current observable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This basic publish/subscribe implementation can easily be used to create a messaging
+    system. In fact, Ryan Niemeyer has created a plugin to do just that (see [https://github.com/rniemeyer/knockout-postbox](https://github.com/rniemeyer/knockout-postbox)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The primary work is to loop through the subscriptions and pass the current value
+    to the subscriptions callback. A check is performed to ensure that the subscription
+    didn't get disposed, as it is possible that one subscription is disposed because
+    of another. Finally, the previous block of code ends the current frame of dependency
+    detection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With these three pieces, Knockout provides a simple and performant dependency
+    tracking system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Subscribing to observable arrays
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Prototypically speaking, observable arrays are still observables, but because
+    their changes are primarily their contents and not their values, they have a lot
+    of additional logic that ensures performant notifications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Standard array functions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'JavaScript has had a standard set of array functions since ECMAScript''s first
+    edition, so you should already be familiar with them. The headache they cause
+    for Knockout is that they modify the contents of the array directly. Since array
+    subscribers expect to be notified to changes in the array''s content, Knockout
+    provides their own implementation for `observableArray`. This implementation makes
+    calls to the standard notification functions on observables before calling the
+    original array function. The `slice` function is skipped, since it is a read-only
+    function and doesn''t needs to notify subscribers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: This function has barely changed since Knockout 1.0, where it added the methods
+    to each instance instead of the observable array's `fn` prototype. The only addition
+    is the call to `cacheDiffForKnownOperation`, which works with the internal `trackArrayChanges`
+    extender to provide smaller, faster change notifications for incremental updates
+    to the array. Prior to this extender, observable arrays broadcasted their entire
+    contents on every update.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This function is not too different from the `write` function of normal observables;
+    it calls `valueWillMutat`e before performing an update, and it calls `valueHasMutated`
+    afterward. Instead of setting its own value, it just applies the original method
+    name to the underlying array.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `slice` function is even simpler. It does not cause subscriptions to fire,
+    as it is read-only. All it does is wrap the original function on the underlying
+    array:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: The utility methods
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In addition to the standard methods, Knockout also provides friendly functions
+    to common array changes that JavaScript, for some reason, still hasn''t bothered
+    to implement: `remove`, `removeAll`, `destroy`, `destroyAll`, and `replace`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You should be able to guess what these functions look like by now; peek to
+    get the underlying array, call `valueWillMutate`, make some changes, and then
+    finish with `valueHasMutated`. The interesting part about the preceding functions
+    is the arguments they take. If you pass an object to `remove`, it will predictably
+    remove that object from the array if it exists. However, if you pass a function,
+    it will be used as a predicate, removing any elements in the array, which causes
+    the predicate to return truthy (I''m very fond of this pattern):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: This works by converting single values into a predicate that checks for strict
+    equality. The check for `!ko.isObservable(valueOrPredicate)` is important as observables
+    are functions but should be treated as values here and not as predicates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This same pattern is used for `destroy`, except that it marks the observables
+    with the `_destory` property instead of removing them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `removeAll` and `destroyAll` functions are also overloaded: they can take
+    an array of values to be removed, or it can remove all elements if no argument
+    is provided. In the case where an array of values is provided, they just call
+    `remove`/`destroy` with a predicate based on the array:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The prototype chain
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Back in [Chapter 1](part0015_split_000.html#page "Chapter 1. Knockout Essentials"),
+    *Knockout Essentials*, I showed you this diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The prototype chain](img/00016.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The way functions are inherited by these objects is not through the normal JavaScript
+    prototype chain, where a constructor function has its prototype assigned to an
+    object. This is because observables are functions and not objects, and functions
+    cannot be created with constructors or the `Object.create` function. Standard
+    JavaScript prototypical inheritance doesn't work for functions. To see how Knockout
+    shares methods, let's look at how subscribable and its descendant observable are
+    constructed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, the base methods for subscribables are defined on the `fn` object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is added to subscribables during the construction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `setPrototypeOfOrExtend` method will either assign the `__proto__` property
+    of an object—something higher IE versions can't do—or use `ko.utils.extend` to
+    extend the object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Observables are built differently. Their *factory* method returns an internally
+    built object, which uses both `ko.subscribable.call` and `setPrototypeOfOrExtend`
+    to inherit methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: An observable is built and then run through the subscribable's constructor,
+    extended with the `observable[''fn'']` object, and finally has its own methods
+    added.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The ko.isObservable function
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In standard JavaScript inheritance, the `instanceof` operator can be used to
+    check whether an object, or any of its prototypes, has a constructor that matches
+    the supplied function. Because Knockout isn't using standard inheritance, it cannot
+    use the `instanceof` operator; instead Knockout uses the following code for the
+    `ko.isObservable` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Knockout defines a `__ko_proto__` property on the `observable[''fn'']` object,
+    which is set to the `ko.observable` object. This custom prototype property is
+    used by `hasPrototype` in place of the `instanceof` operator to determine whether
+    an instanced object is an observable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The binding expression parser
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The expressions written in data-bind attributes are not truly JavaScript or
+    JSON, though they look very similar. Knockout has its own parser to convert these
+    attributes into JavaScript. Say you write a data-bind attribute like this one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, the binding provider''s job is to return an object like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: The default binding provider does this using the `ko.expressionRewriting` module,
+    which is responsible for calling binding preprocessors and returning a JSON-esque
+    string. Internally, this is done using regex to parse the full attribute into
+    a key/value pair array. This might sound messy, but it gets the job done. That
+    being said, even for an *under the hood* look, the details are not very relevant
+    to Knockout, as the parsing is general purpose. If you are still curious, the
+    code is located at [https://github.com/knockout/knockout/blob/master/src/binding/expressionRewriting.js](https://github.com/knockout/knockout/blob/master/src/binding/expressionRewriting.js),
+    and its inline comments are better than average.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After parsing the data-bind attribute, the array of key/value pairs is iterated
+    to build an array of JSON-esque strings:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: The key is used to look up the binding handler to call its `preprocess` function.
+    If it returns falsy, the processing stops, as the binding was removed. The `makeValueAccessors`
+    property will be true when it comes from `getBindingAccessors` and false when
+    it comes from `getBindings`. The result is then added to a running list.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `twoWayBindings` block adds a special function string to `propertyAccessorResultStrings`,
+    which is checked after all the other bindings keys are finished:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: This adds one extra binding property, `_ko_property_writers`, which is a function
+    that will return a binding object that can be used to write to bound properties
+    instead of reading from them. We will come back to this in just a minute.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, the running list of strings is returned with a join:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The resulting string from the example binding will look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The binding provider turns this string into a real object by putting the string
+    inside a function body and calling the function with the binding context and the
+    element being bound:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This use of `new Function` causes Knockout's default binding provider to fail
+    in environments using a **Content Security Policy** (**CSP**) that blocks `new
+    Function` and `eval`, such as in Google Chrome Extensions. Knockout Secure Binding,
+    which is a binding provider that does not use `new Function`, allows Knockout
+    to be used with a CSP (see [https://github.com/brianmhunt/knockout-secure-binding](https://github.com/brianmhunt/knockout-secure-binding)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When this function is evaluated with the binding context and element, it produces
+    the final binding object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Knockout property writers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We haven't covered the _`ko_property_writers` property yet, because it's surprising
+    to most people and would have been distracting. The role of this property is to
+    expose writing functions for nonobservable values so that two-way binding handlers
+    can still update their values. They aren't observable, so notifications won't
+    occur, but it's still a supported scenario.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This special binding is carried on the binding accessor. When two-way bindings,
+    such as `value`, need to update the viewmodel they, call `ko.expressionRewriting.writeValueToProperty`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This is an undocumented part of the API, so it is subject to changing without
+    notice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the property is not observable and a property writer exists for it, then
+    it is used to update the value. If the property is observable, the property is
+    written directly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Applying bindings
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The binding application process takes place primarily in the `bindingAttributeSyntax`
+    module, which defines the `ko.bindingContext` class as well as the `ko.applyBindings`
+    method. The high-level overview looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `ko.applyBindings` method is called with the viewmodel.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: A binding context is constructed using the viewmodel.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The binding provider is retrieved from `ko.bindingProvider.instance`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Knockout works with the DOM tree:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: It is passed through the binding provider's node preprocessor (except the root
+    node)
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The binding handlers for the node are constructed using the binding provider
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The binding handlers are sorted by ensuring that any bindings in their `after`
+    property are loaded first
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The binding handlers are iterated through, calling each handler's `init` and
+    `update` function.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The first three steps are pretty straightforward; even the walking algorithm
+    is just a simple recursion that applies bindings to a node and then iterates over
+    its children to preprocess and bind them. The real meat of this process is the
+    `applyBindingsToNodeInternal` function, which actually does the work of applying
+    bindings to a node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first half of the function is safety checks. We are going to skip the code
+    for this, as it's not very important to understanding how the binding part works.
+    As we have already covered how the binding provider generates bindings, we are
+    only going to look at the last two bullet points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sorting binding handlers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Knockout uses a topological sort to order the binding handlers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you are unfamiliar with topological sorting, remember that it comes from
+    graph theory. We will not go into the details of graph theory here (if you are
+    interested, Google can tell you all about it), but a topological sort is basically
+    an ordering of elements, which ensures that all dependencies of an element come
+    before the element itself. Topological sorts do not guarantee the same order every
+    time; it's just that no dependency cycles exist.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is the sort function that Knockout uses to order binding handlers; it
+    is a fairly common implementation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: This function loops through the supplied bindings, skipping bindings it has
+    already processed; if it has an `after` property, it starts the dependency check.
+    It pushes the current binding into the array-tracking dependencies, and then loops
+    through each of the bindings in the `after` property. If a dependent binding is
+    already found to be in the array of dependencies Knockout throws an exception,
+    it would mean a cycling dependency. If the dependent binding is not found, it
+    recurses into the loop handler so that its dependencies are checked.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After the dependent bindings are checked, the last element in the array of dependencies
+    is removed and the current binding is pushed to the array of results and the array
+    of already processed bindings. If a future binding requires it as a dependency,
+    the loop handler will return immediately, indicating that the future binding is
+    safe to continue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running the binding handlers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'After getting the binding handlers in the proper order, they are iterated through.
+    One last safety check is made in order to ensure that if the node is a comment
+    node, the binding handler is allowed for virtual elements. Then the `init` and
+    `update` functions are called inside a `try`/`catch` block:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The whole thing is run in a scope with dependency detection disabled, as the
+    `init` function does not run twice. The `init` handler passes all the required
+    arguments, and the result is checked to see whether this handler wants to control
+    descendant bindings. If it isn''t the first handler to control descendant bindings,
+    then Knockout throws an exception:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `update` handler is run inside of a computed observable (`dependantObservable`
+    was the original name for computeds and is still used in the source code), which
+    will automatically rerun it when dependencies change. This is one of my favorite
+    parts of Knockout: binding handlers rerun automatically when observable dependencies
+    change because *they are inside observables themselves*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once the binding handlers have all been looped through, `applyBindingsToNodeInternal`
+    returns with an object that tells its caller whether or not to recurse into the
+    current node''s children using the flag from the `init` handler''s result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: Templates
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Knockout''s template system is incredibly flexible: it works with *anonymous*
+    templates, named templates, and allows the engine that renders templates to be
+    overridden. The template binding is also used by the `foreach` binding, which
+    is just a syntactic sugar for the `{ foreach: someExpression }` template. To understand
+    how the template system works, let''s start with the template-binding handler.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The template binding handler
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `init` function of the template binding understands that templates can
+    either be named (loaded from a source) or inline (loaded using the contents of
+    the bound element):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the binding value is just a string, or if the binding value is an object
+    with a `name` property, then we are using a named source and the only work that
+    needs to be done is to empty the node. Named sources need to be changed when the
+    name of the template changes, so all of the work of actually rendering the template
+    is in the `update` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If it's an anonymous template, `moveCleanedNodesToContainerElement` removes
+    the children from the element and places them in a `div` container, but the `div`
+    container isn't placed in the DOM. A new anonymous template source is created
+    with the element, and the `div` container is passed to the template's `nodes`
+    function. The `nodes` function stores the container with `utils.domData`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A **template source** is an object that is used by the template engine to provide
+    the DOM that is required to render the template. It must provide either a `nodes`
+    function that returns a container with the nodes to be used, or a text function
+    that provides a stringified version of the same. The `ko.templateSources` array
+    contains two template source types: `domElement` for named sources and `anonymousTemplate`
+    for inline sources.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, the `init` function returns `{ ''controlsDescendantBindings'': true
+    }`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `update` function has three different branches: branches that render a
+    single template, branches that render an array of templates with `foreach`, and
+    branches that remove everything if an `if` (or `ifnot`) binding is present and
+    false. The last branch doesn''t need much explanation, and the first two branches
+    are very functionally similar: they call `renderTemplate` on the template engine,
+    which returns an array of DOM nodes that are then added to the DOM. After this,
+    they each call `applyBindings` on the template.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The template engine
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The template engine is responsible for generating DOM nodes. It can't be used
+    on its own though, as it's just a base class. When `renderTemplate` is called
+    on the base template engine, it calls `makeTemplateSource` and passes the result
+    to `renderTemplateSource`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The default `makeTemplateSource` method takes a template parameter. If a template
+    is a string, it will try to find a script by that name and create a `domElement`
+    source. If the template is a node, it will create and return a new `anonymousTemplate`
+    source from it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The default `renderTemplateSource` method is not implemented and will throw
+    an error. A template implementation must override this method in order to work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Knockout provides two template engine implementations out of the box: native
+    and jQuery.tmpl. The jQuery.tmpl engine hasn''t been under development since 2011,
+    and I think Knockout''s continued inclusion with the standard distribution is
+    probably more backwards-compatibility than anyone really needs. It''s there, but
+    we are going to ignore it.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The native template engine overrides `renderTemplateSource` with this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: If `nodes` is present, it will be used to get the template node container, clone
+    it, and return it. If it's in an higher IE, where clone doesn't work, or if `nodes`
+    isn't provided, the text source will be parsed by `ko.utils` and will be returned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The template engine does not add the nodes to the DOM and does not bind them;
+    it just returns them. The template binding takes care of this part after it gets
+    the generated template from the template engine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The ko.utils reference
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `ko.utils` namespace is Knockout's bucket for utility functions. Not all
+    of these functions are publicly exposed—at least not in a usable way. Knockout's
+    minification process obfuscates more than half of them. As the unobfuscated methods
+    are a public API that Knockout has committed to providing, changing them would
+    be a major change. Despite considering all of the exposed methods on the `ko.utils`
+    part of the API, Knockout does not provide any documentation for them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is a complete list of the public functions on `ko.utils` as of Knockout
+    3.2:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`addOrRemoveItem(array, item, included)`: If `included` is `true`, it will
+    add the item to the array if it is not already there; if `included` is `false`,
+    it will remove the item from the array if it is present.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`arrayFilter(array, predicate)`: This returns an array of elements from the
+    array that returns `true` from the predicate using `predicate(element, index)`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`arrayFirst(array, predicate, predicateOwner)`: This returns the first element
+    in the array that returns `true` from the predicate using `predicate.call(predicateOwner,
+    element, index)`. This makes `predicateOwner` an optional parameter, which controls
+    this in the predicate.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`arrayForEach(array, action)`: This calls the action on each element in the
+    array with `action(element, index)`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`arrayGetDistinctValues(array)`: This returns an array with only distinct elements
+    from the original array. It uses `ko.utils.arrayIndexOf` to determine the uniqueness.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`arrayIndexOf(array, item)`: If `Array.prototype.indexOf` is present, `arrayIndexOf(array,
+    item)` will call it, otherwise it will loop the array manually and return the
+    index or `-1` if the element isn''t found. This is a polyfill for versions of
+    Internet Explorer less than 9.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`arrayMap(array, mapping)`: This is not quite a polyfill for `Array.prototype.map`;
+    this function returns an array by calling `mapping(element, index)` on each element
+    of the original array.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`arrayPushAll(array, valuesToPush)`: This pushes the `valuesToPush` parameter
+    into the `array` parameter. This function handles cases where `valuesToPush` is
+    like an array but is not a real array, such as `HTMLCollection`, where calling
+    `array.push.apply(array, valuesToPush`) would normally fail.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`arrayRemoveItem(array, itemToRemove)`: This removes the item from the array
+    by either splicing or shifting, depending on the item''s index.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`domData`: This object provides a `get`, `set`, and `clear` method in order
+    to work with arbitrary key/value pairs on DOM nodes. Knockout uses it internally
+    to track the binding information, but it can be used to store anything.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`domNodeDisposal`: This object provides the following utilities that are related
+    to DOM''s cleanup tasks:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`addDisposeCallback(node, callback)`: This adds a callback to the node with
+    `domData`. The callback will be used if Knockout removes the node via templating
+    or control flow.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`cleanNode(node)`: This runs all the associated disposal callbacks that were
+    registered with `addDisposeCallback`. This function is aliased as `ko.cleanNode`.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`cleanExternalData(node)`: This uses jQuery''s `cleanData` function to remove
+    data added by jQuery plugins. It does nothing if jQuery is not found.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`removeDisposeCallback(node, callback)`: This removes the callback from the
+    node''s `domData` function.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`removeNode(node)`: This cleans the node with `cleanNode` and then removes
+    it from the DOM. This function is aliased as `ko.removeNode`.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Extend(target, source)`: This is a run-of-the-mill extend method; it adds
+    or overwrites all properties on the target with those on the source. It filters
+    source properties with `hasOwnProperty`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`fieldsIncludedWithJsonPost`: This is an array of default fields that are used
+    for `postJson` if an `includeFields` option is not specified.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`getFormFields(form, fieldName)`: This returns all the `input` or `textarea`
+    fields from a form that matches `fieldname`, which can be either a string, a regex,
+    or an object with a test predicate that takes the field''s name.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`objectForEach(obj, action)`: This calls `action(properyName, propetyValue)`
+    on each property in `obj`, filtering it with `hasOwnProperty`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`parseHtmlFragment(html)`: If jQuery is present, this function uses its `parseHTML`
+    function; otherwise, it uses a simple internal HTML parse. It returns DOM nodes.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`parseJson(jsonString)`: This will return a JavaScript object by parsing the
+    supplied string. If the JSON object exists, it will be used; otherwise, `new Function`
+    will be used.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`peekObservable(value)`: Just like `ko.unwrap`, this is a safety method. If
+    the value is observable, it will return the result of its peek; otherwise, it
+    will just return the value.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`postJson(urlOrForm, data, options)`: This will perform a post by creating
+    a new form, appending it to the DOM, and calling `submit` on it. The form will
+    use `data` to create its fields. If `urlOrForm` is a form, its fields will be
+    included in the data if they match `options[''''includeFields'''']` (or `fieldsIncludedWithJsonPost`
+    if `options[''''includeFields'''']` isn''t present), and its action will be used
+    as the URL.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Range(min, max)`: This returns an array of values between `min` and `max`.
+    It uses `ko.unwrap` on both the arguments.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`registerEventHandler(element, eventType, handler)`: This attaches an event
+    handler to the element. It uses jQuery if possible, `addEventListener` if available
+    or `attachEvent` as a last resort (Internet Explorer). If using `attachEvent`,
+    it registers a disposal handler to call `detachEvent`, as IE does not do so automatically.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`setHtml(node, html)`: This empties the node''s contents, unwraps the HTML,
+    and sets the node''s HTML using either `jQuery.html`, if available, or `parseHtmlFragement`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`stringifyJson(data, replacer, space)`: This uses `ko.unwrap` to handle observable
+    data and calls `JSON.stringify`. The `replacer` and `space` parameters are optional.
+    If the JSON object is not present, it throws an exception.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`toggleDomNodeCssClass(node, classNames, shouldHaveClass)`: This uses the `shouldHaveClass`
+    Boolean to either add or remove all of `classNames` Boolean from the node.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`triggerEvent(element, eventType)`: This triggers the event on the element.
+    It uses jQuery when applicable and handles known issues with raising the click
+    event in IE and in jQuery.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`unwrapObservable(value)`: This was the original name of `ko.unwrap` and is
+    maintained for backward compatibility. It will either return the underlying value
+    of an observable or the value itself if it''s not an observable.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: While this certainly isn't an exhaustive look at the guts of Knockout, which
+    you probably wouldn't want anyway, you should at least have a good understanding
+    of how Knockout gets most of the important things done. This chapter covered dependency
+    tracking, the *prototype* (`fn`) chain, the binding expression parser, how `ko.applyBindings`
+    works, how Knockout handles templates, and the `ko.utils` namespace. Hopefully,
+    you will feel comfortable with how each of these systems work internally. Knowing
+    how these pieces fit together should help you in troubleshooting those really
+    tricky bugs.
+  prefs: []
+  type: TYPE_NORMAL

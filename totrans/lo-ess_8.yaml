@@ -1,0 +1,653 @@
+- en: Chapter 8. Internal Design and Performance
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The final chapter of this book looks at the internal design of key Lo-Dash components.
+    All previous chapters focused on the external-facing aspects of the library. Now
+    that we're well-versed in what's possible with Lo-Dash, it's time to see what's
+    under the hood. This isn't an in-depth walkthrough of the Lo-Dash source code.
+    The curious reader should by all means look at the code though. We will touch
+    the most important pieces of the implementation of Lo-Dash. These are what make
+    Lo-Dash perform not only fast but also predictably.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With these designs in mind, we'll spend the remaining sections of this chapter
+    looking at some Lo-Dash code that could be improved. Understanding some of the
+    design motivations will hopefully guide you in making your design decisions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Design principles
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Improving performance
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lazy evaluation
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Caching things
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Design principles
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Lo-Dash had some fairly modest goals in the beginning. Underscore appealed to
+    the masses because of the problems it solved and because its API was coherent
+    and easy to use. Lo-Dash's creator, John-David Dalton, wanted to prove that it
+    was possible to implement a great API, such as Underscore's, while delivering
+    consistency and performance across browsers. Additionally, Lo-Dash has the freedom
+    to implement new features that aren't welcomed by Underscore.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In order to prove his point, John-David had to establish some guiding design
+    principles. Some of the founding principles are still around today, while others
+    have morphed into something else to better support programmers who use the library
+    and contribute to it. Lo-Dash is nothing if not adaptable to change.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Function compilation to base functions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The earlier versions of Lo-Dash utilized a technique called **function compilation**.
+    This means that there were templates of a skeleton function. Then Lo-Dash would
+    fill them and create function instances on the fly. These were then exposed through
+    the API. The nice thing about this approach is that it is easy to implement a
+    ton of variability for one function without the need to implement several versions
+    of that function. Being able to implement generic functions like this while keeping
+    the code size small meant that Lo-Dash was able to tackle all sorts of different
+    use cases, from both a performance perspective and a bug-fixing/consistency perspective.
+    However, this approach was holding Lo-Dash back in two ways.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first issue with function compilation is the readability of the code—something
+    so dynamic isn't all that approachable by developers. This aspect of open source
+    goes out the window—you don't get folks reviewing code by scaring them off. The
+    second issue is that JavaScript engines are continually improving their ability
+    to optimize JavaScript code as it runs. This is also known as **just-in-time**
+    (**JIT**) optimization. So between now and the time that Lo-Dash was first conceived,
+    browser vendors have come a long way. In such a short time, these improvements
+    weren't being fully utilized by Lo-Dash and its approach of function compilation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In recent versions of Lo-Dash (2.4 and 3.0 in particular), the function compilation
+    approach has been replaced with **base functions**. In other words, base functions
+    are generic components, used by several publicly-facing functions. The earlier
+    versions of the library shied away from abstractions due to the fear that unnecessary
+    indirection would mean performance penalty. While it's true that abstractions
+    do incur an overhead cost, it turns out that helping the browser perform JIT optimizations
+    outweighs this cost.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This doesn't mean that Lo-Dash has abandoned all caution of abstraction overhead.
+    The implementation is quite clever and readable, which solves earlier issues of
+    comprehending the source. A given base function is probably used in several places,
+    which reduces repetitive code. What's more important is the way the base functions
+    are structured. A given function that's exposed through the API will do some initial
+    work to make sense of the arguments that were passed. Essentially, this is the
+    preparation so that more exact arguments can be passed to the base function. This
+    results in better predictability for the JavaScript engine. The cost of calling
+    a base function is often negated, especially when the same call is made frequently—the
+    engine will often inline the function to where it's called.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So what's the implication here for Lo-Dash programmers? Nothing really. The
+    way these internal base functions are structured and used should not impact your
+    code at all. This, however, should give some insight into how Lo-Dash is able
+    to evolve quickly, based on developer feedback and changing JavaScript technologies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Optimizing for the common case
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This principle, **optimize for the common case**, has been with Lo-Dash from
+    day one. Sure, subtle implementation details have evolved, but the underlying
+    idea remains intact and this will likely always be the case. Think of this as
+    the golden rule in Lo-Dash (the unofficial rule). Just as the Linux kernel development
+    has a golden rule, called *don't break user space*, think of *optimize for the
+    common case* as something to always strive for.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Take the base function approach that''s now used in favor of function compilation.
+    We can choose which base function to call based on the arguments the user has
+    supplied. For example, a function that accepts a collection could use a base function
+    that works only with arrays. It''s optimized for arrays. So, when the function
+    that accepts a collection is called, it checks whether it''s dealing with an array
+    or not. If it is, it''ll use the faster base function. Here''s an illustration
+    of the pattern using pseudo-JavaScript:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The common path is the first path that's tested. The `baseArray()` function
+    that is executed is generic enough and used frequently enough to get special treatment
+    from the JIT. The strategy is to assume that the common case is passing an array.
+    The assumption isn't arbitrary either; it's benchmarked against typical use cases
+    during development. The worst case is when we're dealing with a string or when
+    a plain object isn't slow, necessarily, it's just not optimized. So these slower
+    calls, as infrequent as they are, will be offset by the optimized calls that happen
+    all the time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The common case can even be tiered. That is, your function is thrown one of
+    several cases when called, and all of those possibilities have an order to their
+    frequency. For example, if the most common case isn't met, what's the next most
+    common case? And so on. The effect of this technique pushes the uncommon code
+    down towards the bottom of the function. On its own, this doesn't have a huge
+    impact on performance, but when every function in the library consistently follows
+    the same common case optimization techniques, the impact is huge.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Loops are simple
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Lo-Dash uses a lot of loops in its code. That's because there's a lot of iterating
+    over collections. It's also because Lo-Dash does not use certain native functions
+    that would otherwise negate the need for a loop. This is the opposite of the stance
+    Underscore.js takes on this matter. It prefers the native methods whenever they're
+    available. The logic being the JavaScript library shouldn't have to worry about
+    iteration performance. Instead, the browser vendor should improve the native method
+    performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This approach makes sense, especially when the side effect is writing less code.
+    However, Lo-Dash doesn't rely on the browser vendor to deliver performance. We
+    can get better performance out of simple `while` loops and this will likely continue
+    in the foreseeable future. Native methods are undoubtedly faster than unoptimized
+    JavaScript code, but they aren't able to perform the same kind of optimizations
+    as we're able to when using pure JavaScript.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Lo-Dash is a strategic animal. It doesn't like to rely on certain native JavaScript
+    methods, but it relies heavily on the JIT abilities of any given JavaScript engine
+    for performance, cost balancing in action.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Lo-Dash also doesn''t like to rely on `for` loops—`while` loops are preferred.
+    The `for` loop is useful when used to iterate over collections, thus enhancing
+    code readability. Under these simple circumstances, trying to use a `while` loop
+    is just cumbersome. Even though the `while` loop does have a slight performance
+    edge over the `for` loop, it''s not really all that noticeable. The performance
+    difference is noticeable in the case of several large collections that are frequently
+    iterated over. This is the common case that Lo-Dash accounts for. Consider the
+    following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The difference between the two loops is hardly perceptible. Probably a couple
+    of years ago, the lead the `while` loop had over `for` may have been wider, which
+    is one reason Lo-Dash is still using `while` loops everywhere. Another reason
+    is consistency. Since the `while` loop is nearly identical wherever it's implemented
+    in Lo-Dash, you can expect its performance to be predictable throughout. This
+    is especially true given that there's not a mixture of `while` loops, `for` loops,
+    and native JavaScript methods. Sometimes, predictable performance is better than
+    *sometimes it's faster, but I can never be sure*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Callbacks and function binding
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Callbacks are used everywhere in Lo-Dash, both internally and as arguments of
+    API functions. So it's important that these functions get executed with as little
+    overhead as possible. The big culprit that slows down these function calls is
+    the `this` context, that is, the context that the function is bound to. If there's
+    no context to consider, then there's clearly less overhead involved, especially
+    considering that these callback functions typically get called once per iteration
+    if the function is operating on a collection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If there's a specific context for the callback function, then we have to use
+    `call()` to call the function, since it allows us to set the context. Or if there
+    are an unknown number of arguments, we use the `apply()` function, passing the
+    context and the arguments as an array. This is especially slow if executed iteratively.
+    To help combat these performance hurdles, Lo-Dash uses a base function to help
+    construct callback functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This function is used anywhere where there''s a callback function passed as
+    an argument. The first step is to use this function to build a potentially wrapped
+    callback function. This initial examination is worth the cost because of the potential
+    savings when it has to be called iteratively. Here''s a rough idea of how this
+    function works:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is a gross simplification of what `baseCallback()` is really doing, but
+    the general pattern is accurate. The most common cases that build a callback function
+    are checked first. The uncommon, slower cases are pushed to the bottom. For example,
+    if there's no `thisArg`, we don't have to bind the function; it can just be returned.
+    The next case that is checked is whether or not the function has already been
+    bound. If it has been, then the `thisArg` value is ignored and the function is
+    returned. If neither of these checks passes and the `argCount` argument is supplied,
+    we can use `call()`, supplying the exact number of arguments. The preceding pseudocode
+    shows the case of only a single argument, but in reality, it checks for several
+    exact argument counts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The uncommon case is when `thisArg` is supplied, meaning we have to bind the
+    function and we don't know how many arguments are there. So, we use `apply()`,
+    the slowest scenario. Other cases `baseCallback()` is able to handle include a
+    string or a plain object being passed as `func` instead of a function instance.
+    For such cases, there are specific callback functions that get returned and this
+    is also checked for early on since it's a common case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `alreadyBound()` function is something made up for brevity. Lo-Dash knows
+    whether a function is already bound or not by looking at the metadata for that
+    function. In this context, metadata refers to data that's attached to the function
+    by Lo-Dash, but is completely transparent to the developer. For example, many
+    callbacks will track data about the frequency with which they are called. If the
+    function becomes *hot*, Lo-Dash will treat it differently than callbacks that
+    aren't executed frequently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Improving performance
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Just because Lo-Dash is designed from the ground up for optimal performance,
+    it doesn't mean there are no basic modifications we can make to our Lo-Dash code
+    to improve performance. In fact, we can sometimes borrow some Lo-Dash design principles
+    and apply them directly to our code that utilizes Lo-Dash.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Changing the operation order
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Using a Lo-Dash wrapper around a value, such as an array, lets us chain together
+    many operations on that value. As we saw in [Chapter 6](ch06.html "Chapter 6. Application
+    Building Blocks"), *Application Building Blocks*, a wrapper has many advantages
+    over stitching together, piecemeal, several statements that call Lo-Dash functions.
+    For example, the end result is often more concise and readable code. The different
+    orders in which we call these operations in a chain can yield the same result
+    and yet have different performance implications. Let''s look at three different
+    approaches to filtering a collection that get us the same result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `collection` array is quite straightforward. It contains `100` items and
+    each item is an object with two properties. The first is a numerical ID. The second
+    is a random Boolean value. The goal is to filter out anything that's not `enabled`
+    and anything with an `id` value that is less than `75`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first approach builds a chain consisting of two `filter()` calls. The first
+    `filter()` call removes any disabled items. The second approach removes anything
+    with an `id` property whose value is less than `75`. However, the ordering of
+    these filtering operations isn't optimal. You might have noticed that there are
+    a large number of items removed based on their `id` value. This is due to the
+    nature of the filter and the dataset we're dealing with.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Any calls made to `filter()` mean that a linear iteration takes place over the
+    collection. With the first approach, there are two calls made to `filter()`, which
+    means that we'll have to iterate linearly over the collection twice. Given what
+    we now know about the collection data and what the filter is looking for, we can
+    optimize the ordering of the filter calls. This is a simple change. We first filter
+    by `id` and then by the `enabled` property. The result is a noticeable boost in
+    performance because the second call to `filter()` has to iterate over far fewer
+    items.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The third approach takes things a step further and removes an iteration completely.
+    Since both filter conditions are checked in the `filter()` callback function,
+    there's no need to iterate over any collection item twice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Of course, the trade-off here is more complexity in the given callback function.
+    Keep this in mind if your application does lots of filtering, because you'll want
+    to avoid defining highly specialized callback functions that serve a single purpose.
+    It's generally a better idea to keep your functions small and generic. The second
+    approach strikes a good balance. These types of optimizations don't often happen
+    upfront, so wait until the common case reveals itself before trying to optimize
+    for it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sorting and indexing collections
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: If the order of the collection is an important factor in the application you're
+    developing, you can introduce tweaks that take advantage of its importance. These
+    tweaks include maintaining the sort order. There's really no point in re-sorting
+    collections every time you need to render it. Rather, it's better to sort the
+    collection once and then maintain its order by inserting new items in the correct
+    place. Lo-Dash has the `sortedIndex()` function, which helps find the proper insertion
+    point for new items. In fact, it performs a binary search and is much faster than
+    a linear search through the collection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For faster filtering operations, we can borrow the `sortedIndex()` function.
+    If we have a sorted collection, there''s really no need to filter items using
+    a linear search, which performs rather poorly in the worst case. Let''s introduce
+    a new `mixin` function that performs the same job as the `filter()` function but
+    is optimized for sorted collections:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The new function we've introduced—`sortedFilter()`—is faster than the `filter()`
+    function. Again, this is because we don't have to rely on a linear search, since
+    the collection is sorted. Instead, the `sortedIndex()` function is used to find
+    what we're looking for. It uses a binary search, which means that with larger
+    collections, there are a large number of items that aren't checked. The end result
+    is fewer CPU cycles and faster execution time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our `sortedFilter()` implementation, thanks largely to `sortedIndex()`, isn't
+    all that complicated. The binary search gets us the insertion point to insert
+    the new item, but we're not actually inserting anything. We're just looking for
+    it. There could be several items that match our criteria, or there could be none.
+    This is where we iterate over the collection, using the insertion index as a starting
+    point. We now have to explicitly check the values using `isEqual()` and build
+    the result array. Since the collection is sorted, we know to stop and return when
+    items stop matching the filter criteria.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Always take care to validate your code for correctness when improving Lo-Dash
+    functions for performance purposes. The easiest way to do this is to set up a
+    number of automated tests that compare the output of the Lo-Dash function with
+    that of your faster variant. This allows you to throw all kinds of edge cases
+    at your code before you get too excited about your newly found speed. Lo-Dash
+    takes care of a lot of edge cases, so make sure you don't sidestep safety in favor
+    of performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another technique in speeding up filtering operations on collections is to
+    index them. This means creating a new data structure that uses keys to look for
+    common items in the collection. This is another way to avoid the costly linear
+    search in large collections. Here''s an example that uses `groupBy()` to index
+    a collection for a fast search of items using common filtering criteria:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The indexed approach takes much less time than the `where()` approach to look
+    for the same items. This approach is useful when there are several instances of
+    the same filter throughout your application. The `indexed` variable holds the
+    indexed version of the collection. The index is created using the `groupBy()`
+    function. It takes an array as the input and produces an object. The index keys
+    are the object keys, and the callback passed to `groupBy()` is responsible for
+    generating these keys. The function returns the key value, and if the key already
+    exists, the item is added to that key.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The idea is that we want items indexed by their `age` property value, and by
+    whether or not they're `enabled`. We use a neat little trick here to do that.
+    The `enabled` property is converted to a positive integer and multiplied by the
+    `age` value. So any disabled items will be indexed under `0`, where nobody looks.
+    Now you can see that looking for the items in the `indexed` object yields the
+    same results as the `where()` filter. With the latter approach, we're doing a
+    simple object access operation rather than iterating over a collection and performing
+    several operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: While the speedups here are quite impressive, be sure to consider the update
+    frequency for items in this collection. If you think about it, the indexed version
+    is really just a cache of common filter results. So if the collection is never
+    updated, you're good to go assuming you're okay with the one-time payment of actually
+    indexing the collection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bound and unbound callbacks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Lo-Dash embraces callback functions and does a really good job of optimizing
+    the way they're called. For example, it avoids using `call()` and `apply()` when
+    there's no `this` context necessary, and this is for a good reason—these calls
+    are a lot slower than unbound function calls. So when we're writing our application
+    that utilizes Lo-Dash callback functions, we have the option to provide context
+    to each of these callbacks as they're applied to collections. Take the time to
+    weigh the trade-offs before coding functions in this way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Binding our functions to a context is convenient when we want to use the same
+    function in a different context. This isn't always necessary and it depends largely
+    on the overall design of our code. If we have tons of objects that our callbacks
+    need to access, the `this` context is pretty convenient. We might even have a
+    single application object that is used to access other objects, and so on. If
+    that's the case, we'll definitely need a way to pass this object to our callback
+    functions. This could mean binding the `this` context, accessing the object through
+    function closure, or creating a partial function for our callback.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'None of these options are particularly performance friendly. Therefore, if
+    we find that our callbacks are in constant need of access to some object, it might
+    make sense to define it in a callback function, instead of defining it as a variable.
+    The following code illustrates this idea:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can see that the unbound callback function will generally outperform the
+    bound callback function. What's important to note here is the approach. The `bound()`
+    function is bound to a specific context with the call to `map()`. This is because
+    it needs something from the application object. The `unbound()` function, instead
+    of relying on some external instance, will declare the variable itself. So we
+    will get what we need for the callback without the need to bind to a specific
+    callback function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At first, this may seem like a counterintuitive approach to defining application-level
+    variables inside a callback function. Well, it boils down to the rest of your
+    code. Do you have a lot of callback functions that require access to this data?
+    If you put this callback function in an easy-to-locate place in your source tree,
+    then it's really not all that different from modifying a variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Switching from bound to unbound functions doesn't yield a huge performance gain
+    when there are just a handful of callback functions. Even if there are lots of
+    functions, it's fine to have several bound functions without impacting performance.
+    The idea of this section is to keep you on the lookout for functions that are
+    *needlessly* bound to a context. Fix them where you can if they don't have a noticeable
+    impact on your design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lazy evaluation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: With the introduction of Lo-Dash 3.0, some functions use a **lazy evaluation**
+    to compute their results. This simply means that the items in a given collection
+    aren't iterated over until they're actually needed. It's figuring out when they're
+    needed that is the tricky part. For example, just calling a single Lo-Dash function
+    doesn't invoke any lazy evaluation mechanism. However, operations that are chained
+    together could certainly benefit from this approach, in certain circumstances.
+    For example, when we're only taking 10 items from the result, there's no need
+    to iterate over the entire collection further up the chain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To get an idea of what a lazy evaluation looks like, let''s write some code
+    to utilize it. There''s nothing explicit to be done. The lazy mechanism happens
+    transparently, behind the scenes, depending on which operations make up our chain
+    and what order they''re called in:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, our chain is composed of two functions—`reject()` and `map()`. Since `reject()`
+    is called first, Lo-Dash makes it a lazy wrapper. This means that when `value()`
+    is called, things are done a bit differently. Rather than running each function
+    to completion, the lazy functions in the chain are asked for a value. For example,
+    `reject()` doesn't run until `map()` asks it for a value. When it does, `reject()`
+    will run till it produces a value. We can actually see this behavior in the output.
+    The `reject()` function is checking item `1`, which gets rejected. It then moves
+    on to item `2`, which passes the test. This is then passed to `map()`. Then item
+    `3` is checked, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The two function calls are interleaved and this property can extend upward
+    through many functions in a more complicated chain. The advantage is that if these
+    functions are too expensive to run through an entire collection, they generally
+    don''t have to. They''ll execute only when asked to execute. Let''s see this concept
+    in action:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can see that the lazy approach takes much less time than the motivated approach,
+    even though it is taking `100` results and the latter is taking only `10`. The
+    reason is simple—the collection is large and the entire thing is filtered using
+    the motivated approach. The lazy approach uses far fewer iterations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Caching things
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The best way to improve the performance of an operation is to not perform it—at
+    least not twice, or worse, hundreds or thousands of times. Repeating costly computations
+    is an unnecessary waste of CPU cycles and can be avoided by caching the results.
+    The `memoize()` function helps us here, by caching the results of the called function
+    for later use. However, caching has its own overheads and pitfalls to be aware
+    of. Let''s start by taking a look at idempotent functions—these always produce
+    the same output when given the same input arguments:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `primeFactors()` function returns an array of prime factors of the given
+    number. It has to do a fair amount of work to compute the returned array. There
+    is nothing that hogs the CPU for any substantial amount of time, but nonetheless,
+    it's work—work that yields the same result for a given input. Idempotent functions
+    such as these are good candidates for memoization. This is easy to do with the
+    `memoize()` function and we use this function to generate the `primes()` function.
+    Also note that the cache key is the first argument, which is nice and easy here
+    because it's the only input we're interested in caching.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: It's important to take into consideration the amount of overhead involved with
+    looking up cached items. It's not a lot, but it's there. Often, this overhead
+    outweighs the value of caching the results in the first place. The preceding code
+    is a case of testing with a relatively large collection. As that collection size
+    shrinks, so does the performance gain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'While it''s nice to cache the results of idempotent functions because you never
+    have to worry about invalidating that cache, let''s look at a more common use
+    case:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here we're caching the result of mapping a collection to a different representation.
+    In other words, we're mapping the `age` property. This mapping operation can be
+    costly if it's repeated throughout the application. So we use the `memoize()`
+    function to cache the result of mapping the age values, resulting in the `ages()`
+    function. However, there's still the issue of looking up the cached collection—we
+    need a key resolution function. The one we've provided is quite simple. It assigns
+    a unique identifier to the `mapAges` property of the collection. The next time
+    `ages()` is called, this identifier is found and the cached copy is looked up.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can see that not having to map the collection again and again saves CPU cycles.
+    And this is a simple mapping; other mappings with callback functions can be costlier
+    and much more elaborate than simply plucking a value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Of course, this code assumes that this collection is constant and never changes.
+    If you're building a large application with lots of moving parts, static collections
+    like these are actually quite common. If the collection, or items in the collection
+    for that matter, change frequently throughout its lifetime, you have to start
+    thinking about invalidating the cache. It's probably not worth caching maps or
+    other transformations for temperamental collections because, apart from naming
+    things, cache invalidation is the toughest of all problems in programming.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we introduced some of the influences that guide the design
+    and implementation of Lo-Dash. Earlier versions of the library opted for function
+    compilation, building the functions on the fly to best handle performance and
+    other variations from environment to environment. Recent versions have traded
+    this approach for common base functions. Function compilation avoided some of
+    the indirection associated with base functions. However, modern browsers have
+    a JIT optimizer. It is better able to optimize base functions. Besides, the code
+    is much more readable with base functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The golden rule of the implementation of Lo-Dash is optimization for the common
+    case. You'll see this rule in action all over Lo-Dash, and it is the key factor
+    in its superior performance. In any given function, the most common case is heavily
+    optimized first, pushing the uncommon cases towards the end of the function. Callbacks
+    are used everywhere in Lo-Dash, so it's important that they're able to perform
+    predictably. The base callback machinery takes care of this for us and serves
+    as a great example of optimizing for the common case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We then looked at some techniques used to optimize our Lo-Dash code, following
+    the design principles of Lo-Dash in most cases. Changing the order of chained
+    operations in a Lo-Dash wrapper can eliminate needless iterations. Working with
+    sorted collections can have a dramatic impact on filter performance. Lazy evaluation
+    is a concept recently introduced to Lo-Dash, and it allows us to work with large
+    collections without necessarily iterating over the entire collection. Lastly,
+    we looked at some scenarios where caching could help boost performance, especially
+    where the computations are expensive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With that said, you're all set. Throughout this book, we learned and implemented
+    concept after concept, starting with what you get out of the box in Lo-Dash, and
+    wrapping up with how to go faster. Along the way, we looked at the most common
+    usage patterns used to write solid Lo-Dash code. By now, it should be clear how
+    everything in Lo-Dash relates to everything else, from the conceptual to the low-level
+    function calls. As with any other library, there are a dozen or more ways of doing
+    something in Lo-Dash. I hope you're now well-equipped to do it the best way.
+  prefs: []
+  type: TYPE_NORMAL
