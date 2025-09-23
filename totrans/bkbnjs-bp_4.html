@@ -1,0 +1,489 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;4.&#xA0;Building a Calendar"><div class="titlepage"><div><div><h1 class="title"><a id="ch04"/>Chapter 4. Building a Calendar</h1></div></div></div><p>We're going to build a calendar in this chapter. You might think that's what we built in the last chapter, but this <a id="id233" class="indexterm"/>one is going to be different; it will be like<a id="id234" class="indexterm"/> a very boiled-down version of Google Calendar. We'll be able to view a month or a day at a time, and plan events that span a certain number of hours.</p><p>In this chapter, we will discuss the following ideas:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Better application component organization, with only one global variable for the whole application</li><li class="listitem" style="list-style-type: disc">Putting model functionality inside model methods</li><li class="listitem" style="list-style-type: disc">Using disposable models to encapsulate important information that we don't need to store on the server</li><li class="listitem" style="list-style-type: disc">Displaying a single model instance in multiple views</li></ul></div><p>You can begin with the project template, as we have done before. However, we'll be using precompiled templates as we did in the previous chapter, and we'll also be separating our code into <code class="literal">models.js</code>, <code class="literal">views.js</code>, and <code class="literal">router.js</code>. You may choose to copy the previous project and clear out the custom code instead, so that you'll have the <code class="literal">Gruntfile.js</code> file that we created last time.</p><div class="section" title="Planning our application"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec42"/>Planning our application</h1></div></div></div><p>Once again, we'll begin by planning our application. Our primary model will be the <code class="literal">Event</code> model. It <a id="id235" class="indexterm"/>has the same name as the model we created in the last chapter, but it's a bit different. This one will have a title, date, and start time and end time. We'll allow multiple events in one day, but events cannot overlap (because we can't be at two events at one time). Then, we'll also create a <code class="literal">Calendar</code> collection class to hold our events.</p><p>Our application will have two screens. The first will be a month view, in a standard, tabular, wall-calendar style. Then, a click on one of the days in that view will switch us to a day view, which will give the hour-by-hour breakdown of events for that day. This will also be the screen from which we can create new events.</p></div></div>
+<div class="section" title="Creating the model and collection"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec43"/>Creating the model and collection</h1></div></div></div><p>Let's start with the <code class="literal">Event</code> model class, which will go in the <code class="literal">models.js</code> file of the <code class="literal">public</code> folder. <a id="id236" class="indexterm"/>Separating our code into multiple files is a good first step for organization, but we can go one step further. Previously, each of <a id="id237" class="indexterm"/>our classes has been referenced by its own global variable. You probably know that this isn't a really wise technique. If we're using other libraries, frameworks, or plugins, we don't want two components to use the same variable name and mess up the works. In this application, we're going to put all our classes safely inside a single global object. So, we start the <code class="literal">models.js</code> file with the following code:</p><div class="informalexample"><pre class="programlisting">window.App = window.App || {};
+App.Models = {};</pre></div><p>The first line may seem a bit tricky; why not just use <code class="literal">var App = {};</code>? Well, the technique I've used <a id="id238" class="indexterm"/>here allows us to not worry about the order our files are loaded in the browser. This line first checks to see whether <code class="literal">window.App</code> exists. If it does,<a id="id239" class="indexterm"/> it assigns it to itself (basically, it does nothing). If it doesn't exist, we can be sure that this is the first of our files to load, and so we create it as a blank object. This technique will work as long as we begin all our custom JavaScript files in this application in that way.</p><p>The next line creates a <code class="literal">Models</code> property. Our model and collection classes will be properties of this object.</p><p>Now, we're ready to create our <code class="literal">Event</code> model class, like this:</p><div class="informalexample"><pre class="programlisting">App.Models.Event = Backbone.Model.extend({});</pre></div><p>We're going to start with a basic model, but we'll be coming back to add a lot of functionality to it. As I mentioned earlier, putting model functionality inside model methods is one of the most important action points discussed in this chapter.</p><p>We also have our collection class, which is this code:</p><div class="informalexample"><pre class="programlisting">App.Models.Calendar = Backbone.Collection.extend({
+  model: App.Models.Event,
+  url: "/events",
+});</pre></div><p>There's nothing new or unique here. Notice that we do need to refer to our model class by its full name as a property, because it's not a global variable anymore.</p><p>There's actually one more model that we need to create; however, this model isn't one that we're going to store instances of on the server, or allow our users to know about; it's just a class that we're <a id="id240" class="indexterm"/>going to use internally, to make some of our view code simpler. Remember, we're making a calendar; this means that we're <a id="id241" class="indexterm"/>going to need a lot of information about each month that we display: the name of the month, the number of days, and the day of the <a id="id242" class="indexterm"/>week that the month starts on, just to name a few things. So, we're<a id="id243" class="indexterm"/> going to create a <code class="literal">Month</code> model class, and use this to keep track of all of this data. The following is the code for the <code class="literal">Month</code> model class:</p><div class="informalexample"><pre class="programlisting">App.Models.Month = Backbone.Model.extend({
+  defaults: {
+    year : moment().year(),
+    month: moment().month()
+  },
+  initialize: function (options) {
+    var m = this.moment();
+    this.set('name', m.format('MMMM'));
+    this.set('days', m.daysInMonth());
+    this.set('weeks', Math.ceil((this.get('days') + m.day()) / 7));
+  },
+  moment: function () {
+    return moment([this.get('year'), this.get('month')]);
+  }
+});</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note12"/>Note</h3><p>I want to make it clear that we don't need to use a <code class="literal">Backbone</code> model class here. A simple JavaScript constructor function, with a few methods on the prototype, would be sufficient. However, since we're working with Backbone, we'll create a model class so we can see how to use a model that has a disposable data wrapper of sorts.</p></div></div><p>We've included the <code class="literal">defaults</code> property, not so much because we expect to need <code class="literal">defaults</code>, but as a simple way of documenting what properties we expect the <code class="literal">options</code> object we pass to the <code class="literal">Month</code> constructor to have. When we create a <code class="literal">Month</code> instance, we need to give it a year and a month, both as numbers. As you might expect, we're using the Moment library heavily in this application, because we're going to do a lot of the date math. Remember that the Moment library uses zero-indexed values for month numbers, so, January is 0, and December is 11.</p><p>In the <code class="literal">initialize</code> method<a id="id244" class="indexterm"/>, we start by calling the <code class="literal">moment</code> method<a id="id245" class="indexterm"/>, which you can see at the bottom of the class. This method simply returns a new <code class="literal">moment</code> object. The <code class="literal">moment</code> constructor<a id="id246" class="indexterm"/> can take an <a id="id247" class="indexterm"/>array with time values (year, month, date, hour, and so on). We only need <code class="literal">year</code> and <code class="literal">month</code>, so we're passing it only these two values. The rest of the values will default to their earliest possible values, so this <code class="literal">moment</code> object will be for midnight on the first day of our month. That's perfect.</p><p>So, back in the <code class="literal">initialize</code> method, we call the <code class="literal">moment</code> method. Then, we set a few other properties that our <code class="literal">Month</code> object will need: the string name of the month, the number of days in the month, <a id="id248" class="indexterm"/>and the number of weeks in the month. The last property will be important when we render the month table; we'll need to <a id="id249" class="indexterm"/>know how many table rows we need. We can find the number of weeks for the month by adding the number of days in the month<a id="id250" class="indexterm"/> to the day value from the <code class="literal">moment</code> object. This will be a numerical value for the day of the week that the first day of the month falls on. Handily, this is also the number of days from the previous month that we need to pad the beginning of the month with. We then divide this number by 7, and round up.</p><p>With these classes in place, we're ready to start the router, so open the <code class="literal">router.js</code> file from the <code class="literal">public</code> directory. As in the <code class="literal">models.js</code> file, we'll start with the following line:</p><div class="informalexample"><pre class="programlisting">window.App = window.App || {};</pre></div><p>Then, we'll write the router class, which will initially render the page for the user:</p><div class="informalexample"><pre class="programlisting">App.Router = Backbone.Router.extend({
+  initialize: function (options) {
+    this.main = options.main;
+    this.calendar = options.calendar;
+    App.Router.navigate = this.navigate.bind(this);
+  },
+  routes: {
+    '': 'month',
+    ':year/:month': 'month'
+  },
+  month: function (year, month) {
+    var c = this.clean(year, month);
+
+    this.main.html(new App.Views.Month({
+      collection: this.calendar,
+      model: new App.Models.Month({ year: c[0], month: c[1] })
+    }).render().el);
+  }
+});</pre></div><p>As in our previous applications, our router constructor expects to receive a main element that our views will render in, and a collection object that we call <code class="literal">calendar</code>. We make these local in our <code class="literal">initialize</code> method. We also make a bound copy of the router's <code class="literal">navigate</code> method so that our views can change routes. This time, we do this by making it a class property of the <code class="literal">Router</code> class.</p><p>Next, we have our<a id="id251" class="indexterm"/> routes.<a id="id252" class="indexterm"/> Things are a bit different this time, in that both routes will call the same method: <code class="literal">month</code>. The second one makes sense; any route of the pattern <code class="literal">/year/month</code> will show that month. However, we want the root route to show the current month; that's why it calls the same method.</p><p>Then, the <code class="literal">month</code> method <a id="id253" class="indexterm"/>takes the year and month parameters and<a id="id254" class="indexterm"/> passes them to a <code class="literal">clean</code> function to make sure they are usable. This will return an array with year and month values that we can use. What about the root route, which doesn't have those parameters? The clean method will take care of that. After that, we can put a new <code class="literal">App.Views.Month</code> view into our main element. This view will take two properties: the <code class="literal">calendar </code>collection and a <code class="literal">Month</code> model. We create a <code class="literal">Month</code> instance, passing it the year and month from the cleaned array.</p><p>The <code class="literal">clean</code> method is pretty simple:</p><div class="informalexample"><pre class="programlisting">clean: function (year, month, day) {
+  var now = moment();
+  year  = parseInt(year, 10)             || now.year();
+  month = (parseInt(month, 10) - 1) % 12 || now.month();
+  day   = parseInt(day, 10)              || now.day();
+  return [year, month, day];
+}</pre></div><p>The function takes three parameters: <code class="literal">year</code>, <code class="literal">month</code>, and <code class="literal">day</code>. These will be strings, because that's how they come from the route. Each one will be parsed as an integer, but it is possible that one of these won't parse to a number. If that's the case, we'll get the current year, month, or day from a <code class="literal">moment</code> object. Then, we'll return an array with the numbers we need. These built-in defaults mean that the root route will get the current year and month. It also has an interesting side effect; the route <code class="literal">/what/4</code> will show April of the current year.</p><p>So, with the router in place, we can go over to the <code class="literal">index.ejs</code> file in the <code class="literal">views</code> folder. You'll want to start by making sure all our scripts are in place. Don't forget to get the Moment library, as<a id="id255" class="indexterm"/> we did in the previous chapter, and add <code class="literal">models.js</code>, <code class="literal">views.js</code>, and <code class="literal">router.js</code>. Finally, let's instantiate the router, as shown in the following code:</p><div class="informalexample"><pre class="programlisting">&lt;script&gt;
+  var r = new App.Router({
+    main: $("#main"),
+    calendar: new App.Models.Calendar([])
+  });
+
+  Backbone.history.start({ pushState: true });
+&lt;/script&gt;</pre></div><p>Notice that when we create our Calendar, we put in an empty array. Normally, this is where we would get <a id="id256" class="indexterm"/>models from the server, but we're <a id="id257" class="indexterm"/>going to do it a bit differently this time. Let's <a id="id258" class="indexterm"/>hardcode some sample data right here. This way, we can focus on the frontend code for now. We'll get the backend stuff soon enough. So, inside that array, add some models, as shown in the following lines of code:</p><div class="informalexample"><pre class="programlisting">{ "title": "event one", "date": "2014-01-06", "startTime": "10:00", "endTime": "12:00", "id": 1 },
+{ "title": "event two", "date": "2014-01-08", "startTime": "00:00", "endTime": "24:00", "id": 2 },
+{ "title": "event three", "date": "2014-01-09", "startTime": "18:00", "endTime": "21:00", "id": 3 }</pre></div><p>You'll probably want to change the dates to be current when you're reading this. This is because the calendar will default to showing the current month, so you'll be able to see these events.</p><p>There's one more thing to do in the <code class="literal">index.ejs</code> file; we can't really get a nice-looking calendar without doing a bit of styling, so we're going to do just that—add the following line in the head of the file:</p><div class="informalexample"><pre class="programlisting">&lt;link rel="stylesheet" href="/style.css" /&gt;</pre></div><p>We'll add this style sheet file later. Now, we're ready to create our views.</p></div>
+<div class="section" title="Creating the month view"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec44"/>Creating the month view</h1></div></div></div><p>The month view <a id="id259" class="indexterm"/>will display the month as a table, just <a id="id260" class="indexterm"/>like a wall calendar. Events will show within the cell of the appropriate day. This will require several nested views, so let's begin with the <code class="literal">Month</code> view. Here's how we start:</p><div class="informalexample"><pre class="programlisting">App.Views.Month = Backbone.View.extend({
+  template: JST.month,
+  render: function () {
+    this.el.innerHTML = this.template(this.model.toJSON());
+    var weeks = this.model.get('weeks');
+
+    for (var i = 0; i &lt; weeks; i++) {
+      this.$("tbody").append(new App.Views.WeekRow({
+        week  : i,
+        model : this.model,
+        collection: this.collection
+      }).render().el);
+    }
+    return this;
+  }
+});</pre></div><p>We'll give this class a <code class="literal">JST.month</code> template<a id="id261" class="indexterm"/> and a <code class="literal">render</code> method. Before we discuss the <code class="literal">render</code> method, let's take a look at the template file.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note13"/>Note</h3><p>Notice how we're not naming our views <code class="literal">MonthView</code> and <code class="literal">WeekRowView</code>, as we had before. Instead, they're just <code class="literal">Month</code> and <code class="literal">WeekRow</code>. We're doing this because we'll have to refer to them as <code class="literal">App.Views.Month</code> or <code class="literal">App.Views.MonthTable</code> anyway, so there's no need to say <code class="literal">View</code> twice.</p></div></div><p>As you can tell, the following code will go in the <code class="literal">month.html</code> file, in the <code class="literal">template</code> folder:</p><div class="informalexample"><pre class="programlisting">&lt;h1&gt;
+  &lt;span class="prev"&gt; &amp;larr; Previous Month &lt;/span&gt; 
+  {{name}} {{year}}
+  &lt;span class="next"&gt; Next Month &amp;rarr; &lt;/span&gt;
+&lt;/h1&gt;
+&lt;table class='month'&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Sunday&lt;/th&gt;
+      &lt;th&gt;Monday&lt;/th&gt;
+      &lt;th&gt;Tuesday&lt;/th&gt;
+      &lt;th&gt;Wednesday&lt;/th&gt;
+      &lt;th&gt;Thursday&lt;/th&gt;
+      &lt;th&gt;Friday&lt;/th&gt;
+      &lt;th&gt;Saturday&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;</pre></div><p>There's a heading at the top, which will have the name and year for the month we are displaying. There<a id="id262" class="indexterm"/> will also be buttons to move to the next and previous months. Underneath that, there will be a <code class="literal">&lt;table&gt;</code> element, which will display the month. Don't forget to run <code class="literal">grunt</code> to compile the template.</p><p>Now, look back at<a id="id263" class="indexterm"/> the <code class="literal">render</code> method. We start by rendering our template, passing to it the data from the <code class="literal">Month</code> model. Then, we get the <code class="literal">weeks</code> property of the <code class="literal">month</code> model; this tells us how many rows our table needs (one row per week). Finally, we loop that many times, appending a new <code class="literal">WeekRow</code> view to the <code class="literal">&lt;tbody&gt;</code> element each time. A <code class="literal">WeekRow</code> instance takes three properties: the number of the week (0 for the first, 1 for the second, and so on), the <code class="literal">month</code> model, and the <code class="literal">calendar</code> collection.</p><p>The last step for this view is to make our next month and previous month buttons work. Add the following events property to the <code class="literal">Month</code> view:</p><div class="informalexample"><pre class="programlisting">events: {
+  'click .prev': 'prev',
+  'click .next': 'next'
+},</pre></div><p>These event listeners need the <code class="literal">prev</code> and <code class="literal">next</code> methods to work, so let's add those methods to this class too:</p><div class="informalexample"><pre class="programlisting">prev: function () {
+  var route = this.model.moment()
+    .subtract(1, 'month').format('YYYY/MM');
+  App.Router.navigate(route, { trigger: true });
+},
+next: function () {
+  var route = this.model.moment()
+    .add(1, 'month').format('YYYY/MM');
+  App.Router.navigate(route, { trigger: true });
+}</pre></div><p>When the <code class="literal">&lt;span&gt;</code> elements are clicked on, we'll call the <code class="literal">next</code> or <code class="literal">prev</code> methods, respectively. Both<a id="id264" class="indexterm"/> methods get the next or previous <a id="id265" class="indexterm"/>month by adding or subtracting one month to the <code class="literal">moment</code> instance of the <code class="literal">month</code> model. Then, we format it as necessary and trigger the route change.</p><div class="section" title="Building the week row"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec13"/>Building the week row</h2></div></div></div><p>The <code class="literal">WeekRow</code> view,<a id="id266" class="indexterm"/> which we're about to create, is more complex than what we've done so far. Before we <a id="id267" class="indexterm"/>look at the code, think for a minute about a week row in the table. There are three cases. The first week of a month will probably need a few blank cells before the first day, the middle weeks will have seven days, and the last week will have only the days that are left. This will require a little extra code in the <code class="literal">render</code> method. Here's the class:</p><div class="informalexample"><pre class="programlisting">App.Views.WeekRow = Backbone.View.extend({
+  tagName: 'tr',
+  initialize: function (options) {
+    if (options) {
+      this.week = options.week;
+    }
+  },
+  render: function () {
+    var month = this.model;
+
+    if (this.week === 0) {
+      var firstDay = month.moment().day();
+      for (var i = 0; i &lt; firstDay; i++) {
+        this.$el.append("&lt;td&gt;");
+      }
+    }
+
+    month.weekDates(this.week).forEach(function (date) {
+      date = month.moment().date(date);
+      this.$el.append(new App.Views.DayCell({
+        model: date,
+        collection: this.collection.onDate(date)
+      }).render().el);
+    }, this);
+
+    return this;
+  }
+});</pre></div><p>The element of each <code class="literal">WeekRow</code> view is <code class="literal">&lt;tr&gt;</code>. In the <code class="literal">initialize</code> method, we get the <code class="literal">week</code> option; as you <a id="id268" class="indexterm"/>know, the <code class="literal">model</code> and <code class="literal">collection</code> properties come automatically. In the <code class="literal">render</code> method, we<a id="id269" class="indexterm"/> start by creating a <code class="literal">month</code> variable, just as a shortcut to this model. Next, we look for our first special case: the first week. If we're creating the row for the first week, we first need to find what day of the week the month starts on. We can do this with <code class="literal">month.moment().day()</code>. The <code class="literal">day</code> method returns the zero-based index of the day of the week. This is exactly what we need, because if the month starts on a Sunday, we'll get a 0, which is the number of blank cells we'll need, and so on.</p><p>So, the <code class="literal">firstDay</code> variable is the number of blank cells we need. We then loop, appending as many empty <code class="literal">&lt;td&gt;</code> elements as we need.</p><p>The next step is to add the right number of <code class="literal">DayCell</code> views to the <code class="literal">WeekRow</code> view. This sounds simple; but it's actually a little tricky, for two reasons. First, because the first week probably won't have seven days, we'll have to figure out how many it should have. The second reason is that we'll need to do a bit of math to get the date number for that cell. To make the view code simpler here, we will create a method in our <code class="literal">App.Models.Month</code> class. The <code class="literal">weekDates</code> method will take a week number and return an array with the dates for that week. In the <code class="literal">models.js</code> file in the <code class="literal">Month</code> class, add the following method:</p><div class="informalexample"><pre class="programlisting">weekDates: function (num) {
+  var days  = 7,
+      dates = [],
+      start = this.moment().day();
+
+  if (num === 0) {
+    days -= start;
+    start = 0;
+  }
+
+  var date = num*7 + 1 - start, 
+      end  = date + days;
+
+  for (; date &lt; end; date++) {
+    if (date &gt; this.get('days')) continue;
+    dates.push(date);
+  }
+  return dates;
+},</pre></div><p>We start by creating a few variables; the number of days in a week, an array of dates to return at the end, and the day of the week that this month starts on. Then, if we're working on the first week here, we subtract <code class="literal">start</code> from <code class="literal">day</code>, because the first week doesn't have seven days in it. Then, we set <code class="literal">start</code> to <code class="literal">0</code>, for later use.</p><p>Next, we do a <a id="id270" class="indexterm"/>bit of math to get <code class="literal">date</code>, the first date for this week. We multiply the week number by 7, and then add 1, so it isn't zero-indexed. Finally, we subtract <code class="literal">start</code> to correct for a week that doesn't start on Sunday. Lastly, we create the <code class="literal">end</code> variable, which we'll use to stop the loop.</p><p>Then, we loop<a id="id271" class="indexterm"/> from <code class="literal">date</code> to <code class="literal">end</code> and push the incrementing <code class="literal">date</code> into the <code class="literal">dates</code> array. It's important that we compare <code class="literal">date</code> to the number of days this month should have and not push it into the array if <code class="literal">date</code> is greater than this value.</p><p>Finally, we return the <code class="literal">dates</code> array.</p><p>Now, if you look back at the <code class="literal">WeekRow</code> view's <code class="literal">render</code> method, things should make more sense. We get the array of dates for that week and loop over it with the native <code class="literal">forEach</code> method. For each <code class="literal">date</code> variable, we create an actual <code class="literal">moment</code> object. We get the month's <code class="literal">moment</code> object and mutate it by calling the <code class="literal">date</code> method, which sets the date (day of the month) on the object. We then pass that <code class="literal">date</code> variable and part of the calendar collection to a new <code class="literal">DayCell</code> view, which we render and append to the element.</p><p>Notice that I said "part of the calendar collection"; we're calling the <code class="literal">onDate</code> method, which returns a new <code class="literal">Calendar</code> collection instance with only the events on the date we pass to the method. This <code class="literal">onDate</code> method goes in the <code class="literal">models.js</code> file in the <code class="literal">Calendar</code> collection. However, before we get there, we need to create another method; this is a method of the <code class="literal">Event</code> class:</p><div class="informalexample"><pre class="programlisting">start: function () {
+  return moment(this.get('date') + " " + this.get('startTime'));
+},</pre></div><p>The <code class="literal">Event</code> class's <code class="literal">start</code> method returns the new <code class="literal">moment</code> instance for the start time of the event. <a id="id272" class="indexterm"/>As you can see, we get this by concatenating the date and start time of the event, and then passing the resulting string to the <code class="literal">moment</code> function.</p><p>We'll use this method in the <code class="literal">onDate</code> method, as follows:</p><div class="informalexample"><pre class="programlisting">onDate: function (date) {
+  return new App.Models.Calendar(this.filter(function (model) {
+    return model.start().isSame(date, 'day');
+  }));
+}</pre></div><p>This calls the <a id="id273" class="indexterm"/>collection's <code class="literal">filter</code> method, and it only returns models whose dates are the same as the one passed into the <code class="literal">onDate</code> method. Then, the array that <code class="literal">filter</code> returns is passed to a new <code class="literal">Calendar</code> instance.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note14"/>Note</h3><p>Note that we don't need the start time of the event for this purpose, just the date on which the event occurs on is enough. However, we'll be using the <code class="literal">start</code> method in other places.</p></div></div></div><div class="section" title="Building the day cells"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec14"/>Building the day cells</h2></div></div></div><p>Things<a id="id274" class="indexterm"/> are<a id="id275" class="indexterm"/> coming together nicely! We're now ready for that <code class="literal">DayCell</code> view class that we're using within our <code class="literal">WeekRow</code> views. Let's start with the template in the <code class="literal">dayCell.html</code> file, in the <code class="literal">templates</code> folder. The following is the code for this template:</p><div class="informalexample"><pre class="programlisting">&lt;span class="date"&gt;{{num}}&lt;/span&gt;
+&lt;ul&gt;
+  &lt;% titles.forEach(function (title) { %&gt;
+    &lt;li&gt;{{ title }}&lt;/li&gt;
+  &lt;% }); %&gt;
+&lt;/ul&gt;</pre></div><p>We're doing something new in this template. We've got a bit of logic. Previously, we only used the double curly braces to delimit values to interpolate. However, we can use the <code class="literal">&lt;%</code> and <code class="literal">%&gt;</code> delimiters to run any JavaScript file we want. Of course, it isn't smart to do this for a lot of code, but we're just using it to loop over an array. Since every cell represents a day on the calendar, each could have several events. We'll pass this template an array of the titles for those events. Then, inside the template, we will loop over the titles and add a list item for each one.</p><p>How about the view class? It is shown in the following code:</p><div class="informalexample"><pre class="programlisting">App.Views.DayCell = Backbone.View.extend({
+  tagName: 'td',
+  template: JST.dayCell,
+  events: {
+    'click': 'switchToDayView'
+  },
+  render: function () {
+    this.el.innerHTML = this.template({ 
+      num: this.model.date(),
+      titles: this.collection.pluck('title') 
+    });
+    return this;
+  },
+  switchToDayView: function () {
+    App.Router.navigate(this.model.format('YYYY/MM/DD'), {
+      trigger: true 
+    });
+  }
+});</pre></div><p>Every instance will be a <code class="literal">&lt;td&gt;</code> element. When rendering, we'll pass the date number, which we<a id="id276" class="indexterm"/> get from<a id="id277" class="indexterm"/> the moment instance we passed in as the model. We'll also use the collection's <code class="literal">pluck</code> method to get a single property from every instance in the collection; here, we're plucking the <code class="literal">title</code> property from each <code class="literal">Event</code> instance.</p><p>Also, notice the <code class="literal">events</code> object. We're listening for a click on the root element. When that happens, we'll use <code class="literal">App.Router.navigate</code> to get to the individual day view. We get the route by formatting the <code class="literal">moment</code> instance.</p><p>Believe it or not, we now have enough in place to actually see something in the browser. Compile your templates, start up your server, and load up <code class="literal">http://localhost:3000/</code> in the browser. You should see something like the following screenshot:</p><div class="mediaobject"><img src="graphics/6997OS_04_01.jpg" alt="Building the day cells"/></div><p>It's all right, but not that pretty. We can fix that, however. Remember the link to the <code class="literal">style.css</code> file<a id="id278" class="indexterm"/> that we put in the <code class="literal">index.ejs</code> file? Create that file in the <code class="literal">public</code> directory now.</p><p>We'll start with the following code:</p><div class="informalexample"><pre class="programlisting">body {
+  font-family: sans-serif;
+  margin: 0;
+}</pre></div><p>This will <a id="id279" class="indexterm"/>set the font and margin for the whole page. Then, we move on to view-specific styling:</p><div class="informalexample"><pre class="programlisting">.prev, .next {
+  font-size: 60%;
+}
+h1 {
+  text-align: center;
+  margin: 0;
+}</pre></div><p>This is for the <code class="literal">Month</code> view's header. It will shrink the next and previous buttons just a bit, and center the header on the screen.</p><p>To give our table a border, we'll add the following code:</p><div class="informalexample"><pre class="programlisting">table { 
+  border-collapse: collapse;
+}
+
+td {
+  border: 1px solid #ccc;
+}</pre></div><p>These are for any<a id="id280" class="indexterm"/> table; so this styling will be used on the individual day page, where we will have <a id="id281" class="indexterm"/>another table. However, we need to do a few things specifically for the month table, as shown here:</p><div class="informalexample"><pre class="programlisting">table.month {
+  table-layout: fixed;
+  width: 1000px;
+  height: 600px;
+  margin: auto;
+}</pre></div><p>You'll recall that we added the <code class="literal">month</code> class to our month's <code class="literal">&lt;table&gt;</code> element. We're taking advantage of that here. If you aren't familiar with the <code class="literal">table-layout</code> attribute, it basically makes sure that all of our columns are of the same width.</p><p>Next, we want to style the individual cells. This is how that's done:</p><div class="informalexample"><pre class="programlisting">table.month td {
+  position: relative;
+  vertical-align: top;
+}
+table.month td .date {
+  font-weight: bold;
+  position: absolute;
+  font-size: 100px;
+  bottom: -23px;
+  right: -4px;
+  color: #ececec;
+  z-index: -1;
+}</pre></div><p>We have to position the <code class="literal">&lt;td&gt;</code> elements relatively so that we can position the <code class="literal">&lt;span&gt;</code> elements with the <code class="literal">date</code> class absolutely inside them, for effect. This is an old trick that will let us position the <code class="literal">&lt;span&gt;</code> elements absolutely in their parent (a <code class="literal">&lt;td&gt;</code> element), instead of in the whole page. The rest of this is just for looks.</p><p>The user will click <a id="id282" class="indexterm"/>on these <code class="literal">&lt;td&gt;</code> elements to take them to the individual day pages, so let's give the user a little feedback when they hover over a cell, shall we?</p><div class="informalexample"><pre class="programlisting">table.month td:hover {
+  cursor: pointer;
+}
+table.month td:hover .date {
+  color: #ccc;
+}</pre></div><p>The last order <a id="id283" class="indexterm"/>of business is the unordered list of event titles that each cell will have. Here's the styling for them:</p><div class="informalexample"><pre class="programlisting">td ul {
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+  font-size: 80%;
+  height: 100%;
+  overflow: scroll;
+}
+
+td li {
+  padding: 3px 10px;
+  margin: 2px 0;
+  background: rgba(223, 240, 216, 0.5);
+  border: 1px solid rgb(223, 240, 216);
+}</pre></div><p>Notice that the <code class="literal">&lt;ul&gt;</code> element has <code class="literal">overflow: scroll</code>. This way, if a single day has many events, it won't make extra table rows at all; it will just make the rows scroll.</p><p>With all this styling in place, you can refresh the page and see what is shown in the following screenshot:</p><div class="mediaobject"><img src="graphics/6997OS_04_02.jpg" alt="Building the day cells"/></div><p>Much better, don't you think?</p></div></div>
+<div class="section" title="Creating the individual day screen"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec45"/>Creating the individual day screen</h1></div></div></div><p>Right now, <a id="id284" class="indexterm"/>when we click on a cell in our table, our route will <a id="id285" class="indexterm"/>change, but nothing will change on the screen. This isn't because we aren't triggering a change with our route-swap; we are. We just haven't created that method in our router yet. So, that's our next stop.</p><p>In the <code class="literal">router.js</code> file, add the following line to the <code class="literal">Router</code> class's <code class="literal">routes</code> property:</p><div class="informalexample"><pre class="programlisting">':year/:month/:day': 'day'</pre></div><p>Then, we need the <code class="literal">day</code> method that we're calling there:</p><div class="informalexample"><pre class="programlisting">day: function (year, month, day) {
+  var date = moment(this.clean(year, month, day)); 
+  this.main.html(new App.Views.Day({
+    date: date,
+    collection: this.calendar
+  }).render().el);
+},</pre></div><p>This method renders the<a id="id286" class="indexterm"/> <code class="literal">App.Views.Day</code> view, the top-level view for the individual pages. It takes <a id="id287" class="indexterm"/>a Moment object for the date we're displaying and the collection of events. We get a <code class="literal">moment</code> object for the date by passing the clean-up properties to the <code class="literal">moment</code> method.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note15"/>Note</h3><p>You might expect us to limit this collection to only events for the specific date the user is looking at with our <code class="literal">onDate</code> method. However, we're passing in the whole collection, because this is the <code class="literal">Calendar</code> instance to which we want to add new event instances. This is because our month view uses the <code class="literal">this.calendar</code> collection, and we want to make sure any event we add in a day view will show up in the month view immediately, with no page refresh required.</p></div></div><p>The <code class="literal">App.Views.Day</code> view is a wrapper view. It holds three main views:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><code class="literal">DayTable</code>: This<a id="id288" class="indexterm"/> provides the hour-by-hour breakdown of the day</li><li class="listitem" style="list-style-type: disc"><code class="literal">Details</code>: This<a id="id289" class="indexterm"/> provides a closer look at whichever event the user is currently hovering over</li><li class="listitem" style="list-style-type: disc"><code class="literal">CreateEvent</code>: This <a id="id290" class="indexterm"/>provides a form used to create a new event</li></ul></div><p>We'll use CSS to split the screen in two vertically. On the left, we'll have the <code class="literal">DayTable</code> view<a id="id291" class="indexterm"/>; on the right, we'll have the <code class="literal">Details</code> view<a id="id292" class="indexterm"/> and the <code class="literal">CreateEvent</code> view<a id="id293" class="indexterm"/>. The job of the <code class="literal">Day</code> view class<a id="id294" class="indexterm"/> is to put these three views in place.</p><p>We'll start with the template, by adding the following code in the <code class="literal">day.html</code> file, in the <code class="literal">templates</code> folder:</p><div class="informalexample"><pre class="programlisting">&lt;h1&gt; {{ date }} &lt;/h1&gt;
+&lt;p class='back'&gt;&amp;larr; Back to Month View &lt;/p&gt;
+&lt;div class="splitView"&gt;
+&lt;/div&gt;</pre></div><p>We'll show the <a id="id295" class="indexterm"/>date at the top of the page, with a link to go back to the month view. Then, we have a <code class="literal">&lt;div&gt;</code> element with the <code class="literal">splitView</code> class.</p><p>We interrupt this code to give you the following CSS code for that <code class="literal">splitView</code> class. Put this code in the <code class="literal">style.css</code> file:</p><div class="informalexample"><pre class="programlisting">.splitView &gt; * {
+  width: 45%;
+  margin: 2%;
+  float: left;
+}</pre></div><p>Now, let's start the <code class="literal">Day</code> view class:</p><div class="informalexample"><pre class="programlisting">App.Views.Day = Backbone.View.extend({
+  template: JST.day,
+  initialize: function (options) {
+    this.date = options.date;
+  },
+  events: {
+    'click .back' : 'backToMonth'
+  },
+  render: function () {
+    this.el.innerHTML = this.template({ 
+      date: this.date.format("MMMM D, YYYY") 
+    });
+    this.$('.splitView').append(new App.Views.DayTable({
+      date: this.date,
+      collection: this.collection
+    }).render().el);
+    return this;
+  },
+  backToMonth: function () {
+    App.Router.navigate(this.date.format('/YYYY/MM'), { 
+      trigger: true 
+    });
+  }
+});</pre></div><p>There's more, but we'll start with this. We set the template. In the <code class="literal">initialize</code> method, we get the <code class="literal">date</code> property. Then, <a id="id296" class="indexterm"/>we wire up an event. When the back button is clicked on, we'll call the <code class="literal">backToMonth</code> method, which will change the route back to the month screen in the same way we switched to the day screen.</p><p>Then, inside the <code class="literal">render</code> method, <a id="id297" class="indexterm"/>we put together part of the solution. We get the <code class="literal">&lt;div class='splitView'&gt;</code> element and append a new <code class="literal">DayTable</code> view instance. This view takes the date for this page and the collection of events.</p><p>This <code class="literal">DayTable</code> view<a id="id298" class="indexterm"/> is probably the most unique view that we'll have created up to this point in the book. As you expect, it will be an HTML table, with each row representing an hour of the day. <a id="id299" class="indexterm"/>The left column will be the time, and the right column will show the title of the event, if one is occurring during that hour. The tricky part is that most events will probably span more than one hour, so we'll have to figure out where to start and stop events.</p><p>First, how about the template for this view? Store the following code in the <code class="literal">dayTable.html</code> file in the <code class="literal">templates</code> folder:</p><div class="informalexample"><pre class="programlisting">&lt;thead&gt;
+  &lt;tr&gt;
+    &lt;th&gt; Time &lt;/th&gt;
+    &lt;th&gt; Event &lt;/th&gt;
+  &lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;/tbody&gt;</pre></div><p>As with our other<a id="id300" class="indexterm"/> table-based views, the template is the core of a table. You can see the two columns: time and events.</p><p>We'll take this view class in parts. The <code class="literal">DayTable</code> view's code is as follows:</p><div class="informalexample"><pre class="programlisting">App.Views.DayTable = Backbone.View.extend({
+  tagName: 'table',
+  className: 'day',
+  template: JST.dayTable,
+  events: {
+    'mouseover tr.highlight td.event': 'hover',
+    'mouseout  tr.highlight td.event': 'hover'
+  },
+  initialize: function (options) {
+    this.date = options.date;
+    this.listenTo(this.collection, 'add', this.addEvent)
+    this.listenTo(this.collection, 'destroy', this.destroyEvent)
+    this.hours = {};
+  }
+});</pre></div><p>The element for this view will be a table with the <code class="literal">day</code> class. We're listening for two events on this view; any table row that has an event will have the <code class="literal">highlight</code> class, and every table cell in the second column will have the <code class="literal">event</code> class. When the user moves over or out of one of the cells with an event title in it, we'll call the <code class="literal">hover</code> method to highlight that event.</p><p>In the <code class="literal">initialize</code> method, we'll get the <code class="literal">date</code> option, and then listen to our collection for models being added or destroyed. It's important we know when this happens, so we can add or remove them from the table. We'll write the <code class="literal">addEvent</code> and <code class="literal">destroyEvent</code> methods to do this.</p><p>Finally, we're <a id="id301" class="indexterm"/>creating an <code class="literal">hours</code> object, which we'll use to keep track of the <code class="literal">Hour</code> views, each of which will be a row in our table. We used this technique in the previous chapter, so we could easily sort the rows in our table. This time, we're doing it because when we want to add or remove an event from the day, we don't actually want to add or remove the <code class="literal">Hour</code> view; we just want to add or remove the event title from that view. You'll see how this works soon.</p><p>With these pieces in place, we can move on to the <code class="literal">render</code> method:</p><div class="informalexample"><pre class="programlisting">render: function () {
+  this.el.innerHTML = this.template();
+
+  for (var i = 0; i &lt; 24; i++) {
+    var time = moment(i, "H").format('h:mm A');
+    this.hours[time] = new App.Views.Hour({ time: time });
+    this.$('tbody').append(this.hours[time].render().el);
+  }
+  this.collection.onDate(this.date).forEach(this.addEvent, this);
+  return this;
+},</pre></div><p>This should make a lot of sense. We render our template first. Then, we loop 24 times; each time, we create an <code class="literal">App.Views.Hour</code> view instance, store it in the <code class="literal">this.hours</code> property for later use, and then append it to the <code class="literal">&lt;tbody&gt;</code> element. We can get the time text by creating a <code class="literal">moment</code> object with our incrementing variable; since just <code class="literal">i</code> isn't an understood date format, we need to pass <code class="literal">"H"</code> as a second parameter, so it knows that this is just the hour. Then, <a id="id302" class="indexterm"/>we format it as a nice time string. We use this time string as the property name when storing the view instance in <code class="literal">this.hours</code>. At this point (if we had an <code class="literal">Hour</code> view class), we would have a complete table, with a row for each hour of the day. However, all rows would be empty; we haven't rendered any events yet. That's why we next filter <code class="literal">collection</code> for this day's events, and loop over them, calling the <code class="literal">addEvent</code> method<a id="id303" class="indexterm"/> for each one.</p><p>The tricky part, as I mentioned earlier, is that one <code class="literal">Event</code> model instance will probably need to span several <code class="literal">Hour</code> view instances. To write the <code class="literal">addEvent</code> method, we're first going to add an <code class="literal">hours</code> method to the <code class="literal">Event</code> model class.</p><p>Add the following code to the <code class="literal">App.Models.Event</code> class<a id="id304" class="indexterm"/> in the <code class="literal">models.js</code> file:</p><div class="informalexample"><pre class="programlisting">hours: function () {
+  var hours = [],
+      start = this.start(),
+      end   = this.end();
+
+  while (start.isBefore(end)) {
+    hours.push(start.format('h:mm A'));
+    start.add(1, 'hour');
+  }
+  return hours;
+}</pre></div><p>We start by creating<a id="id305" class="indexterm"/> the currently empty <code class="literal">hours</code> array, which we'll eventually return. Then, we get the model's <code class="literal">start</code> and <code class="literal">end</code> time. We've already created the <code class="literal">start</code> method, but we need to create the <code class="literal">end</code> method. It's a little more complex than the <code class="literal">start</code> method. Add the following code to the same class that we're working on:</p><div class="informalexample"><pre class="programlisting">end: function () {
+  var endTime = moment(this.get('date') + " " +this.get('endTime'));
+  if (this.get('endTime') === '00:00') {
+    endTime.add(1, 'day');
+  }
+  return endTime;
+},</pre></div><p>As in the <code class="literal">start</code> method, we create the <code class="literal">moment</code> object by concatenating <code class="literal">date</code> and <code class="literal">endTime</code>. However, there's one special case; if the event ends at midnight, it is technically ending<a id="id306" class="indexterm"/> on the next day. However, our <code class="literal">moment</code> object will be pointing to midnight of the event date, which is the first hour of the day. So, if the end time is midnight, we'll add one day to the <code class="literal">moment</code> object. Then, we return.</p><p>Let's get back to the <code class="literal">hours</code> method. After getting the <code class="literal">start</code> and <code class="literal">end</code> times, we can loop when the <code class="literal">start</code> time is before the <code class="literal">end</code> time. We'll push a time string into the <code class="literal">hours</code> array; notice that we're formatting it as we did in the table. Then, we add an hour to the <code class="literal">start</code> object. Eventually, <code class="literal">start</code> will be the same as <code class="literal">end</code>, and the loop will stop. Then, we'll return that <code class="literal">hours</code> array.</p><p>With this method, if we have an event that goes on from 1:00 P.M. to 4:00 P.M., we'll get the following array:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>['1:00 PM', '2:00 PM', '3:00 PM']</strong></span>
+</pre></div><p>You may think that <a id="id307" class="indexterm"/>we want 4:00 P.M. in there as well, but we don't. This is because each <code class="literal">Hour</code> view instance represents a full hour; so, the hour with the label <code class="literal">1:00 PM</code> refers to the hour from 1:00 P.M. to 2:00 P.M.</p><p>With this method in <a id="id308" class="indexterm"/>place, we can go back to <code class="literal">App.Views.DayTable</code> and write the <code class="literal">addEvent</code> method. Remember that we're calling this method for each event that we need to display in the table. The following is the code for the <code class="literal">addEvent</code> method:</p><div class="informalexample"><pre class="programlisting">addEvent: function (evt) {
+  evt.hours().forEach(function (hour) {
+    this.hours[hour].displayEvent(evt);
+  }, this);
+},
+destroyEvent: function (evt) {
+  evt.hours().forEach(function (hour) {
+    this.hours[hour].removeEvent();
+  }, this);
+},</pre></div><p>The <code class="literal">addEvent</code><a id="id309" class="indexterm"/> and <code class="literal">destroyEvent</code> methods <a id="id310" class="indexterm"/>are very similar, so we're looking at them together. In both cases, we get the array of hours for the given event, and then loop over it with the native array's <code class="literal">forEach</code> method. For each hour, we get the view from <code class="literal">this.hours</code>. In the <code class="literal">addEvent</code> method, we call the view's <code class="literal">displayEvent</code> method, passing the event along to that method. In the <code class="literal">destroyEvent</code> method, we just call the view's <code class="literal">removeEvent</code><a id="id311" class="indexterm"/> method; there is no need to pass the event along.</p><p>Before we get to the <code class="literal">Hour</code> view class, let's write the last method of this class: <code class="literal">hover</code>. This method is called whenever we move the mouse over or out of one of the event titles in our table. Here's the code for the <code class="literal">hover</code> method:</p><div class="informalexample"><pre class="programlisting">hover: function (e) {
+  var id = parseInt(e.currentTarget.getAttribute('data-id'), 10),evt = this.collection.get(id);
+
+  evt.hours().forEach(function (hour) {
+    this.hours[hour].hover();
+  }, this);
+
+  this.collection.trigger("hover", evt);
+}</pre></div><p>Since this method is triggered by a DOM event, we'll get a DOM event object as our parameter (actually, <a id="id312" class="indexterm"/>since we're using jQuery, it will be a jQuery-wrapped DOM event object). The first order of business in this method is to figure out what <code class="literal">Event</code> model instance the row we're hovering over is a part of. We can do that by getting the ID of the <code class="literal">Event</code> instance. The <code class="literal">currentTarget</code> property of that DOM event object will be the element that caused the event to be triggered; later, when we render it, we'll give it the <code class="literal">data-id</code> property that we get here. Since we're listening for mouse events on the <code class="literal">&lt;td class='event'&gt;</code> element, that's what the <code class="literal">currentTarget</code> property will be.</p><p>Once we<a id="id313" class="indexterm"/> know what the ID is, we can call the collection's <code class="literal">get</code> method to find the model with that ID. Once we get that event model, we can get the hours for that event with <code class="literal">hours</code>. We then loop over those hours to find the <code class="literal">Hour</code> view instances that are displaying this event, and call their <code class="literal">hover</code> methods. Finally, we'll trigger a <code class="literal">hover</code> event on our collection, passing the event model as a parameter. This is something new; so far, we've only listened for built-in events (such as <code class="literal">add</code> and <code class="literal">destroy</code>) on our models and collections. However, we can also use the <code class="literal">trigger</code> method to create our own events. We can call our events whatever we want; we're calling this one <code class="literal">hover</code>. Elsewhere, we will listen for this event and perform an action when it happens.</p><p>You might think that we should be listening for these mouse events in the <code class="literal">Hour</code> view, since that's the view that will be affected. However, that won't work in this case, because we need to change multiple <code class="literal">Hour</code> views when a single one is hovered over.</p><p>We're finally ready to create the <code class="literal">Hour</code> view. Its template is very simple. Put the following lines in the <code class="literal">hour.html</code> file of the <code class="literal">templates</code> folder:</p><div class="informalexample"><pre class="programlisting">&lt;td class='time'&gt; {{ time }}&lt;/td&gt;
+&lt;td class='event'&gt;&lt;/td&gt;</pre></div><p>The template only expects the time; we'll fill in the event name (if one is required) from the JavaScript file.</p><p>Now, in our <code class="literal">views.js</code> file, add the following code:</p><div class="informalexample"><pre class="programlisting">App.Views.Hour = Backbone.View.extend({
+  tagName: 'tr',
+  template: JST.hour,
+  initialize: function (options) {
+    this.time = options.time;
+  },
+  render: function () {
+    this.el.innerHTML = this.template({ time: this.time });
+    return this;
+  },
+  displayEvent: function (model) {
+    this.$el.addClass("highlight");
+    this.$('.event').attr('data-id', model.get('id'));
+    this.$(".event").text(model.get('title'));
+  },
+  removeEvent: function () {
+    this.$el.removeClass('highlight');
+    this.$('.event').removeAttr('data-id');
+    this.$('.event').text('');
+  },
+  hover: function () {
+    this.$el.toggleClass('hover');
+  }
+});</pre></div><p>As we know, this view will be a <code class="literal">&lt;tr&gt;</code> element. In the <code class="literal">initialize</code> method, we get the <code class="literal">time</code> property. The <code class="literal">render </code>method is extra simple in this case, because a lot of the action takes place <a id="id314" class="indexterm"/>in the <code class="literal">displayEvent</code> and <code class="literal">removeEvent</code> methods. As we saw, the <code class="literal">addEvent</code> method in the <code class="literal">App.Views.DayTable</code> view class will call this <code class="literal">displayEvent</code> method, passing it the <code class="literal">event</code> model that occurs at that hour. In the <code class="literal">displayEvent</code> method, we'll add the <code class="literal">highlight</code> class to that hour, add the <code class="literal">data-id</code> attribute, and put the title text into the <code class="literal">&lt;td&gt;</code> element with the <code class="literal">event</code> class. When removing an event, we do the opposite; remove the <code class="literal">highlight</code> class and the <code class="literal">data-id</code> attribute, and set the text to nothing.</p><p>Finally, there's the <code class="literal">hover</code> method. This simply toggles the <code class="literal">hover</code> class on the <code class="literal">&lt;tr&gt;</code> element. Now, <a id="id315" class="indexterm"/>before checking this out in the browser, let's add a little bit of styling, add this to the <code class="literal">style.css</code> file:</p><div class="informalexample"><pre class="programlisting">table.day tr.highlight td.event {
+  background: rgb(217, 237, 247);
+  color: rgb(53, 103, 132);
+}
+table.day tr.highlight.hover td.event {
+  background: rgb(252, 248, 227);
+  color: rgb(53, 103, 132);
+}
+table.day td {
+  padding: 4px 0;
+  width: 100px;
+  text-align: center;
+}
+table.day td.event {
+  width: 500px;
+}</pre></div><p>It's nothing much; it just adds some color and spacing to the table. With all this in place, we can now load up our day view. You should see something like what is shown in the following screenshot:</p><div class="mediaobject"><img src="graphics/6997OS_04_03.jpg" alt="Creating the individual day screen"/></div><p>Not a bad look, eh? If you hover over either of the colored cells, you should see both of them switch to the yellow background.</p><p>That's the left half<a id="id316" class="indexterm"/> of our split view. Now, it's time to<a id="id317" class="indexterm"/> create the right-hand side. You'll recall that the right-hand side will have the <code class="literal">details</code> view and the creation form. Let's begin with the <code class="literal">details</code> view.</p><p>Once again, we'll start with the template: <code class="literal">details.html</code> in the <code class="literal">templates</code> folder. Its code is as follows:</p><div class="informalexample"><pre class="programlisting">&lt;h2&gt;{{ title }}&lt;/h2&gt;
+&lt;% if (start) { %&gt;
+&lt;p&gt; {{ start }} - {{ end }} ({{ duration }}) &lt;p&gt;
+&lt;p&gt;&lt;button&gt; Delete Event &lt;/button&gt;
+&lt;% } %&gt;</pre></div><p>We're again using a bit of logic in the template. If the <code class="literal">start</code> value is not just an empty string, we'll render <a id="id318" class="indexterm"/>the two paragraphs. We'll show<a id="id319" class="indexterm"/> the <code class="literal">start</code> and <code class="literal">end</code> times for the event, as well as the duration. Finally, we'll have a <span class="strong"><strong>Delete Event</strong></span> button, which will allow us to delete events.</p><p>The reason we're using this bit of logic is because when the page is first loaded, the user won't be hovering over any event. In that case, we'll show a default instruction.</p><p>Back in the <code class="literal">views.js</code> file, we'll create the following view class:</p><div class="informalexample"><pre class="programlisting">App.Views.Details = Backbone.View.extend({
+  template: JST.details,
+  events: {
+    'click button': 'delete'
+  },
+  initialize: function () {
+    this.data = {
+      title: "Hover over an event to see details",
+      start: '',
+      end: '',
+      duration: ''
+    };
+    this.render();
+  },
+  render: function () {
+    this.el.innerHTML = this.template(this.data);
+    return this;
+  },
+  changeModel: function (model) {
+    this.model = model;
+    var s = this.model.start(),
+        e = this.model.end();
+    this.data = {
+      title: model.get('title'),
+      start: s.format('h:mm A'),
+      end: e.format('h:mm A'),
+      duration: e.diff(s, 'hour') + ' hours'
+    }
+    return this.render();
+  },
+  delete: function () {
+    this.model.destroy();
+  }
+});</pre></div><p>We'll do something a bit different in the <code class="literal">initialize</code> method this time. First, we'll create some default filler data, called <code class="literal">this.data</code>, for the view, which will be displayed before the user first hovers over an hour. Then, we'll <a id="id320" class="indexterm"/>call the <code class="literal">render</code> method right away in the <code class="literal">initialize</code> method. This isn't a pattern you see very often, but there's<a id="id321" class="indexterm"/> really no reason not to do it. In the <code class="literal">render</code> method, we take that data and render the template. The important method in this class is the <code class="literal">changeModel</code> method. It takes a model as a property and recreates the <code class="literal">data</code> property from that. We put the <code class="literal">start</code> and <code class="literal">end</code> times in variables, so we don't have to call those methods twice. Then, we re-render the view, by calling the <code class="literal">render</code> method again.</p><p>You might wonder why we assign <code class="literal">this.model</code> in the <code class="literal">changeModel</code> method. This is because we'll need it in the <code class="literal">delete</code> method. We need to get a reference to the currently displayed model, so we can destroy it when the delete button is clicked on (you can see that we're connecting to the <code class="literal">delete</code> method in the <code class="literal">events</code> property). Of course, for the destruction of the model to work, we'll need to write a server method; we'll get to that.</p><p>But first, we want to render this view. To do this, go back to the <code class="literal">render</code> method in the <code class="literal">App.Views.Day</code> view class. So far, this method only creates a <code class="literal">DayTable</code> view (the left-hand side of the screen). Add the following code to that method:</p><div class="informalexample"><pre class="programlisting">var div = this.$('div').append('&lt;div&gt;')
+
+this.details = new App.Views.Details();
+div.append(this.details.el);</pre></div><p>First, we create a <code class="literal">&lt;div&gt;</code> element on the right-hand side of the split view. Then, we create a <code class="literal">Details</code> view instance and append it to that <code class="literal">div</code> element. Notice that, since we call the <code class="literal">render</code> method internally, we don't have to call it here. Also, we keep a reference to the <code class="literal">Details</code> view instance as <code class="literal">this.details</code>. This is because we need it in the <code class="literal">showDetails</code> method<a id="id322" class="indexterm"/>, which we'll add as a new method in the <code class="literal">Day</code> view class. The <code class="literal">showDetails</code> method's code is as follows:</p><div class="informalexample"><pre class="programlisting">showDetails: function (model) {
+  this.details.changeModel(model);
+}</pre></div><p>This just calls the <code class="literal">changeModel</code> method<a id="id323" class="indexterm"/> on the <code class="literal">Details</code> view. But where does this method get called? Remember that <code class="literal">hover</code> event that we triggered ourselves, when the user moves over a row? Go back up the <code class="literal">initialize</code> method of the <code class="literal">Day</code> view class, because we're going to listen for that event there with this single line of code:</p><div class="informalexample"><pre class="programlisting">this.listenTo(this.collection, 'hover', this.showDetails);</pre></div><p>Great! With <a id="id324" class="indexterm"/>all this in place, you can test it out<a id="id325" class="indexterm"/> by hovering over an event; the <code class="literal">details</code> view should look something like what is shown in the following screenshot:</p><div class="mediaobject"><img src="graphics/6997OS_04_04.jpg" alt="Creating the individual day screen"/></div><p>We only have one view left: the <code class="literal">CreateEvent</code> view. We'll start with the <code class="literal">createEvent.html</code> template. Here's its code:</p><div class="informalexample"><pre class="programlisting">&lt;p&gt;&lt;input type="text" id="eventTitle" /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;input type="time" id="eventStartTime" /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;input type="time" id="eventEndTime" /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;button&gt; Create Event &lt;/button&gt;&lt;/p&gt;
+&lt;p class="error"&gt;&lt;/p&gt;</pre></div><p>As you can see, it's the insides of a form; the view element will be the <code class="literal">&lt;form&gt;</code> element itself.</p><p>Here's the beginning of the class:</p><div class="informalexample"><pre class="programlisting">App.Views.CreateEvent = Backbone.View.extend({
+  tagName: 'form',
+  template: JST.createEvent,
+  initialize: function (options) {
+    this.date = options.date;
+  },
+  events: {
+    'click button': 'createEvent'
+  },
+  render: function () {
+    this.el.innerHTML = this.template();
+    return this;
+  }
+});</pre></div><p>You understand all this by now; even the <code class="literal">render</code> function is simple. In the <code class="literal">initialize</code> function, we're <a id="id326" class="indexterm"/>taking a <code class="literal">date</code> option, because we'll need to know on what date we're creating an event on. Where the<a id="id327" class="indexterm"/> fun starts is in the <code class="literal">createEvent</code> method. You can see that we're listening for a click on the button in our form and calling the <code class="literal">createEvent</code> method when it happens.</p><p>Here's that method:</p><div class="informalexample"><pre class="programlisting">createEvent: function (evt) {
+  evt.preventDefault();
+
+  var model = new App.Models.Event({
+    collection: this.collection.onDate(this.date),
+    title: this.$("#eventTitle").val(),
+    date: this.date,
+    startTime: this.$("#eventStartTime").val(),
+    endTime: this.$("#eventEndTime").val()
+  });
+
+  if (model.isValid()) {
+    this.collection.create(model, { wait: true });
+    this.el.reset();
+    this.$(".error").text('');
+  } else {
+    this.$(".error").text(model.validationError);
+  }
+
+  return false;
+}</pre></div><p>It's a biggie, I know. We start by preventing the default form submission. Then, we use the data from the form and <code class="literal">date</code> from the constructor to create a new model instance. When creating a model like this, it isn't saved to the server right away. We either have to call the <code class="literal">save</code> method on the model or pass it to a collection's <code class="literal">create</code> method.</p><p>You're probably wondering why we're making the <code class="literal">collection</code> object an attribute of this model instance. This is actually a bit of a hack. The first part of the explanation comes from the second part of the method. You can see that we're calling the model's <code class="literal">isValid</code> method. Backbone has the ability to do validation on our models. If our attributes don't conform to given patterns, we can prevent them from saving. We're doing it very explicitly here, <a id="id328" class="indexterm"/>by calling this method. If the model is valid, we'll save the model to the server by passing it to the collection's <code class="literal">create</code> method (we pass <code class="literal">{wait: true}</code> because our <code class="literal">DayTable</code> view is<a id="id329" class="indexterm"/> listening for additions to the collection, so it can add them to the table; this way, it won't be added until we're sure it has been saved). Then, we clear out the form elements, and remove any error from the error paragraph. That error would occur if the model didn't validate. Instead of saving, we would have displayed the model's <code class="literal">validationError</code> property in that paragraph.</p><p>Right now, we're calling the model's <code class="literal">isValid</code> method, but we haven't created any validation rules yet. Backbone's validation feature is barebones. In our <code class="literal">Event</code> model class, we'll create a method named <code class="literal">validate</code>. Whenever we try to save a model, this method will be called. As a parameter, the <code class="literal">validate</code> method will receive an object containing the attributes of the model. Inside the method, we write whatever code we want. If everything checks out, we don't return anything. However, if there's a problem, we can return an error message (it can be a simple string or something more complex). The error message will then be assigned to <code class="literal">model.validationError</code>.</p><p>So, let's write the validation method:</p><div class="informalexample"><pre class="programlisting">validate: function (attrs) {
+  if (attrs.collection) {
+    var takenHours = _.flatten(attrs.collection.invoke('hours'));
+
+    var hours = this.hours().map(function (x) {
+      return takenHours.indexOf(x);
+    }).filter(function (x) {
+      return x &gt; -1;
+    }).length;
+
+    this.unset('collection');
+
+    if (hours &gt; 0) {
+      return "You already have an event at that time.";
+    }
+  }
+}</pre></div><p>This is the second part of the explanation for why we included the <code class="literal">collection</code> object in our model's attributes. What we need to validate is the <code class="literal">start</code> and <code class="literal">end</code> times. If the event we're trying to create overlaps with other events that are already in the calendar, we can't allow the new event to be created. However, from within the model's <code class="literal">validate</code> method, there's no way to access the collection. So, we pass it as an attribute of the model we're validating, using the <code class="literal">onDate</code> method to limit it to events on this date. Sure, it's a hack; but it works.</p><p>We start by making sure that our attributes include a <code class="literal">collection</code> attribute. If we have it, the first job is to<a id="id330" class="indexterm"/> figure out what hours of the day are already taken. We can find the hours for each event <a id="id331" class="indexterm"/>individually by calling the <code class="literal">hours</code> method we created. We can use the collection's <code class="literal">invoke</code> method to call that method on all its models; it will return an array of results. Since each result is an array, we have an array of arrays. Then, we can use Underscore's <code class="literal">flatten</code> method to turn that into a one-dimensional array. The result is an array with all the hours that are already taken.</p><p>Next, we do a bit of functional-style programming. We start by calling <code class="literal">this.hours</code> to get the array of hours during which this event occurs. Then, we map that to the value of <code class="literal">takenHours.indexOf(x)</code>. This will loop over the hours of this event and get their index in the <code class="literal">takenHours</code> array. The important bit here is that if an hour isn't in <code class="literal">takenHours</code>, it will return <code class="literal">-1</code>. Next, we use the array's <code class="literal">filter</code> to filter it, only keeping the values that are greater than <code class="literal">-1</code>. Finally, we get the <code class="literal">length</code> value of the resulting array. Following this logic, the <code class="literal">hours</code> variable will be the number of values that overlap between the <code class="literal">takenHours</code> and <code class="literal">this.hours</code> arrays.</p><p>Then, we'll remove the <code class="literal">collection</code> property with the <code class="literal">unset</code> method because we no longer need it.</p><p>Finally, if the overlapping hours count is greater than 0, we'll return an error; you already have an event at that time. With this method in place, you can look back at the <code class="literal">createEvent</code> method and understand exactly what we're doing.</p><p>The last step for the <code class="literal">CreateEvent</code> class is to put it on the screen. Go back to the <code class="literal">render</code> method of the <code class="literal">App.Views.Day</code> class and add the following code:</p><div class="informalexample"><pre class="programlisting">div.append(new App.Views.CreateEvent({
+  date: this.date.format('YYYY-MM-DD'),
+  collection: this.collection
+}).render().el);</pre></div><p>We're putting it in the <code class="literal">div</code> element that we created to the right-hand side of the split view. As required, we give it the <code class="literal">date</code> string and the <code class="literal">collection</code> object, and then render it. Now, our page should look like what is shown in the following screenshot:</p><div class="mediaobject"><img src="graphics/6997OS_04_05.jpg" alt="Creating the individual day screen"/></div></div>
+<div class="section" title="Writing the server code"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec46"/>Writing the server code</h1></div></div></div><p>The server code <a id="id332" class="indexterm"/>is very simple for this application. First<a id="id333" class="indexterm"/>, we need to render the <code class="literal">index.ejs</code> template with the event models in the database. So, make sure our GET request catch-all looks like the following code:</p><div class="informalexample"><pre class="programlisting">app.get('/*', function (req, res) {
+  db.find(function (err, events) {
+    res.render("index.ejs", { events: JSON.stringify(events) });
+  });
+});</pre></div><p>Now, in the <code class="literal">index.ejs</code> file of the <code class="literal">views</code> folder, in the router creation code, remove the dummy records that we put in and replace it with the template data, like this:</p><div class="informalexample"><pre class="programlisting">calendar: new App.Models.Calendar(&lt;%- events %&gt;)</pre></div><p>Back in the <code class="literal">server.js</code> file, we need the route that the POST request is sent to when we're creating a new <code class="literal">Event</code> model. Its code is as follows:</p><div class="informalexample"><pre class="programlisting">app.post('/events', function (req, res) {
+  var b = req.body;
+  db.insert({
+    title: b.title,
+    date: b.date,
+    startTime: b.startTime,
+    endTime: b.endTime
+  }, function (err, evt) {
+    res.json(evt);
+  -});
+});</pre></div><p>We get the<a id="id334" class="indexterm"/> request body, and then create our record from its properties. Once we have saved the record, we'll send it back to the server.</p><p>Finally, we'll need<a id="id335" class="indexterm"/> the route that is called when we destroy a model. This is a DELETE request, and this is what it looks like:</p><div class="informalexample"><pre class="programlisting">app.delete('/events/:id', function (req, res) {
+  var id = parseInt(req.params.id, 10);
+
+  db.delete({ id: id }, function () {
+    res.json({});
+  });
+});</pre></div><p>We get the ID of the record, find the related row, and return an empty response. That's it for the server. With this code in place, you're ready to give it a try. Go to an individual day page and add a few events. You should get something like what is shown in the following screenshot:</p><div class="mediaobject"><img src="graphics/6997OS_04_06.jpg" alt="Writing the server code"/></div><p>You can see all the components in play here; the table of hours, the hover effect, and the details view. <a id="id336" class="indexterm"/>You can even see the error message when we try to create an event that overlaps with another.</p><p>There's one last <a id="id337" class="indexterm"/>step; a nicety, really. If you go back to the month view, you will notice that the events in each day cell don't appear in order of time. Instead, they appear in the order we created them. It would be nice if they appeared in order of occurrence, and this is very simple to do. In the <code class="literal">App.Models.Calendar</code> class (in the <code class="literal">models.js</code> file), we can write a <code class="literal">comparator</code> method to keep things in order:</p><div class="informalexample"><pre class="programlisting">comparator: function (a, b) {
+  return a.start().isAfter(b.start());
+},</pre></div><p>We can simply return the result of the <code class="literal">moment</code> object's <code class="literal">isAfter</code> method to see which should come first; Backbone takes care of the rest.</p></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec47"/>Summary</h1></div></div></div><p>We've done a lot of new and interesting things in this chapter. The most difficult part was getting the hover effect. It required us to find all the views that represented a single model instance. Most of the time, in a Backbone application, you'll have a single view representing a model instance at a time. However, as you've seen here, while this is the norm, it certainly isn't the only way possible.</p><p>The other neat use of Backbone was the <code class="literal">Month</code> class that we created. We're really just using it as a handy wrapper; there's no reason we couldn't have written a simple function that returned an object literal. However, the way we've done it shows off the flexibility of Backbone.</p><p>The last, but arguably most important, idea from this chapter is the idea of moving appropriate logic into the model class, instead of putting it in the view class. Good examples of this are the <code class="literal">App.Models.Calendar</code> class's <code class="literal">onDate</code> method or the <code class="literal">App.Models.Event</code> class's <code class="literal">hours</code> method. This is one of the big ideas of the Model-View-Controller pattern. Of course, Backbone isn't strictly MVC, but a lot of the principles still apply. As much as you can, make your model classes fat and your views and routers thin. This doesn't mean putting view or routing logic in the model. It means that any logic that isn't specifically about views or routing should probably be in a model class. For more on this topic, there's a lot of great MVC material online; you could start with <a class="ulink" href="http://dev.tutsplus.com/tutorials/mvc-for-noobs--net-10488">http://dev.tutsplus.com/tutorials/mvc-for-noobs--net-10488</a>. In the next chapter, we'll take things to a whole new level when we create a real-time, two-way chat application.</p></div></body></html>
