@@ -1,0 +1,244 @@
+# 附录 A. 四子棋 – 游戏逻辑
+
+在第三章中，我们构建了一个用于四子棋游戏的多玩家游戏 API，其中我们专注于创建游戏、加入游戏和玩游戏的一般机制。本附录展示了我们在第三章中省略的伴随游戏逻辑，即*多玩家游戏 API*正文部分。
+
+```js
+src/lib/connect4.js
+
+/*
+  Connect 4 Game logic
+
+  Written for Blueprints: Express.js, Chapter 3
+
+*/
+var MIN_ROWS = 6,
+    MIN_COLUMNS = 7,
+    players = ['x','o'];
+
+// Initializes and returns the board as a 2D array.
+// Arguments accepted are int rows, int columns,
+// Default values: rows = 6, columns = 7
+exports.initializeBoard = function initializeBoard(rows, columns){
+  var board = [];
+  rows = rows || MIN_ROWS;
+  columns = columns || MIN_COLUMNS;
+
+  // Default values is minimum size of the game
+  if (rows < MIN_ROWS) {
+    rows = MIN_ROWS;
+  }
+
+  if (columns < MIN_COLUMNS) {
+    columns = MIN_COLUMNS;
+  }
+
+  // Generate board
+  for (var i = 0; i < rows; i++){
+    var row = [];
+    for (var j = 0; j < columns; j++){
+      row.push(' ');
+    }
+    board.push(row);
+  }
+  return board;
+};
+
+// Used to draw the board to console, mainly for debugging
+exports.drawBoard = function drawBoard(board){
+  var numCols = board[0].length,
+      numRows = board.length;
+  consolePrint(' ');
+  for (var i = 1; i <= numCols; i++){
+    consolePrint(i+'');
+    consolePrint(' ');
+  }
+  consolePrint('\n');
+  for (var j = 0; j < numCols*2+1; j++){
+    consolePrint('-');
+  }
+  consolePrint('\n');
+  for (i = 0; i < numRows; i++){
+    consolePrint('|');
+    for (j = 0; j < numCols; j++){
+      consolePrint(board[i][j]+'');
+      consolePrint('|');
+    }
+    consolePrint('\n');
+    for (j = 0; j < numCols*2+1; j++){
+      consolePrint('-');
+    }
+    consolePrint('\n');
+  }
+};
+
+// Make a move for the specified player, at the indicated column for this board
+// Player should be the player number, 1 or 2
+exports.makeMove = function makeMove(player, column, board){
+  if (player !== 1 && player !== 2) {
+    return false;
+  }
+  var p = players[player-1];
+  for (var i = board.length-1; i >= 0; i--){
+    if (board[i][column-1] === ' '){
+      board[i][column-1] = p;
+      return board;
+    }
+  }
+  return false;
+}
+
+// Check for victory on behalf of the player on this board, starting at location (row, column)
+// Player should be the player number, 1 or 2
+exports.checkForVictory = function checkForVictory(player, lastMoveColumn, board){
+  if (player !== 1 && player !== 2) {
+    return false;
+  }
+  var p = players[player-1],
+      directions = [[1,0],[1,1],[0,1],[1,-1]],
+      rows = board.length,
+      columns = board[0].length,
+      lastMoveRow;
+  lastMoveColumn--;
+  // Get the lastMoveRow based on the lastMoveColumn
+  for (var r = 0; r < rows; r++) {
+    if(board[r][lastMoveColumn] !== ' ') {
+      lastMoveRow = r;
+      break;
+    }
+  }
+
+  for (var i = 0; i<directions.length; i++){
+    var matches = 0;
+    // Check in the 'positive' direction
+    for (var j = 1; j < Math.max(rows,columns); j++){
+      if (board[lastMoveRow + j*directions[i][1]] && p === board[lastMoveRow + j*directions[i][1]][lastMoveColumn + j*directions[i][0]]){
+        matches++;
+      } else {
+        break;
+      }
+    }
+    // Check in the 'negative' direction
+    for (j = 1; j < Math.max(rows,columns); j++){
+      if (board[lastMoveRow - j*directions[i][1]] && p === board[lastMoveRow - j*directions[i][1]][lastMoveColumn - j*directions[i][0]]){
+        matches++;
+      } else {
+        break;
+      }
+    }
+    // If there are greater than three matches, then that means there are at least 4 in a row
+    if (matches >= 3){
+      return true;
+    }
+  }
+  return false;
+};
+
+function consolePrint(msg) {
+  process.stdout.write(msg);
+}
+And the accompanying unit tests:
+var expect = require('chai').expect;
+
+var connect4 = require('../src/lib/connect4');
+
+describe('Connect 4 Game Logic | ', function() {
+  describe('#Create a board ', function() {
+    var board = connect4.initializeBoard();
+
+    it('should return game boards of the defaults length when too small', function(done) {
+      var board2 = connect4.initializeBoard(3,3),
+          board3 = connect4.initializeBoard(5),
+          board4 = connect4.initializeBoard(3,10),
+          board5 = connect4.initializeBoard(10,3);
+
+      // Make sure the board is a 2D array
+      expect(board2).to.be.an('array');
+      expect(board2.length).to.equal(board.length);
+      expect(board2[0].length).to.equal(board[0].length);
+      for(var i = 0; i < board2.length; i++){
+        expect(board2[i]).to.be.an('array');
+      }
+
+      // Make sure the board is a 2D array
+      expect(board3).to.be.an('array');
+      expect(board3.length).to.equal(board.length);
+      expect(board3[0].length).to.equal(board[0].length);
+      for(var i = 0; i < board3.length; i++){
+        expect(board3[i]).to.be.an('array');
+      }
+      // Board initialized with 3 rows, but should default to 6
+      expect(board4).to.be.an('array');
+      expect(board4.length).to.equal(board.length);
+      for(var i = 0; i < board4.length; i++){
+        expect(board4[i]).to.be.an('array');
+      }
+      // Board initialized with 3 columns, but should default to 7
+      expect(board5).to.be.an('array');
+      expect(board5[0].length).to.equal(board[0].length);
+      for(var i = 0; i < board5.length; i++){
+        expect(board5[i]).to.be.an('array');
+      }
+
+      done();
+
+    });
+
+    it('should only allow pieces to be placed #row amount of times', function(done) {
+      board = connect4.initializeBoard();
+      for (var i = 0; i < board.length; i++) {
+        board = connect4.makeMove(1, 1, board);
+      }
+      // Column should be full
+      expect(connect4.makeMove(1, 1, board)).to.be.an('boolean').and.equal(false);
+      // Out of bounds
+      expect(connect4.makeMove(1, 0, board)).to.be.an('boolean').and.equal(false);
+      expect(connect4.makeMove(1, board[0].length+1, board)).to.be.an('boolean').and.equal(false);
+
+      done();
+
+    });
+
+    it('should return victory if there are 4 in a row', function(done) {
+      // Vertical Win
+      board = connect4.initializeBoard();
+      for (var i = 0; i < 3; i++) {
+        board = connect4.makeMove(1, 1, board);
+        expect(connect4.checkForVictory(1, 1, board)).to.equal(false);
+      }
+      board = connect4.makeMove(1, 1, board);
+      expect(connect4.checkForVictory(1, 1, board)).to.equal(true);
+
+      // Horizontal Win
+      board = connect4.initializeBoard();
+      for (var i = 1; i < 4; i++) {
+        board = connect4.makeMove(1, i, board);
+        expect(connect4.checkForVictory(1, 1, board)).to.equal(false);
+      }
+      board = connect4.makeMove(1, 4, board);
+      expect(connect4.checkForVictory(1, 4, board)).to.equal(true);
+
+      // Diagonal Win
+      board = connect4.initializeBoard();
+      for (var i = 1; i < 4; i++) {
+        for (var j = 1; j <= i; j++){
+          if (j===i){
+            board = connect4.makeMove(1, i, board);
+          } else {
+            board = connect4.makeMove(2, i, board);
+          }
+          expect(connect4.checkForVictory(1, 1, board)).to.equal(false);
+        }
+      }
+      for (var i = 0; i < 3; i++) {
+        board = connect4.makeMove(2, 4, board);
+        expect(connect4.checkForVictory(2, 4, board)).to.equal(false);
+      }
+      board = connect4.makeMove(1, 4, board);
+      expect(connect4.checkForVictory(1, 4, board)).to.equal(true);
+
+      done();
+
+    });
+  });
+});
+```
