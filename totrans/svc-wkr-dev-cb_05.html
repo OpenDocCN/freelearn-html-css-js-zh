@@ -1,0 +1,682 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;5.&#xA0;Reaching Beyond the Offline Cache"><div class="titlepage"><div><div><h1 class="title"><a id="ch05"/>Chapter 5. Reaching Beyond the Offline Cache</h1></div></div></div><p>In this chapter, we will cover the following topics:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Getting network responses offline</li><li class="listitem" style="list-style-type: disc">Caching content from ZIP</li><li class="listitem" style="list-style-type: disc">Selecting the best content provider (load balancer)</li><li class="listitem" style="list-style-type: disc">Redirecting a request</li><li class="listitem" style="list-style-type: disc">Setting request headers</li><li class="listitem" style="list-style-type: disc">Making a service worker act like a remote server (virtual server)</li><li class="listitem" style="list-style-type: disc">Making a service worker act as a dependency injector</li><li class="listitem" style="list-style-type: disc">Forcing immediate control</li><li class="listitem" style="list-style-type: disc">Implementing fallback responses</li><li class="listitem" style="list-style-type: disc">Deferring offline requests</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec37"/>Introduction</h1></div></div></div><p>In this chapter, we will reach beyond the offline cache and look into advance techniques such as offline network responses; advanced request handling including redirecting, setting request headers, deferring offline requests, and implementing fallback requests; and using a service worker as a load balancer or dependency injector, forcing immediate control, and also caching content from ZIP files.</p><p>Let's start off this chapter by looking at how to get network responses offline.</p></div></div>
+<div class="section" title="Getting network responses offline"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec38"/>Getting network responses offline</h1></div></div></div><p>Read-through<a id="id240" class="indexterm"/> caching is an assertive approach of all-out caching for the type of static content that you visit regularly. This is not very suitable for dynamic content such as news and sports. A selective caching approach would be better suited for such instances. Read-through caching saves us bandwidth for the server as well as requests over the network. The way read-through caching works is that after the service worker takes control of your page when the first <code class="literal">fetch()</code> request is called, the response will be cached and subsequent requests to the same URL will be served from the cache.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec101"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec102"/>How to do it...</h2></div></div></div><p>Follow these instructions to set up your file structure:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Copy the <code class="literal">index.html</code>, <code class="literal">index.js</code>, <code class="literal">service-worker.js</code>, and <code class="literal">style.css</code> files from the following location:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/01/">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/01/</a>
+</p></li><li class="listitem">Open up a browser and go to <code class="literal">index.html</code>.<div class="mediaobject"><img src="graphics/B05381_05_03.jpg" alt="How to do it..."/></div></li><li class="listitem">Open <a id="id241" class="indexterm"/>up the Developer Toolbar (<span class="emphasis"><em>Cmd</em></span> + <span class="emphasis"><em>Alt</em></span> + <span class="emphasis"><em>I</em></span> or <span class="emphasis"><em>F12</em></span>). Now refresh the page and look at the message in the console. You will see the <code class="literal">style.css</code> file is served from the network, but the <code class="literal">index.js</code> file is served from the cache.<div class="mediaobject"><img src="graphics/B05381_05_04.jpg" alt="How to do it..."/></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec103"/>How it works...</h2></div></div></div><p>When the service worker file is installing the service worker, it saves the <code class="literal">index.html</code> file and the <code class="literal">index.js</code> file in the cache. We are intentionally skipping the <code class="literal">style.css</code> file here, so when you refresh the page, the service worker first looks at the cached files, finds <code class="literal">index.html</code> and <code class="literal">index.js</code> files there, and serves them from the cache. The <code class="literal">style.css</code> file is not in the cache, however, so the service worker fetches it from the network.</p><div class="informalexample"><pre class="programlisting">self.addEventListener('install', function(event) {
+  event.waitUntil(
+    caches.open(cacheName)
+      .then(function(cache) {
+        return cache.addAll([
+          'index.html',
+          'index.js'
+        ]);
+      })
+      .then(function() {
+        return self.skipWaiting();
+      })
+  );
+});</pre></div></div></div>
+<div class="section" title="Caching content from ZIP"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec39"/>Caching content from ZIP</h1></div></div></div><p>If you are <a id="id242" class="indexterm"/>concerned about the speed of loading your application over the Internet, one of the areas you might look into is reducing the number of requests made by your app to download resources. One way of reducing HTTP requests is sending your resource files, such as, images as a ZIP package to the client.</p><p>In this recipe, we will look at how we can cache resources from a ZIP file.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec104"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec105"/>How to do it...</h2></div></div></div><p>Follow these instructions to set up your file structure:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">First, we must create an <code class="literal">index.html</code> file and copy the code from the following location:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/02/index.html">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/02/index.html</a>
+</p></li><li class="listitem">Create a JavaScript file called <code class="literal">service-worker.js</code> in the same folder as the <code class="literal">index.html</code> and copy the code from the following location:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/02/index.html">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/02/index.html</a>
+</p></li><li class="listitem">Copy the third-party code from the following location into a new folder called <code class="literal">vendor</code>:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/02/vendor">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/02/vendor</a>
+</p></li><li class="listitem">Add <code class="literal">archive.zip</code>, <code class="literal">cacheProvider.js</code>, <code class="literal">helper.js</code>, <code class="literal">index.js</code>, the <code class="literal">images</code> folder, and <code class="literal">style.css</code> into the same directory as the <code class="literal">index.html</code> file from the following location:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/02/">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/02/</a>
+</p></li><li class="listitem">Open <a id="id243" class="indexterm"/>up a browser and go to the <code class="literal">index.html</code> file.<div class="mediaobject"><img src="graphics/B05381_05_01.jpg" alt="How to do it..."/></div></li><li class="listitem">Select a brand from the drop-down menu and click <span class="strong"><strong>Load</strong></span>.<div class="mediaobject"><img src="graphics/B05381_05_02.jpg" alt="How to do it..."/></div></li><li class="listitem">Now<a id="id244" class="indexterm"/> click on the <span class="strong"><strong>Uninstall</strong></span> button.<div class="mediaobject"><img src="graphics/B05381_05_26.jpg" alt="How to do it..."/></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec106"/>How it works...</h2></div></div></div><p>In our <code class="literal">index.html</code> file, we check whether the service worker is controlling the page. If so, we display the images.</p><div class="informalexample"><pre class="programlisting">navigator.serviceWorker.getRegistration().then(function(reg) {
+     if (reg &amp;&amp; reg.active) {
+       displayImages();
+     }
+   });</pre></div><p>When the service worker is active at the time of installation, we show the drop-down list:</p><div class="informalexample"><pre class="programlisting">navigator.serviceWorker.oncontrollerchange = function() {
+  if (navigator.serviceWorker.controller) {
+    printInstall('INSTALL: Completed');
+    displayImages();
+  }
+};</pre></div><p>Uninstalling<a id="id245" class="indexterm"/> the package does not remove the resources from the cache because the offline cache will not be erased by uninstalling the service worker:</p><div class="informalexample"><pre class="programlisting">document.querySelector('#uninstall').onclick = function() {      
+  …
+}</pre></div><p>Let's move on to the <code class="literal">service-worker.js</code> file. There we import some third-party scripts from the vendor folder, and also some of our own:</p><div class="informalexample"><pre class="programlisting">importScripts('./vendor/zip.js');
+importScripts('./vendor/ArrayBufferReader.js');
+importScripts('./vendor/deflate.js');
+importScripts('./vendor/inflate.js');
+importScripts('./helper.js');
+importScripts('./cacheProvider.js');</pre></div><p>At the time of the installation, we are getting the content from the ZIP file, <code class="literal">responses-offline</code>, and storing it in the cache.</p><div class="informalexample"><pre class="programlisting">self.oninstall = function(event) {
+  event.waitUntil(
+    fetch(zipURL)
+      .then(function(res) {
+        return res.arrayBuffer();
+      })
+      .then(getZipFileReader)
+      .then(cacheFileContents)
+      .then(self.skipWaiting.bind(self))
+  );
+};</pre></div><p>Gain control of the clients at the point of activation:</p><div class="informalexample"><pre class="programlisting">self.onactivate = function(evt) {
+  evt.waitUntil(self.clients.claim());
+};</pre></div><p>Query the cache and, if the request doesn't match, send the request to the network:</p><div class="informalexample"><pre class="programlisting">self.onfetch = function(evt) {
+  evt.respondWith(openCache().then(function(cache) {
+    var request = evt.request;
+
+    return cache.match(request).then(function(res) {
+      return res || fetch(request);
+    });
+  }));
+  };</pre></div><p>Now let's <a id="id246" class="indexterm"/>look at the <code class="literal">cacheProvider.js</code> file for the functions handling the cache.</p><p>We don't cache the folders, only the files inside them:</p><div class="informalexample"><pre class="programlisting">function cacheEntry(entry) {
+  if (entry.directory) {
+    return Promise.resolve();
+  }</pre></div><p>The blob writer is a supported format for the response object's constructor. The data will be read the way the writer wants it to be read:</p><div class="informalexample"><pre class="programlisting">return new Promise(function(fulfill, reject) {
+    var blobWriter = new zip.BlobWriter();
+
+    entry.getData(blobWriter, function(data) {
+      return openCache().then(function(cache) {
+        var fileLocation = getFileLocation(entry.filename),
+          response = new Response(data, { headers: {</pre></div><p>We identify the type of the file by looking at its extension:</p><div class="informalexample"><pre class="programlisting">  response = new Response(data, { headers: {
+            'Content-Type': getContentType(entry.filename)
+          } });</pre></div><p>We have to clone the <code class="literal">response</code> object because once it is being used, you cannot use it again:</p><div class="informalexample"><pre class="programlisting">if (entry.filename === ROOT) {
+          cache.put(getFileLocation(), response.clone());
+        }
+
+        return cache.put(fileLocation, response);
+      }).then(fulfill, reject);</pre></div><p>Let's look at the <code class="literal">helper.js</code> file as well. The <code class="literal">getZipFileReader(data)</code> function wraps the <code class="literal">zip.js</code> API in a promise:</p><div class="informalexample"><pre class="programlisting">function getZipFileReader(data) {
+  return new Promise(function(fulfill, reject) {
+    var arrayBufferReader = new zip.ArrayBufferReader(data);
+    zip.createReader(arrayBufferReader, fulfill, reject);
+  });
+}</pre></div><p>The <code class="literal">getContentType(filename)</code> method <a id="id247" class="indexterm"/>returns the content type of a file by the extension:</p><div class="informalexample"><pre class="programlisting">function getContentType(filename) {
+  var tokens = filename.split('.');
+  var extension = tokens[tokens.length - 1];
+  return contentTypes[extension] || 'text/plain';
+}</pre></div></div></div>
+<div class="section" title="Selecting the best content provider (load balancer)"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec40"/>Selecting the best content provider (load balancer)</h1></div></div></div><p>In this <a id="id248" class="indexterm"/>recipe, we are going to look at how we can use the service worker as a load balancer so we can decide which content provider is the best suited for us to get content from, depending on the load of the content provider.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec107"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>. You also need to make sure Node.js is available to you. You can read how to install Node.js at <a class="ulink" href="https://nodejs.org/en/">https://nodejs.org/en/</a>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec108"/>How to do it...</h2></div></div></div><p>Follow these instructions to set up your file structure:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Download all the files from the following location:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/03/">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/03/</a>
+</p></li><li class="listitem">Run the following command in the command line (make sure you have Node.js installed<a id="id249" class="indexterm"/> or read how to do so on <a class="ulink" href="https://nodejs.org/en/">https://nodejs.org/en/</a>):<div class="informalexample"><pre class="programlisting">npm install</pre></div></li><li class="listitem">Open <a id="id250" class="indexterm"/>up a browser and go to <code class="literal">index.html</code>.<div class="mediaobject"><img src="graphics/B05381_05_05.jpg" alt="How to do it..."/></div></li><li class="listitem">You can select the logo from the drop-down list and it will load the image from the best content provider, with less load. You can also manually set the server loads and click <span class="strong"><strong>Reset</strong></span>.</li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec109"/>How it works...</h2></div></div></div><p>In the <code class="literal">service-worker.js</code> file, we are forcing the service worker to gain control of the clients straight away:</p><div class="informalexample"><pre class="programlisting">self.oninstall = function(evt) {
+  evt.waitUntil(self.skipWaiting());
+};
+
+self.onactivate = function(evt) {
+  evt.waitUntil(self.clients.claim());
+};</pre></div><p>We use a regex pattern to check whether the request contains images:</p><div class="informalexample"><pre class="programlisting">function isResource(req) {
+  return req.url.match(/\/images\/.*$/) &amp;&amp; req.method === 'GET';
+}</pre></div><p>The <a id="id251" class="indexterm"/>method for the best server returns the server with the lowest load and then returns the image from that server:</p><div class="informalexample"><pre class="programlisting">function fetchContentFromBestServer(req) {
+  var session = req.url.match(/\?session=([^&amp;]*)/)[1];
+  return getContentServerLoads(session)
+    .then(selectContentServer)
+    .then(function(serverUrl) {
+      var resourcePath = req.url.match(/\/images\/[^?]*/)[0],
+        serverReq = new Request(serverUrl + resourcePath);
+
+      return fetch(serverReq);
+    });
+}</pre></div><p>The Express server will be queried to find the server loads:</p><div class="informalexample"><pre class="programlisting">function getContentServerLoads(session) {
+  return fetch(baseURL + '/server-loads?session=' + session).then(function(res) {
+    return res.json();
+  });
+}</pre></div><p>In the <code class="literal">index.js</code> file, we are setting the handlers for image selection:</p><div class="informalexample"><pre class="programlisting">navigator.serviceWorker.ready.then(displayUI);
+
+function displayUI() {
+  getServerLoads().then(function(loads) {
+    serverLoads.forEach(function(input, index) {
+      input.value = loads[index];
+      input.disabled = false;
+    });
+    document.querySelector('#image-selection').disabled = false;
+  });
+}</pre></div><p>Also, <a id="id252" class="indexterm"/>when the user clicks on the <span class="strong"><strong>Reset</strong></span> button, the manual load values will be sent to the Express server:</p><div class="informalexample"><pre class="programlisting">document.querySelector('#load-configuration').onsubmit = function(event) {
+  event.preventDefault();
+
+  var loads = serverLoads.map(function(input) {
+    return parseInt(input.value, 10);
+  });
+
+  fetch(setSession(baseURL + '/server-loads'), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(loads)
+  }).then(function(res) {
+    return res.json();
+  }).then(function(result) {
+    document.querySelector('#server-label').textContent = result;
+  });
+};</pre></div><p>When changing the image selection, in order to prevent caching, we add a cache bust parameter:</p><div class="informalexample"><pre class="programlisting">document.querySelector('#image-selection').onchange = function() {
+  var imgUrl = document.querySelector('select').value,
+    img = document.querySelector('img');
+  if (imgUrl) {
+    img.src = setSession(imgUrl) + '&amp;_b=' + Date.now();</pre></div><p>We are setting the session values with a random string and store them in <code class="literal">localStorage</code>:</p><div class="informalexample"><pre class="programlisting">function getSession() {
+  var session = localStorage.getItem('session');
+  if (!session) {
+    session = '' + Date.now() + '-' + Math.random();
+    localStorage.setItem('session', session);
+  }
+  return session;
+}</pre></div><p>The <code class="literal">server.js</code> file is an Express server running on a specified port. The service worker requires the server to run over a SSL connection. To achieve this, we are using HTTP node module and we are setting the location of the key/value pairs we created in the following recipes of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p><div class="informalexample"><pre class="programlisting">var https = require('https');
+var fs = require('fs');
+
+var privateKey = fs.readFileSync('/private/etc/apache2/localhost-key.pem', 'utf8');
+var certificate = fs.readFileSync('/private/etc/apache2/localhost-cert.pem', 'utf8');
+var credentials = { key: privateKey, cert: certificate };
+var httpsServer = https.createServer(credentials, app);</pre></div><p>We are <a id="id253" class="indexterm"/>also allowing cross-origin resource sharing for our web page to access this server.</p><div class="informalexample"><pre class="programlisting">app.use(function(req, res, next) {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+  next();
+});</pre></div></div></div>
+<div class="section" title="Redirecting a request"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec41"/>Redirecting a request</h1></div></div></div><p>Relative URLs, <a id="id254" class="indexterm"/>such as <code class="literal">test/</code>, should redirect to <code class="literal">index.html</code> if there is one in the <code class="literal">test/</code> directory. Let's test this scenario with the service worker.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec110"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec111"/>How to do it...</h2></div></div></div><p>Follow these instructions to set up your file structure:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">First, we must create an <code class="literal">index.html</code> file as follows:<div class="informalexample"><pre class="programlisting">&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;title&gt;Redirect request&lt;/title&gt;
+  &lt;link rel="stylesheet" href="style.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;section id="registration-status"&gt;
+    &lt;p&gt;Registration status: &lt;strong id="status"&gt;&lt;/strong&gt;&lt;/p&gt;
+    &lt;input type="button" id="resetButton" value="Reset" /&gt;
+  &lt;/section&gt;
+  &lt;section&gt;
+    &lt;h1&gt;Redirect&lt;/h1&gt;
+    &lt;p&gt;Relative URLs should redirect to &lt;strong&gt;index.html&lt;/strong&gt; if it exists.&lt;/p&gt;
+    &lt;p&gt;&lt;a href="test"&gt;Click&lt;/a&gt;&lt;/p&gt;
+  &lt;/section&gt;
+  &lt;script src="index.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre></div></li><li class="listitem">Create <a id="id255" class="indexterm"/>a CSS file called <code class="literal">style.css</code>, in the same folder as the <code class="literal">index.html</code> file, with the following code:<div class="informalexample"><pre class="programlisting">* {
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0 auto;
+  text-align: center;
+  font-family: sans-serif;
+}
+
+main {
+  max-width: 350px;
+  border: 1px solid #4CAF50;
+  padding: 20px;
+  border-radius: 5px;
+  width: 350px;
+  margin: 20px auto;
+}
+
+h1 {
+  color: #4CAF50;
+}
+
+img {
+  padding: 20px 0;
+  max-width: 400px;
+}
+
+.hidden {
+  display: none;
+}
+
+#registration-status {
+  background-color: #FFE454;
+  padding: 10px;
+}</pre></div></li><li class="listitem">Create <a id="id256" class="indexterm"/>a JavaScript file called <code class="literal">index.js</code>, in the same folder as the <code class="literal">index.html</code> file, with the following code:<div class="informalexample"><pre class="programlisting">'use strict';
+
+var scope = {
+  scope: './'
+};
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register(
+    'service-worker.js',
+    scope
+  ).then( function(serviceWorker) {
+    printStatus('successful');
+    if (navigator.serviceWorker.controller) {
+      showImages();
+    } else {
+      document.querySelector('#message').textContent = 'Reload the page for images to be loaded from the service worker cache';
+    }
+  }).catch(function(error) {
+    printStatus(error);
+  });
+} else {
+  printStatus('unavailable');
+}
+
+function printStatus(status) {
+  document.querySelector('#status').innerHTML = status;
+}
+
+document.querySelector('#resetButton').addEventListener('click',
+  function() {
+    navigator.serviceWorker.getRegistration().then(function(registration) {
+      registration.unregister();
+      window.location.reload();
+    });
+  }
+);</pre></div></li><li class="listitem">Create a<a id="id257" class="indexterm"/> JavaScript file called <code class="literal">service-worker.js</code> in the same folder as the <code class="literal">index.html</code> file</li><li class="listitem">:<div class="informalexample"><pre class="programlisting">'use strict';
+
+var cacheName= 'redirect-request';
+
+self.addEventListener('activate', function() {
+  clients.claim();
+});
+
+self.addEventListener('fetch', function(evt) {
+  console.log(evt.request);
+  evt.respondWith(
+    fetch(evt.request).catch(function() {
+      return new Response("FETCH: failed");
+    })
+  );
+});</pre></div></li><li class="listitem">Open up a browser and go to <code class="literal">index.html</code>.<div class="mediaobject"><img src="graphics/B05381_05_06.jpg" alt="How to do it..."/></div></li><li class="listitem">Now <a id="id258" class="indexterm"/>open up the DevTools (<span class="emphasis"><em>Cmd</em></span> + <span class="emphasis"><em>Alt</em></span> + <span class="emphasis"><em>I</em></span> or <span class="emphasis"><em>F12</em></span>) and make sure the <span class="strong"><strong>Preserve log</strong></span> checkbox is clicked. Now click on the <span class="strong"><strong>Click</strong></span> link. The page will be redirected to the <code class="literal">index.html</code> file of the <code class="literal">test/</code> directory.<div class="mediaobject"><img src="graphics/B05381_05_07.jpg" alt="How to do it..."/></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec112"/>How it works...</h2></div></div></div><p>In <a id="id259" class="indexterm"/>the <code class="literal">service-worker.js</code> file, we let all the fetch requests through to the network:</p><div class="informalexample"><pre class="programlisting">self.addEventListener('fetch', function(evt) {
+  console.log(evt.request);
+  evt.respondWith(
+    fetch(evt.request).catch(function() {
+      return new Response("FETCH: failed");
+    })
+  );
+});</pre></div><p>This way, the relative URL will redirect to the HTTP version of <code class="literal">test/</code>, if the <code class="literal">test/index.html</code> file exists.</p></div></div>
+<div class="section" title="Setting request headers"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec42"/>Setting request headers</h1></div></div></div><p>If we <a id="id260" class="indexterm"/>wanted to find out the request header details sent to the network, we can log the request header details to the console. In this recipe, we are going to find out how to do this.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec113"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec114"/>How to do it...</h2></div></div></div><p>Follow these instructions to set up your file structure:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">First, we must create an <code class="literal">index.html</code> file, as follows:<div class="informalexample"><pre class="programlisting">&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;title&gt;Request headers&lt;/title&gt;
+  &lt;link rel="stylesheet" href="style.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;section id="registration-status"&gt;
+    &lt;p&gt;Registration status: &lt;strong id="status"&gt;&lt;/strong&gt;&lt;/p&gt;
+    &lt;input type="button" id="resetButton" value="Reset" /&gt;
+  &lt;/section&gt;
+  &lt;script src="index.js"&gt;&lt;/script&gt;
+  &lt;section&gt;
+    &lt;img src="adobe-logo.png" alt="logo"&gt;
+  &lt;/section&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre></div></li><li class="listitem">Create a JavaScript file called <code class="literal">service-worker.js</code>, in the same folder as the <code class="literal">index.html</code> file, with the following code:<div class="informalexample"><pre class="programlisting">'use strict';
+
+self.addEventListener('fetch', function(evt) {
+  var request = evt.request;
+
+  console.log(
+    "FETCH: ",
+    evt.request.url,
+    "HEADERS: ",
+    new Set(request.headers)
+  );
+
+  evt.respondWith(fetch(request));
+});</pre></div></li><li class="listitem">Create a <a id="id261" class="indexterm"/>CSS file called <code class="literal">style.css</code>, in the same folder as the <code class="literal">index.html</code> file, with the following code:<div class="informalexample"><pre class="programlisting">* {
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0 auto;
+  text-align: center;
+  font-family: sans-serif;
+}
+
+main {
+  max-width: 350px;
+  border: 1px solid #4CAF50;
+  padding: 20px;
+  border-radius: 5px;
+  width: 350px;
+  margin: 20px auto;
+}
+
+h1 {
+  color: #4CAF50;
+}
+
+img {
+  padding: 20px 0;
+  max-width: 200px;
+}
+
+.hidden {
+  display: none;
+}
+
+#registration-status {
+  background-color: #FFE454;
+  padding: 10px;
+}</pre></div></li><li class="listitem">Open<a id="id262" class="indexterm"/> up a browser and go to the <code class="literal">index.html</code> file. You will see one pre-fetched bookmark.<div class="mediaobject"><img src="graphics/B05381_05_08.jpg" alt="How to do it..."/></div></li><li class="listitem">Now open up the DevTools (<span class="emphasis"><em>Cmd</em></span> + <span class="emphasis"><em>Alt</em></span> + <span class="emphasis"><em>I</em></span> or <span class="emphasis"><em>F12</em></span>), and refresh the page. Check out the log details on the console.<div class="mediaobject"><img src="graphics/B05381_05_09.jpg" alt="How to do it..."/></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec115"/>How it works...</h2></div></div></div><p>In<a id="id263" class="indexterm"/> our <code class="literal">service-worker.js</code> file, the fetch event handler logs the request details, as well as the header details of any request:</p><div class="informalexample"><pre class="programlisting">caches.open(cacheName)
+      .then(function(cache) {
+        return cache.addAll([
+          'index.html'
+        ]);
+      })</pre></div><p>In the <code class="literal">index.html</code> file, we are loading an image which will be intercepted by the controlling <a id="id264" class="indexterm"/>service worker's fetch event.</p><div class="informalexample"><pre class="programlisting">&lt;section &gt;
+    &lt;img src="adobe-logo.png" alt="logo"&gt;
+&lt;/section&gt;</pre></div></div></div>
+<div class="section" title="Making a service worker act like a remote server"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec43"/>Making a service worker act like a remote server</h1></div></div></div><p>Service workers not only act like load balancers, as we discussed in the <span class="emphasis"><em>Selecting the best content provider (load balancer)</em></span> recipe of this chapter; they can also act like virtual servers. This allows us to decouple the UI from the typical server-side business logic.</p><p>In this <a id="id265" class="indexterm"/>recipe, we are going to learn how we can move the business logic portion to a service worker responding to traditional RESTful fetch requests. To demonstrate this feature, we are going to implement a to-do app.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec116"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec117"/>How to do it...</h2></div></div></div><p>Follow these instructions to set up your file structure:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Download all the files from the following location:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/06/">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/06/</a>
+</p></li><li class="listitem">Open up a browser and go to the <code class="literal">index.html</code> file. You will see the to-do app with pre-fetched to-dos.<div class="mediaobject"><img src="graphics/B05381_05_10.jpg" alt="How to do it..."/></div></li><li class="listitem">Now <a id="id266" class="indexterm"/>open up DevTools (<span class="emphasis"><em>Cmd</em></span> + <span class="emphasis"><em>Alt</em></span> + <span class="emphasis"><em>I</em></span> or <span class="emphasis"><em>F12</em></span>) and refresh the page. Check out the log details on the console. You will see the endpoint has been accessed.<div class="mediaobject"><img src="graphics/B05381_05_11.jpg" alt="How to do it..."/></div></li><li class="listitem">You <a id="id267" class="indexterm"/>can add to-do items and their priorities, and you can also remove them by clicking on the remove icon.<div class="mediaobject"><img src="graphics/B05381_05_12.jpg" alt="How to do it..."/></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec118"/>How it works...</h2></div></div></div><p>We need to <a id="id268" class="indexterm"/>implement the endpoints to start with. In the <code class="literal">worker.js</code> file, we are creating an instance of the <code class="literal">ServiceWorkerWare</code> module. We then declare the routes for our to-do items.</p><p>We determine the root using <code class="literal">self.location</code>:</p><div class="informalexample"><pre class="programlisting">root = (function() {
+    var tkns = (self.location + '').split('/');
+    tkns[tkns.length - 1] = '';
+    return tkns.join('/');
+  })();</pre></div><p>Retrieve all to-do items:</p><div class="informalexample"><pre class="programlisting">worker.get(root + 'api/todos', function(request, response) {
+  return new Response(JSON.stringify(todos.filter(function(item) {
+    return item !== null;
+  })));
+});</pre></div><p>Retrieve the 0-based position (<code class="literal">id</code>) for deleting a specific to-do item:</p><div class="informalexample"><pre class="programlisting">worker.delete(root + 'api/todos/:id', function(request, response) {
+  var id = parseInt(request.parameters.id, 10) - 1;
+  if (!todos[id].isSticky) {
+    todos[id] = null;
+  }
+  return new Response({ status: 204 });
+});</pre></div><p>To add a new to-do item to the collection, use the following code:</p><div class="informalexample"><pre class="programlisting">worker.post(root + 'api/todos', function(request, response) {
+  return request.json().then(function(quote) {
+    quote.id = todos.length + 1;
+    todos.push(quote);
+    return new Response(JSON.stringify(quote), { status: 201 });
+  });
+});</pre></div><p>In<a id="id269" class="indexterm"/> the <code class="literal">index.html</code> file, we are loading an image that will be intercepted by the controlling service worker's fetch event:</p><div class="informalexample"><pre class="programlisting">&lt;section &gt;
+    &lt;img src="adobe-logo.png" alt="logo"&gt;
+&lt;/section&gt;</pre></div><p>In our <code class="literal">service-worker.js</code> file, we are importing a third-party script called <code class="literal">ServiceWorkerWare.js</code> and our custom script, <code class="literal">worker.js</code>, and declaring a to-do list with pre-filled to-do items:</p><div class="informalexample"><pre class="programlisting">importScripts('./vendor/ServiceWorkerWare.js');
+importScripts('./worker.js');
+
+var todos = [
+  {
+    text: 'Buy Milk',
+    priority: 'high'
+  },
+  {
+    text: 'Refill Car',
+    priority: 'medium'
+  },
+  {
+    text: 'Return loaned book',
+    priority: 'low'
+  }
+].map(function(todo, index) {
+  todo.id = index + 1;
+  todo.isSticky = true;
+
+  return todo;
+});</pre></div><p>The <code class="literal">index.js</code> file is where most of our work is taking place. When the service worker gets hold of the control of the page, it shows the list of to-do items:</p><div class="informalexample"><pre class="programlisting">navigator.serviceWorker.oncontrollerchange = function() {
+    this.controller.onstatechange = function() {
+      if (this.state === 'activated') {
+        loadTodos();
+      }
+    };
+};</pre></div><p>Clicking the <span class="strong"><strong>+</strong></span> button will retrieve the to-do item and post it to the backend:</p><div class="informalexample"><pre class="programlisting">document.getElementById('add-form').onsubmit = function(event) {</pre></div><p>Any <a id="id270" class="indexterm"/>to-do item with no priority provided will be left blank:</p><div class="informalexample"><pre class="programlisting">todoPriority = document.getElementById('priority').value.trim() ||
+                    'Not specified';</pre></div><p>Finally, send the to-do item to the backend via a post request:</p><div class="informalexample"><pre class="programlisting">fetch(endPoint, {
+    method: 'POST',
+    body: JSON.stringify(todo),
+    headers: headers
+  })</pre></div></div></div>
+<div class="section" title="Making a service worker act as a dependency injector"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec44"/>Making a service worker act as a dependency injector</h1></div></div></div><p>Dependency injection<a id="id271" class="indexterm"/> is a great pattern for avoiding hardcoded dependencies for components. In this recipe, we are going to examine how we can use a service worker to development and production environments by passing in two injectors to our components without hardcoding the dependencies.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec119"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec120"/>How to do it...</h2></div></div></div><p>Follow<a id="id272" class="indexterm"/> these instructions to set up your file structure:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Download all the files from the following location:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/07/">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/07/</a>
+</p></li><li class="listitem">Open up a browser and go to the <code class="literal">index.html</code> file:<div class="mediaobject"><img src="graphics/B05381_05_20.jpg" alt="How to do it..."/></div></li><li class="listitem">Click on the <span class="strong"><strong>Production</strong></span> link. You will see a hash added in front of the URL, <code class="literal">#production</code>.<div class="mediaobject"><img src="graphics/B05381_05_21.jpg" alt="How to do it..."/></div></li><li class="listitem">Now click on the buttons. You will get the JavaScript alert messages as a result.<div class="mediaobject"><img src="graphics/B05381_05_22.jpg" alt="How to do it..."/></div></li><li class="listitem">Open up DevTools (<span class="emphasis"><em>Cmd</em></span> + <span class="emphasis"><em>Alt</em></span> + <span class="emphasis"><em>I</em></span> or <span class="emphasis"><em>F12</em></span>).</li><li class="listitem">Now<a id="id273" class="indexterm"/> click on the <span class="strong"><strong>Development</strong></span> button and then click on the buttons. Check out the log details on the console. You will get the console messages as a result.<div class="mediaobject"><img src="graphics/B05381_05_23.jpg" alt="How to do it..."/></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec121"/>How it works...</h2></div></div></div><p>We are adding a section to the <code class="literal">index.html</code> file with two links and three buttons; the links are for production and development, and the buttons are for prompts:</p><div class="informalexample"><pre class="programlisting">&lt;section id="actions"&gt;
+      &lt;h1&gt;Environment Switch&lt;/h1&gt;
+      &lt;p&gt;
+        &lt;a href="#production"&gt;Production&lt;/a&gt;&amp;nbsp;|&amp;nbsp;
+        &lt;a href="#development"&gt;Development&lt;/a&gt;
+      &lt;/p&gt;
+      &lt;p&gt;
+        &lt;button id="alert"&gt;Alert&lt;/button&gt;
+        &lt;button id="confirm"&gt;Confirm&lt;/button&gt;
+        &lt;button id="prompt"&gt;Prompt&lt;/button&gt;
+      &lt;/p&gt;
+    &lt;/section&gt;</pre></div><p>In the <code class="literal">index.js</code> file, the service worker registration handler is given the <code class="literal">development-sw.js</code> file that we are going to implement soon:</p><div class="informalexample"><pre class="programlisting">if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register(
+    'development-sw.js',
+    scope
+  )</pre></div><p>We <a id="id274" class="indexterm"/>create a bootstrap file for identifying location URL hash changes and performing a dependency injection when we click on development or production links.</p><p>This way, by checking the hash of the URL, we can switch between development and production environments:</p><div class="informalexample"><pre class="programlisting">window.onhashchange = function() {
+  var newInjector = window.location.hash.substr(1) || 
+  'production',
+    lastInjector = getLastInjector();
+
+  if (newInjector !== lastInjector) {
+    navigator.serviceWorker.oncontrollerchange = function() {
+      this.controller.onstatechange = function() {
+        if (this.state === 'activated') {
+          window.location.reload();
+        }
+      };
+    };
+    registerNewInjector(newInjector);
+  }
+};</pre></div><p>Now we force an initial check:</p><div class="informalexample"><pre class="programlisting">window.onhashchange();</pre></div><p>Depending on the type of environment, register a service worker:</p><div class="informalexample"><pre class="programlisting">function registerNewInjector(newInjector) {
+  var newInjectorUrl = newInjector + '-sw.js';
+  return navigator.serviceWorker.register(newInjectorUrl);
+}</pre></div><p>If there are any registered service workers, get the current inspecting injector:</p><div class="informalexample"><pre class="programlisting">    function getLastInjector() {
+        var newInjector,
+        ctr = navigator.serviceWorker.controller;
+
+        if (ctr) {
+            newInjector = ctr.scriptURL.endsWith('production-sw.js')
+                 ? 'production' : 'development';
+        }
+        return newInjector;
+    }</pre></div><p>Let's<a id="id275" class="indexterm"/> look at the <code class="literal">injector.js</code> file now. Let's make the service worker take control of the client straight away:</p><div class="informalexample"><pre class="programlisting">function onInstall(evt) {
+  evt.waitUntil(self.skipWaiting());
+}
+
+function onActivate(evt) {
+  evt.waitUntil(self.clients.claim());
+}</pre></div><p>The rest of the code is responsible for retrieving actual and abstract resources, and responding to the request accordingly:</p><div class="informalexample"><pre class="programlisting">function onFetch(evt) {
+  var abstractRes = evt.request.url,
+    actualRes = getActualRes(abstractRes);
+
+  evt.respondWith(fetch(actualRes || abstractRes));
+}
+
+function getActualRes(abstractRes) {
+  var actualRes,
+    keys = Object.keys(mapping);
+
+  for (var i = 0, len = keys.length; i &lt; len; i++) {
+    var key = keys[i];
+
+    if (abstractRes.endsWith(key)) {
+      actualRes = mapping[key];
+      break;
+    }
+  }
+
+  return actualRes;
+}</pre></div><p>The <code class="literal">fake-dialogs.js</code> file is a mock implementation that console logs the prompts; that is, it doesn't show the alert message, but instead logs to the console:</p><div class="informalexample"><pre class="programlisting">(function(window) {
+  window.dialogs = {
+    alert: function(msg) {
+      console.log('alert:', msg);
+    },
+
+    confirm: function(msg) {
+      console.log('confirm:', msg);
+      return true;
+    },
+
+    prompt: function(msg) {
+      console.log('prompt:', msg);
+      return 'development';
+    }
+  };
+})(window);</pre></div><p>The <code class="literal">real-dialogs.js</code> file<a id="id276" class="indexterm"/> instead generates an alert message:</p><div class="informalexample"><pre class="programlisting">(function(window) {
+  window.dialogs = {
+    alert: function(msg) {
+      window.alert(msg);
+    },
+
+    confirm: function(msg) {
+      return window.confirm(msg);
+    },
+
+    prompt: function(msg) {
+      return window.prompt(msg);
+    }
+  };
+})(window);</pre></div><p>The <code class="literal">production-sw.js</code> file imports the default mapping, as well as the injector. We also wire the event listeners for the events:</p><div class="informalexample"><pre class="programlisting">importScripts('injector.js');
+importScripts('default-mapping.js');
+
+self.onfetch = onFetch;
+self.oninstall = onInstall;
+self.onactivate = onActivate;</pre></div><p>The <code class="literal">development-sw.js</code> file imports the default mapping and the injector as well. But the <a id="id277" class="indexterm"/>difference is it overrides <code class="literal">utils/dialogs</code> to serve the mockup instead:</p><div class="informalexample"><pre class="programlisting">importScripts('injector.js');
+importScripts('default-mapping.js');
+
+mapping['utils/dialogs'] = 'fake-dialogs.js';
+
+self.onfetch = onFetch;
+self.oninstall = onInstall;
+self.onactivate = onActivate;</pre></div></div></div>
+<div class="section" title="Forcing immediate control"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec45"/>Forcing immediate control</h1></div></div></div><p>Usually, a<a id="id278" class="indexterm"/> service worker will take control of a page when a navigation event is fired. In this recipe, we are looking at how we can take control of a page without waiting for any kind of navigation event.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec122"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec123"/>How to do it...</h2></div></div></div><p>Follow these instructions to set up your file structure:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Download all the files from the following location:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/08/">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/08/</a>
+</p></li><li class="listitem">Open up a browser and go to the <code class="literal">index.html</code> file.<div class="mediaobject"><img src="graphics/B05381_05_13.jpg" alt="How to do it..."/></div></li><li class="listitem">Now <a id="id279" class="indexterm"/>refresh the page. You will see that there is no registration and no controller change event fired.<div class="mediaobject"><img src="graphics/B05381_05_14.jpg" alt="How to do it..."/></div></li><li class="listitem">Open<a id="id280" class="indexterm"/> up the DevTools (<span class="emphasis"><em>Cmd</em></span> + <span class="emphasis"><em>Alt</em></span> + <span class="emphasis"><em>I</em></span> or <span class="emphasis"><em>F12</em></span>) and refresh the page. Check out the log details on the console. You will see the image has been served from the cache.<div class="mediaobject"><img src="graphics/B05381_05_15.jpg" alt="How to do it..."/></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec124"/>How it works...</h2></div></div></div><p>In the <code class="literal">index.js</code> file, the <code class="literal">fetchServiceWorkerUpdate</code> method updates an image and the current version:</p><div class="informalexample"><pre class="programlisting">function fetchServiceWorkerUpdate() {
+  var img = document.getElementById('picture');
+  img.src = 'picture.jpg?' + Date.now();
+
+  fetch('./version').then(function(res) {
+    return res.text();
+  }).then(function(text) {
+    debug(text, 'version');
+  });
+}</pre></div><p>The service <a id="id281" class="indexterm"/>worker will take control of the site on loading and handles offline fallbacks:</p><div class="informalexample"><pre class="programlisting">if (navigator.serviceWorker.controller) {
+  var url = navigator.serviceWorker.controller.scriptURL;
+  console.log('serviceWorker.controller', url);
+  debug(url, 'onload');
+  fetchServiceWorkerUpdate();
+} else {
+  navigator.serviceWorker.register('service-worker.js', {
+    scope: './'
+  }).then(function(registration) {
+    debug('REFRESH for the Service Worker to control this client', 'onload');
+    debug(registration.scope, 'register');
+  });
+}</pre></div><p>The <code class="literal">skipWaiting()</code> method will force the waiting service worker to become active by triggering the <code class="literal">onactivate</code> event. Along with <code class="literal">Clients.claim()</code>, this will allow the service worker to take effect immediately in the clients:</p><div class="informalexample"><pre class="programlisting">    }).then(function() {
+      console.log('SERVICE_WORKER: Skip waiting on install');
+      return self.skipWaiting();
+    })</pre></div><p>Usually, the <code class="literal">onactivate</code> method is called once a worker has been installed and the page is refreshed. However, because of the fact that we call <code class="literal">skipWaiting()</code> at the point of <code class="literal">oninstall</code>, the <code class="literal">onactivate</code> method is called immediately:</p><div class="informalexample"><pre class="programlisting">self.addEventListener('activate', function(evt) {
+  self.clients.matchAll({
+    includeUncontrolled: true
+  }).then(function(clientList) {
+    var urls = clientList.map(function(client) {
+      return client.url;
+    });
+    console.log('SERVICE_WORKER:  Matching clients:', urls.join(', '));
+  });
+
+  evt.waitUntil(
+    caches.keys().then(function(cacheNames) {
+      return Promise.all(
+        cacheNames.map(function(cacheName) {
+          if (cacheName !== VERSION) {
+            console.log('SERVICE_WORKER: Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    }).then(function() {
+      console.log('SERVICE_WORKER: Claiming clients for version', VERSION);
+      return self.clients.claim();
+    })
+  );
+});</pre></div></div></div>
+<div class="section" title="Implementing fallback responses"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec46"/>Implementing fallback responses</h1></div></div></div><p>Generally, you <a id="id282" class="indexterm"/>can trust the API endpoints your application is connecting to, but there is always a chance that those services could go down. It is good to have a plan B for situations such as this. In this recipe, we are going to use the service worker to provide us with a fallback response in such a situation.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec125"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec126"/>How to do it...</h2></div></div></div><p>Follow these instructions to set up your file structure:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Download all the files from the following location:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/09/">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/09/</a>
+</p></li><li class="listitem">Open <a id="id283" class="indexterm"/>up a browser and go to the <code class="literal">index.html</code> file.<div class="mediaobject"><img src="graphics/B05381_05_16.jpg" alt="How to do it..."/></div></li><li class="listitem">Click on the <span class="strong"><strong>Valid Request</strong></span> button. You will see a list of three brands.<div class="mediaobject"><img src="graphics/B05381_05_17.jpg" alt="How to do it..."/></div></li><li class="listitem">Now <a id="id284" class="indexterm"/>click on the <span class="strong"><strong>Invalid Request</strong></span> button. You will see a list of three brands.<div class="mediaobject"><img src="graphics/B05381_05_18.jpg" alt="How to do it..."/></div></li><li class="listitem">Open<a id="id285" class="indexterm"/> up the DevTools (<span class="emphasis"><em>Cmd</em></span> + <span class="emphasis"><em>Alt</em></span> + <span class="emphasis"><em>I</em></span> or <span class="emphasis"><em>F12</em></span>) and refresh the page. Check out the log details on the console. You will see the fallback response in action.<div class="mediaobject"><img src="graphics/B05381_05_19.jpg" alt="How to do it..."/></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec127"/>How it works...</h2></div></div></div><p>We are adding a section to the <code class="literal">index.html</code> file with two buttons, one for valid requests and the other for invalid requests:</p><div class="informalexample"><pre class="programlisting">&lt;section id="actions"&gt;
+    &lt;button id="valid-call" disabled&gt;Valid Request&lt;/button&gt;
+    &lt;button id="invalid-call" disabled&gt;Invalid Request&lt;/button&gt;
+    &lt;div id="output"&gt;&lt;/div&gt;
+&lt;/section&gt;</pre></div><p>In the <code class="literal">index.js</code> file, the <code class="literal">enableRequestLinks</code> method wires up the event handlers for the buttons. Both <a id="id286" class="indexterm"/>handlers will fire a <code class="literal">fetchApiRequest</code> method with a link as a parameter:</p><div class="informalexample"><pre class="programlisting">function enableRequestLinks() {
+  var validButton = document.querySelector('#valid-call');
+  validButton.addEventListener('click', function() {
+    fetchApiRequest('https://raw.githubusercontent.com/szaranger/szaranger.github.io/master/service-workers/05/09/brands.json');
+  });
+  validButton.disabled = false;
+
+  var invalidButton = document.querySelector('#invalid-call');
+  invalidButton.addEventListener('click', function() {
+    fetchApiRequest('https://raw.githubusercontent.com/szaranger/szaranger.github.io/master/service-workers/05/09/blah.json');
+  });
+  invalidButton.disabled = false;
+}</pre></div><p>We have a mock API response prepared for this recipe at the following location:</p><p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/09/brands.json">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/09/brands.json</a>
+</p><p>It's a simple JSON object with few brand names:</p><div class="informalexample"><pre class="programlisting">{
+    "brands": [
+        {
+          "name": "Apple"
+        },
+        {
+          "name": "Google"
+        },
+        {
+          "name": "Facebook"
+        }
+    ]
+}</pre></div><p>The <code class="literal">fetchApiRequest</code> method calls fetch to get a promise that will return the result in turn. We will use the response to build the list we need:</p><div class="informalexample"><pre class="programlisting">function fetchApiRequest(url) {
+  fetch(url).then(function(res) {
+    return res.json();
+  }).then(function(res) {
+    var brands = res.brands.map(function(brand) {
+      return '&lt;li&gt;' + brand.name + '&lt;/li&gt;';
+    }).join('');
+
+    brands = '&lt;ol&gt;' + brands+ '&lt;/ol&gt;';
+
+    document.querySelector('#output').innerHTML = '&lt;h1&gt;Brands&lt;/h1&gt;' + brands;
+  });
+}</pre></div><p>The <a id="id287" class="indexterm"/>service worker is where we implement the fallback response if the API is not available. But first, we need tell the service worker to take control of the page immediately:</p><div class="informalexample"><pre class="programlisting">    self.addEventListener('install', function(evt) {
+      evt.waitUntil(self.skipWaiting());
+    });
+
+   self.addEventListener('activate', function(evt) {
+      evt.waitUntil(self.clients.claim());
+   });</pre></div><p>In the fetch handler, we are checking for the response to see whether it is successful by checking <code class="literal">res.ok</code>. Otherwise, we will construct a response on the fly as the fallback:</p><div class="informalexample"><pre class="programlisting">self.addEventListener('fetch', function(evt) {
+    evt.respondWith(
+      fetch(evt.request).then(function(res) {
+        if (!res.ok) {
+          throw Error('response status ' + res.status);
+        }
+
+        return res;
+      }).catch(function(err) {
+        console.warn('RESPONSE: Error in constructing a fallback response - ', err);
+
+        var fallbackRes = {
+          brands: [
+            {
+              name: 'Fallback Brand 1'
+            },
+            {
+              name: 'Fallback Brand 1'
+            },
+            {
+              name: 'Fallback Brand 1'
+            }
+          ]
+        };
+
+        return new Response(JSON.stringify(fallbackRes), {
+          headers: {'Content-Type': 'application/json'}
+        });
+      })
+    );
+});</pre></div></div></div>
+<div class="section" title="Deferring offline requests"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec47"/>Deferring offline requests</h1></div></div></div><p>Applications<a id="id288" class="indexterm"/> such as Gmail can enqueue requests in a buffer while the network is not available. When the connection is restored, it will perform the requests in order to complete the operation.</p><p>In this recipe, we are building an app, which can defer to-do items while offline.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec128"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec129"/>How to do it...</h2></div></div></div><p>Follow these instructions to set up your file structure:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Download all the files from the following location:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/10">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/05/10</a>
+</p></li><li class="listitem">Open up a browser and go to the <code class="literal">index.html</code> file.<div class="mediaobject"><img src="graphics/B05381_05_24.jpg" alt="How to do it..."/></div></li><li class="listitem">Add and <a id="id289" class="indexterm"/>delete to-do items, then go offline as instructed. Once you reconnect, the to-do items will automatically synchronize.<div class="mediaobject"><img src="graphics/B05381_05_25.jpg" alt="How to do it..."/></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec130"/>How it works...</h2></div></div></div><p>We are <a id="id290" class="indexterm"/>adding a section to the <code class="literal">index.html</code> file with inputs and a button:</p><div class="informalexample"><pre class="programlisting">&lt;section id="todo-area"&gt;
+    &lt;ol&gt;
+      &lt;li&gt;Add/delete some todos.&lt;/li&gt;
+      &lt;li&gt;Go offline (disconnect Internet).&lt;/li&gt;
+      &lt;li&gt;Continue to add some todos. &lt;br/&gt;(They are now in the queue, so the delete button is not visible now)&lt;/li&gt;
+      &lt;li&gt;Reconnect internet. The todos will automatically synchronize.&lt;/li&gt;
+    &lt;/ol&gt;
+    &lt;form id="add-form"&gt;
+      &lt;input type="text" id="new-todo" placeholder="Add a task here"/&gt;
+      &lt;input type="text" id="priority" placeholder="Priority"/&gt;
+      &lt;input type="submit" value="Add" /&gt;
+    &lt;/form&gt;
+    &lt;table id="todos"&gt;
+    &lt;/table&gt;
+  &lt;/section&gt;</pre></div><p>In the <code class="literal">service-worker.js</code> file, we bring in two third-party libraries, <code class="literal">ServiceWorkerWare.js</code> and <code class="literal">localforage.js</code>:</p><div class="informalexample"><pre class="programlisting">importScripts('./vendor/ServiceWorkerWare.js');
+importScripts('./vendor/localforage.js');</pre></div><p>Determine the root for the routes:</p><div class="informalexample"><pre class="programlisting">var root = (function() {
+  var tokens = (self.location + '').split('/');
+  tokens[tokens.length - 1] = '';
+  return tokens.join('/');
+})();</pre></div><p>We are<a id="id291" class="indexterm"/> using Mozilla's <code class="literal">ServiceWorkerWare</code> library to build quick routes for the virtual server:</p><div class="informalexample"><pre class="programlisting">var worker = new ServiceWorkerWare();</pre></div><p>In order to mock responses, we enqueue the original request:</p><div class="informalexample"><pre class="programlisting">    function tryOrFallback(fakeResponse) { 
+      return function(req, res) {
+        if (!navigator.onLine) {
+          console.log('No network availability, enqueuing');
+          return enqueue(req).then(function() {
+        return fakeResponse.clone();
+      });
+    }</pre></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec131"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Logging API analytics</em></span> recipe of <a class="link" href="ch06.html" title="Chapter 6. Working with Advanced Libraries">Chapter 6</a>, <span class="emphasis"><em>Working with Advanced Libraries</em></span></li></ul></div></div></div></body></html>

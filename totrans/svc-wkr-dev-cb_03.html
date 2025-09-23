@@ -1,0 +1,923 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;3.&#xA0;Accessing Offline Content"><div class="titlepage"><div><div><h1 class="title"><a id="ch03"/>Chapter 3. Accessing Offline Content</h1></div></div></div><p>In this chapter, we will cover the following topics:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Caching critical resources for offline use</li><li class="listitem" style="list-style-type: disc">Showing cached content first</li><li class="listitem" style="list-style-type: disc">Implementing a cache and network race</li><li class="listitem" style="list-style-type: disc">Using window.caches</li><li class="listitem" style="list-style-type: disc">Implementing stale-while-revalidate</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec25"/>Introduction</h1></div></div></div><p>You don't need network access for your laptop or smartphone to be useful. Especially in areas where mobile data is expensive, with some proper planning, you can download certain apps that you can sync via free Wi-Fi, and then use them offline elsewhere.</p><p>Mobile apps such as Google Maps, FeedMe, and Wikipedia give us offline apps, which can be used anywhere regardless of the Internet. Making our own app offline-compatible is a great way of winning the hearts of our clients.</p><p>Let's start this chapter by looking at how to cache critical resources for use offline.</p></div></div>
+<div class="section" title="Caching critical resources for offline use"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec26"/>Caching critical resources for offline use</h1></div></div></div><p>In this recipe, we look at how we<a id="id133" class="indexterm"/> can cache a set of critical resources to enable users to go offline and provide the user with the same experience. In the meantime, we will notify the user that they can go offline and continue to use the same features.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec67"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on <a id="id134" class="indexterm"/>in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec68"/>How to do it...</h2></div></div></div><p>Follow these instructions to set up your file structure. Alternatively, you can download the files from the following location:</p><p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/tree/master/service-workers/03/01/">https://github.com/szaranger/szaranger.github.io/tree/master/service-workers/03/01/</a>
+</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">First, we must create an <code class="literal">index.html</code> file as follows:<div class="informalexample"><pre class="programlisting">&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;title&gt;Caching Critical Resources&lt;/title&gt;
+  &lt;link rel="stylesheet" href="style.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;section id="registration-status"&gt;
+    &lt;p&gt;Registration status: &lt;strong id="status"&gt;&lt;/strong&gt;&lt;/p&gt;
+    &lt;input type="button" id="resetButton" value="Reset" /&gt;
+  &lt;/section&gt;
+
+  &lt;main&gt;
+    &lt;section&gt;
+    &lt;h1&gt;Brand Game&lt;/h1&gt;
+    &lt;p&gt;Attempts: &lt;span id="attempts"&gt;0&lt;/span&gt;&lt;/p&gt;
+    &lt;select id="choice"&gt;
+      &lt;option value="0"&gt;Apple&lt;/option&gt;
+      &lt;option value="1"&gt;Google&lt;/option&gt;
+      &lt;option value="2"&gt;Adobe&lt;/option&gt;
+      &lt;option value="3"&gt;Facebook&lt;/option&gt;
+      &lt;option value="4"&gt;Amazon&lt;/option&gt;
+    &lt;/select&gt;
+    &lt;input type="button" id="tryButton" value="Try" /&gt;
+    &lt;/section&gt;
+    &lt;section&gt;
+      &lt;img src="" id="logo" data-image="0" /&gt;
+      &lt;p id="result"&gt;
+    &lt;/section&gt;
+    &lt;div id="notification" class="hidden"&gt;
+      &lt;p&gt;Ready to go offline!&lt;/p&gt;
+    &lt;/div&gt;
+  &lt;/main&gt;
+
+  &lt;script src="index.js"&gt;&lt;/script&gt;
+  &lt;script src="game.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre></div></li><li class="listitem">Create a<a id="id135" class="indexterm"/> JavaScript file called <code class="literal">index.js</code>, in the same folder as the <code class="literal">index.html</code> file, with the following code:<div class="informalexample"><pre class="programlisting">'use strict';
+
+var scope = {
+  scope: './'
+};
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register(
+    'service-worker.js',
+    scope
+  ).then( function(serviceWorker) {
+    printStatus('successful');
+  }).catch(function(error) {
+    printStatus(error);
+  });
+} else {
+  printStatus('unavailable');
+}
+
+navigator.serviceWorker.addEventListener('controllerchange',
+  function(event) {
+    console.log('EVENT: controllerchange', event);
+
+    navigator.serviceWorker.controller
+      .addEventListener('statechange',
+        function() {
+          console.log('EVENT: statechange', this.state);
+          if (this.state === 'activated') {
+            document.querySelector('#notification')
+			.classList.remove('hidden');
+          }
+        }
+      );
+  }
+);
+
+function printStatus(status) {
+  document.querySelector('#status').innerHTML = status;
+}
+
+document.querySelector('#resetButton').addEventListener('click',
+  function() {
+    navigator.serviceWorker.getRegistration().then(function(registration) {
+      registration.unregister();
+      window.location.reload();
+    });
+  }
+);</pre></div></li><li class="listitem">Create a <a id="id136" class="indexterm"/>JavaScript file called <code class="literal">game.js</code>, in the same folder as the <code class="literal">index.html</code> file, with the following code:<div class="informalexample"><pre class="programlisting">'use strict';
+
+var attempts = 0,
+  images = [
+      'adobe',
+      'apple',
+      'google',
+      'facebook',
+      'amazon'
+    ];
+
+document.getElementById('tryButton').addEventListener('click', function() {
+  var imageElement = document.getElementById('logo'),
+    choice = document.querySelector('#choice').value,
+    attemptsEl = document.querySelector('#attempts'),
+    result = document.querySelector('#result'),
+    currentIndex = imageElement.getAttribute('data-image'),
+    newIndex = getRandomIndex();
+
+  do {
+    newIndex = getRandomIndex();
+  } while(newIndex === currentIndex);
+
+  imageElement.src = images[newIndex] + '-logo.png';
+  imageElement.setAttribute('data-image', newIndex);
+
+  result.className = '';
+  attempts++;
+
+  if(newIndex == choice) {
+    result.innerText = "Yay! Well done! You did it in " + attempts + " attempt(s)";
+    result.classList.add('success');
+    attemptsEl.innerText = attempts;
+    attempts = 0;
+  } else {
+    result.innerText = "Boo! Try again..";
+    result.classList.add('fail');
+    attemptsEl.innerText = attempts;
+  }
+
+});
+
+function getRandomIndex() {
+  return Math.floor(Math.random() * 5);
+}</pre></div></li><li class="listitem">Create a<a id="id137" class="indexterm"/> JavaScript file called <code class="literal">service-worker.js</code>, in the same folder as the <code class="literal">index.html</code> file, with the following code: <div class="informalexample"><pre class="programlisting">'use strict';
+var cacheName= 'dependencies-cache';
+
+self.addEventListener('install', function(event) {
+  event.waitUntil(
+    caches.open(cacheName)
+      .then(function(cache) {
+        return cache.addAll([
+          'apple',
+    'google',
+    'adobe',
+    'facebook',
+    'amazon'
+        ]);
+      })
+      .then(function() {
+         return self.skipWaiting();
+      })
+  );
+});
+
+self.addEventListener('fetch', function(event) {
+  event.respondWith(
+    caches.match(event.request)
+      .then(function(response) {
+        if (response) {
+          console.log('Fetching from the cache: ', event.request.url);
+          return response;
+        } else {
+          console.log('Fetching from server: ', event.request.url);
+        }
+       return fetch(event.request);
+     }
+   )
+ );
+});
+
+self.addEventListener('activate', function(event) {
+   console.log('Activating the service worker!');
+   event.waitUntil(self.clients.claim());
+});</pre></div></li><li class="listitem">Create a<a id="id138" class="indexterm"/> JavaScript file called <code class="literal">style.css</code>, in the same folder as the <code class="literal">index.html</code> file, with the following code:<div class="informalexample"><pre class="programlisting">* {
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0 auto;
+  text-align: center;
+  font-family: sans-serif;
+}
+
+main {
+  max-width: 350px;
+  border: 1px solid #4CAF50;
+  padding: 20px;
+  border-radius: 5px;
+  width: 350px;
+  margin: 20px auto;
+}
+
+h1 {
+  color: #4CAF50;
+}
+
+img {
+  padding: 20px 0;
+  max-width: 200px;
+}
+
+.success {
+  color: #4CAF50;
+  font-size: 2em;
+}
+
+.fail {
+  color: #FF8401;
+  font-size: 1.5em;
+}
+
+.hidden {
+  display: none;
+}
+
+#registration-status {
+  background-color: #FFE454;
+  padding: 10px;
+}
+
+#notification {
+  background-color: #4CAF50;
+  padding: 3px;
+  border-radius: 5px;
+  max-width: 350px;
+  color: #FFF;
+}</pre></div></li><li class="listitem">Open up a browser and go to the <code class="literal">index.html</code> file:<div class="mediaobject"><img src="graphics/B05381_03_01.jpg" alt="How to do it..."/></div></li><li class="listitem">You will<a id="id139" class="indexterm"/> see the <span class="strong"><strong>Ready to go offline!</strong></span> message. This means that we can play the game offline. Now open up DevTools (<span class="emphasis"><em>Cmd</em></span> + <span class="emphasis"><em>Alt</em></span> + <span class="emphasis"><em>I</em></span> or <span class="emphasis"><em>F12</em></span>), go to the <span class="strong"><strong>Network</strong></span> tab, click on the dropdown displaying <span class="strong"><strong>No throttling</strong></span>, and select <span class="strong"><strong>Offline</strong></span>:<div class="mediaobject"><img src="graphics/B05381_03_02.jpg" alt="How to do it..."/></div></li><li class="listitem">Now refresh your browser, and you will be able to continue playing the game.</li><li class="listitem">You can select a company name from the dropdown and click the <span class="strong"><strong>Try</strong></span> button:<div class="mediaobject"><img src="graphics/B05381_03_03.jpg" alt="How to do it..."/></div></li><li class="listitem">Every <a id="id140" class="indexterm"/>time the selection does not match the result, it will show a message saying <span class="strong"><strong>Boo! Try again..</strong></span>, and you will see the attempts count:<div class="mediaobject"><img src="graphics/B05381_03_04.jpg" alt="How to do it..."/></div></li><li class="listitem">Once<a id="id141" class="indexterm"/> your selection matches you will get a success message with the attempt count, and you will see the attempts count:<div class="mediaobject"><img src="graphics/B05381_03_05.jpg" alt="How to do it..."/></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec69"/>How it works...</h2></div></div></div><p>Our <code class="literal">index.html</code> file contains the structure for the dropdown, buttons, and image. The dropdown contains the options for the brand:</p><div class="informalexample"><pre class="programlisting">&lt;select id="choice"&gt;
+    &lt;option value="0"&gt;Apple&lt;/option&gt;
+    &lt;option value="1"&gt;Google&lt;/option&gt;
+    &lt;option value="2"&gt;Adobe&lt;/option&gt;
+    &lt;option value="3"&gt;Facebook&lt;/option&gt;
+    &lt;option value="4"&gt;Amazon&lt;/option&gt;
+&lt;/select&gt;</pre></div><p>The values for <a id="id142" class="indexterm"/>the options are specified by numbers, which later match up with the images, so the order is important. As you can see, they start with 0, to adhere to the 0-based index of the array where we are going to store the names of the companies later on.</p><p>The <code class="literal">style.css</code> file contains all the styles we need for our page. The top two declarations are common styles for all the elements and the body element respectively:</p><div class="informalexample"><pre class="programlisting">* {
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0 auto;
+  text-align: center;
+  font-family: sans-serif;
+}</pre></div><p>The styles for failed and successful messages contain orange and green colors:</p><div class="informalexample"><pre class="programlisting">.success {
+  color: #4CAF50;
+  font-size: 2em;
+}
+
+.fail {
+  color: #FF8401;
+  font-size: 1.5em;
+}</pre></div><p>The notification message is initially hidden. This is done by assigning a class with <code class="literal">display:none</code>:</p><div class="informalexample"><pre class="programlisting">.hidden {
+  display: none;
+}</pre></div><p>The first of the three JavaScript files, <code class="literal">index.js</code>, performs service worker registration, and then listens to the <code class="literal">controllerchange</code> event. It also handles the event for the reset button.</p><p>The game<a id="id143" class="indexterm"/> engine for our little game is in the <code class="literal">game.js</code> file. So let's go through what's happening inside this file.</p><p>First, we declare two variables at the top, <code class="literal">attempts</code> and <code class="literal">images</code>, with initial values; <code class="literal">attempts</code> contains the initial value for tries, 0, and <code class="literal">images</code>, which is an array constant, has the brand names in order. The order of the brands is important so that it matches the dropdown in the <code class="literal">index.html</code> file:</p><div class="informalexample"><pre class="programlisting">var attempts = 0,
+images = [
+  'apple',
+  'google',
+  'adobe',
+  'facebook',
+  'amazon'
+];</pre></div><p>When the user clicks the <code class="literal">try</code> button, the game logic in the callback function is handled:</p><div class="informalexample"><pre class="programlisting">document.getElementById('tryButton').addEventListener('click', function() {
+  // callback  
+…
+});</pre></div><p>There is a lot going on in the declaration section in the callback handler. So let's look at each initialization:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">First we grab the logo from the <a id="id144" class="indexterm"/><span class="strong"><strong>Document Object Model</strong></span> (<span class="strong"><strong>DOM</strong></span>):<div class="informalexample"><pre class="programlisting">var imageElement = document.getElementById('logo'),</pre></div></li><li class="listitem">We also capture the user <code class="literal">choice</code> and <code class="literal">attempts</code> element from the DOM, and the result element:<div class="informalexample"><pre class="programlisting">choice = document.querySelector('#choice').value,
+attemptsEl = document.querySelector('#attempts'),
+result = document.querySelector('#result'),</pre></div></li><li class="listitem">Then we capture the data attribute from the logo element, and we generate a random number with <code class="literal">getRandomIndex()</code>:<div class="informalexample"><pre class="programlisting">currentIndex = imageElement.getAttribute('data-image'),
+newIndex = getRandomIndex();</pre></div></li><li class="listitem">We generate a random number for the next index, as long as it is not the one we already have for the index:<div class="informalexample"><pre class="programlisting">do {
+    newIndex = getRandomIndex();
+  } while(newIndex === currentIndex);</pre></div></li><li class="listitem">Next, we are <a id="id145" class="indexterm"/>set the brand images source to the image at the random index we created. Then we set the <code class="literal">data-image</code> attribute to the same index:<div class="informalexample"><pre class="programlisting">imageElement.src = images[newIndex] + '-logo.png';
+imageElement.setAttribute('data-image', newIndex);</pre></div><p>For example, this may create an HTML element like the following on our web page:</p><div class="informalexample"><pre class="programlisting">&lt;img src="google-logo" data-image="1" /&gt;</pre></div></li><li class="listitem">We make sure the class name for the result element is cleared before adding a new one. Then we increase the attempts count:<div class="informalexample"><pre class="programlisting">result.className = '';
+attempts++;</pre></div></li><li class="listitem">Next, we find out whether the new index is equal to the choice the user made. Note that we have used a double equation instead of triple deliberately, because the choice is a string and <code class="literal">newIndex</code> is an integer:<div class="informalexample"><pre class="programlisting">if(newIndex == choice) {</pre></div></li></ol></div><p>Let's move on to the <code class="literal">service-worker.js</code> file. There we handle three events: install, fetch, and activate. In the install event handler, we cache all the dependencies—the files we need to go offline:</p><div class="informalexample"><pre class="programlisting">return cache.addAll([
+          'adobe-logo.png',
+          'apple-logo.png',
+          'google-logo.png',
+          'style.css',
+          'index.html',
+          'index.js',
+          'style.css'
+        ]);</pre></div><p>Inside the fetch handler, we check whether the resources are in the cache. If yes, then the response is provided by the cache:</p><div class="informalexample"><pre class="programlisting">caches.match(event.req uest)
+      .then(function(response) {
+        if (response) {
+          console.log('Fetching from the cache: ', event.request.url);
+          return response;
+        } </pre></div><p>Otherwise, return<a id="id146" class="indexterm"/> the result from the server itself:</p><div class="informalexample"><pre class="programlisting">else {
+          console.log('Fetching from server: ', event.request.url);
+     }
+     return fetch(event.request);</pre></div><p>Finally, we are forcing a <code class="literal">controllerchange</code> event on <code class="literal">navigator.serviceWorker</code> by calling <code class="literal">claim()</code>:</p><div class="informalexample"><pre class="programlisting">self.addEventListener('activate', function(event) {
+   console.log('Activating the service worker!');
+   event.waitUntil(self.clients.claim());
+});</pre></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec70"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Registering a service worker in detail</em></span> recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span></li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Loading CSS offline</em></span> recipe of <a class="link" href="ch02.html" title="Chapter 2. Working with Resource Files">Chapter 2</a>, <span class="emphasis"><em>Working with Resource Files</em></span></li></ul></div></div></div>
+<div class="section" title="Showing cached content first"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec27"/>Showing cached content first</h1></div></div></div><p>If you <a id="id147" class="indexterm"/>are a regular visitor to a certain website, chances are that you may be loading most of the resources, such as CSS and JavaScript files, from your cache, rather than from the server itself. This saves us necessary bandwidth for the server, as well as requests over the network. Having control over which content we deliver from the cache and server is a great advantage. Server workers provide us with this powerful feature by having programmatic control over the content. In this recipe, we are going to look at the methods that enable us to do so by creating a performance art event viewer web app.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec71"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec72"/>How to do it...</h2></div></div></div><p>Follow these <a id="id148" class="indexterm"/>instructions to set up your file structure. Alternatively, you can download the files from the following location:</p><p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/tree/master/service-workers/03/02/">https://github.com/szaranger/szaranger.github.io/tree/master/service-workers/03/02/</a>
+</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">First, we must create an <code class="literal">index.html</code> file as follows:<div class="informalexample"><pre class="programlisting">&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;title&gt;Cache First, then Network&lt;/title&gt;
+  &lt;link rel="stylesheet" href="style.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;section id="events"&gt;
+    &lt;h1&gt;&lt;span class="nyc"&gt;NYC&lt;/span&gt; Events TONIGHT&lt;/h1&gt;
+    &lt;aside&gt;
+      &lt;img src="hypecal.png" /&gt;
+      &lt;h2&gt;Source&lt;/h2&gt;
+      &lt;section&gt;
+        &lt;h3&gt;Network&lt;/h3&gt;
+        &lt;input type="checkbox" name="network" id="network-disabled-checkbox"&gt;
+        &lt;label for="network"&gt;Disabled&lt;/label&gt;&lt;br /&gt;
+        &lt;h3&gt;Cache&lt;/h3&gt;
+        &lt;input type="checkbox" name="cache" id="cache-disabled-checkbox"&gt;
+        &lt;label for="cache"&gt;Disabled&lt;/label&gt;&lt;br /&gt;
+      &lt;/section&gt;
+      &lt;h2&gt;Delay&lt;/h2&gt;
+      &lt;section&gt;
+        &lt;h3&gt;Network&lt;/h3&gt;
+        &lt;input type="text" name="network-delay" id="network-delay" value="400" /&gt; ms
+        &lt;h3&gt;Cache&lt;/h3&gt;
+        &lt;input type="text" name="cache-delay" id="cache-delay" value="1000" /&gt; ms
+      &lt;/section&gt;
+    &lt;input type="button" id="fetch-btn" value="FETCH" /&gt;
+  &lt;/aside&gt;
+  &lt;section class="data connection"&gt;
+    &lt;table&gt;
+      &lt;tr&gt;
+        &lt;td&gt;&lt;strong&gt;Network&lt;/strong&gt;&lt;/td&gt;
+        &lt;td&gt;&lt;output id='network-status'&gt;&lt;/output&gt;&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+        &lt;td&gt;&lt;strong&gt;Cache&lt;/strong&gt;&lt;/td&gt;
+        &lt;td&gt;&lt;output id='cache-status'&gt;&lt;/output&gt;&lt;td&gt;
+      &lt;/tr&gt;
+    &lt;/table&gt;
+  &lt;/section&gt;
+  &lt;section class="data detail"&gt;
+    &lt;output id="data"&gt;&lt;/output&gt;
+  &lt;/section&gt;
+  &lt;script src="index.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre></div></li><li class="listitem">Create <a id="id149" class="indexterm"/>a CSS file called <code class="literal">style.css</code> in<a id="id150" class="indexterm"/> the same folder as the <code class="literal">index.html</code> file. You can find the source code in the following location on GitHub:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/03/02/style.css">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/03/02/style.css</a>
+</p></li><li class="listitem">Create a JavaScript file called <code class="literal">index.js</code> in the same folder as the <code class="literal">index.html</code> file. You <a id="id151" class="indexterm"/>can find the source code in the following location on GitHub:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/03/02/index.js">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/03/02/index.js</a>
+</p></li><li class="listitem">Open up a browser and go to <code class="literal">index.html</code>:<div class="mediaobject"><img src="graphics/B05381_03_06.jpg" alt="How to do it..."/></div></li><li class="listitem">First,<a id="id152" class="indexterm"/> we are requesting data from the network with caching enabled. Click on the <span class="strong"><strong>Fetch</strong></span> button:<div class="mediaobject"><img src="graphics/B05381_03_07.jpg" alt="How to do it..."/></div></li><li class="listitem">If you click <span class="strong"><strong>Fetch</strong></span> again, the data has been retrieved first from cache, and then from the <a id="id153" class="indexterm"/>network, so you see duplicate data (see that the last line is the same as the first):<div class="mediaobject"><img src="graphics/B05381_03_08.jpg" alt="How to do it..."/></div></li><li class="listitem">Now we are going to select the <span class="strong"><strong>Disabled</strong></span> checkbox under the <span class="strong"><strong>Network</strong></span> label, and click the <span class="strong"><strong>Fetch</strong></span> button again, in order to fetch data only from the cache:<div class="mediaobject"><img src="graphics/B05381_03_10.jpg" alt="How to do it..."/></div></li><li class="listitem">Select<a id="id154" class="indexterm"/> the <span class="strong"><strong>Disabled</strong></span> checkbox under the <span class="strong"><strong>Network</strong></span> label, as well as the <span class="strong"><strong>Cache</strong></span> label, and click the <span class="strong"><strong>Fetch</strong></span> button again:<div class="mediaobject"><img src="graphics/B05381_03_09.jpg" alt="How to do it..."/></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec73"/>How it works...</h2></div></div></div><p>In the <code class="literal">index.js</code> file, we <a id="id155" class="indexterm"/>are setting a page-specific name for the cache, as the caches are origin-based, and no other page should use the same cache name:</p><div class="informalexample"><pre class="programlisting">var CACHE_NAME = 'cache-and-then-network';</pre></div><p>If you inspect the <span class="strong"><strong>Resources</strong></span> tab of the development tools, you will find the cache inside the <span class="strong"><strong>Cache Storage</strong></span> tab:</p><div class="mediaobject"><img src="graphics/B05381_03_11.jpg" alt="How it works..."/></div><p>If we have already fetched network data, we don't want the cache fetch to complete and overwrite the data that we just got from the network. We use the <code class="literal">networkDataReceived</code> flag to let the cache fetch callbacks to know whether a network fetch has already completed:</p><div class="informalexample"><pre class="programlisting">var networkDataReceived = false;</pre></div><p>We are storing elapsed time for the network and cache in two variables:</p><div class="informalexample"><pre class="programlisting">var networkFetchStartTime;
+var cacheFetchStartTime;</pre></div><p>The<a id="id156" class="indexterm"/> source URL, for example, is pointing to a file location in GitHub via RawGit:</p><div class="informalexample"><pre class="programlisting">var SOURCE_URL = 'https://cdn.rawgit.com/szaranger/szaranger.github.io/master/service-workers/03/02/events';</pre></div><p>If you want to set up your own source URL, you can easily do so by creating a gist or a repository on GitHub, and creating a file with your data in JSON format (you don't need the <code class="literal">.json</code> extension). Once you've done that, copy the URL of the file, head over to <a class="ulink" href="https://rawgit.com">https://rawgit.com</a>, and <a id="id157" class="indexterm"/>paste the link there to obtain another link with a content type header, as shown in the following screenshot:</p><div class="mediaobject"><img src="graphics/B05381_03_13.jpg" alt="How it works..."/></div><p>Between the time we press the <span class="strong"><strong>Fetch</strong></span> button and when the data is received, we have to make sure the user doesn't change the search criteria, or press the <span class="strong"><strong>Fetch</strong></span> button again. To handle this situation, we disable the controls:</p><div class="informalexample"><pre class="programlisting">function clear() {
+  outlet.textContent = '';
+  cacheStatus.textContent = '';
+  networkStatus.textContent = '';
+  networkDataReceived = false;
+}
+
+function disableEdit(enable) {
+  fetchButton.disabled = enable;
+  cacheDelayText.disabled = enable;
+  cacheDisabledCheckbox.disabled = enable;
+  networkDelayText.disabled = enable;
+  networkDisabledCheckbox.disabled = enable;
+
+  if(!enable) {
+    clear();
+  }
+}</pre></div><p>The returned data <a id="id158" class="indexterm"/>will be rendered to the screen in rows:</p><div class="informalexample"><pre class="programlisting">function displayEvents(events) {
+
+  events.forEach(function(event) {
+    var tickets = event.ticket ?
+      '&lt;a href="' + event.ticket + '" class="tickets"&gt;Tickets&lt;/a&gt;' : '';
+
+    outlet.innerHTML = outlet.innerHTML +
+      '&lt;article&gt;' +
+      '&lt;span class="date"&gt;' + formatDate(event.date) + '&lt;/span&gt;' +
+      ' &lt;span class="title"&gt;' + event.title + '&lt;/span&gt;' +
+      ' &lt;span class="venue"&gt; - ' + event.venue + '&lt;/span&gt; ' +
+      tickets +
+      '&lt;/article&gt;';
+  });
+
+}</pre></div><p>Each item of the <code class="literal">events</code> array will be printed to the screen as rows:</p><div class="mediaobject"><img src="graphics/B05381_03_12.jpg" alt="How it works..."/></div><p>The<a id="id159" class="indexterm"/> function <code class="literal">handleFetchComplete</code> is the callback for both the cache and the network.</p><p>If the disabled checkbox is checked, we are simulating a network error by throwing an error:</p><div class="informalexample"><pre class="programlisting">var shouldNetworkError = networkDisabledCheckbox.checked,
+    cloned;
+
+  if (shouldNetworkError) {
+    throw new Error('Network error');
+  }</pre></div><p>Because request bodies can only be read once, we have to clone the response:</p><div class="informalexample"><pre class="programlisting">cloned = response.clone();</pre></div><p>We place the cloned response in the cache using <code class="literal">cache.put</code> as a key/value pair. This helps subsequent cache fetches to find this update data:</p><div class="informalexample"><pre class="programlisting">caches.open(CACHE_NAME).then(function(cache) {
+   cache.put(SOURCE_URL, cloned); // cache.put(URL, response)
+});</pre></div><p>Now we read the response in JSON format. Also, we make sure that any in-flight cache requests will not be overwritten by the data we have just received, using the <code class="literal">networkDataReceived</code> flag:</p><div class="informalexample"><pre class="programlisting">response.json().then(function(data) {
+    displayEvents(data);
+    networkDataReceived = true;
+  });</pre></div><p>To prevent overwriting the data we received from the network, we make sure only to update the page if the network request has not yet returned:</p><div class="informalexample"><pre class="programlisting">result.json().then(function(data) {
+    if (!networkDataReceived) {
+      displayEvents(data);
+    }
+  });</pre></div><p>When the user presses the <span class="strong"><strong>Fetch</strong></span> button, they make nearly simultaneous requests of the network and the cache for data. This happens on a page load in a real-world application, instead of as a result of a user action:</p><div class="informalexample"><pre class="programlisting">fetchButton.addEventListener('click', function handleClick() {
+...
+}</pre></div><p>We start by <a id="id160" class="indexterm"/>disabling any user input while the network fetch requests are initiated:</p><div class="informalexample"><pre class="programlisting">disableEdit(true);
+
+networkStatus.textContent = 'Fetching events...';
+networkFetchStartTime = Date.now();</pre></div><p>We request data using the <code class="literal">fetch</code> API with a cache-busting URL, as well as the no-cache option in order to support Firefox, which hasn't implemented the caching options yet:</p><div class="informalexample"><pre class="programlisting">networkFetch = fetch(SOURCE_URL + '?cacheBuster=' + now, {
+   mode: 'cors',
+   cache: 'no-cache',
+   headers: headers
+})</pre></div><p>In order to simulate network delays, we wait before calling the network fetch callback. In situations where the callback errors out, we have to make sure that we reject the promise we received from the original fetch:</p><div class="informalexample"><pre class="programlisting">return new Promise(function(resolve, reject) {
+      setTimeout(function() {
+        try {
+          handleFetchComplete(response);
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      }, networkDelay);
+    });</pre></div><p>To simulate cache delays, we wait before calling the cache fetch callback. If the callback errors out, we make sure that we reject the promise we got from the original call to match:</p><div class="informalexample"><pre class="programlisting">return new Promise(function(resolve, reject) {
+        setTimeout(function() {
+          try {
+            handleCacheFetchComplete(response);
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        }, cacheDelay);
+      });</pre></div><p>The <code class="literal">formatDate</code> function<a id="id161" class="indexterm"/> is a helper function for us to convert the date format we receive in the response into a much more readable format on the screen:</p><div class="informalexample"><pre class="programlisting">function formatDate(date) {
+  var d = new Date(date),
+      month = (d.getMonth() + 1).toString(),
+      day = d.getDate().toString(),
+      year = d.getFullYear();
+
+  if (month.length &lt; 2) month = '0' + month;
+  if (day.length &lt; 2) day = '0' + day;
+
+  return [month, day, year].join('-');
+}</pre></div><p>If you use a different date format, you can shuffle the position of the array in the return statement to your preferred format.</p></div></div>
+<div class="section" title="Implementing a cache and network race"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec28"/>Implementing a cache and network race</h1></div></div></div><p>If your client<a id="id162" class="indexterm"/> is using older and slower hardware, including older hard drives, there is a chance that accessing resources from a hard drive could be slower than accessing the same resources on a faster Internet connection. But just because some of your users are using slower hardware, it doesn't justify accessing resources already in the <a id="id163" class="indexterm"/>hardware over the network all the time, because some users may have faster hardware that could be a waste of data. To resolve this issue, we can implement a solution that performs a race condition, and fetch data according to which resolves first.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec74"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec75"/>How to do it...</h2></div></div></div><p>Follow these <a id="id164" class="indexterm"/>instructions to set up your file structure. Alternatively, you can download the files from the following location:</p><p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/tree/master/service-workers/03/03/">https://github.com/szaranger/szaranger.github.io/tree/master/service-workers/03/03/</a>
+</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">First, we <a id="id165" class="indexterm"/>must create an <code class="literal">index.html</code> file as follows:<div class="informalexample"><pre class="programlisting">&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;title&gt;Cache &amp;amp; Network Race&lt;/title&gt;
+  &lt;link rel="stylesheet" href="style.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;section id="registration-status"&gt;
+    &lt;p&gt;Registration status: &lt;strong id="status"&gt;&lt;/strong&gt;&lt;/p&gt;
+    &lt;input type="button" id="resetButton" value="Reset" /&gt;
+  &lt;/section&gt;
+  &lt;script src="index.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre></div></li><li class="listitem">Create a JavaScript file called <code class="literal">style.css</code> in the same folder as the <code class="literal">index.html</code> file with the following code:<div class="informalexample"><pre class="programlisting">* {
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0 auto;
+  text-align: center;
+  font-family: sans-serif;
+}
+
+main {
+  max-width: 350px;
+  border: 1px solid #4CAF50;
+  padding: 20px;
+  border-radius: 5px;
+  width: 350px;
+  margin: 20px auto;
+}
+
+h1 {
+  color: #4CAF50;
+}
+
+img {
+  padding: 20px 0;
+  max-width: 200px;
+}
+
+.hidden {
+  display: none;
+}
+
+#registration-status {
+  background-color: #FFE454;
+  padding: 10px;
+}</pre></div></li><li class="listitem">Create a<a id="id166" class="indexterm"/> JavaScript file called <code class="literal">index.js</code>, in the same folder <a id="id167" class="indexterm"/>as the <code class="literal">index.html</code> file, with the following code:<div class="informalexample"><pre class="programlisting">'use strict';
+
+var scope = {
+  scope: './'
+};
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register(
+    'service-worker.js',
+    scope
+  ).then( function(serviceWorker) {
+    printStatus('successful');
+  }).catch(function(error) {
+    printStatus(error);
+  });
+} else {
+  printStatus('unavailable');
+}
+
+function printStatus(status) {
+  document.querySelector('#status').innerHTML = status;
+}
+
+document.querySelector('#resetButton').addEventListener('click',
+  function() {
+    navigator.serviceWorker.getRegistration().then(function(registration) {
+      registration.unregister();
+      window.location.reload();
+    });
+  }
+);</pre></div></li><li class="listitem">Create a <a id="id168" class="indexterm"/>JavaScript file called <code class="literal">service-worker.js</code>, in the<a id="id169" class="indexterm"/> same folder as the <code class="literal">index.html</code> file with the following code:<div class="informalexample"><pre class="programlisting">'use strict';
+
+var cacheName = 'cache-network-race';
+
+self.addEventListener('install', function(event) {
+  event.waitUntil(
+    caches.open(cacheName)
+      .then(function(cache) {
+        return cache.addAll([
+          'index.html',
+          'style.css',
+          'index.js'
+        ]);
+      })
+      .then(function() {
+        return self.skipWaiting();
+      })
+  );
+});
+
+self.addEventListener('fetch', function(event) {
+  event.respondWith(
+    resolveAny([
+      caches.match(event.request),
+      fetch(event.request)
+    ])
+  );
+});
+
+function resolveAny(promises) {
+  return new Promise(function(resolve, reject) {
+    promises = promises.map(function(promise) {
+      return Promise.resolve(promise);
+    });
+
+    promises.forEach(function(promise) {
+      promise.then(resolve);
+    });
+    
+    promises.reduce(function(a, b) {
+      return a.catch(function() {
+        return b;
+      });
+    }).catch(function() {
+      return reject(Error("All have failed"));
+    });
+  });
+}</pre></div></li><li class="listitem">Open <a id="id170" class="indexterm"/>up a<a id="id171" class="indexterm"/> browser and go to the <code class="literal">index.html</code> file:<div class="mediaobject"><img src="graphics/B05381_03_14.jpg" alt="How to do it..."/></div></li><li class="listitem">Now open up DevTools (<span class="emphasis"><em>Cmd</em></span> + <span class="emphasis"><em>Alt</em></span> + <span class="emphasis"><em>I</em></span> or <span class="emphasis"><em>F12</em></span>), go to the <span class="strong"><strong>Network</strong></span> tab, click on the dropdown, and select <span class="strong"><strong>GPRS(50 kb/s)</strong></span> in order to simulate a slower network speed:<div class="mediaobject"><img src="graphics/B05381_03_15.jpg" alt="How to do it..."/></div></li><li class="listitem">Refresh <a id="id172" class="indexterm"/>the<a id="id173" class="indexterm"/> page and you will see the same page. But if you view the network requests, you will be able to find out that the service worker kicked in:<div class="mediaobject"><img src="graphics/B05381_03_16.jpg" alt="How to do it..."/></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec76"/>How it works...</h2></div></div></div><p>In the <code class="literal">service-worker.js</code> file, we <a id="id174" class="indexterm"/>are caching the necessary <a id="id175" class="indexterm"/>resources for us to go offline and still use the application:</p><div class="informalexample"><pre class="programlisting">self.addEventListener('install', function(event) {
+  event.waitUntil(
+    caches.open(cacheName)
+      .then(function(cache) {
+        return cache.addAll([
+          'index.html',
+          'style.css',
+          'index.js'
+        ]);
+      })
+      .then(function() {
+        return self.skipWaiting();
+      })
+  );
+});</pre></div><p>Then we create a function called <code class="literal">resolveAny</code>. The purpose of this function is to handle race conditions in a proper manner. The promise has a function called <code class="literal">race()</code>. This function is of no help to us, as it rejects if a promise has rejected before fulfilling.</p><p>The <code class="literal">resolveAny</code> function returns a new promise. Inside the promise, we make sure the array we pass in is an array of promises:</p><div class="informalexample"><pre class="programlisting">promises = promises.map(function(promise) {
+      return Promise.resolve(promise);
+    });</pre></div><p>Next, we make <a id="id176" class="indexterm"/>sure that we resolve the current promise as soon as another one in the array gets resolved:</p><div class="informalexample"><pre class="programlisting">promises.forEach(function(promise) {
+      promise.then(resolve);
+    });</pre></div><p>We also<a id="id177" class="indexterm"/> make sure to reject if all promises are rejected:</p><div class="informalexample"><pre class="programlisting">promises.reduce(function(a, b) {
+      return a.catch(function() {
+        return b;
+      });
+    }</pre></div><p>The callback function of the event listener for fetch calls the <code class="literal">resolveAny</code> function and passes in two functions, <code class="literal">caches.match(event.request)</code> and <code class="literal">fetch(event.request)</code>. Both these functions send the same request, resulting in a race condition.</p></div></div>
+<div class="section" title="Using window.caches"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec29"/>Using window.caches</h1></div></div></div><p>In this<a id="id178" class="indexterm"/> recipe, we look at how to prefetch specific resources during the installation of the service worker, as well as how to use the window.cache to make requests against the Cache Storage API, not within the scope of the service worker, but from the context of the HTML document.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec77"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec78"/>How to do it...</h2></div></div></div><p>Follow these instructions to set up your file structure. Alternatively, you can download the files from the following location:</p><p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/tree/master/service-workers/03/04/">https://github.com/szaranger/szaranger.github.io/tree/master/service-workers/03/04/</a>
+</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">First, we must create an <code class="literal">index.html</code> file as follows:<div class="informalexample"><pre class="programlisting">&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;title&gt;Using window.caches&lt;/title&gt;
+  &lt;link rel="stylesheet" href="style.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;section id="registration-status"&gt;
+    &lt;p&gt;Registration status: &lt;strong id="status"&gt;&lt;/strong&gt;&lt;/p&gt;
+    &lt;input type="button" id="resetButton" value="Reset" /&gt;
+  &lt;/section&gt;
+  &lt;section id="article-area"&gt;
+    &lt;h1&gt;Bookmark App&lt;/h1&gt;
+    &lt;form action="#" method="post"&gt;
+      &lt;div&gt;
+        &lt;label for="new-bookmark"&gt;+Add Bookmark&lt;/label&gt;
+        &lt;input type="text" name="new-bookmark" id="new-bookmark" placeholder="new bookmark"&gt;
+        &lt;input type="submit" value="Add"&gt;
+      &lt;/div&gt;
+    &lt;/form&gt;
+    &lt;ul id="articles"&gt;&lt;/ul&gt;
+    &lt;div id="bookmark-status"&gt;&lt;/div&gt;
+  &lt;/section&gt;
+  &lt;script src="index.js"&gt;&lt;/script&gt;
+  &lt;script src="app.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre></div></li><li class="listitem">Create a<a id="id179" class="indexterm"/> CSS file called <code class="literal">style.css</code> in the same folder as the <code class="literal">index.html</code> file. You can find the source code on GitHub at the following location:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/03/04/style.css">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/03/04/style.css</a>
+</p></li><li class="listitem">Create a JavaScript file called <code class="literal">index.js</code>, in the same folder as the <code class="literal">index.html</code> file, with the following code:<div class="informalexample"><pre class="programlisting">'use strict';
+
+var scope = {
+  scope: './'
+};
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register(
+    'service-worker.js',
+    scope
+  ).then( function(serviceWorker) {
+    printStatus('successful');
+  }).catch(function(error) {
+    printStatus(error);
+  });
+} else {
+  printStatus('unavailable');
+}
+
+function printStatus(status) {
+  document.querySelector('#status').innerHTML = status;
+}
+
+document.querySelector('#resetButton').addEventListener('click',
+  function() {
+    navigator.serviceWorker.getRegistration().then(function(registration) {
+      registration.unregister();
+      window.location.reload();
+    });
+  }
+);</pre></div></li><li class="listitem">Create a <a id="id180" class="indexterm"/>JavaScript file called <code class="literal">app.js</code> in the same folder as the <code class="literal">index.html</code> file. The source code for this file can be found on GitHub at the following location:<p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/03/04/app.js">https://github.com/szaranger/szaranger.github.io/blob/master/service-workers/03/04/app.js</a>
+</p></li><li class="listitem">Create an HTML file called <code class="literal">prefetched.html</code>:<div class="informalexample"><pre class="programlisting">&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;title&gt;Prefetched&lt;/title&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;p&gt;Prefetched Page&lt;/p&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre></div></li><li class="listitem">Create a JavaScript file called <code class="literal">service-worker.js</code>, in the same folder as the <code class="literal">index.html</code> file, with<a id="id181" class="indexterm"/> the following code:<div class="informalexample"><pre class="programlisting">'use strict';
+
+var cacheVersion = 1;
+var currentCaches = {
+  prefetch: 'window-cache-v' + cacheVersion
+};
+
+self.addEventListener('install', function(event) {
+  var prefetchUrls = [
+    './prefetched.html',
+  ];
+
+  console.log('EVENT: install. Prefetching resource:',
+    prefetchUrls);
+
+  event.waitUntil(
+    caches.open(currentCaches.prefetch).then(function(cache) {
+      return cache.addAll(prefetchUrls.map(function(prefetchUrl) {
+        return new Request(prefetchUrl, {mode: 'no-cors'});
+      })).then(function() {
+        console.log('SUCCESS: All resources fetched and cached.');
+      });
+    }).catch(function(error) {
+      console.error('FAIL: Prefetch:', error);
+    })
+  );
+});
+
+self.addEventListener('activate', function(event) {
+  var expectedCacheNames = Object.keys(currentCaches).map(function(key) {
+    return currentCaches[key];
+  });
+
+  event.waitUntil(
+    caches.keys().then(function(cacheNames) {
+      return Promise.all(
+        cacheNames.map(function(cacheName) {
+          if (expectedCacheNames.indexOf(cacheName) === -1) {
+            console.log('DELETE: Out of date cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+});</pre></div></li><li class="listitem">Open up a <a id="id182" class="indexterm"/>browser and go to the <code class="literal">index.html</code> file. You will see one prefetched bookmark:<div class="mediaobject"><img src="graphics/B05381_03_17.jpg" alt="How to do it..."/></div></li><li class="listitem">Add a bookmark by typing a URL and clicking on the <span class="strong"><strong>Add</strong></span> button on the right:<div class="mediaobject"><img src="graphics/B05381_03_18.jpg" alt="How to do it..."/></div></li><li class="listitem">You can delete a bookmark by clicking on the tick icon on the right-hand side of the bookmark.</li><li class="listitem">Add another bookmark and refresh the page. You will see the bookmarks are intact.</li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec79"/>How it works...</h2></div></div></div><p>In<a id="id183" class="indexterm"/> our <code class="literal">service-worker.js</code> file, we maintain a cache version in order to use a fresh cache by incrementing the <code class="literal">cacheVersion</code> value. When the updated service worker kicks in, the old caches will be removed as a part of the activate event handler:</p><div class="informalexample"><pre class="programlisting">var cacheVersion = 1;
+var currentCaches = {
+  prefetch: 'window-cache-v' + cacheVersion
+};</pre></div><p>The following resource will be displayed as a bookmarked URL when you load the page for the first time, and the event will be logged in your developer console:</p><div class="informalexample"><pre class="programlisting">var prefetchUrls = [
+    './prefetched.html',
+  ];
+console.log('EVENT: install. Prefetching resource:',
+    prefetchUrls);</pre></div><p>If there is a possibility that the resources being fetched are served off a server that does not support CORS, it is important to use <code class="literal">{mode: 'no-cors'}</code>:</p><div class="informalexample"><pre class="programlisting">return new Request(prefetchUrl, {mode: 'no-cors'});</pre></div><p>The <code class="literal">catch()</code> method handles any exceptions from the <code class="literal">caches.open()</code> and <code class="literal">cache.addAll()</code> steps:</p><div class="informalexample"><pre class="programlisting">}).catch(function(error) {
+    console.error('FAIL: Prefetch:', error);
+})</pre></div><p>In the <a id="id184" class="indexterm"/>event handler for activate, we delete all caches that are not named in <code class="literal">currentCaches</code>. While in this example there is only one cache, the same logic handles cases where there are multiple versioned caches:</p><div class="informalexample"><pre class="programlisting">var expectedCacheNames = Object.keys(currentCaches).map(function(key) {
+    return currentCaches[key];
+  });</pre></div><p>If this cache name isn't present in the array of "expected" cache names, then delete it:</p><div class="informalexample"><pre class="programlisting">if (expectedCacheNames.indexOf(cacheName) === -1) {
+console.log('DELETE: Out of date cache:', cacheName);
+      return caches.delete(cacheName);
+}</pre></div><p>Let's move on to the <code class="literal">app.js</code> file, where most of the work is taking place. The <code class="literal">initializeBookmarks</code> function attaches an event listener to the form for the submit button. In the callback for submit, the value of the text field is extracted and then a list is generated with it. This list is then attached to the unordered list represented by the ID of the articles in the <code class="literal">index.html</code> file. We then call the <code class="literal">showBookmarks()</code> function:</p><div class="informalexample"><pre class="programlisting">function initializeBookmarks() {
+  form.addEventListener('submit', function( event ) {
+    var text = newBookmark.value;
+    if (text !== '') {
+      articles.innerHTML += '&lt;li&gt;' + text + '&lt;/li&gt;';
+      addUrlToCache(text);
+      newBookmark.value = '';
+      newBookmark.focus();
+    }
+    event.preventDefault();
+  }, false);
+  showBookmarks();
+}</pre></div><p>We also add an event listener to the unordered articles list for the click event. Inside the callback, we remove the item itself if it's a list (<code class="literal">li</code>) element. This is how we remove articles from the list:</p><div class="informalexample"><pre class="programlisting">articles.addEventListener( 'click', function( event ) {
+  var target = event.target;
+  if ( target.tagName === 'LI' ) {
+    target.parentNode.removeChild( target );
+  };
+
+  event.preventDefault();
+}, false);</pre></div><p>In <a id="id185" class="indexterm"/>the <code class="literal">showBookmarks()</code> function, we clear out any of the previous URLs, in case this function was called after adding a new URL to the cache:</p><div class="informalexample"><pre class="programlisting">while (articles.firstChild) {
+   articles.removeChild(articles.firstChild);
+}</pre></div><p>We then iterate over all the available caches, and for each of the caches, iterate over all of the URLs, adding each cache to the bookmark list:</p><div class="informalexample"><pre class="programlisting">window.caches.keys().then(function(cacheNames) {
+    cacheNames.forEach(function(cacheName) {
+      window.caches.open(cacheName).then(function(cache) {
+        cache.keys().then(function(requests) {
+          requests.forEach(function(request) {
+            addRequestToBookmarks(cacheName, request);
+          });
+        });
+      });
+    });
+  });</pre></div><p>Now let's look at the function that actually uses <code class="literal">window.fetch()</code> to retrieve a response from the network and store it in the named cache. The important thing here is that the service worker controlling this page has no fetch event handler, therefore this request is made without the involvement of the service worker:</p><div class="informalexample"><pre class="programlisting">function addUrlToCache(url) {
+  window.fetch(url, { mode: 'no-cors' }).then(function(response) {
+    if (response.status &lt; 400) {
+      caches.open(cacheName).then(function(cache) {
+        cache.put(url, response).then(showBookmarks);
+      });
+    }
+  }).catch(function(error) {
+    document.querySelector('#status').textContent = error;
+  });
+}</pre></div><p>The <code class="literal">addRequestToBookmarks()</code> function is a helper function for adding a cached request to the list of the cached bookmarks. In this function, we're creating a span, a button, and a list item, and appending those to the unordered articles list:</p><div class="informalexample"><pre class="programlisting">function addRequestToBookmarks(cacheName, request) {
+  var url = request.url,
+    span = document.createElement('span'),
+    button = document.createElement('button'),
+    li = document.createElement('li');
+
+  span.textContent = url;
+  button.textContent = '✔';
+  button.dataset.url = url;
+  button.dataset.cacheName = cacheName;
+  button.classList.add('done');
+  button.addEventListener('click', function() {
+    removeCachedBookmark(this.dataset.cacheName, this.dataset.url).then(function() {
+      var parent = this.parentNode,
+        grandParent = parent.parentNode;
+        grandParent.removeChild(parent);
+    }.bind(this));
+  });
+  li.appendChild(span);
+  li.appendChild(button);
+  articles.appendChild(li);
+}</pre></div><p>Next, the <code class="literal">removeCachedBookmark()</code> function removes the cache entry by a given a cache <a id="id186" class="indexterm"/>name and a URL:</p><div class="informalexample"><pre class="programlisting">function removeCachedBookmark(cacheName, url) {
+  return window.caches.open(cacheName).then(function(cache) {
+    return cache.delete(url);
+  });
+}</pre></div><p>The <code class="literal">waitUntilInstalled()</code> helper function returns a promise which gets resolved once the service worker registration passes the <code class="literal">installing</code> state:</p><div class="informalexample"><pre class="programlisting">function waitUntilInstalled(registration) {
+  return new Promise(function(resolve, reject) {
+    if (registration.installing) {</pre></div><p>If the current registration portrays the <code class="literal">installing</code> service worker, then we make sure to wait until the installation step, where the resources are pre-fetched, completes to display the bookmark list:</p><div class="informalexample"><pre class="programlisting">registration.installing.addEventListener('statechange', function(event) {
+   if (event.target.state === 'installed') {
+   	resolve();
+   } else if(event.target.state === 'redundant') {
+   	reject();
+   }
+});</pre></div><p>If that's not <a id="id187" class="indexterm"/>the case, and this isn't the <code class="literal">installing</code> service worker, then we can safely assume the installation must have been completed during a previous visit to the current page, and the resources have already been prefetched. Therefore we can now show the list of bookmarks right away:</p><div class="informalexample"><pre class="programlisting">  } else {
+     resolve();
+  }</pre></div></div></div>
+<div class="section" title="Implementing stale-while-revalidate"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec30"/>Implementing stale-while-revalidate</h1></div></div></div><p>Having the <a id="id188" class="indexterm"/>latest version of the cache is sometimes not absolutely necessary for resources such as certain images of a web page. We can use the cached version if available, and fetch an update next time.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec80"/>Getting ready</h2></div></div></div><p>To get started with service workers, you will need to have the service worker experiment feature turned on in your browser settings. If you have not done this yet, refer to the first recipe of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up service workers</em></span>. Service workers only run across HTTPS. To find out how to set up a development environment to support this feature, refer to the following recipes of <a class="link" href="ch01.html" title="Chapter 1. Learning Service Worker Basics">Chapter 1</a>, <span class="emphasis"><em>Learning Service Worker Basics</em></span>: <span class="emphasis"><em>Setting up GitHub pages for SSL</em></span>, <span class="emphasis"><em>Setting up SSL for Windows</em></span>, and <span class="emphasis"><em>Setting up SSL for Mac</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec81"/>How to do it...</h2></div></div></div><p>Follow these instructions to set up your file structure. Alternatively, you can download the files from the following location:</p><p>
+<a class="ulink" href="https://github.com/szaranger/szaranger.github.io/tree/master/service-workers/03/05/">https://github.com/szaranger/szaranger.github.io/tree/master/service-workers/03/05/</a>
+</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">First, we must create an <code class="literal">index.html</code> file as follows:<div class="informalexample"><pre class="programlisting">&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;title&gt;Cache First, then Network&lt;/title&gt;
+  &lt;link rel="stylesheet" href="style.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;section id="registration-status"&gt;
+    &lt;p&gt;Registration status: &lt;strong id="status"&gt;&lt;/strong&gt;&lt;/p&gt;
+    &lt;input type="button" id="resetButton" value="Reset" /&gt;
+  &lt;/section&gt;
+  &lt;section&gt;
+    &lt;img src="adobe-logo" alt="adobe logo"&gt;
+  &lt;/section&gt;
+  &lt;script src="index.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre></div></li><li class="listitem">Create a <a id="id189" class="indexterm"/>JavaScript file called <code class="literal">index.js</code> in the same folder as the <code class="literal">index.html</code> file with the following code:<div class="informalexample"><pre class="programlisting">'use strict';
+
+var scope = {
+  scope: './'
+};
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register(
+    'service-worker.js',
+    scope
+  ).then( function(serviceWorker) {
+    printStatus('successful');
+  }).catch(function(error) {
+    printStatus(error);
+  });
+} else {
+  printStatus('unavailable');
+}
+
+function printStatus(status) {
+  document.querySelector('#status').innerHTML = status;
+}
+
+document.querySelector('#resetButton').addEventListener('click',
+  function() {
+    navigator.serviceWorker.getRegistration().then(function(registration) {
+      registration.unregister();
+      window.location.reload();
+    });
+  }
+);</pre></div></li><li class="listitem">Create a <a id="id190" class="indexterm"/>JavaScript file called <code class="literal">service-worker.js</code>, in the same folder as the <code class="literal">index.html</code> file, with the following code:<div class="informalexample"><pre class="programlisting">'use strict';
+
+var cacheName= 'stale-while-revalidate';
+
+self.addEventListener('install', function(event) {
+  event.waitUntil(
+    caches.open(cacheName)
+      .then(function(cache) {
+        return cache.addAll([
+          'adobe-logo.png',
+          'style.css',
+          'index.html',
+          'index.js',
+          'style.css'
+        ]);
+      })
+      .then(function() {
+        return self.skipWaiting();
+      })
+  );
+});
+
+self.addEventListener('fetch', function(event) {
+  event.respondWith(
+    caches.open('stale-while-revalidate')
+      .then(function(cache) {
+        return cache.match(event.request)
+          .then(function(response) {
+            var promise;
+
+            if (response) {
+              console.log('Fetching from the cache: ', event.request.url);
+            } else {
+              console.log('Fetching from server: ', event.request.url);
+            }
+
+            promise = fetch(event.request)
+              .then(function(networkResponse) {
+                var cloned = networkResponse.clone();
+                cache.put(event.request, cloned);
+                console.log('Fetching from the cache: ', event.request.url);
+                return networkResponse;
+              }
+            )
+            console.log('Fetching from server: ', event.request.url);
+            return response || promise;
+          }
+        )
+      }
+    )
+  );
+});
+
+self.addEventListener('activate', function(event) {
+   console.log('Activating the service worker!');
+   event.waitUntil(self.clients.claim());
+});</pre></div></li><li class="listitem">Download<a id="id191" class="indexterm"/> the <code class="literal">adobe-log.png</code> image from the source code, or use your own image in the same folder as the <code class="literal">index.html</code> file.</li><li class="listitem">Open up a browser and go to <code class="literal">index.html</code>. You will see the <span class="strong"><strong>Registration status: successful</strong></span> message and the logo:<div class="mediaobject"><img src="graphics/B05381_03_19.jpg" alt="How to do it..."/></div></li><li class="listitem">Now <a id="id192" class="indexterm"/>if you refresh the page and inspect the <span class="strong"><strong>Console</strong></span> tab of the Developer Tools, you will be able to see that the <code class="literal">adobe-logo.png</code> file has been fetched from the cache.</li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec82"/>How it works...</h2></div></div></div><p>In our <code class="literal">service-worker.js</code> file, we make sure that if a cached version is available, we use it instead of a network request, but fetch an update the next time:</p><div class="informalexample"><pre class="programlisting">self.addEventListener('fetch', function(event) {
+  event.respondWith(
+    caches.open('stale-while-revalidate')
+      .then(function(cache) {
+        return cache.match(event.request)
+          .then(function(response) {
+            var promise;
+
+            if (response) {
+              console.log('Fetching from the cache: ', event.request.url);
+            } else {
+              console.log('Fetching from server: ', event.request.url);
+            }
+            promise = fetch(event.request)
+              .then(function(networkResponse) {
+                var cloned = networkResponse.clone();
+                cache.put(event.request, cloned);
+                console.log('Fetching from the cache: ', event.request.url);
+                return networkResponse;
+              }
+            )
+            console.log('Fetching from server: ', event.request.url);
+            return response || promise;
+          }
+        )
+      }
+    )
+  );
+});</pre></div></div></div></body></html>

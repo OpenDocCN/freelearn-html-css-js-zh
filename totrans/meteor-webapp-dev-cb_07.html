@@ -1,0 +1,906 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;7.&#xA0;Using Client Methods" id="aid-1TVKI1"><div class="titlepage"><div><div><h1 class="title"><a id="ch07"/>Chapter 7. Using Client Methods</h1></div></div></div><p>In this chapter, you will learn the following topics:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Creating dynamic graphs with SVG and Ajax</li><li class="listitem">Using the HTML FileReader to upload images</li><li class="listitem">Creating a coloring book with the Canvas element</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch07lvl1sec59"/>Introduction</h1></div></div></div><p>Web programming, on the client side, has come a long way since the inception of HTML. Up until recently, it was necessary to write/use third party <span class="strong"><strong>polyfill</strong></span> libraries to do simple things, such as build graphs, read files, and draw on the screen. But that cute lil' bucktoothed kid we <a id="id327" class="indexterm"/>all knew and disliked has grown up! With powerful, easy to use scripting and graphics APIs and objects now supported in nearly every browser, web programming is finally ready to be used on its own. The recipes in this chapter will go through some of the most popular Web API objects, and show you how to implement them inside Meteor.</p></div></div>
+<div class="section" title="Creating dynamic graphs with SVG and Ajax"><div class="titlepage" id="aid-1UU542"><div><div><h1 class="title"><a id="ch07lvl1sec60"/>Creating dynamic graphs with SVG and Ajax</h1></div></div></div><p>While there <a id="id328" class="indexterm"/>are a lot of graphing libraries out there (all of <a id="id329" class="indexterm"/>which you can use in Meteor, by the way!) it's <a id="id330" class="indexterm"/>good to know how to implement <a id="id331" class="indexterm"/>fundamental shapes inside an HTML page, using <span class="strong"><strong>SVG</strong></span> <span class="strong"><strong>templates</strong></span>. Sometimes implementing a full-fledged graphing library is overkill, and having a <a id="id332" class="indexterm"/>working knowledge of SVG in your back pocket can be very useful. However, this is a Meteor recipe; we not only want to see an example of SVG, but we want to see it in action! This recipe will teach you how to stream a live data source into MongoDB collections, and then represent that dynamic collection graphically, using SVG tags.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec214"/>Getting ready</h2></div></div></div><p>We will be using a default project installation, with <code class="literal">client</code>, <code class="literal">server</code>, and <code class="literal">both</code> folders, to keep the code clean and readable. In a terminal window, navigate to where you would like your project to reside, and execute the following commands:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ meteor create svggraph</strong></span>
+<span class="strong"><strong>$ cd svggraph</strong></span>
+<span class="strong"><strong>$ rm svggraph.*</strong></span>
+<span class="strong"><strong>$ mkdir client</strong></span>
+<span class="strong"><strong>$ mkdir server</strong></span>
+<span class="strong"><strong>$ mkdir both</strong></span>
+</pre></div><p>We also want to make use of a few packages, and remove the <code class="literal">autopublish</code> package, so let's do that now. Run the following commands in the terminal window:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ meteor remove autopublish</strong></span>
+<span class="strong"><strong>$ meteor add http</strong></span>
+<span class="strong"><strong>$ meteor add meteorhacks:aggregate</strong></span>
+<span class="strong"><strong>$ meteor add rzymek:randomcolor</strong></span>
+<span class="strong"><strong>$ meteor</strong></span>
+</pre></div><p>We're now ready to start creating our SVG streaming data graph.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec215"/>How to do it...</h2></div></div></div><p>Our project is <a id="id333" class="indexterm"/>going to read the comments stream from <a class="ulink" href="http://www.meetup.com/">http://www.meetup.com/</a>, which is freely available, and very easy to use. We will record the <a id="id334" class="indexterm"/>comments from the stream, and display <a id="id335" class="indexterm"/>a sum total of comments by state. We will <a id="id336" class="indexterm"/>need to create the interface, which will <a id="id337" class="indexterm"/>display state totals as a vertical bar chart, and will also show us the last comment made, along with a picture of the Meetup Group it came from.</p><div class="note" title="Note"><h3 class="title"><a id="note07"/>Note</h3><p><span class="strong"><strong>Note</strong></span></p><p>We are using the data stream collecting code for demonstration purposes only! There is no redundancy checking or hardening built into it. We strongly recommend against using this code as-is in anything even resembling a production application.</p></div><p>Proceed with the following steps to create dynamic graphs with SVG and Ajax:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">We will first create the SVG element with the <code class="literal">id</code> of <code class="literal">stateBars</code>. We will then create a <code class="literal">&lt;rect&gt;</code> element for each individual state, and adjust the height using the <code class="literal">stateStat</code> template. Inside the <code class="literal">[project root]/client/</code> folder, create a <code class="literal">client.html</code> file, add the following HTML code, and save the file:<div class="informalexample"><pre class="programlisting">&lt;body&gt;
+  {{&gt; cPic}}
+&lt;/body&gt;
+
+&lt;template name="cPic"&gt;
+  &lt;svg id="stateBars" width="800" height="600"&gt;
+    {{#each stateStats}}
+    {{&gt; stateStat}}
+    {{/each}}
+  &lt;/svg&gt;
+  &lt;div id="cComment"&gt;{{curComment}}&lt;/div&gt;
+  &lt;img id="cPic" src="{{curPic}}"/&gt;
+&lt;/template&gt;
+
+
+&lt;template name="stateStat"&gt;
+  &lt;rect width="{{width}}" height="{{stackHeight}}" y="{{stackPosition}}"
+        style="fill:{{color}};fill-opacity:0.8;" /&gt;
+  &lt;text x="5" y="{{textYPos}}" fill="black"&gt;{{state}}: {{total}}&lt;/text&gt;
+&lt;/template&gt;</pre></div></li><li class="listitem">We want to <a id="id338" class="indexterm"/>provide some basic styling on <a id="id339" class="indexterm"/>our page, so let's get that out of the way. In the <code class="literal">[project root]/client</code> folder, create a <code class="literal">style.css</code> file, and add the <a id="id340" class="indexterm"/>following <a id="id341" class="indexterm"/>style declarations:<div class="informalexample"><pre class="programlisting">body {
+  font-family: 'Helvetica-Neue', sans-serif;
+  font-size: 12px;
+}
+#stateBars {
+  border:dashed 3px #ccc;
+}
+#cComment {
+  margin-top: 10px;
+}
+#cPic {
+  width: 200px;
+  margin-top: 10px;
+}</pre></div></li><li class="listitem">Next, let's set up the <code class="literal">Comments</code> and <code class="literal">CountryTotals</code> collections. To keep things cleaner, logic-wise, on the client we will use some server-side logic to aggregate the incoming comments. We first need to declare our collections for use on both the client and the server. In the <code class="literal">[project root]/both/</code> folder, create a new file called <code class="literal">model.js</code>, and add the following two declarations to the file:<div class="informalexample"><pre class="programlisting">Comments = new Mongo.Collection('comments');
+CountryTotals = new Mongo.Collection('countryTotals');</pre></div></li><li class="listitem">Next, let's set <a id="id342" class="indexterm"/>up monitoring for the <code class="literal">commentsStream</code> data, and add a code to count the totals. As we removed <a id="id343" class="indexterm"/>the <code class="literal">autopublish</code> package, we need to declare our <code class="literal">Comments</code> publication, and at the same time, we want to update the totals for a state whenever any new comments come in. We can <a id="id344" class="indexterm"/>accomplish this by using the <code class="literal">Meteor.publish()</code> function and using the <code class="literal">cursor.observeChanges()</code> method. In your <code class="literal">[project root]/server/</code> folder, create a <a id="id345" class="indexterm"/>new file called <code class="literal">svggraph-server.js</code>, and add the following method:<div class="informalexample"><pre class="programlisting">Meteor.publish("commentsStream", function(country){
+  var cursor = Comments.find({country:country});
+  var initializing = true;
+  cursor.observeChanges({
+    added:function(id,doc){
+      if (initializing) return;
+      var cTots = Meteor.call('totalsByCountry', doc.country);
+      var sTots = Meteor.call('totalsByState',doc.country);
+      var existingTots = CountryTotals.findOne({country:doc.country});
+      
+      if (!sTots || !cTots) return;
+      sTots = _.map(sTots,function(s,i,d){
+        s._id.total = s.total;
+        if (existingTots){
+          var existingState = _.findWhere(existingTots.states,{state:s._id.state});
+          if (existingState) s._id.color = existingState.color || randomColor({luminosity: 'light', hue: 'blue'});
+          else s._id.color = randomColor({luminosity: 'light', hue: 'blue'});
+        }
+        return s._id;
+      });
+      var cObj = {country:doc.country, total:cTots[0].total, states: sTots};
+      CountryTotals.upsert({country:cObj.country},cObj);
+    }
+  });
+  initializing = false;
+  
+  return cursor;
+});</pre></div></li><li class="listitem">We also need to declare the <code class="literal">Meteor.publish()</code> method for our state totals by country, so let's do that as well. Append the following to the end of the <code class="literal">svggra</code><code class="literal">ph-server.js</code> file:<div class="informalexample"><pre class="programlisting">Meteor.publish("graphData", function(country){
+  return CountryTotals.find({country:country});
+});</pre></div></li><li class="listitem">We need to keep track of the country that we are monitoring, and what the last comment and picture from the Meetup Group were. The most straightforward way to do this is through <code class="literal">Session</code> variables, so let's create a file called <a id="id346" class="indexterm"/><code class="literal">svggraph-client.js</code> in the <code class="literal">[project root]/client/</code> folder, and add the following three variables at the top:<div class="informalexample"><pre class="programlisting">Session.setDefault("country", "us");
+Session.setDefault("msgComment","No comments yet");
+Session.setDefault("msgPic", "https://d14jjfgstdxsoz.cloudfront.net/meteor-logo.png");</pre></div></li><li class="listitem">Now that we <a id="id347" class="indexterm"/>have specified the country that <a id="id348" class="indexterm"/>we will be monitoring, we can add our <code class="literal">Meteor.subscribe</code> statements, which both take the country as a parameter. In the <code class="literal">svggraph-client.js</code> file, add the following statements inside a <code class="literal">T</code><code class="literal">racker.autorun</code> block:<div class="informalexample"><pre class="programlisting">Tracker.autorun(function(){
+  Meteor.subscribe("graphData", Session.get('country'));
+  Meteor.subscribe("commentsStream", Session.get('country'));
+});</pre></div></li><li class="listitem">We will hook up <a id="id349" class="indexterm"/>the data later, but we still need to add the <code class="literal">Template.helpers</code> method for displaying the latest pictures and comments, based on the <code class="literal">Session</code> variables declared in the preceding steps. In the <code class="literal">svggraph-client.js</code> file, add the following code just below the <code class="literal">Tracker.autorun</code> block:<div class="informalexample"><pre class="programlisting">Template.cPic.helpers({
+  curPic: function () {
+    return Session.get('msgPic');
+  },
+  curComment: function() {
+    return Session.get('msgComment');
+  }
+});</pre></div></li><li class="listitem">In anticipation of incoming data from the client, we need a few <code class="literal">helper</code> methods, to message data and perform <span class="emphasis"><em>aggregate queries</em></span> on our Mongo DB collections. We also want a quick way to reset our collections, because the sheer amount of <a id="id350" class="indexterm"/>data we're collecting can get messy for a sample application. As such, we will create the following server-side methods:<div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><code class="literal">addMsg</code>: This is used for inserting a message into our <code class="literal">Comments</code> collection.</li><li class="listitem"><code class="literal">totalsByState</code>: This is used to aggregate the total number of <code class="literal">Comments</code>, by state.</li><li class="listitem"><code class="literal">totalsByCountry</code>: This is used to aggregate totals, by country.</li><li class="listitem"><code class="literal">resetDB</code>: This is used to reset the <code class="literal">Comments</code> and <code class="literal">CountryTotals</code> collections.</li></ul></div><p>Open <a id="id351" class="indexterm"/>
+<code class="literal">svggraph-server.js</code> <a id="id352" class="indexterm"/>and add the following <a id="id353" class="indexterm"/>code:</p><div class="informalexample"><pre class="programlisting">Meteor.methods({
+  addMsg : function (msg) {
+    var upMsg = {};
+    try {
+    upMsg.country = msg.group.country;
+    upMsg.state = msg.group.state;
+    upMsg.category = msg.group.category.name;
+    upMsg.thumb = (msg.group.group_photo ? msg.group.group_photo.thumb_link: "");
+    upMsg.createdAt = Date.now();
+    }
+    catch(e){
+      console.log(e.message);
+      return null;
+    }
+    Comments.insert(upMsg);
+  },
+  totalsByState: function (country){
+    return Comments.aggregate([ {$match:{country:country}}, {$group:{_id:{state:"$state"},total:{$sum:1}}}, {$sort:{"total":-1}} ]);
+  },
+  totalsByCountry: function(country){
+    return Comments.aggregate([ {$match:{country:country}}, {$group:{_id:{},total:{$sum:1}}} ]);
+  },
+  resetDB: function(){
+    Comments.remove({});
+    CountryTotals.remove({});
+    console.log('Collections have been reset');
+  }
+});</pre></div></li><li class="listitem">With <a id="id354" class="indexterm"/>our server-side helper logic all in <a id="id355" class="indexterm"/>place, it's time to read and parse <a id="id356" class="indexterm"/>the data stream. In the <code class="literal">svggraph-client.js</code> file, add the following <code class="literal">connect</code>, <code class="literal">disconnect</code>, <code class="literal">onopen</code>, <code class="literal">onclose</code>, and <a id="id357" class="indexterm"/><code class="literal">onmessage</code> websocket functions:<div class="informalexample"><pre class="programlisting">function MeetupsStream() {
+  var ms = {};
+  var ws;
+  var sURL = "ws://stream.meetup.com/2/event_comments";
+  ms.connect = function (url) {
+    sURL = url || sURL;
+    ws = new WebSocket(sURL);
+    ws.onopen = ms.onopen;
+    ws.onmessage = ms.onmessage;
+    ws.onclose = ms.onclose;
+    return ms;
+  };
+  ms.disconnect = function () {
+    ws &amp;&amp; ws.close();
+  };
+  ms.onopen = function () {
+    console.log("Meetup stream started...");
+  };
+  ms.onmessage = function (e) {
+    var rec_msg = EJSON.parse(e.data);
+    if (rec_msg.group.group_photo)
+      Session.set('msgPic', rec_msg.group.group_photo.photo_link);
+    Session.set('msgComment', rec_msg.comment);
+    Meteor.call('addMsg', rec_msg);
+//   
+  };
+  
+  ms.onclose = function () {
+    console.log("Meetup stream closed.");
+  };
+
+  return ms;
+}</pre></div></li><li class="listitem">With the data stream all ready to go, all that's left is to add our display logic, and flip the <a id="id358" class="indexterm"/>switch. In the <code class="literal">svggraph-client.js</code> file, locate the <code class="literal">Template.cPic.helpers</code> code block, and <a id="id359" class="indexterm"/>add the following helper function just <a id="id360" class="indexterm"/>below the <code class="literal">curComment</code> event (don't forget the comma!):<div class="informalexample"><pre class="programlisting">curComment: function() {
+    return Session.get('msgComment');
+  },
+<span class="strong"><strong>  stateStats: function () {</strong></span>
+<span class="strong"><strong>    var ct = CountryTotals.findOne({country:Session.get('country')});</strong></span>
+<span class="strong"><strong>    if (!ct) return [];</strong></span>
+<span class="strong"><strong>    var stateTotals = ct.states;</strong></span>
+<span class="strong"><strong>    var ctotal = ct.total;</strong></span>
+<span class="strong"><strong>    var SVGWidth = 800;</strong></span>
+<span class="strong"><strong>    var SVGHeight = 600;</strong></span>
+<span class="strong"><strong>    return _.map(stateTotals, function(s,i,l){</strong></span>
+<span class="strong"><strong>      var retObj = {};</strong></span>
+<span class="strong"><strong>      retObj.state = s.state;</strong></span>
+<span class="strong"><strong>      retObj.index = i;</strong></span>
+<span class="strong"><strong>      retObj.total = s.total;</strong></span>
+<span class="strong"><strong>      retObj.width = ~~(SVGWidth * (s.total/ctotal));</strong></span>
+<span class="strong"><strong>      retObj.stackHeight = ~~(SVGHeight/l.length);</strong></span>
+<span class="strong"><strong>      retObj.stackPosition = i*retObj.stackHeight;</strong></span>
+<span class="strong"><strong>      retObj.color = s.color;</strong></span>
+<span class="strong"><strong>      return retObj;</strong></span>
+<span class="strong"><strong>    });</strong></span>
+<span class="strong"><strong>  }</strong></span>
+});</pre></div></li><li class="listitem">We need a few style helpers to properly position our text data, and to let us know where the most recent comment was added (to make the things all fancy!). Append the following <code class="literal">Template.helpers</code> code block to the bottom of the <code class="literal">svggraph-client.js</code> file:<div class="informalexample"><pre class="programlisting">Template.stateStat.helpers({
+  textYPos: function () {
+    return this.stackPosition + ~~(this.stackHeight/2);
+    
+  },
+  textXPos : function(){
+    return this.width - ~~(this.width*.2);
+  },
+  color : function(){
+    if (Session.equals('lastState',this.state)) return '#2ecc71';
+    return this.color;
+  }
+});</pre></div></li><li class="listitem">Using the <code class="literal">Template.rendered</code> method block, we will turn our data stream on and update our <code class="literal">lastState</code> session variable whenever a new comment is posted, using a simple <code class="literal">autorun</code> method. Enter the following code at the bottom of your <code class="literal">svggraph-client.js</code> file:<div class="informalexample"><pre class="programlisting">Template.cPic.rendered = function(){
+  MStream = new MeetupsStream();
+  MStream.connect();
+  this.autorun(function(){
+    var last = Comments.findOne( {country:Session.get('country')}, {sort:{createdAt:-1}});
+    if (last) Session.set('lastState',last.state);
+  });
+}</pre></div></li><li class="listitem">Save all <a id="id361" class="indexterm"/>changes, and open a browser (if <a id="id362" class="indexterm"/>you haven't already) to <code class="literal">http://localhost:3000</code>. Wait just a bit, and you should see the new comments <a id="id363" class="indexterm"/>coming in, with state totals being <a id="id364" class="indexterm"/>updated, as shown in the following screenshot:<div class="mediaobject"><img src="../Images/image00386.jpeg" alt="How to do it..."/></div><p style="clear:both; height: 1em;"> </p></li><li class="listitem">Let it run for a bit, so that more states appear. If you let it run long enough, you'll eventually get all 50 states (and maybe even Puerto Rico!). If you would like to reset your collection, open your browser console and enter the following command:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; Meteor.call('resetDB')</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec216"/>How it works...</h2></div></div></div><p>As mentioned in the recipe introduction, there are two critical pieces to graphing dynamic data. The first has <a id="id365" class="indexterm"/>to do with rendering SVG objects, and can be <a id="id366" class="indexterm"/>found mostly in the HTML template code, in the <code class="literal">[project root]/clie</code>
+<code class="literal">nt/client.html</code> file. We first used the <code class="literal">{{&gt; cPic}}</code> template inclusion to reference our <code class="literal">cPic</code> template. The template itself declares our <code class="literal">&lt;svg&gt;</code> <a id="id367" class="indexterm"/>element, then runs a standard <code class="literal">{{#each }}</code> control <a id="id368" class="indexterm"/>structure on the <code class="literal">stateStats</code> collection:</p><div class="informalexample"><pre class="programlisting">&lt;template name="cPic"&gt;
+<span class="strong"><strong>  &lt;svg ...&gt;</strong></span>
+    {{<span class="strong"><strong>#each</strong></span> stateStats}}
+    {{&gt; stateStat}}
+<span class="strong"><strong>    {{/each}}</strong></span>
+<span class="strong"><strong>  &lt;/svg&gt;</strong></span>
+  ...
+&lt;/template&gt;</pre></div><p>We set the width and height of the <code class="literal">&lt;svg&gt;</code> element directly (note that they are <span class="emphasis"><em>not</em></span> CSS style attributes, but are actual element attributes instead), and add a unique <code class="literal">id</code> attribute for CSS styling as well, as shown in the following example:</p><div class="informalexample"><pre class="programlisting">&lt;svg id="stateBars" width="800" height="600"&gt;</pre></div><p>In the <code class="literal">stateStat</code> template, we create a <code class="literal">&lt;rect&gt;</code> element and set pretty much every attribute dynamically:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><code class="literal">width</code>: This is set based on the number of comments.</li><li class="listitem"><code class="literal">height</code>: This is set based on the total number of states.</li><li class="listitem"><code class="literal">y</code>: This is the vertical position and is set based on position in the data collection.</li><li class="listitem"><code class="literal">fill</code>: This is the color value which is set to green if it was the last state updated.</li></ul></div><p>We likewise set the position of the text SVG element to make sure it lines up with the corresponding <code class="literal">&lt;rect&gt;</code> element:</p><div class="informalexample"><pre class="programlisting">&lt;template name="stateStat"&gt;
+  &lt;rect <span class="strong"><strong>width</strong></span>="{{width}}" <span class="strong"><strong>height</strong></span>="{{stackHeight}}" <span class="strong"><strong>y</strong></span>="{{stackPosition}}"
+        <span class="strong"><strong>style</strong></span>="fill:{{color}};fill-opacity:0.8;" /&gt;
+  &lt;text <span class="strong"><strong>x</strong></span>="5" <span class="strong"><strong>y</strong></span>="{{textYPos}}" fill="black"&gt;{{state}}: {{total}}&lt;/text&gt;
+&lt;/template&gt;</pre></div><p>It's important to <a id="id369" class="indexterm"/>understand that SVG elements are not positioned <a id="id370" class="indexterm"/>relative to other elements inside the same <code class="literal">&lt;svg&gt;</code> block. This is why we had to set the position of each element. Also, some <a id="id371" class="indexterm"/>attributes (<code class="literal">width</code> and <code class="literal">height</code> for example) can be <a id="id372" class="indexterm"/>set directly. SVG elements are truly a hybrid between a bonafide DOM element and a graphic element.</p><div class="note" title="Note"><h3 class="title"><a id="tip30"/>Tip</h3><p>For a great <a id="id373" class="indexterm"/>introduction to SVG, you can read the MDN SVG tutorial, found at <a class="ulink" href="https://developer.mozilla.org/en-US/docs/Web/SVG/Tutorial">https://developer.mozilla.org/en-US/docs/Web/SVG/Tutorial</a>.</p></div><p>The second critical piece surrounds the use of the <code class="literal">WebSocket</code> HTML5 Web API object, found in our <code class="literal">MeetupsStream</code> function of the <code class="literal">svggraph-client.js</code> file. In this function, we prepare a pretty standard Ajax (actually <code class="literal">WebSocket</code>) call by setting handlers for <code class="literal">.ondisconnect</code>, <code class="literal">.onopen</code>, and <code class="literal">.onmessage</code>:</p><div class="informalexample"><pre class="programlisting">function MeetupsStream() {
+  ms.<span class="strong"><strong>onopen</strong></span> = ...
+  ms.<span class="strong"><strong>onmessage</strong></span> = ...
+  ms.<span class="strong"><strong>onclose</strong></span> = ...
+}</pre></div><p>The one we are most interested in is the <code class="literal">.onmessage</code> handler, where we parse the data (which comes in as a string) into an <code class="literal">EJSON</code> object:</p><div class="informalexample"><pre class="programlisting">var rec_msg = EJSON.parse(e.data);</pre></div><p>We then (conditionally) set the <code class="literal">msgPic</code> variable, which immediately changes the image displayed in our <code class="literal">cPic</code> template. We likewise update <code class="literal">msgComment</code> to change the displayed comment:</p><div class="informalexample"><pre class="programlisting">if (rec_msg.group.group_photo)
+      Session.set('msgPic', ...);
+    Session.set('msgComment', rec_msg.comment);</pre></div><p>Finally, we make <a id="id374" class="indexterm"/>a <code class="literal">Meteor.call</code> method to the server-side <code class="literal">'addMsg'</code> method, which puts things in motion to update our state totals:</p><div class="informalexample"><pre class="programlisting">Meteor.call('addMsg', rec_msg);</pre></div><div class="note" title="Note"><h3 class="title"><a id="tip31"/>Tip</h3><p>The <code class="literal">WebSocket</code> <a id="id375" class="indexterm"/>object also has a good MDN tutorial, found at <a class="ulink" href="https://developer.mozilla.org/en-US/docs/WebSockets">https://developer.mozilla.org/en-US/docs/WebSockets</a>.</p></div><p>A few more <a id="id376" class="indexterm"/>odds and ends can be found in the code we used, such as the <code class="literal">meteorhacks:aggregate</code> package, which lets us do summations and <a id="id377" class="indexterm"/>groupings on the MongoDB collections (official support coming soon!) via the .<code class="literal">aggregate</code> method, but this recipe was meant to <a id="id378" class="indexterm"/>focus on the SVG and Ajax (<code class="literal">WebSocket</code>) aspects.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec217"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">The <span class="emphasis"><em>Creating dynamic lists</em></span> recipe in <a class="link" title="Chapter 3. Building Great User Interfaces" href="part0036.xhtml#aid-12AK81">Chapter 3</a>, <span class="emphasis"><em>Building Great User Interfaces</em></span></li><li class="listitem">The <span class="emphasis"><em>Handling asynchronous events</em></span> recipe in <a class="link" title="Chapter 11. Leveraging Advanced Features" href="part0083.xhtml#aid-2F4UM1">Chapter 11</a>, <span class="emphasis"><em>Leveraging Advanced Features</em></span></li></ul></div></div></div>
+<div class="section" title="Using the HTML FileReader to upload images"><div class="titlepage" id="aid-1VSLM2"><div><div><h1 class="title"><a id="ch07lvl1sec61"/>Using the HTML FileReader to upload images</h1></div></div></div><p>Adding <a id="id379" class="indexterm"/>files via a web application <a id="id380" class="indexterm"/>is a pretty standard functionality nowadays. That doesn't mean that it's easy to do, programmatically. New browsers support Web APIs to make our job easier, and a lot of quality libraries/packages exist to help us navigate the file reading/uploading forests, but, being the coding lumberjacks that we are, we like to know how to roll our own! In this recipe, you will learn how to read and upload image files to a Meteor server.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec218"/>Getting ready</h2></div></div></div><p>We will be using a default project installation, with <code class="literal">client</code>, <code class="literal">server</code>, and <code class="literal">both</code> folders, and with the addition of a special folder for storing images. In a terminal window, navigate to where you would like your project to reside, and execute the following commands:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ meteor create imageupload</strong></span>
+<span class="strong"><strong>$ cd imageupload</strong></span>
+<span class="strong"><strong>$ rm imageupload.*</strong></span>
+<span class="strong"><strong>$ mkdir client</strong></span>
+<span class="strong"><strong>$ mkdir server</strong></span>
+<span class="strong"><strong>$ mkdir both</strong></span>
+<span class="strong"><strong>$ mkdir .images</strong></span>
+</pre></div><p>Note the dot in the <code class="literal">.images</code> folder. This is really important because we don't want the Meteor <a id="id381" class="indexterm"/>application to automatically refresh every time we add an image to the server! By creating the images folder as <code class="literal">.images</code>, we are hiding it from the eye-of-Sauron-like monitoring system built into Meteor, because folders starting with a period are "invisible" to Linux or Unix.</p><p>Let's also take care of the additional Atmosphere packages we'll need. In the same terminal window, execute the following commands:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ meteor add twbs:bootstrap</strong></span>
+<span class="strong"><strong>$ meteor add voodoohop:masonrify</strong></span>
+</pre></div><p>We're now ready to get started on building our image upload application.</p></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec219"/>How to do it…</h2></div></div></div><p>We want to <a id="id382" class="indexterm"/>display the images we upload, so we'll be using a layout package (<code class="literal">voodoohop:masonrify</code>) for display purposes. We will also initiate uploads via drag and drop, to cut down on UI components. Lastly, we'll be relying on an npm module to make the file upload much easier. Let's break this down into a few steps, starting with the user interface.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">In the <code class="literal">[project root]/client</code> folder, create a file called <code class="literal">imageupload.html</code> and add the following templates and <code class="literal">template</code> inclusions:<div class="informalexample"><pre class="programlisting">&lt;body&gt;
+  &lt;h1&gt;Images!&lt;/h1&gt;
+  {{&gt; display}}
+  {{&gt; dropzone}}
+&lt;/body&gt;
+
+&lt;template name="display"&gt;
+  {{#masonryContainer
+    columnWidth=50
+    transitionDuration="0.2s"
+    id="MasonryContainer"
+  }}
+  {{#each imgs}}
+  {{&gt; img}}
+  {{/each}}
+  {{/masonryContainer}}
+&lt;/template&gt;
+
+&lt;template name="dropzone"&gt;
+  &lt;div id="dropzone" class="{{dropcloth}}"&gt;Drag images here...&lt;/div&gt;
+&lt;/template&gt;
+
+&lt;template name="img"&gt;
+  {{#masonryElement "MasonryContainer"}}
+  &lt;img src="{{src}}"
+    class="display-image"
+    style="width:{{calcWidth}}"/&gt;
+  {{/masonryElement}}
+&lt;/template&gt;</pre></div></li><li class="listitem">We want to add just a little bit of styling, including an "active" state for our drop zone, so <a id="id383" class="indexterm"/>that we know when <a id="id384" class="indexterm"/>we are safe to drop files onto the page. In your <code class="literal">[project root]/client/</code> folder, create a new <code class="literal">style.css</code> file and enter the following CSS style directives:<div class="informalexample"><pre class="programlisting">body {
+  background-color: #f5f0e5;
+  font-size: 2rem;
+
+}
+
+div#dropzone {
+  position: fixed;
+  bottom:5px;
+  left:2%;
+  width:96%;
+  height:100px;
+  margin: auto auto;
+  line-height: 100px;
+  text-align: center;
+  border: 3px dashed #7f898d;
+  color: #7f8c8d;
+  background-color: rgba(210,200,200,0.5);
+}
+
+div#dropzone.active {
+  border-color: #27ae60;
+  color: #27ae60;
+  background-color: rgba(39, 174, 96,0.3);
+}
+
+img.display-image {
+  max-width: 400px;
+}</pre></div></li><li class="listitem">We now want to create an <code class="literal">Images</code> collection to store references to our uploaded <a id="id385" class="indexterm"/>image files. To do this, we will be relying on <span class="strong"><strong>EJSON</strong></span>. EJSON is Meteor's extended version of <a id="id386" class="indexterm"/>JSON, which allows us to quickly transfer binary files from the client to the server. In your <code class="literal">[project root]/both/</code> folder, create a file called <code class="literal">imgFile.js</code> and add the MongoDB collection by adding the following line:<div class="informalexample"><pre class="programlisting">Images = new Mongo.Collection('images');</pre></div></li><li class="listitem">We will now create the <code class="literal">imgFile</code> object, and declare an EJSON type of <code class="literal">imgFile</code> to be used on both the client and the server. After the preceding <code class="literal">Images</code> declaration, enter the following code:<div class="informalexample"><pre class="programlisting">imgFile = function (d) {
+  d = d || {};
+  this.name = d.name;
+  this.type = d.type;
+  this.source = d.source;
+  this.size = d.size;
+};</pre></div></li><li class="listitem">To properly initialize <code class="literal">imgFile</code> as an EJSON type, we need to implement the <code class="literal">fromJSONValue()</code>, <code class="literal">prototype()</code>, and <code class="literal">toJSONValue()</code> methods. We will then declare <code class="literal">imgFile</code> as an EJSON type using the <code class="literal">EJSON.addType()</code> method. Add the following code just below the <code class="literal">imgFile</code> function declaration:<div class="informalexample"><pre class="programlisting">imgFile.fromJSONValue = function (d) {
+  return new imgFile({
+    name: d.name,
+    type: d.type,
+    source: EJSON.fromJSONValue(d.source),
+    size: d.size
+  });
+};
+
+imgFile.prototype = {
+  constructor: imgFile,
+
+  typeName: function () {
+    return 'imgFile'
+  },
+  equals: function (comp) {
+    return (this.name == comp.name &amp;&amp;
+      this.size == comp.size);
+  },
+  clone: function () {
+    return new imgFile({
+      name: this.name,
+      type: this.type,
+      source: this.source,
+      size: this.size
+    });
+  },
+  toJSONValue: function () {
+    return {
+      name: this.name,
+      type: this.type,
+      source: EJSON.toJSONValue(this.source),
+      size: this.size
+    };
+  }
+};
+
+EJSON.addType('imgFile', imgFile.fromJSONValue);</pre></div><div class="note" title="Note"><h3 class="title"><a id="note08"/>Note</h3><p>The EJSON code used in this recipe is heavily inspired by Chris Mather's Evented Mind file upload tutorials. We recommend checking out his site and learning even <a id="id387" class="indexterm"/>more about file uploading at <a class="ulink" href="https://www.eventedmind.com">https://www.eventedmind.com</a>.</p></div></li><li class="listitem">Even though it's usually cleaner to put client-specific and server-specific code in separate <a id="id388" class="indexterm"/>files, because the code is related to the <code class="literal">imgFile</code> code we just entered, we are going to put <a id="id389" class="indexterm"/>it all in the same file. Just below the <code class="literal">EJSON.addType()</code> function call in the preceding step, add the following <code class="literal">Meteor.isClient</code> and <code class="literal">Meteor.isServer</code> code:<div class="informalexample"><pre class="programlisting">if (Meteor.isClient){
+  _.extend(imgFile.prototype, {
+    read: function (f, callback) {
+
+      var fReader = new FileReader;
+      var self = this;
+      callback = callback || function () {};
+
+      fReader.onload = function() {
+        self.source = new Uint8Array(fReader.result);
+        callback(null,self);
+      };
+
+      fReader.onerror = function() {
+        callback(fReader.error);
+      };
+
+      fReader.readAsArrayBuffer(f);
+    }
+  });
+  
+  _.extend (imgFile, {
+    read: function (f, callback){
+      return new imgFile(f).read(f,callback);
+    }
+  });
+};
+
+if (Meteor.isServer){
+  var fs = Npm.require('fs');
+  var path = Npm.require('path');
+  _.extend(imgFile.prototype, {
+    save: function(dirPath, options){
+      var fPath = path.join(process.env.PWD,dirPath,this.name);
+      var imgBuffer = new Buffer(this.source);
+      fs.writeFileSync(fPath, imgBuffer, options);
+    }
+  });
+};</pre></div></li><li class="listitem">Next, we will add some <code class="literal">Images</code> collection <code class="literal">insert</code> helpers. We will provide the ability to <a id="id390" class="indexterm"/>add either references (URIs) to images, or to upload files into our <code class="literal">.images</code> folder on the server. To do this, we need some <code class="literal">Meteor.methods</code>. In the <code class="literal">[project root]/server/</code> folder, create an <code class="literal">imageupload-server.js</code> file, and enter the following code:<div class="informalexample"><pre class="programlisting">Meteor.methods({
+  addURL : function(uri){
+    Images.insert({src:uri});
+  },
+  uploadIMG : function(iFile){
+    iFile.save('.images',{});
+    Images.insert({src:'images/' +iFile.name});
+  }
+});</pre></div></li><li class="listitem">We now need to establish the code to process/serve images from the <code class="literal">.images</code> folder. We need to circumvent Meteor's normal asset serving capabilities for <a id="id391" class="indexterm"/>anything found in the (hidden) <code class="literal">.images</code> folder. To do this, we will use the <code class="literal">fs</code> npm module, and redirect any content requests accessing the <code class="literal">Images/</code> folder <a id="id392" class="indexterm"/>address to the actual <code class="literal">.images</code> folder found on the server. Just after the <code class="literal">Meteor.methods</code> block entered in the preceding step, add the following <code class="literal">WebApp.connectHandlers.use()</code> function code:<div class="informalexample"><pre class="programlisting">var fs = Npm.require('fs');
+WebApp.connectHandlers.use(function(req, res, next) {
+  var re = /^\/images\/(.*)$/.exec(req.url);
+  if (re !== null) {
+    var filePath = process.env.PWD + '/.images/'+ re[1];
+    var data = fs.readFileSync(filePath, data);
+    res.writeHead(200, {
+      'Content-Type': 'image'
+    });
+    res.write(data);
+    res.end();
+  } else {
+    next();
+  }
+});</pre></div></li><li class="listitem">Our images <code class="literal">display</code> template is entirely dependent on the <code class="literal">Images</code> collection, so we need to add the appropriate reactive <code class="literal">Template.helpers</code> function on the client side. In your <code class="literal">[project root]/client/</code> folder, create an <code class="literal">imageupload-client.js</code> file, and add the following code:<div class="informalexample"><pre class="programlisting">Template.display.helpers({
+  imgs: function () {
+    return Images.find();
+  }
+});</pre></div></li><li class="listitem">If we add pictures we don't like and want to remove them quickly, the easiest way to do that is by double clicking on a picture. So, let's add the code for doing that just below the <code class="literal">Template.helpers</code> method in the same file:<div class="informalexample"><pre class="programlisting">Template.display.events({
+  'dblclick .display-image': function (e) {
+    Images.remove({
+      _id: this._id
+    });
+  }
+});</pre></div></li><li class="listitem">Now for the fun stuff. We're going to add drag and drop visual feedback cues, so <a id="id393" class="indexterm"/>that whenever we <a id="id394" class="indexterm"/>drag anything over our drop zone, the drop zone will provide visual feedback to the user. Likewise, once we move away from the zone, or actually drop items, the drop zone should return to normal. We will accomplish this through a <code class="literal">Session</code> variable, which modifies the CSS class in the <code class="literal">div.dropzone</code> element, whenever it is changed. At the bottom of the <code class="literal">imageupload-client.js</code> file, add the following <code class="literal">Template.helpers</code> and <code class="literal">Template.events</code> code blocks:<div class="informalexample"><pre class="programlisting">Template.dropzone.helpers({
+  dropcloth: function () {
+    return Session.get('dropcloth');
+  }
+});
+
+Template.dropzone.events({
+  'dragover #dropzone': function (e) {
+    e.preventDefault();
+    Session.set('dropcloth', 'active');
+  },
+  'dragleave #dropzone': function (e) {
+    e.preventDefault();
+    Session.set('dropcloth');
+
+  }
+});</pre></div></li><li class="listitem">The last task is to evaluate what has been dropped in to our page drop zone. If what's been dropped is simply a URI, we will add it to the <code class="literal">Images</code> collection as is. If it's a file, we will store it, create a URI to it, and then append it to the <code class="literal">Images</code> collection. In the <code class="literal">imageupload-client.js</code> file, just before the <a id="id395" class="indexterm"/>final closing <a id="id396" class="indexterm"/>curly bracket inside the <code class="literal">Template.dropzone.events</code> code block, add the following event handler logic:<div class="informalexample"><pre class="programlisting">  'dragleave #dropzone': function (e) {
+    ...
+  }<span class="strong"><strong>,</strong></span>
+<span class="strong"><strong>  'drop #dropzone': function (e) {</strong></span>
+<span class="strong"><strong>    e.preventDefault();</strong></span>
+<span class="strong"><strong>    Session.set('dropcloth');</strong></span>
+
+<span class="strong"><strong>    var files = e.originalEvent.dataTransfer.files;</strong></span>
+<span class="strong"><strong>    var images = </strong></span>
+<span class="strong"><strong>$(e.originalEvent.dataTransfer.getData('text/html')).find('img');</strong></span>
+<span class="strong"><strong>    var fragment = _.findWhere(e.originalEvent.dataTransfer.items, {</strong></span>
+<span class="strong"><strong>      type: 'text/html'</strong></span>
+<span class="strong"><strong>    });</strong></span>
+<span class="strong"><strong>    if (files.length) {</strong></span>
+<span class="strong"><strong>      _.each(files, function (e, i, l) {</strong></span>
+<span class="strong"><strong>        imgFile.read(e, function (error, imgfile) {</strong></span>
+<span class="strong"><strong>          Meteor.call('uploadIMG', imgfile, function (e) {</strong></span>
+<span class="strong"><strong>            if (e) {</strong></span>
+<span class="strong"><strong>              console.log(e.message);</strong></span>
+<span class="strong"><strong>            }</strong></span>
+<span class="strong"><strong>          });</strong></span>
+<span class="strong"><strong>        })</strong></span>
+<span class="strong"><strong>      });</strong></span>
+<span class="strong"><strong>    } else if (images.length) {</strong></span>
+<span class="strong"><strong>      _.each(images, function (e, i, l) {</strong></span>
+<span class="strong"><strong>        Meteor.call('addURL', $(e).attr('src'));</strong></span>
+<span class="strong"><strong>      });</strong></span>
+<span class="strong"><strong>    } else if (fragment) {</strong></span>
+<span class="strong"><strong>      fragment.getAsString(function (e) {</strong></span>
+<span class="strong"><strong>        var frags = $(e);</strong></span>
+<span class="strong"><strong>        var img = _.find(frags, function (e) {</strong></span>
+<span class="strong"><strong>          return e.hasAttribute('src');</strong></span>
+<span class="strong"><strong>        });</strong></span>
+<span class="strong"><strong>        if (img) Meteor.call('addURL', img.src);</strong></span>
+<span class="strong"><strong>      });</strong></span>
+
+<span class="strong"><strong>    }</strong></span>
+
+<span class="strong"><strong>  }</strong></span>
+});</pre></div></li><li class="listitem">Save all your changes and open a browser to <code class="literal">http://localhost:3000</code>. Find some pictures from any web site, and drag and drop them in to the drop zone. As you <a id="id397" class="indexterm"/>drag and drop the <a id="id398" class="indexterm"/>images, the images will appear immediately on your web page, as shown in the following screenshot:<div class="mediaobject"><img src="../Images/image00387.jpeg" alt="How to do it…"/></div><p style="clear:both; height: 1em;"> </p><p>As you drag and drop the dinosaur images in to the drop zone, they will be uploaded as shown in the following screenshot:</p><div class="mediaobject"><img src="../Images/image00388.jpeg" alt="How to do it…"/></div><p style="clear:both; height: 1em;"> </p><p>Similarly, dragging and dropping actual files will just as quickly upload and <a id="id399" class="indexterm"/>then display <a id="id400" class="indexterm"/>images, as shown in the following screenshot:</p><div class="mediaobject"><img src="../Images/image00389.jpeg" alt="How to do it…"/></div><p style="clear:both; height: 1em;"> </p></li><li class="listitem">As the files are dropped, they are uploaded and saved in the <code class="literal">.images/</code> folder:<div class="mediaobject"><img src="../Images/image00390.jpeg" alt="How to do it…"/></div><p style="clear:both; height: 1em;"> </p></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec220"/>How it works…</h2></div></div></div><p>There are a lot of moving parts to the code we just created, but we can refine it down to four areas.</p><p>First, we created a new <code class="literal">imgFile</code> object, complete with the internal functions added via the <code class="literal">Object.prototype = {…}</code> declaration. The functions added here ( <code class="literal">typeName</code>, <code class="literal">equals</code>, <code class="literal">clone</code>, <code class="literal">toJSONValue</code> and <code class="literal">fromJSONValue</code>) are primarily used to allow the <code class="literal">imgFile</code> object to be <span class="emphasis"><em>serialized</em></span> and <span class="emphasis"><em>deserialized</em></span> properly on the client and the server. Normally, this isn't needed, as we can just <code class="literal">insert</code> into Mongo Collections directly, but in this case it is needed because we want to use the <code class="literal">FileReader</code> and Node <code class="literal">fs</code> packages on the client and <a id="id401" class="indexterm"/>server respectively to directly load and save image files, rather than write them to a collection.</p><p>Second, the <a id="id402" class="indexterm"/>underscore <code class="literal">_.extend()</code> method is used on the client side to create the <code class="literal">read()</code> function, and on the server side to create the <code class="literal">save()</code> function. <code class="literal">read</code> takes the file(s) that were dropped, reads the file into an <code class="literal">ArrayBuffer</code>, and then calls the included <code class="literal">callback</code>, which uploads the file to the server. The <code class="literal">save</code> function on the server side reads the <code class="literal">ArrayBuffer</code>, and writes the subsequent image file to a specified location on the server (in our case, the <code class="literal">.images</code> folder).</p><p>Third, we created an <code class="literal">ondropped</code> event handler, using the <code class="literal">'drop #dropzone'</code> event. This handler determines whether an actual file was dragged and dropped, or if it was simply an HTML <code class="literal">&lt;img&gt;</code> element, which contains a URI link in the <code class="literal">src</code> property. In the case of a file (determined by <code class="literal">files.length</code>), we call the <code class="literal">imgFile.read</code> command, and pass a callback with an immediate <code class="literal">Meteor.call('uploadIMG'…)</code> method. In the case of an <code class="literal">&lt;img&gt;</code> tag, we parse the URI from the <code class="literal">src</code> attribute, and use <code class="literal">Meteor.call('addURL')</code> to update the <code class="literal">Images</code> collection.</p><p>Fourth, we have our <code class="literal">helper</code> functions for updating the UI. These include <code class="literal">Template.helpers</code> functions, <code class="literal">Template.events</code> functions, and the <code class="literal">WebApp.connectedHandlers.use()</code> function, used to properly serve uploaded images without having to update the UI each time a file is uploaded. Remember, Meteor will update the UI automatically on any file change. This unfortunately includes static files, such as images. To work around this, we store our images in a file invisible to Meteor (using <code class="literal">.images</code>). To redirect the traffic to that hidden folder, we implement the <code class="literal">.use()</code> method to listen for any traffic meant to hit the <code class="literal">'/images/'</code> folder, and redirect it accordingly.</p><p>As with any complex <a id="id403" class="indexterm"/>recipe, there are other parts to the code, but this should cover the major aspects of file uploading (the four areas mentioned in the preceding section).</p></div><div class="section" title="There's more…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec221"/>There's more…</h2></div></div></div><p>The next <a id="id404" class="indexterm"/>logical step is to not simply copy the URIs from remote image files, but rather to download, save, and serve local copies of those remote images. This can also be done using the <code class="literal">FileReader</code> and Node <code class="literal">fs</code> libraries, and can be done either through the existing client code mentioned in the preceding section, or directly on the server, as a type of <span class="emphasis"><em>cron</em></span> job.</p><div class="note" title="Note"><h3 class="title"><a id="tip32"/>Tip</h3><p>For more <a id="id405" class="indexterm"/>information on <code class="literal">FileReader</code>, please see the MDN FileReader article, located at <a class="ulink" href="https://developer.mozilla.org/en-US/docs/Web/API/FileReader">https://developer.mozilla.org/en-US/docs/Web/API/FileReader</a>.</p></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec222"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">The <span class="emphasis"><em>Using npm packages directly</em></span> recipe in <a class="link" title="Chapter 8. Integrating Third-party Libraries" href="part0069.xhtml#aid-21PMQ1">Chapter 8</a>, <span class="emphasis"><em>Intergrating Third-party Libraries</em></span></li><li class="listitem">The <span class="emphasis"><em>Creating custom EJSON objects</em></span> recipe in <a class="link" title="Chapter 11. Leveraging Advanced Features" href="part0083.xhtml#aid-2F4UM1">Chapter 11</a>, <span class="emphasis"><em>Leveraging Advanced Features</em></span></li></ul></div></div></div>
+<div class="section" title="Creating a coloring book with the Canvas element"><div class="titlepage" id="aid-20R682"><div><div><h1 class="title"><a id="ch07lvl1sec62"/>Creating a coloring book with the Canvas element</h1></div></div></div><p>There are <a id="id406" class="indexterm"/>now multiple ways to display graphics <a id="id407" class="indexterm"/>on a web page. DOM elements, SVG, WebGL, and, perhaps the most user-friendly, the <code class="literal">Canvas</code> element. Using JavaScript, the <code class="literal">Canvas</code> element provides a flexible graphics area where you can paint, erase, color, cut and paste to your heart's content. A good representation of what you can do with the <code class="literal">Canvas</code> element is found in this recipe, where you will learn how to build a coloring book app from scratch.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec223"/>Getting ready</h2></div></div></div><p>Get your crayons! Okay, maybe those won't be needed (don't use them on your monitor!) but what we're about to create is the next best thing, so let's get the app structure and packages out of the way, so we can start coloring!</p><p>In addition to the usual suspects, we will need some specialty folders to make the grouping of our code cleaner and more manageable. Open a terminal window, navigate to where you would like to create your root project, and execute the following commands:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ meteor create coloringbook</strong></span>
+<span class="strong"><strong>$ cd coloringbook</strong></span>
+<span class="strong"><strong>$ rm coloringbook.*</strong></span>
+<span class="strong"><strong>$ mkdir -p client/scripts</strong></span>
+<span class="strong"><strong>$ mkdir {both,server,public}</strong></span>
+<span class="strong"><strong>$ meteor</strong></span>
+</pre></div></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec224"/>How to do it…</h2></div></div></div><p>It may not <a id="id408" class="indexterm"/>seem like it on the surface, but there's actually a lot to developing a coloring book application. You have to worry about <a id="id409" class="indexterm"/>user preferences, undo/redo, picking colors, erasing, and so on. We will tackle these steps one at a time, adding packages and functionality as we go along.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">First, we will add user management packages. Meteor has some fantastic out-of-the-box functionality for user account management, and we will take advantage of that functionality. In a terminal window, navigate to your <code class="literal">[project root]</code> folder and add the following two Meteor libraries by entering the following commands:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ meteor add accounts-password</strong></span>
+<span class="strong"><strong>$ meteor add accounts-ui</strong></span>
+</pre></div></li><li class="listitem">We will want to display these on the screen, so let's add the necessary UI elements and style them appropriately. Create a file called <code class="literal">cb-ui.html</code> in your <code class="literal">[project root]/client/</code> folder, and add the following code:<div class="informalexample"><pre class="programlisting">&lt;body&gt;
+  {{&gt; loginButtons}}
+&lt;/body&gt;</pre></div><p>Your page will look very spartan at the moment, but just like that, we already have accounts and account creation! In a browser, navigate to <code class="literal">http://localhost:3000</code> and you should see the accounts dialog dropdown at the top left of your screen, similar to the following screenshot:</p><div class="mediaobject"><img src="../Images/image00391.jpeg" alt="How to do it…"/></div><p style="clear:both; height: 1em;"> </p></li><li class="listitem">Let's finish up the visual aspects of our UI by adding a toolbar, where we can see color swatches and adjust the size of our brush; and let's also add our <code class="literal">canvas</code> <a id="id410" class="indexterm"/>element, with a background <code class="literal">&lt;div&gt;</code> to display the picture we want to color. In the same <code class="literal">cb-ui.html</code> <a id="id411" class="indexterm"/>file, add the following template inclusions in the <code class="literal">body</code> element block:<div class="informalexample"><pre class="programlisting">&lt;body&gt;
+  {{&gt; loginButtons}}
+  {{&gt; toolbar}}
+  &lt;div id="bgpicture"&gt;&lt;/div&gt;
+  {{&gt; picture}}
+&lt;/body&gt;</pre></div></li><li class="listitem">The <code class="literal">picture</code> template is actually the easiest, so we'll add the code for that first. Add the following template code just below the <code class="literal">&lt;/body&gt;</code> tag:<div class="informalexample"><pre class="programlisting">&lt;template name="picture"&gt;
+  &lt;canvas id="picture" class="no-copy"&gt;Images go here...&lt;/canvas&gt;
+&lt;/template&gt;</pre></div></li><li class="listitem">Now we add the <code class="literal">toolbar</code> and the <code class="literal">swatch</code> templates, which use a bit of SVG and <code class="literal">Masonry.js</code> to display our brush and color swatches. Just below the template code added in the preceding step, add the following code:<div class="informalexample"><pre class="programlisting">&lt;template name="toolbar"&gt;
+  &lt;div class="brush-size" id="brush-size"&gt;
+    &lt;svg id="brush-preview"
+     height="70" width="70"
+     style="display:{{eraseMode}}"&gt;
+      &lt;circle cx="35" cy="35"
+      r="{{preview.size}}"
+      fill="{{preview.color}}" /&gt;
+    &lt;/svg&gt;
+  &lt;/div&gt;
+  {{#masonryContainer columnWidth=50
+    transitionDuration="0.2s"
+    id="MasonryContainer" }}
+  
+     {{#each swatches}}
+      {{&gt; swatch}}
+     {{/each}}
+      
+  {{/masonryContainer}}
+&lt;/template&gt;
+&lt;template name="swatch"&gt;
+  {{#masonryElement "MasonryContainer"}}
+    &lt;div class="swatch" 
+   style="background-color:{{color}};"&gt;
+{{color}}&lt;/div&gt;
+  {{/masonryElement}}
+&lt;/template&gt;</pre></div></li><li class="listitem">To get everything all pretty, we need to add some Atmosphere packages, and just a bit of <a id="id412" class="indexterm"/>CSS styling. In <a id="id413" class="indexterm"/>a terminal window, navigate to your <code class="literal">[project root]</code> folder and run the following commands:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ meteor add twbs:bootstrap</strong></span>
+<span class="strong"><strong>$ meteor add voodoohop:masonrify</strong></span>
+</pre></div></li><li class="listitem">Next, create a file named <code class="literal">cb-style.css</code> in the <code class="literal">[project root]/client/</code> folder, and add the following style declarations:<div class="informalexample"><pre class="programlisting">#picture {
+  color: #ccc;
+  border: 3px dashed #ccc;
+  width:800px;
+  height:600px;
+  border-radius: 4px;
+  line-height: 3em;
+  text-align: center;
+  left: 100px;
+  position: absolute;
+  
+}
+
+#bgpicture {
+  pointer-events:none;
+  touch-events:none;
+  position:absolute;
+  background: url('Rawr.GIF');
+  top:0px;
+  left:100px;
+  width: 800px;
+  height:600px;
+  z-index: 999;
+
+}
+.no-copy {
+  -webkit-user-select: none;
+}
+#login-buttons {
+  position : absolute;
+  min-width: 220px;
+  right: 20px;
+  top: 10px;
+}
+.login-link-text {
+  position:absolute;
+  right: 0px;
+}
+.swatch {
+  height:50px;
+  width:50px;
+  border-radius: 4px;
+  border: solid #ccc 2px;
+  line-height: 50px;
+  font-size:0.8em;
+  text-align: center;
+  margin-bottom: 5px;
+}
+.masonry_container {
+  position:absolute;
+  top:100px;
+  left:23px;
+  width: 50px;
+}
+.brush-size {
+  position:absolute;
+  left:10px;
+  top:10px;
+  border: dashed 3px #ccc;
+  border-radius: 40px;
+  width:76px;
+  height:76px;
+}</pre></div></li><li class="listitem">Note that the <code class="literal">bgpicture</code> element has a background image in it, called <code class="literal">'RAWR.GIF'—</code>You can either obtain this picture from the source files for this recipe, or you can add your own image to be colored. The image <span class="emphasis"><em>must</em></span> have a transparent background, and will look better if it is <code class="literal">800x600</code> pixels, but in any case, the image you want displayed should go into the <code class="literal">[project root]/public/</code> folder, and you should change the <code class="literal">background</code> property in the preceding step, so that it will display properly on the screen.</li><li class="listitem">We will need to be able to change brush sizes, change colors, and paint/erase on the <a id="id414" class="indexterm"/>canvas, and we want to do <a id="id415" class="indexterm"/>that no matter what device we are on, so we will use the official <code class="literal">Hammer.js</code> package. We also want to include global shortcut keys for undo (<span class="emphasis"><em>control</em></span> + <span class="emphasis"><em>Z</em></span>) and redo (<span class="emphasis"><em>shift</em></span> + <span class="emphasis"><em>control</em></span> + <span class="emphasis"><em>Z</em></span>), so we'll add a handy library that does that! In a terminal window, in your <code class="literal">[project root]</code> folder, enter the following two commands:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ meteor add hammer:hammer@=2.0.4_1</strong></span>
+<span class="strong"><strong>$ meteor add gwendall:body-events</strong></span>
+</pre></div></li><li class="listitem">It's cleaner and easier to use <code class="literal">Hammer.js</code> events in the <code class="literal">Template.events</code> block, so we want to add the jQuery plugin for the <code class="literal">Hammer.js</code> file. As Meteor piggybacks on jQuery event handlers, if the plugin is added to jQuery, it's added to Meteor! As of this writing, the most reliable way to add the plugin is to manually copy the <code class="literal">plugin</code> script file into your <code class="literal">[project root]/client/scripts/</code> folder. You can either obtain the script by going to <a class="ulink" href="http://hammerjs.github.io/jquery-plugin/">http://hammerjs.github.io/jquery-plugin/</a> and following the instructions <a id="id416" class="indexterm"/>there, or by creating a file in your <code class="literal">scripts</code> folder called <code class="literal">jquery.hammer.js</code>, and adding the following code:<div class="informalexample"><pre class="programlisting">(function(factory) {
+  if (typeof define === 'function' &amp;&amp; define.amd) {
+    define(['jquery', 'hammerjs'], factory);
+  } else if (typeof exports === 'object') {
+    factory(require('jquery'), require('hammerjs'));
+  } else {
+    factory(jQuery, Hammer);
+  }
+}(function($, Hammer) {
+  function hammerify(el, options) {
+    var $el = $(el);
+    if(!$el.data("hammer")) {
+      $el.data("hammer", new Hammer($el[0], options));
+    }
+  }
+
+  $.fn.hammer = function(options) {
+    return this.each(function() {
+      hammerify(this, options);
+    });
+  };
+
+  // extend the emit method to also trigger jQuery events
+  Hammer.Manager.prototype.emit = (function(originalEmit) {
+    return function(type, data) {
+      originalEmit.call(this, type, data);
+      $(this.element).trigger({
+        type: type,
+        gesture: data
+      });
+    };
+  })(Hammer.Manager.prototype.emit);
+}));</pre></div></li><li class="listitem">We will now add the <code class="literal">Activities</code>, <code class="literal">Prefs</code>, and <code class="literal">Swatches</code> collections. As mentioned previously, we will need to keep track of our undo/redo, through recording activities. We <a id="id417" class="indexterm"/>will also need to keep track of color swatches, user preferences for brush size, and so on. To do this, we will declare three MongoDB collections. In your <code class="literal">[project root]/both/</code> folder, create a file called <code class="literal">cb-model.js</code> and add the following code:<div class="informalexample"><pre class="programlisting">Swatches = new Mongo.Collection('swatches');
+Prefs = new Mongo.Collection('prefs');
+Activities = new Mongo.Collection('activities');</pre></div><p>We'll be using these later on, on both the client and on the server, but for now we're all done. You can close the <code class="literal">cb-model.js</code> file and move on to the next step.</p></li><li class="listitem">Let's add the server-side logic for the preferences and undo/redo history. As unbelievable as this may seem, the server-side code for the coloring book is very light, compared to the client code. So, we're going to get it out of the way. We need to do several things on the server:<div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Initialize swatches and other preferences</li><li class="listitem">Allow new swatches to be added, if desired</li><li class="listitem">Track and recall our painting activity (undo/redo)</li><li class="listitem">Clear everything out, so we can start over</li></ul></div><p>In your <code class="literal">[project root]/server/</code> folder, create a file called <code class="literal">cb-server.js</code> and add the following <code class="literal">Meteor.methods</code> declaration:</p><div class="informalexample"><pre class="programlisting">Meteor.methods({
+  
+  initSwatches : function(userId){
+    // no user = nothing to do. return.
+    if (!userId) return;
+    // if we already have swatches, return.
+    if (Swatches.findOne({user:userId})) return;
+    // add initial swatches
+    Swatches.insert({color: '#ecf0f1', user:userId});
+    Swatches.insert({color: '#ccc', user:userId});
+    Swatches.insert({color: '#f1c40f', user:userId});
+    Swatches.insert({color: '#e67e22', user:userId});
+    Swatches.insert({color: '#e74c3c', user:userId});
+    Swatches.insert({color: '#2ecc71', user:userId});
+    Swatches.insert({color: '#2980b9', user:userId});
+    Swatches.insert({color: '#000', user:userId});
+  },
+  
+  addSwatch : function (color){
+    // no user = nothing to do. return.
+    if (!this.userId) return;
+    // if it doesn't already exist, add the swatch
+    if (!Swatches.findOne({color:color})){
+      Swatches.insert({color:color, user:this.userId});
+    }
+  },
+
+  clearActivity : function(){
+    // no user, return.
+    if (!this.userId) return;
+    // clear the undo history from Activities collection
+    Activities.remove({user:this.userId});
+  },
+  
+  breakHistory : function(snapShot){
+    // if we don't have a valid snapshot,
+    // or user isn't logged in, return.
+    if (!snapShot||!this.userId) return;
+    // remove all snapshots after this one in the undo chain
+    Activities.remove({$and: [{createdAt:{$gt:snapShot.createdAt}},{user:this.userId}]})
+  }
+});</pre></div></li><li class="listitem">Now add the <code class="literal">Accounts.onLogin()</code> event handler in the same file:<div class="informalexample"><pre class="programlisting">Accounts.onLogin(function(login){
+  // first, confirm that we have a valid userId
+  userId = login.user._id;
+  if (!userId) return;
+  // if so, and if we don't have preferences, let's initialize
+  if (!Prefs.findOne({user:userId})){
+    Prefs.insert({user:userId, size:11, color:'#e74c3c'});
+  }
+  // likewise, let's initialize swatches
+  Meteor.call('initSwatches', userId);
+});</pre></div></li><li class="listitem">It's time to build the main logic that allows us to draw on the screen, using the <code class="literal">canvas</code> element. Create a file called <code class="literal">cb-client.js</code> in the <code class="literal">[project root]/client/</code> folder and add the following initial default values that control what we are drawing, and what our paintbrush color should be:<div class="informalexample"><pre class="programlisting">Session.setDefault('drawing', false);
+Session.setDefault('color', '#e74c3c');</pre></div></li><li class="listitem">Because it's <a id="id418" class="indexterm"/>used in multiple places, we want to create a <code class="literal">drawLine</code> function that will draw/erase parts of the screen as needed. Add the following code just below the <code class="literal">Session.setDefault</code> declarations:<div class="informalexample"><pre class="programlisting">// **drawLine** -- helper function to draw / erase lines
+drawLine = function (from, to, color,size) {
+  if (size)
+    ctx.lineWidth = size;
+  if (color)
+    ctx.strokeStyle = color;
+  if (Session.get('erase')){
+    ctx.globalCompositeOperation = 'destination-out';
+  } else {
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+  ctx.lineTo(to.x, to.y);
+  ctx.closePath();
+  ctx.stroke();
+}</pre></div></li><li class="listitem">Now, add <a id="id419" class="indexterm"/>some helper functions that help us clean up the screen, or calculate the paint stroke positioning, relative to the page:<div class="informalexample"><pre class="programlisting">// **getPosition** -- helper function to calculate cursor position
+getPosition = function (event) {
+  return {
+    x: parseInt(event.gesture.center.x - event.currentTarget.offsetLeft),
+    y: parseInt(event.gesture.center.y - event.currentTarget.offsetTop)
+  };
+}
+
+// **wipe** -- function to clear the painting area
+wipe = function (emitAlso) {
+  ctx.clearRect(0, 0, canvas.attr('width'), canvas.attr('height'));
+}</pre></div><p>Whenever the user lifts their mouse/stylus/finger off of the screen, we want to record what they just drew, so let's add a snapshot-taking function just below our helpers:</p><div class="informalexample"><pre class="programlisting">// **addSnapshot** -- helper function to save strokes and update // undo history
+addSnapshot = function(){
+  var userId = Meteor.userId();
+
+  if (!userId) return;
+
+  //Convert Canvas into a Picture
+  ctx.globalCompositeOperation = 'source-over';
+  var canvasPic = canvas[0].toDataURL();
+  var timestamp = Date.now();
+
+  //  check current history. if we are in undo-land, need to clean // up snapshots
+  var curHist = Session.get('history');
+  if (curHist){
+    var curSnap = Session.get('currentSnapshot');
+    Meteor.call('breakHistory',curSnap);
+    Session.set('history',0);
+  }
+
+  // Save it to our Activities History
+  Activities.insert({
+    user:userId,
+    canvas:canvasPic,
+    createdAt:timestamp
+  });
+};</pre></div></li><li class="listitem"> When we first log in, or when we go up and down the undo/redo history chain, we need to repaint the screen. Add the following helper function just below the <code class="literal">addSnapshot</code> helper:<div class="informalexample"><pre class="programlisting">// **paintActivity** -- helper function to redraw screen on undo/// redo/draw
+paintActivity = function(userId,idx){
+  var latestActs = Activities.find({user:userId},
+{sort:{createdAt:-1}}).fetch();
+  if (!latestActs.length) {
+    return;
+  }
+  if(!latestActs[idx]) idx = latestActs.length-1;
+  wipe();
+  var imageObj = new Image();
+  imageObj.onload = function () {
+    ctx.drawImage(this, 0, 0);
+  };
+  Session.set('currentSnapshot',latestActs[idx]);
+  imageObj.src = latestActs[idx].canvas;
+};</pre></div></li><li class="listitem">Okay, we're ready for the final touches, which include enabling our toolbar, and hooking up all the touch/mouse events to adjust brush sizes, change colors, paint and erase. In your <code class="literal">[project root]/client/</code> folder, create a file named <code class="literal">tmpl-toolbar.js</code>, and add the following interaction event handler code:<div class="informalexample"><pre class="programlisting">Template.toolbar.rendered = function(){
+  // we first need to turn on hammer.js touch events...
+  var brushSize = this.$('#brush-size').hammer();
+  // ...we then change the pan threshold from 10 to 2
+  var mgr = brushSize.data('hammer');
+  mgr.get('pan').set({ threshold: 2 });
+};</pre></div></li><li class="listitem">In that same file, add the <code class="literal">Template.helpers</code> function for displaying brush size, color preference, and so on:<div class="informalexample"><pre class="programlisting">Template.toolbar.helpers({
+  swatches: function () {
+    // Return the swatches for this user
+    return Swatches.find({ user: Meteor.userId() });
+  },
+  preview : function(){
+    // gets preferences for toolbar, with one modification...
+    var prefs = Prefs.findOne({user:Meteor.userId()});
+    // ...because brush is a circle, we need radius, not diameter
+    if (prefs) prefs.size= ~~(prefs.size/2);
+    return prefs;
+  },
+  eraseMode : function(){
+    // if we're in erase mode, the brush circle is hidden
+    return (Session.get('erase')? 'none':null);
+  }
+});</pre></div></li><li class="listitem">Let's also add the interactivity logic, via the <code class="literal">Template.events</code> helper block:<div class="informalexample"><pre class="programlisting">Template.toolbar.events({
+  'panstart #brush-size' : function(ev){
+    // record our offset position, and turn on resizing
+    Session.set('brushFrom',ev.gesture.center.x);
+    Session.set('brushResize',true);
+  },
+  'pan  #brush-size': function(ev){
+    // if we're not resizing, no need to continue
+    if (!Session.equals('brushResize',true)) return;
+    // likewise, if there are no prefs, just return
+    var prefs = Prefs.findOne({user:Meteor.userId()});
+    if (!prefs) return;
+    // calculate the delta from last we checked...
+    var adjustment = Session.get('brushFrom');
+    adjustment = ev.gesture.center.x - adjustment;
+    // ...and create a new brush size
+    var newbrushSize = prefs.size + adjustment;
+    // reset offset position, in case resizing continues
+    Session.set('brushFrom', ev.gesture.center.x);
+    // new brush size needs to be the 3rd bowl of porridge...
+    if (newbrushSize&lt;=70&amp;&amp;newbrushSize&gt;=3){
+      // adjust the preferences record and update the collection
+      prefs.size = newbrushSize;
+      Prefs.update({_id:prefs._id}, prefs);
+    }
+  },
+  'panstop #brush-size': function(ev){
+    // job's done. clean up.
+    Session.set('brushFrom');
+    Session.set('brushResize',false);
+  },
+  'doubletap #brush-size': function(ev){
+    // turn on 'erase' mode
+    Session.set('erase',(!Session.get('erase')));
+  }
+});</pre></div></li><li class="listitem">We have a little bit of logic/event handling for the <code class="literal">swatch</code> template as well, so let's create a file called <code class="literal">tmpl-swatch.js</code> in the <code class="literal">[project root]/client/</code> folder, and add the following event listener and event interaction logic:<div class="informalexample"><pre class="programlisting">// suuuuper simple turning on of touch events
+// using hammer.js
+Template.swatch.rendered = function () {
+  this.$('.swatch').hammer();
+};
+
+Template.swatch.events({
+  'tap .swatch': function (ev) {
+    // if no preference, return;
+    var prefs = Prefs.findOne({user:Meteor.userId()});
+    if (!prefs) return;
+    // change the color to whatever swatch we tapped on
+    prefs.color = this.color;
+    // update Prefs collection
+    Prefs.update({_id:prefs._id},prefs);
+  }
+});</pre></div></li><li class="listitem">Two more files and we're done! We have quite a bit of interaction to handle in the <code class="literal">picture</code> template (where our <code class="literal">canvas</code> element is), so let's create a file called <code class="literal">tmpl-picture.js</code> in the <code class="literal">[project root]/client/</code> folder, and add our initialization logic, via the <code class="literal">Template.rendered</code> method block. Add the following code to the <code class="literal">tmpl-picture.js</code> file:<div class="informalexample"><pre class="programlisting">Template.picture.rendered = function () {
+  // set the canvas we will be drawing on
+  canvas = this.$('#picture');
+  // set the context for the canvas
+  ctx = canvas[0].getContext('2d');
+  // need to properly size the canvas
+  canvas.attr({
+    width: 800, height: 600
+    // ...AND set up tap listeners via hammer.js
+  }).hammer();
+  // we want to change the default threshold from 10 to 2
+  canvas.data('hammer').get('pan').set({threshold:2});
+  // we now set the line and line cap style
+  ctx.lineJoin = ctx.lineCap = 'round';
+  // Stops iOS from doing that bouncy, janky thing
+  document.ontouchmove = function (event) {
+    event.preventDefault();
+  };</pre></div></li><li class="listitem">On preference changes, or on login/logout of a user, we have to perform some reactive logic to clean up or initialize our canvas. Add two <code class="literal">autorun</code> method blocks just below <code class="literal">Template.picture.rendered</code>, as follows:<div class="informalexample"><pre class="programlisting">// Reactive function that reruns whenever
+  // preference are updated
+  this.autorun(function () {
+    // if no prefs exist, return
+    var prefs = Prefs.findOne({user:Meteor.userId()});
+    if (!prefs) return;
+    // set stroke color and width
+    ctx.strokeStyle = prefs.color;
+    ctx.lineWidth = prefs.size;
+  });
+
+  // Reactive function that reruns whenever
+  // User logs in, or our undo history position changes
+  this.autorun(function(){
+    // if we're not logged in (no userId), return
+    var userId = Meteor.userId();
+    if (!userId){
+      wipe();
+      return;
+    }
+    // otherwise, paint the proper screen,
+    // using the undo chain history position
+    paintActivity(userId,Session.get('history')||0);
+  });
+};</pre></div></li><li class="listitem">The last item of business for the <code class="literal">picture</code> template is to hook up the drawing events themselves. When we start drawing, we need event handlers for <code class="literal">panstart</code>, <code class="literal">panmove</code>, <code class="literal">panend</code>, and we also need one to clean everything up when we <code class="literal">doubletap</code> on the page. Add the following <code class="literal">Template.events</code> method block to the bottom of <code class="literal">tmpl-pictur</code><code class="literal">e.js</code>:<div class="informalexample"><pre class="programlisting">Template.picture.events({
+  'panmove #picture': function (ev) {
+    // we must be in drawing mode...
+    if (Session.equals('drawing', true)
+        &amp;&amp; Meteor.userId()) {
+      // find our cursor position
+      to = getPosition(ev);
+      // physically draw the stroke
+      drawLine(from,to);
+      // update our from position
+      from = to;
+    }
+  },
+  'panstart #picture': function (ev) {
+    // get our from position, when we start drawing
+    from = getPosition(ev);
+    // tell everyone that we are in drawing mode
+    Session.set('drawing', true);
+  },
+  'panend #picture': function (ev) {
+    // drawing mode is over!
+    Session.set('drawing', false);
+    // we now record the screen, add to undo chain
+    addSnapshot();
+  },
+  'doubletap #picture': function (ev) {
+    // clear the screen
+    wipe();
+    // wipe out our undo history
+    Meteor.call('clearActivity');
+  }
+});</pre></div></li><li class="listitem">All that's left now is the <code class="literal">keydown</code> event logic, so that we have proper undo/redo. Quickly make a file called <code class="literal">tmpl-body.js</code> in your <code class="literal">[project root]/client/</code> folder and add the following code:<div class="informalexample"><pre class="programlisting">Template.body.events({
+  'keydown' : function(ev){
+    
+    // if there's no undo history, no reason to continue, // so return.
+    var histLength = Activities.find({user:Meteor.userId()}).fetch().length;
+    if (!histLength) return;
+    
+    // If it's not a CTRL+Z or CMD+Z, we don't care, so // return.
+    if ((!ev.metaKey &amp;&amp; !ev.ctrlKey)||(ev.keyCode!==90)) return;
+    
+    // find the current position in the undo chain, if any.
+    var curHist = Session.get('history')||0;
+    
+    // if it was SHIFT+CMD+Z, it means redo, so decrement // the history
+    if (ev.shiftKey)
+      curHist--;
+    // otherwise, increment the history
+    else
+      curHist++;
+    
+    // if we're past the boundaries of TIME and SPACE we
+    // certainly don't care about JavaScript anymore, so let's return.
+    if(curHist&lt;0 || curHist&gt; histLength-1 ) return;
+    
+    // after all that, set the new undo chain position
+    Session.set('history',curHist);
+  }
+});</pre></div><p>Whew! We made it through! Save all of your changes and navigate to your project in a browser, via <code class="literal">http://localhost:3000</code>. After you log in/create an account, you should see a nice color palette, a picture of your choice, and a brush size/preview. The following features are available:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Double-click on the brush preview to toggle <code class="literal">'eraser'</code> mode</li><li class="listitem">Click and drag left and right on the brush preview to resize the brush</li><li class="listitem">Double-click on the page to erase and clear your undo history</li><li class="listitem">Press <span class="emphasis"><em>Ctrl</em></span> + <span class="emphasis"><em>Z</em></span> or <span class="emphasis"><em>CMD</em></span> + <span class="emphasis"><em>Z</em></span> to undo your strokes</li><li class="listitem">Press <span class="emphasis"><em>Shift</em></span> + <span class="emphasis"><em>Ctrl</em></span> + <span class="emphasis"><em>Z</em></span> or <span class="emphasis"><em>Shift</em></span> + <span class="emphasis"><em>CMD</em></span> + <span class="emphasis"><em>Z</em></span> to redo your strokes</li><li class="listitem">Log out and in with another user, to allow multi-user use</li></ul></div><p>Do note that your undo/redo history chain is preserved, even if you log out. Once you log back in, you can go through your paint creations, stroke by stroke.</p><p>If you are a particularly awesome artist like my daughter, and you have properly coded everything, your page will look similar to the following masterpiece:</p><div class="mediaobject"><img src="../Images/image00392.jpeg" alt="How to do it…"/></div><p style="clear:both; height: 1em;"> </p></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec225"/>How it works…</h2></div></div></div><p>Oh boy! That was a lot of code, just to demonstrate how the <code class="literal">canvas</code> element works, wasn't it? Instead of going through all of it step by step, let's go through the important pieces, related to the <code class="literal">Canvas</code> element.</p><p>Inside of <code class="literal">tmpl-picture.js</code>, we initialize our <code class="literal">canvas</code>. In the <code class="literal">Template.picture.rendered()</code> helper block, we first find our <code class="literal">canvas</code> element using <code class="literal">this.$('#picture')</code>:</p><div class="informalexample"><pre class="programlisting">canvas = this.$('#picture');</pre></div><p>We then get the context (the handle) using the very appropriately-named <code class="literal">getContext()</code> function. We only want the 2D representation and not the 3D, so we pass <code class="literal">'2d'</code> as the argument to <code class="literal">getContext</code>:</p><div class="informalexample"><pre class="programlisting">ctx = canvas[0].getContext('2d');</pre></div><p>Moving on to <code class="literal">cb-client.js</code>, we have several uses for the context, passed around in the global <code class="literal">ctx</code> variable. In the <code class="literal">drawLine</code> function, we set the size (<code class="literal">lineWidth</code>), color (<code class="literal">strokeStyle</code>) and we set the type of stroke (<code class="literal">globalCompositeOperation</code>) according to whether we are erasing (<code class="literal">'destination-out'</code>) or laying down some paint (<code class="literal">'source-over'</code>):</p><div class="informalexample"><pre class="programlisting">drawLine = function (from, to, color,size) {
+  ...
+<span class="strong"><strong>    ctx.lineWidth</strong></span> = size;
+  ...
+<span class="strong"><strong>    ctx.strokeStyle</strong></span> = color;
+  if (Session.get('erase')){
+    ctx.globalCompositeOperation = 'destination-out';
+  } else {
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  ...</pre></div><p>Once all that is set/determined, we tell the canvas that we are starting to draw (<code class="literal">beginPath</code>); we move our stroke (<code class="literal">moveTo</code>, <code class="literal">lineTo</code>) and then we clean up (<code class="literal">closePath</code>, <code class="literal">stroke</code>):</p><div class="informalexample"><pre class="programlisting">ctx.<span class="strong"><strong>beginPath</strong></span>();
+ctx.<span class="strong"><strong>moveTo</strong></span>(from.x, from.y);
+ctx.<span class="strong"><strong>lineTo</strong></span>(to.x, to.y);
+ctx.<span class="strong"><strong>closePath</strong></span>();
+ctx.<span class="strong"><strong>stroke</strong></span>();</pre></div><p>To save database space/transactions, we don't record every stroke. Instead, we wait for a stroke to be finished (the <code class="literal">'panend #picture'</code> event) and we add a snapshot of the entire canvas. We did this inside the <code class="literal">addSnapshot</code> helper function, with a call to the <code class="literal">canvas.toDataURL()</code> method:</p><div class="informalexample"><pre class="programlisting">var canvasPic = canvas[0].toDataURL();</pre></div><p>Once we have the <code class="literal">canvas</code> graphics element represented as data, we simply save it to the <code class="literal">Activities</code> collection, via <code class="literal">Activities.insert()</code>:</p><div class="informalexample"><pre class="programlisting">Activities.insert({
+  user:userId,
+  canvas:canvasPic,
+  createdAt:timestamp
+});</pre></div><p>Retrieving and displaying a saved screenshot from the <code class="literal">Activities</code> Collection is just as easy. The <code class="literal">ctx</code> handle takes care of the drawing for us. All we have to do to get that monkey to dance is give it the data. So, inside <code class="literal">paintActivity</code>, we create a new <code class="literal">Image()</code> object and we add a <code class="literal">.src</code> to that <code class="literal">imageObj</code>. We then call <code class="literal">ctx.drawImage()</code> when the <code class="literal">.onLoad</code> event callback is triggered:</p><div class="informalexample"><pre class="programlisting">var imageObj = new Image();
+imageObj.onload = function () {
+  ctx.drawImage(this, 0, 0);
+};</pre></div><p>Lastly, and most simply, if we want to <code class="literal">wipe</code> the screen, we simply call <code class="literal">ctx.clearRect()</code> with the dimensions we want cleared (in this case, the <code class="literal">width</code> and <code class="literal">height</code> of the canvas):</p><div class="informalexample"><pre class="programlisting">ctx.clearRect(0, 0, canvas.attr('width'), canvas.attr('height'));</pre></div><p>There's a lot of Meteor magic going on, in coordination, so that we are using as little functional programming as possible, but that coordination is covered in other recipes.</p></div><div class="section" title="There's more…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec226"/>There's more…</h2></div></div></div><p>Actually, there's a whole lot more! We could have added custom color swatches (use <code class="literal">Meteor.call('addSwatch','#yourcolorhere')</code> to do that from the console, by the way), or enabled drag and drop, and the storing of other pictures. You can use the <span class="emphasis"><em>Using the HTML FileReader to upload images</em></span> recipe found in this chapter to do that, if you would like.</p><p>The core functionality, however, will remain the same: reference a <code class="literal">&lt;canvas&gt;</code> object, grab the context, and draw, baby draw!</p><div class="note" title="Note"><h3 class="title"><a id="tip33"/>Tip</h3><p>For an informative <a id="id420" class="indexterm"/>and thorough tutorial on HTML canvas, please visit: <a class="ulink" href="http://www.html5canvastutorials.com/">http://www.html5canvastutorials.com/</a>.</p></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec227"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">The <span class="emphasis"><em>Adding Meteor packages</em></span> recipe in <a class="link" title="Chapter 2. Customizing with Packages" href="part0028.xhtml#aid-QMFO1">Chapter 2</a>, <span class="emphasis"><em>Customizing with Packages</em></span></li><li class="listitem">The <span class="emphasis"><em>Inserting templates with Spacebars</em></span> and <span class="emphasis"><em>Creating customized global helpers</em></span> recipes in <a class="link" title="Chapter 3. Building Great User Interfaces" href="part0036.xhtml#aid-12AK81">Chapter 3</a>, <span class="emphasis"><em>Building Great User Interfaces</em></span></li><li class="listitem">The <span class="emphasis"><em>Creating and consuming a reactive value</em></span> recipe in <a class="link" title="Chapter 6. Mastering Reactivity" href="part0058.xhtml#aid-1NA0K1">Chapter 6</a>, <span class="emphasis"><em>Mastering Reactivity</em></span></li><li class="listitem">The <span class="emphasis"><em>Using the HTML FileReader to upload images</em></span> recipe in this chapter</li></ul></div></div></div></body></html>

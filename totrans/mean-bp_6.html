@@ -1,0 +1,841 @@
+<html><head></head><body>
+<div class="book" title="Chapter&#xA0;6.&#xA0;Auction Application" id="20R681-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch06" class="calibre1"/>Chapter 6. Auction Application</h1></div></div></div><p class="calibre8">This chapter will focus on building an auction-like application that will rely on the previously built e-commerce application's API. It is going to be a small proof-of-concept application. The <a id="id491" class="calibre1"/>backend solution of our application is going to consume the backend API of our e-commerce application. I want the last chapter to be a playground for us, so we can go through some interesting technologies used in this book, and also have some fun with a smaller but interesting app.</p></div>
+
+<div class="book" title="Chapter&#xA0;6.&#xA0;Auction Application" id="20R681-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="Setting up the base app"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_1"><a id="ch06lvl1sec61" class="calibre1"/>Setting up the base app</h1></div></div></div><p class="calibre8">We are <a id="id492" class="calibre1"/>going to start with our classic boilerplate for an Express application. Follow these steps to set up the base project:</p><div class="book"><ol class="orderedlist"><li class="listitem" value="1">Clone the <a id="id493" class="calibre1"/>project from GitHub at <a class="calibre1" href="https://github.com/robert52/express-api-starter">https://github.com/robert52/express-api-starter</a>.</li><li class="listitem" value="2">Rename your boilerplate project <code class="email">auction-app</code>.</li><li class="listitem" value="3">If you want, you can stop pointing to the initial Git remote repository by running the following command:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2">git remote remove origin</strong></span>
+</pre></div></li><li class="listitem" value="4">Jump to your working directory:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2">cd auction-app</strong></span>
+</pre></div></li><li class="listitem" value="5">Install all dependencies:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2">npm install</strong></span>
+</pre></div></li><li class="listitem" value="6">Create a development configuration file:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2">cp config/environments/example.js config/environments/development.js</strong></span>
+</pre></div></li></ol><div class="calibre12"/></div><p class="calibre8">Your configuration file, <code class="email">auction-app/config/environments/development.js</code>, should look similar to the following:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+module.exports = {
+  port: 3000,
+  hostname: '127.0.0.1',
+  baseUrl: 'http://localhost:3000',
+  mongodb: {
+    uri: 'mongodb://localhost/auction_dev_db'
+  },
+  app: {
+    name: 'MEAN Blueprints - auction application'
+  },
+  serveStatic: true,
+  session: {
+    type: 'mongo',                          
+    secret: 'someVeRyN1c3S#cr3tHer34U',
+    resave: false,                     
+    saveUninitialized: true
+  },
+  proxy: {
+    trust: true
+  },
+  logRequests: false  
+};</pre></div></div></div>
+<div class="book" title="What we are building" id="21PMQ1-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch06lvl1sec62" class="calibre1"/>What we are building</h1></div></div></div><p class="calibre8">We are going to <a id="id494" class="calibre1"/>build an English auction site. The previous e-commerce application is going to serve us with products, and an admin can create auctions using those products. Auctions have different features; we are not going to discuss each of them, but instead we are going to describe an English auction.</p><p class="calibre8">The most common auction is the English auction; it's a single dimensional auction, and the only thing considered is the bid price offered for the goods. Usually it's seller oriented, meaning it's one-sided.</p><p class="calibre8">Normally, a starting price is <a id="id495" class="calibre1"/>set for the auction; it's called the <span class="strong"><strong class="calibre2">reserve price</strong></span>, under which the seller won't sell the goods. Each buyer makes a bid and everyone knows every bid, so it's open-cry. The winner pays the winning price.</p><p class="calibre8">No lower bid is called than the current winning bid. Usually, the auction ends when no one is interested in paying the latest price. Also, an end time could be set for the auction.</p><p class="calibre8">The end time could be an absolute time, in our case a standard datetime, or a time relative to the last bid, such as 120 seconds. Later in the chapter, we are going to discuss the benefits of relative time.</p></div>
+
+<div class="book" title="Data modeling" id="22O7C1-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch06lvl1sec63" class="calibre1"/>Data modeling</h1></div></div></div><p class="calibre8">In our application, an <a id="id496" class="calibre1"/>auction is a special event in which users—or more precisely, bidders—can bid on an item available for sale. An item is a product <a id="id497" class="calibre1"/>from the e-commerce platform, but one that retains only the necessary information to be displayed to the user. Let's discuss each model in more detail.</p></div>
+
+<div class="book" title="Data modeling" id="22O7C1-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="Auction"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch06lvl2sec126" class="calibre1"/>Auction</h2></div></div></div><p class="calibre8">An auction is going to <a id="id498" class="calibre1"/>hold all the necessary information about the event. As discussed earlier, we are going to implement an English auction, in which we are going to sell goods from our main e-commerce application.</p><p class="calibre8">An English auction is open-cry, which means that everyone is aware of each bid. The winner will pay the winning price. Each bid is going to increase the price of the goods, and the next bidder has to pay more in order to win the auction.</p><p class="calibre8">All auctions will have a reserved price, a starting value below which we are not going to sell our product. In other words, it is the lowest acceptable price by the seller.</p><p class="calibre8">To simplify things, we are going to set an end time for our auction. The last bid closer to the end time will be the winning bid. You could go with a relative time, which means that you can set a time limit from the last bid (that is, 10 minutes) and just call the winner if no bids were made in that time frame. This could be very useful to prevent bid sniping.</p><p class="calibre8">For example, say you bid the starting price of 39 USD on a product. Normally, you have the highest bid. Now imagine that the auction is ending, but before the end with just few seconds another bidder attempts a bid at 47 USD. This will leave you with no time to react, so the last bidder wins the auction. This is how usually bid snipping works. </p><p class="calibre8">Let's see the Mongoose auction schema:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const mongoose = require('mongoose');
+const Money = require('./money').schema;
+const Schema = mongoose.Schema;
+const ObjectId = Schema.ObjectId;
+const Mixed = Schema.Types.Mixed;
+
+var AuctionSchema = new Schema({
+  item:           { type: Mixed },
+  startingPrice:  { type: Money },
+  currentPrice:   { type: Money },
+  endPrice:       { type: Money },
+  minAmount:      { type: Money },
+  bids: [{
+    bidder:       { type: ObjectId, ref: 'Bidder' },
+    amount:       { type: Number, default: 0 },
+    createdAt:    { type: Date, default: Date.now }
+  }],
+  startsAt:       { type: Date },
+  endsAt:         { type: Date },
+  createdAt:      { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('Auction', AuctionSchema);</pre></div><p class="calibre8">Besides the information discussed earlier, we embedded all the bids in our auction document. This would <a id="id499" class="calibre1"/>not be a good idea if there are going to be many bids in an auction, but since we are going to have a fixed-time auction, there are only going to be a few of them. For popular auctions, you could just move the bids to a separate collection and have a reference to the auction document.</p></div></div>
+
+<div class="book" title="Data modeling" id="22O7C1-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="Bidder"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch06lvl2sec127" class="calibre1"/>Bidder</h2></div></div></div><p class="calibre8">We are using the backend <a id="id500" class="calibre1"/>API from our e-commerce application, so we don't need to store users in our database. But we can store additional data about our bidding users. For this we can create a new model, called <code class="email">app/models/bidder.js</code>, and add the following:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const mongoose = require('mongoose');
+const Money = require('./money').schema;
+const Schema = mongoose.Schema;
+const ObjectId = Schema.ObjectId;
+const Mixed = Schema.Types.Mixed;
+
+const BidderSchema = new Schema({
+  profileId:      { type: String },
+  additionalData: { type: Mixed },
+  auctions: [{
+    auction:      { type: ObjectId, ref: 'Auction' },
+    status:       { type: String, default: 'active'},
+    joinedAt:     { type: Date, default: Date.now }
+  }],
+  createdAt:      { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('Bidder', BidderSchema);</pre></div><p class="calibre8">
+<code class="email">profileId</code> stores the <code class="email">_id</code> of the user in order to have a reference to the user document from the <a id="id501" class="calibre1"/>e-commerce platform. You could also store additional data in this model and store the auctions in which the bidder is present.</p></div></div>
+
+<div class="book" title="Auction backend"><div class="book" id="23MNU2-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch06lvl1sec64" class="calibre1"/>Auction backend</h1></div></div></div><p class="calibre8">In the previous <a id="id502" class="calibre1"/>chapter, we added a service layer to our architecture. We are going to follow the same pattern. Also, we are going to add an extra component <a id="id503" class="calibre1"/>called <code class="email">Mediator</code>, which will serve as a single point of entry to assist us in communicating with different modules.</p><p class="calibre8">We will follow the mediator design pattern in the construction of our modules, which is a behavioral design pattern. This is going to be a single central point of control, through which communication flows.</p></div>
+
+<div class="book" title="Auction backend">
+<div class="book" title="The Mediator"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch06lvl2sec128" class="calibre1"/>The Mediator</h2></div></div></div><p class="calibre8">Our <code class="email">Mediator</code> is going to <a id="id504" class="calibre1"/>be an object that will coordinate interaction with different modules through channels. A module can subscribe to a given event and get notified when that event occurs. All this event-related discussion pretty much makes us think about using the events core module from Node.js, which is used to emit named events that cause execution of the functions to be called.</p><p class="calibre8">This is a good starting point. One thing we need to solve is that our <code class="email">Mediator</code> needs to be a single point of entry, and only one instance can exist at the execution time of our application. We could just use a singleton design pattern. With all this in mind, let's implement our mediator:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const EventEmitter = require('events');
+let instance;
+
+class Mediator extends EventEmitter {
+  constructor() {
+    super();
+  }
+}
+
+module.exports = function singleton() {
+  if (!instance) {
+    instance = new Mediator();
+  }
+
+  return instance;
+} </pre></div><p class="calibre8">This should give us a solid start for our module; for now this should be enough. Because we are using the ES6 features, we can just extend the <code class="email">EventEmitter</code> class. Instead of exporting the whole <code class="email">Mediator</code> class, we are exporting a function that checks whether there is already an <a id="id505" class="calibre1"/>instance, and if not, we just create a new instance of our <code class="email">Mediator</code> class.</p><p class="calibre8">Let's take a look at an example of how we are going to use this technique:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const mediator = require('./mediator')();
+
+mediator.on('some:awesome:event', (msg) =&gt; {
+  console.log(`received the following message: ${msg}`);
+});
+
+mediator.emit('some:awesome:event', 'Nice!');</pre></div><p class="calibre8">We just require the <code class="email">mediator</code> instance, and using the <code class="email">.on()</code> method, we subscribe to events and execute a function. Using the <code class="email">.emit()</code> method, we publish the named event and pass a message as an argument.</p><p class="calibre8">Remember when using <code class="email">arrow</code> functions in ES6 that the <code class="email">this</code> keyword in the listener function no longer points to <code class="email">EventEmitter</code>.</p></div></div>
+
+<div class="book" title="Auction backend">
+<div class="book" title="Auction manager"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch06lvl2sec129" class="calibre1"/>Auction manager</h2></div></div></div><p class="calibre8">Instead of <a id="id506" class="calibre1"/>implementing all the business logic in the application's controller layer, we are going to build another service, called <code class="email">AuctionManager</code>. This service will have all the necessary methods for correct execution of an auction.</p><p class="calibre8">Using this technique, we can easily decide later how we are going to export our application's business logic: using traditional endpoints or through WebSockets.</p><p class="calibre8">Let's follow a few steps to implement our auction manager:</p><div class="book"><ol class="orderedlist"><li class="listitem" value="1">Create a new file called <code class="email">/app/services/auction-manager.js</code>.</li><li class="listitem" value="2">Add the necessary dependencies:<div class="informalexample"><pre class="programlisting">const MAX_LIMIT = 30;
+
+const mongoose = require('mongoose');
+const mediator = require('./mediator')();
+const Auction = mongoose.model('Auction');
+const Bidder = mongoose.model('Bidder');</pre></div></li><li class="listitem" value="3">Define <a id="id507" class="calibre1"/>the base class:<div class="informalexample"><pre class="programlisting">class AuctionManager {
+  constructor(AuctionModel, BidderModel) {
+    this._Auction = AuctionModel || Auction;
+    this._Bidder = BidderModel || Bidder;
+  }
+}
+module.exports = AuctionManager;</pre></div></li><li class="listitem" value="4">Getting all auctions method:<div class="informalexample"><pre class="programlisting">  getAllAuctions(query, limit, skip, callback) {
+    if (limit &gt; MAX_LIMIT) {
+      limit = MAX_LIMIT;
+    }
+
+    this._Auction
+    .find(query)
+    .limit(limit)
+    .skip(skip)
+    .exec(callback);
+  }</pre></div></li><li class="listitem" value="5">Joining an auction:<div class="informalexample"><pre class="programlisting">  joinAuction(bidderId, auctionId, callback) {
+    this._Bidder.findById(bidderId, (err, bidder) =&gt; {
+      if (err) {
+        return callback(err);
+      }
+
+      bidder.auctions.push({ auction: auctionId });
+      bidder.save((err, updatedBidder) =&gt; {
+        if (err) {
+          return callback(err);
+        }
+
+        mediator.emit('bidder:joined:auction', updatedBidder);
+        callback(null, updatedBidder);
+      });
+    });
+  }</pre></div><p class="calibre22">As you can see, we started using our mediator to emit events. At this point, we are emitting an event when a bidder joins the auction. This does not add much value for us right now, but it will come handy when we start playing around with our real-time communication solution.</p></li><li class="listitem" value="6">Placing <a id="id508" class="calibre1"/>a bid:<div class="informalexample"><pre class="programlisting">  placeBid(auctionId, bidderId, amount, callback) {
+    if (amount &lt;= 0) {
+      let err = new Error('Bid amount cannot be negative.');
+      err.type = 'negative_bit_amount';
+      err.status = 409;
+      return callback(err);
+    }
+
+    let bid = {
+      bidder: bidderId,
+      amount: amount
+    };
+
+    this._Auction.update(
+      // query
+      {
+        _id: auctionId.toString()
+      },
+      // update
+      {
+        currentPrice: { $inc: amount },
+        bids: { $push: bid }
+      },
+      // results
+      (err, result) =&gt; {
+        if (err) {
+          return callback(err);
+        }
+
+        if (result.nModified === 0) {
+          let err = new Error('Could not place bid.');
+          err.type = 'new_bid_error';
+          err.status = 500;
+          return callback(err);
+        }
+
+        mediator.emit('auction:new:bid', bid);
+        callback(null, bid);
+      }
+    );
+  }</pre></div></li></ol><div class="calibre12"/></div><p class="calibre8">When placing a bid, we just want to add it to the list of bids on our auction, and for that, we are going to use atomic operators to update the <code class="email">currentPrice</code> and add the current bid. Also, after <a id="id509" class="calibre1"/>successfully placing a bid, we are going to emit an event for that.</p></div></div>
+
+<div class="book" title="Auction backend">
+<div class="book" title="Auctioneer"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch06lvl2sec130" class="calibre1"/>Auctioneer</h2></div></div></div><p class="calibre8">We are going to <a id="id510" class="calibre1"/>give a fancy name for our upcoming module, and we are going to call it <code class="email">Auctioneer</code>. Why this name? Well, we are building an auction application, so we can add a touch of old-school feeling and add an auctioneer, which will call out new bids and who joins the auction.</p><p class="calibre8">As you must have already guessed, this will be our real-time communication module. This module will use <code class="email">SocketIO</code>, and we are going to do something similar as in <a class="calibre1" title="Chapter 4. Chat Application" href="part0046_split_000.html#1BRPS1-5c78d361d97340239270192b72d53e7b">Chapter 4</a>, <span class="strong"><em class="calibre11">Chat Application</em></span>, where we used the module for real-time communication.</p><p class="calibre8">We'll go only through the most important parts from our module to see different concepts in action. Let's create a file called <code class="email">app/services/auctioneer.js</code> and add the following content:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const socketIO = require('socket.io');
+const mediator = require('./mediator')();
+const AuctionManager = require('./auction-manager');
+const auctionManager =  new AuctionManager();
+
+class Auctioneer {
+  constructor(app, server) {
+    this.connectedClients = {};
+    this.io = socketIO(server);
+    this.sessionMiddleware = app.get('sessionMiddleware');
+    this.initMiddlewares();
+    this.bindListeners();
+    this.bindHandlers();
+  }
+}
+module.exports = Auctioneer;</pre></div><p class="calibre8">So basically, we just structured our class and called a few methods in the constructor. We are already familiar <a id="id511" class="calibre1"/>with a few lines of code from the constructor; for example, the <code class="email">.initMiddlewares()</code> method looks similar to <a class="calibre1" title="Chapter 4. Chat Application" href="part0046_split_000.html#1BRPS1-5c78d361d97340239270192b72d53e7b">Chapter 4</a>, <span class="strong"><em class="calibre11">Chat Application</em></span>, where we use middlewares to authorize and authenticate users:</p><div class="informalexample"><pre class="programlisting">  initMiddlewares() {
+    this._io.use((socket, next) =&gt; {
+      this.sessionMiddleware(socket.request, socket.request.res, next);
+    });
+
+    this.io.use((socket, next) =&gt; {
+      let user = socket.request.session.passport.user;
+
+      // authorize user
+      if (!user) {
+        let err = new Error('Unauthorized');
+        err.type = 'unauthorized';
+        return next(err);
+      }
+
+      // attach user to the socket, like req.user
+      socket.user = {
+        _id: socket.request.session.passport.user
+      };
+      next();
+    });
+  }</pre></div><p class="calibre8">We made a clear split between our <code class="email">SocketIO</code> handlers that are initialized when we call the <code class="email">.bindHandlers()</code> method, and attached the listeners to our mediator by calling the <code class="email">.bindListeners()</code> method.</p><p class="calibre8">So, our <code class="email">.bindHandlers()</code> method will have the following structure:</p><div class="informalexample"><pre class="programlisting">  bindHandlers() {
+    this.io.on('connection', (socket) =&gt; {
+      // add client to the socket list to get the session later
+      let userId = socket.request.session.passport.user;
+      this.connectedClients[userId] = socket;
+
+      // when user places a bid
+      socket.on('place:bid', (data) =&gt; {
+        auctionManager.placeBid(
+          data.auctionId,
+          socket.user._id,
+          data.amount,
+          (err, bid) =&gt; {
+            if (err) {
+              return socket.emit('place:bid:error', err);
+            }
+
+            socket.emit('place:bid:success', bid);
+          }
+        );
+
+      });
+    });
+  }</pre></div><p class="calibre8">Remember that this is only partial code, and the final version will have more handlers. So, when a new client connects, we attach a few handlers to our socket. For example, in the preceding code, we listen to the <code class="email">place:bid</code> event, which will be called when a user places a new bid, and the <code class="email">AuctionManager</code> service will persist that bid.</p><p class="calibre8">Now, obviously we <a id="id512" class="calibre1"/>would need to notify other clients about the occurred changes; we are not going to handle that here. Our <code class="email">.placeBid()</code> method emits an event through the <code class="email">Mediator</code> each time a new bid is successfully recorded. The only thing we need to do is listen for that event, which we already did when we called <code class="email">.bindListeners()</code> in the Auctioneer's constructor method.</p><p class="calibre8">Let's take a look at a partial code sample from the <code class="email">.bindListeners()</code> method:</p><div class="informalexample"><pre class="programlisting">  bindListeners() {
+    mediator.on('bidder:joined:auction', (bidder) =&gt; {
+      let bidderId = bidder._id.toString();
+      let currentSocket = this.connectedClients[bidderId];
+      currentSocket.emit.broadcast('bidder:joined:auction', bidder);
+    });
+
+    mediator.on('auction:new:bid', (bid) =&gt; {
+      this.io.sockets.emit('auction:new:bid', bid);
+    });
+  }</pre></div><p class="calibre8">In the preceding code, we are listening when a bidder joins an auction, and we broadcast a message to each client, expecting only the triggering socket client. When a new bid is placed, we emit an event to each socket client. So basically, we have two similar broadcast functionalities but with a major difference; one sends a message to each client expecting the one that triggered the event, and the second emits to all connected clients.</p></div></div>
+
+<div class="book" title="Auction backend">
+<div class="book" title="Using the service from controller"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_4"><a id="ch06lvl2sec131" class="calibre1"/>Using the service from controller</h2></div></div></div><p class="calibre8">As we <a id="id513" class="calibre1"/>discussed earlier, our services can be consumed from any module and exposed in different ways to clients. Earlier, we used <code class="email">AuctionManager</code> and exposed its business logic through WebSockets. Now, we are going to do the same using simple endpoints.</p><p class="calibre8">Let's create a controller file called <code class="email">app/controllers/auction.js</code> with the following content:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const _ = require('lodash');
+const mongoose = require('mongoose');
+const Auction = mongoose.model('Auction');
+const AuctionManager = require('../services/auction-manager');
+const auctionManager = new AuctionManager();
+
+module.exports.getAll = getAllAuctions;
+
+function getAllAuctions(req, res, next) {
+  let limit = +req.query.limit || 30;
+  let skip = +req.query.skip || 0;
+  let query = _.pick(req.query, ['status', 'startsAt', 'endsAt']);
+
+  auctionManager.getAllAuctions(query, limit, skip, (err, auctions) =&gt; {
+    if (err) {
+      return next(err);
+    }
+
+    req.resources.auctions = auctions;
+    next();
+  });
+}</pre></div><p class="calibre8">We have already done this many times throughout the book, so there's nothing new here. The controller exports a function that will attach all the auctions returned from the service, and later on the response will be transformed into a JSON response.</p></div></div>
+
+<div class="book" title="Auction backend">
+<div class="book" title="Accessing data from the e-commerce API"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_5"><a id="ch06lvl2sec132" class="calibre1"/>Accessing data from the e-commerce API</h2></div></div></div><p class="calibre8">When <a id="id514" class="calibre1"/>creating auctions, we need additional information about the item we add to the auction. All the info about the product item is stored on the e-commerce platform built in the previous chapter.</p><p class="calibre8">We didn't cover the creation of auctions in this chapter, but we can discuss the underlining communication layer with the e-commerce API. In the data modeling phase, we didn't discuss storing users in the database.</p><p class="calibre8">The <a id="id515" class="calibre1"/>reason for not including user management is that we are going to consume a third-party API to manage our users. For example, authentication and registration will be handled through the e-commerce platform.</p></div></div>
+
+<div class="book" title="Auction backend">
+<div class="book" title="E-commerce client service"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_6"><a id="ch06lvl2sec133" class="calibre1"/>E-commerce client service</h2></div></div></div><p class="calibre8">To <a id="id516" class="calibre1"/>communicate with the third-party API, we are going to create a service to proxy the requests. As we don't consume many endpoints from the API, we can create a single service to handle everything. As your application grows, you could easily group your files by domain context.</p><p class="calibre8">Let's create a new file called <code class="email">app/services/ecommerce-client.js</code>, and follow these steps:</p><div class="book"><ol class="orderedlist"><li class="listitem" value="1">Declare the constants used in the service and include the dependencies:<div class="informalexample"><pre class="programlisting">'use strict';
+
+const DEFAULT_URL = 'http://localhost:3000/api';
+const CONTENT_HEADERS = {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json',
+};
+
+const request = require('request');</pre></div></li><li class="listitem" value="2">Define a custom <code class="email">RequestOptions</code> class used to configure the request object:<div class="informalexample"><pre class="programlisting">class RequestOptions {
+  constructor(opts) {
+    let headers = Object.assign({}, CONTENT_HEADERS, opts.headers);
+
+    this.method = opts.method || 'GET';
+    this.url = opts.url;
+    this.json = !!opts.json;
+    this.headers = headers;
+    this.body = opts.body;
+  }
+
+  addHeader(key, value) {
+    this.headers[key] = value;
+  }
+}</pre></div><p class="calibre22">To reduce the necessary code structure used to make calls with <code class="email">request</code>, we defined a custom class to instantiate a default request option.</p></li><li class="listitem" value="3">Add <a id="id517" class="calibre1"/>the <code class="email">EcommerceClient</code> class:<div class="informalexample"><pre class="programlisting">class EcommerceClient {
+  constructor(opts) {
+    this.request = request;
+    this.url = opts.url || DEFAULT_URL;
+  }
+}</pre></div><p class="calibre22">The <code class="email">EcommerceClient</code> class is going to be our main entry point to the third-party API. It's more of a facade to not know the underlining data source used in our application.</p></li><li class="listitem" value="4">Specify how to authenticate users:<div class="informalexample"><pre class="programlisting">  authenticate(email, password, callback) {
+    let req = new RequestOptions({
+      method: 'POST',
+      url: `${this.url}/auth/basic`
+    });
+    let basic = btoa(`${email}:${password}`);
+
+    req.addHeader('Authorization', `Basic ${basic}`);
+
+    this.request(req, function(err, res, body) =&gt; {
+      callback(err, body);
+    })
+  }</pre></div><p class="calibre22">The API server will handle the authentication for us; we are just using the token returned when making calls to the API. Our custom <code class="email">RequestOptions</code> class permits us to add extra header data, such as the <code class="email">Authorization</code> field.</p></li><li class="listitem" value="5">Append the <code class="email">getProducts()</code> method:<div class="informalexample"><pre class="programlisting">  getProducts(opts, callback) {
+    let req = new RequestOptions({
+      url: `${this.url}/api/products`
+    });
+    req.addHeader('Authorization', `Bearer ${opts.token}`);
+
+    this.request(req, function(err, res, body) =&gt; {
+      callback(err, body);
+    })
+  }</pre></div></li></ol><div class="calibre12"/></div><p class="calibre8">As you can see, with the same principle, we can retrieve data from our e-commerce application. The only thing is that we need to add a token to our calls. We are not going to <a id="id518" class="calibre1"/>discuss how we consume our service, as we have done this many times throughout the book.</p><p class="calibre8">It should be fairly simple to use it in a controller and configure a router to expose the necessary endpoints to the client application.</p></div></div>
+
+<div class="book" title="Frontend services"><div class="book" id="24L8G2-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch06lvl1sec65" class="calibre1"/>Frontend services</h1></div></div></div><p class="calibre8">As we are touching <a id="id519" class="calibre1"/>only the most significant part of <a id="id520" class="calibre1"/>our application, we are going to discuss the implementation of our services used in the Angular application. I think it's important to understand the underlying communication layer with the backend application.</p></div>
+
+<div class="book" title="Frontend services">
+<div class="book" title="Auction service"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch06lvl2sec134" class="calibre1"/>Auction service</h2></div></div></div><p class="calibre8">
+<code class="email">AuctionService</code> <a id="id521" class="calibre1"/>will handle all communications with the backend API to get info about a specific auction, or simply get all the available auctions. To do that, we are going to create a new file, <code class="email">public/src/services/auction.service.ts</code>:</p><div class="informalexample"><pre class="programlisting">import { Injectable } from 'angular2/core';
+import { Response, Headers } from 'angular2/http';
+import { Observable } from 'rxjs/Observable';
+import { Subject } from 'rxjs/Subject';
+import { BehaviorSubject } from 'rxjs/Subject/BehaviorSubject';
+import { AuthHttp } from '../auth/index';
+import { contentHeaders } from '../common/headers';
+import { Auction } from './auction.model';
+import { SubjectAuction, ObservableAuction, ObservableAuctions } from './types';
+
+const URL = 'api/auctions';
+
+@Injectable()
+export class AuctionService { 
+}</pre></div><p class="calibre8">We imported our dependencies, and we've added an <code class="email">URL</code> constant for better code readability, but you may handle your base URL configuration as you desire. A few things are missing before <a id="id522" class="calibre1"/>we can add the necessary methods, so let's define the constructor and class props:</p><div class="informalexample"><pre class="programlisting">  public currentAuction: SubjectAuction = new BehaviorSubject&lt;Auction&gt;(new Auction());
+  public auctions: ObservableAuctions;
+  public auction: ObservableAuction;
+
+  private _http: Http;
+  private _auctionObservers: any;
+  private _auctionsObservers: any;
+  private _dataStore: { auctions: Array&lt;Auction&gt;, auction: Auction };
+
+  constructor(http: Http, bidService: BidService) {
+    this._http = http;
+    this.auction = new Observable(observer =&gt; this._auctionObservers = observer).share();
+    this.auctions = new Observable(observer =&gt; this._auctionsObservers = observer).share();
+    this._dataStore = { auctions: [], auction: new Auction() };
+  }</pre></div><p class="calibre8">We are exporting an Observable for a single auction and a list of auctions. Also, we are interested in the current auction. Besides all the familiar definitions, we added a third service to be used internally.</p><p class="calibre8">When getting a single auction or all auctions, we'll update the next value of the observers, so that subscribers get notified by the occurrence of changes:</p><div class="informalexample"><pre class="programlisting">    public getAll() {
+    this._authHttp
+    .get(URL, { headers: contentHeaders })
+    .map((res: Response) =&gt; res.json())
+    .map((data) =&gt; {
+      return data.map((auction) =&gt; {
+        return new Auction(
+          auction._id,
+          auction.item,
+          auction.startingPrice,
+          auction.currentPrice,
+          auction.endPrice,
+          auction.minAmount,
+          auction.bids,
+          auction.status,
+          auction.startsAt,
+          auction.endsAt,
+          auction.createdAt
+        );
+      });
+    })
+    .subscribe(auctions =&gt; {
+      this._dataStore.auctions = auctions;
+      this._auctionsObservers.next(this._dataStore.auctions);
+    }, err =&gt; console.error(err));
+  } </pre></div><p class="calibre8">To get a <a id="id523" class="calibre1"/>single auction, we can use the following method:</p><div class="informalexample"><pre class="programlisting">  public getOne(id) {
+    this._authHttp
+    .get(`${URL}/${id}`)
+    .map((res: Response) =&gt; res.json())
+    .map((data) =&gt; {
+      return new Auction(
+        data._id,
+        data.item,
+        data.startingPrice,
+        data.currentPrice,
+        data.endPrice,
+        data.minAmount,
+        data.bids,
+        data.status,
+        data.startsAt,
+        data.endsAt,
+        data.createdAt
+      );
+    })
+    .subscribe(auction =&gt; {
+      this._dataStore.auction = auction;
+      this._auctionObservers.next(this._dataStore.auction);
+    }, err =&gt; console.error(err));
+  }</pre></div><p class="calibre8">So, this service is going to communicate with our Node.js application and store all the received data in an internal store. Besides getting data from the server, we also want to eventually store the current auction, so this piece of code should handle it:</p><div class="informalexample"><pre class="programlisting">  public setCurrentAuction(auction: Auction) {
+    this.currentAuction.next(auction);
+  }</pre></div></div></div>
+
+<div class="book" title="Frontend services">
+<div class="book" title="The socket service"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch06lvl2sec135" class="calibre1"/>The socket service</h2></div></div></div><p class="calibre8">The socket service is <a id="id524" class="calibre1"/>going to handle the communication with the SocketIO server. The benefit is that we have a single point of entry and we can abstract the underlying logic to the rest of the application.</p><p class="calibre8">Create a new file called <code class="email">public/src/common/socket.service.ts</code>, and add the following:</p><div class="informalexample"><pre class="programlisting">import { Injectable } from 'angular2/core';
+import * as io from 'socket.io-client';
+import { Observable } from 'rxjs/Rx';
+import { ObservableBid } from '../bid/index';
+import { ObservableBidder } from '../bidder/index' 
+
+export class SocketService {
+}</pre></div><p class="calibre8">We just import the SocketIO client and all the rest of the data types. Also, don't forget to add the rest of the necessary code for your class:</p><div class="informalexample"><pre class="programlisting">  public bid: ObservableBid;
+  public bidder: ObservableBidder;
+  private _io: any;
+
+  constructor() {
+    this._io = io.connect();
+    this._bindListeners();
+  }</pre></div><p class="calibre8">An interesting thing we are doing here is to expose Observables—and the rest of the application can just subscribe to the stream of data—using the following technique:</p><div class="informalexample"><pre class="programlisting">  private _bindListeners() {
+    this.bid = Observable.fromEvent(
+      this._io, 'auction:new:bid'
+    ).share();
+    this.bidder = Observable.fromEvent(
+      this._io, 'bidder:joined:auction'
+    ).share();
+  }</pre></div><p class="calibre8">The nice part about RxJs is that we can create Observables from events. As the socket emits events, we can just create an Observable from that. With the preceding code, we can subscribe to incoming data from the backend.</p><p class="calibre8">In order to send information to the backend through SocketIO, we can expose an <code class="email">.emit()</code> method <a id="id525" class="calibre1"/>that would be just a wrapper around the <code class="email">.emit()</code> method on the socket client:</p><div class="informalexample"><pre class="programlisting">  public emit(...args) {
+    this._io.emit.apply(this, args);
+  }</pre></div></div></div>
+
+<div class="book" title="Frontend services">
+<div class="book" title="The bid service"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch06lvl2sec136" class="calibre1"/>The bid service</h2></div></div></div><p class="calibre8">To get the <a id="id526" class="calibre1"/>big picture, we can take a look at the <code class="email">BidService</code> found under the following path: <code class="email">public/src/bid/bid.service.ts</code>. The class will have a similar structure:</p><div class="informalexample"><pre class="programlisting">@Injectable()
+export class BidService {
+  public bid: any;
+  public currentAuction: any;
+  private _socketService: SocketService;
+  private _auctionService: AuctionService;
+
+  constructor(
+    socketService: SocketService, 
+    auctionService: AuctionService
+  ) {    
+    this._socketService = socketService;
+    this._auctionService = auctionService;
+    this.currentAuction = {};
+    this._auctionService.currentAuction.subscribe((auction) =&gt; {
+      this.currentAuction = auction;
+    });
+    this.bid = this._socketService.bid.filter((data) =&gt; {
+      return data.auctionId === this.currentAuction._id;
+    });
+  }
+
+  public placeBid(auctionId: string, bid: Bid) {
+    this._socketService.emit('place:bid', {
+      auctionId: auctionId,
+      amount: bid.amount
+    });
+  }
+}</pre></div><p class="calibre8">
+<code class="email">BidService</code> will interact with <code class="email">SocketService</code> in order to place bids, which will be pushed to all connected clients through the Express backend application. We also filter each incoming bid by the currently selected auction.</p><p class="calibre8">When the currently <a id="id527" class="calibre1"/>selected auction changes, we want to update our local copy by subscribing to <code class="email">currentAuction</code> from <code class="email">AuctionService</code>.</p></div></div>
+
+<div class="book" title="Frontend services">
+<div class="book" title="The bidder service"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_4"><a id="ch06lvl2sec137" class="calibre1"/>The bidder service</h2></div></div></div><p class="calibre8">
+<code class="email">BidderService</code> <a id="id528" class="calibre1"/>is going to be the first one to use <code class="email">SocketService</code> and subscribe to changes on the <code class="email">bidder</code> object. It will store all the incoming data from the backend Node.js server.</p><p class="calibre8">Let's create a new file called <code class="email">public/src/services/bidder.service.ts</code>, and add the following base content:</p><div class="informalexample"><pre class="programlisting">import { Injectable } from 'angular2/core';
+import { Observable } from 'rxjs/Observable';
+import { Subject } from 'rxjs/Subject';
+import { BehaviorSubject } from 'rxjs/Subject/BehaviorSubject';
+import { contentHeaders } from '../common/headers';
+import { SocketService } from './socket.service';
+import { Bidder } from '../datatypes/bidder';
+import { ObservableBidders } from '../datatypes/custom-types';
+
+@Injectable()
+export class BidderService {
+}</pre></div><p class="calibre8">Now that we have a starting point, we can define our constructor and declare all the necessary properties:</p><div class="informalexample"><pre class="programlisting">  public bidders: ObservableBidders;
+
+  private _socketService: SocketService;
+  private _biddersObservers: any;
+  private _dataStore: { bidders: Array&lt;Bidder&gt; };
+
+  constructor() {
+    this.bidders = new Observable(observer =&gt; this._biddersObservers = observer).share();
+    this._dataStore = { bidders: [] };
+  }</pre></div><p class="calibre8">In this proof of concept, we are not going to do any HTTP calls from this service, and mostly we are going to store information inside the data store. The following <code class="email">public</code> methods will come in handy:</p><div class="informalexample"><pre class="programlisting">  public storeBidders(bidders: Array&lt;Bidder&gt;) {
+    this._socketService = socketService;
+    this._dataStore = { bidders: [] };
+    this.bidders = new Observable(observer =&gt; {
+      this._biddersObservers = observer;
+    }).share();
+    this._socketService.bidder.subscribe(bidder =&gt; {
+      this.storeBidder(bidder);
+    });    
+  }
+
+  public storeBidder(bidder: Bidder) {
+    this._dataStore.bidders.push(bidder);
+    this._biddersObservers.next(this._dataStore.bidders);
+  }
+
+  public removeBidder(id: string) {
+    let bidders = this._dataStore.bidders;
+
+    bidders.map((bidder, index) =&gt; {
+      if (bidder._id === id) {
+        this._dataStore.bidders.splice(index, 1);
+      }
+    });
+
+    this._biddersObservers.next(this._dataStore.bidders);
+  }</pre></div><p class="calibre8">The preceding <a id="id529" class="calibre1"/>logic was used in a similar form in earlier chapters. To keep it short, we just store the bidders or a single bidder in our data structures and update the next value of the observer, so that every subscriber gets notified to get the latest values.</p><p class="calibre8">Earlier, we used a <code class="email">Bidder</code> custom data type—or a model if it sounds more familiar to you. Let's take a quick look at it, found under the following path—<code class="email">public/src/datatypes/bidder.ts</code>:</p><div class="informalexample"><pre class="programlisting">export class Bidder {
+  _id:            string;
+  profileId:      string;
+  additionalData: any;
+  auctions:       Array&lt;any&gt;;
+  createdAt:      string
+
+  constructor(
+    _id?:            string,
+    profileId?:      string,
+    additionalData?: any,
+    auctions?:       Array&lt;any&gt;,
+    createdAt?:      string
+  ) {
+    this._id = _id;
+    this.profileId = profileId;
+    this.additionalData = additionalData;
+    this.auctions = auctions;
+    this.createdAt = createdAt;
+  }
+}</pre></div></div></div>
+
+<div class="book" title="The Auction module" id="25JP21-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch06lvl1sec66" class="calibre1"/>The Auction module</h1></div></div></div><p class="calibre8">We have taken the <a id="id530" class="calibre1"/>initial steps and implemented our services. Now we can <a id="id531" class="calibre1"/>start to use them in our components. There are many moving things in our <code class="email">Auction</code> application. The most demanding part of the app will be the auction detail page. </p><p class="calibre8">The preceding code will list the details about a specific auction and also list the current bids. When a new bid is placed, it will be pushed to the <code class="email">bids</code> list.</p><p class="calibre8">Earlier in our services, we used the <code class="email">Auction</code> model. Let's take a look at it first. It can be found under <code class="email">public/src/auction/auction.model.ts</code>:</p><div class="informalexample"><pre class="programlisting">import { Money } from '../common/index';
+
+export class Auction {
+  _id:            string;
+  identifier:     string;
+  item:           any;
+  startingPrice:  any;
+  currentPrice:   any;
+  endPrice:       any;
+  minAmount:      any;
+  bids:           Array&lt;any&gt;;
+  status:         string;
+  startsAt:       string;
+  endsAt:         string;
+  createdAt:      string
+
+  constructor(
+    _id?:            string,
+    item?:           any,
+    startingPrice?:  any,
+    currentPrice?:   any,
+    endPrice?:       any,
+    minAmount?:      any,
+    bids?:           Array&lt;any&gt;,
+    status?:         string,
+    startsAt?:       string,
+    endsAt?:         string,
+    createdAt?:      string,
+    identifier?:     string
+  ) {
+    this._id = _id;
+    this.item = item || { slug: '' };
+    this.startingPrice = startingPrice || new Money();
+    this.currentPrice = currentPrice || this.startingPrice;
+    this.endPrice = endPrice || new Money();
+    this.minAmount = minAmount || new Money();
+    this.bids = bids;
+    this.status = status;
+    this.startsAt = startsAt;
+    this.endsAt = endsAt;
+    this.createdAt = createdAt;
+    this.identifier = identifier || `${this.item.slug}-${this._id}`;
+  }
+}</pre></div><p class="calibre8">It has a long list of properties. We are doing some initializations when we instantiate the model. We use a custom <code class="email">Money</code> model, which reflects our custom monetary type from the backend.</p><p class="calibre8">If you remember, in <a id="id532" class="calibre1"/>the <code class="email">Job Board</code> application, we used nice URLs to access a company. I wanted to have the same aspect but add a little bit of a twist to experiment with a different structure. We have the same concept but a different identifier for an auction. </p><p class="calibre8">We are using the product's slug in combination with the auction's <code class="email">_id</code> for our <code class="email">identifier</code> property. Now let's take a look at the <code class="email">Money</code> model, <code class="email">public/src/common/money.model.ts</code>:</p><div class="informalexample"><pre class="programlisting">export class Money {
+  amount: number;
+  currency: string;
+  display: string;
+  factor: number;
+
+  constructor(
+    amount?: number,
+    currency?: string,
+    display?: string,
+    factor?: number
+  ) {
+    this.amount = amount;
+    this.currency = currency;
+    this.display = display;
+    this.factor = factor;
+  }
+}</pre></div><p class="calibre8">As you can remember, we are using these techniques to have initial values for our objects and to make sure <a id="id533" class="calibre1"/>we have the necessary properties. To fresh up our memories, the <code class="email">amount</code> is obtained by multiplying the <code class="email">display</code> value with the <code class="email">factor</code>. This is all done on the server side.</p></div>
+
+<div class="book" title="The Auction module" id="25JP21-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="The base component"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch06lvl2sec138" class="calibre1"/>The base component</h2></div></div></div><p class="calibre8">We are going to <a id="id534" class="calibre1"/>add a base component that configures our routes. Our base component is usually pretty basic, without much logic; it has only routing-related logic. Create a new file called <code class="email">public/src/auction/components/auction-base.component.ts</code>, and add the following code:</p><div class="informalexample"><pre class="programlisting">import { Component } from 'angular2/core';
+import { RouteConfig, RouterOutlet } from 'angular2/router';
+import { AuctionListComponent } from './auction-list.component';
+import { AuctionDetailComponent } from './auction-detail.component';
+
+@RouteConfig([
+  { path: '/', as: 'AuctionList', component: AuctionListComponent, useAsDefault: true },
+  { path: '/:identifier', as: 'AuctionDetail', component: AuctionDetailComponent }
+])
+@Component({
+    selector: 'auction-base',
+    directives: [
+      AuctionListComponent,
+      AuctionDetailComponent,
+      RouterOutlet
+    ],
+    template: `
+      &lt;div class="col"&gt;
+        &lt;router-outlet&gt;&lt;/router-outlet&gt;
+      &lt;/div&gt;
+    `
+})
+export class AuctionBaseComponent {
+  constructor() {}
+}</pre></div></div></div>
+
+<div class="book" title="The Auction module" id="25JP21-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="The auction list"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch06lvl2sec139" class="calibre1"/>The auction list</h2></div></div></div><p class="calibre8">To display a list of <a id="id535" class="calibre1"/>currently available auctions, we are going to create a new component, called <code class="email">public/src/auction/components/auction-list.component.ts</code>:</p><div class="informalexample"><pre class="programlisting">import { Component, OnInit } from 'angular2/core';
+import { AuctionService } from '../auction.service';
+import { Router, RouterLink } from 'angular2/router';
+import { Auction } from '../auction.model';
+
+@Component({
+    selector: 'auction-list',
+    directives: [RouterLink],
+    template: `
+      &lt;div class="auction-list row"&gt;
+        &lt;h2 class="col"&gt;Available auctions&lt;/h2&gt;
+        &lt;div *ngFor="#auction of auctions" class="col col-25"&gt;
+          &lt;h3&gt;
+            &lt;a href="#"
+              [routerLink]="['AuctionDetail', { identifier: auction.identifier }]"&gt;
+              {{ auction.item.title }}
+            &lt;/a&gt;
+          &lt;/h3&gt;
+          &lt;p&gt;starting price: {{ auction.startingPrice.display }} {{ auction.startingPrice.currency }}&lt;/p&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    `
+})
+export class AuctionListComponent implements OnInit {
+  public auctions: Array&lt;Auction&gt; = [];
+  private _auctionService: AuctionService;
+
+  constructor(auctionService: AuctionService) {
+    this._auctionService = auctionService;
+  }
+
+  ngOnInit() {
+    this._auctionService.auctions.subscribe((auctions: Array&lt;Auction&gt;) =&gt; {
+      this.auctions = auctions;
+    });
+    this._auctionService.getAll();
+  }
+}</pre></div><p class="calibre8">From this <a id="id536" class="calibre1"/>component, we'll link to the auction detail. As you can see, we used the <code class="email">identifier</code> as a router param. The value of the property was constructed inside the <code class="email">Auction</code> model.</p></div></div>
+
+<div class="book" title="The Auction module" id="25JP21-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="The detail page"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch06lvl2sec140" class="calibre1"/>The detail page</h2></div></div></div><p class="calibre8">The detail page <a id="id537" class="calibre1"/>will have the most moving parts in this application. We are going to display the auction's details and list all new bids. Also, the user can bid from this page. To implement this component, let's follow these steps:</p><div class="book"><ol class="orderedlist"><li class="listitem" value="1">Create a new file called <code class="email">public/src/auction/components/auction-detail.component.ts</code>.</li><li class="listitem" value="2">Add the dependencies:<div class="informalexample"><pre class="programlisting">import { Component, OnInit } from 'angular2/core';
+import { AuctionService } from '../auction.service';
+import { RouterLink, RouteParams } from 'angular2/router';
+import { Auction } from '../auction.model';
+import { BidListComponent } from '../../bid/index';
+import { BidFormComponent } from '../../bid/index';</pre></div></li><li class="listitem" value="3">Configure the <code class="email">Component</code> annotation:<div class="informalexample"><pre class="programlisting">@Component({
+    selector: 'auction-detail,
+    directives: [
+      BidListComponent,
+      BidFormComponent,
+      RouterLink
+    ],
+    template: `
+      &lt;div class="col"&gt;
+        &lt;a href="#" [routerLink]="['AuctionList']"&gt;back to auctions&lt;/a&gt;
+      &lt;/div&gt;
+      &lt;div class="row"&gt;
+        &lt;div class="col sidebar"&gt;
+          &lt;div class="auction-details"&gt;
+            &lt;h2&gt;{{ auction.item.title }}&lt;/h2&gt;
+            &lt;p&gt;{{ auction.startingPrice.display }} {{ auction.startingPrice.currency }}&lt;/p&gt;
+            &lt;p&gt;{{ auction.currentPrice.dislpay }} {{ auction.startingPrice.currency }}&lt;/p&gt;
+            &lt;p&gt;minimal bid amount: {{ auction.minAmount.display }}&lt;/p&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class="col content"&gt;
+          &lt;bid-list&gt;&lt;/bid-list&gt;
+          &lt;bid-form&gt;&lt;/bid-form&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    `
+})</pre></div></li><li class="listitem" value="4">Add the <a id="id538" class="calibre1"/>class:<div class="informalexample"><pre class="programlisting">export class AuctionDetailComponent implements OnInit, OnDestroy {
+  public auction: Auction;
+  private _routeParams:RouteParams;
+  private _auctionService: AuctionService;
+
+  constructor(
+    auctionService: AuctionService, 
+    routeParams: RouteParams
+  ) {    
+    this._auctionService = auctionService;
+    this._routeParams = routeParams;
+  }
+}</pre></div></li><li class="listitem" value="5">Implement <code class="email">ngOnInit</code>:<div class="informalexample"><pre class="programlisting">  ngOnInit() {
+    this.auction = new Auction();
+    const identifier: string = this._routeParams.get('identifier');
+    const auctionId = this.getAuctionId(identifier);
+    this._auctionService.auction.subscribe((auction: Auction) =&gt; {
+      this.auction = auction;
+    });
+    this._auctionService.getOne(auctionId);
+  }</pre></div></li><li class="listitem" value="6">Add <code class="email">ngOnDestroy</code>:<div class="informalexample"><pre class="programlisting">  ngOnDestroy() {
+    this._auctionService.setCurrentAuction(new Auction());
+  }</pre></div><p class="calibre22">When the component is destroyed, we want to set <code class="email">currentAuction</code> to be empty.</p></li><li class="listitem" value="7">Define the private <code class="email">getAuctionId</code> method:<div class="informalexample"><pre class="programlisting">  private getAuctionId(identifier: string) {
+    const chunks = identifier.split('-');
+    return chunks[chunks.length -1];
+  }</pre></div></li></ol><div class="calibre12"/></div><p class="calibre8">We are using <code class="email">RouterParams</code> to get the identifier. Because we have the nice URI we need to strip only the necessary information from the identifier. For that, we used a private method that splits the URL component into chunks and gets only the last portion. </p><p class="calibre8">The last part of the URL is the auction's <code class="email">id</code>. After we have the necessary <code class="email">id</code>, we can retrieve the information from our API.</p><p class="calibre8">This component uses <a id="id539" class="calibre1"/>two other components, <code class="email">BidListComponent</code> and <code class="email">BidFormComponent</code>. The first is used to display a list of bids, listen to the bids' data stream, and update the bids list.</p><p class="calibre8">The second, <code class="email">BidFormComponent</code>, is used to make bids. It's easier to encapsulate all the functionalities into separate components. This way, each component can focus on its domain requirements.</p></div></div>
+
+<div class="book" title="The bid module" id="26I9K1-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch06lvl1sec67" class="calibre1"/>The bid module</h1></div></div></div><p class="calibre8">We are going to <a id="id540" class="calibre1"/>close our chapter with the <code class="email">bid</code> module, as we used many <a id="id541" class="calibre1"/>of its components in the previous <code class="email">auction</code> module. Only the <code class="email">bid listing</code> will be discussed, as it implies working with the underlining socket stream.</p></div>
+
+<div class="book" title="The bid module" id="26I9K1-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="Listing bids"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch06lvl2sec141" class="calibre1"/>Listing bids</h2></div></div></div><p class="calibre8">From the previous <code class="email">AuctionDetailComponent</code>, we can see that this component will have the bids as input. This <a id="id542" class="calibre1"/>data comes from the <code class="email">auction</code> entity, which holds previously placed bids.</p><p class="calibre8">Create a new file called <code class="email">public/src/bid/components/bid-list.component.ts</code>:</p><div class="informalexample"><pre class="programlisting">import { Component, OnInit, OnDestroy } from 'angular2/core';
+import { BidService } from '../bid.service';
+import { Bid } from '../bid.model';
+import { BidComponent } from './bid.component';
+
+@Component({
+    selector: 'bid-list',
+    inputs: ['bids'],
+    directives: [BidComponent],
+    template: `
+      &lt;div class="bid-list"&gt;
+        &lt;div *ngIf="bids.length === 0" class="empty-bid-list"&gt;
+          &lt;h3&gt;No bids so far :)&lt;/h3&gt;
+        &lt;/div&gt;
+        &lt;bid *ngFor="#bid of bids" [bid]="bid"&gt;&lt;/bid&gt;
+      &lt;/div&gt;
+    `
+})
+export class BidListComponent implements OnInit, OnDestroy {
+  public bids: Array&lt;Bid&gt;;
+  private _bidService: BidService;
+  private _subscription: any;
+
+  constructor(bidService: BidService) {
+    this._bidService = bidService;
+  }
+
+  ngOnInit() {
+    this._subscription = this._bidService.bid.subscribe((bid) =&gt; {
+      this.bids.push(bid);
+    });
+  }
+
+  ngOnDestroy() {
+    if (this._subscription) {
+        this._subscription.unsubscribe();
+    }
+  }
+}</pre></div><p class="calibre8">We subscribe to the <code class="email">bid</code> data stream from <code class="email">BidService</code> to push all the new incoming bids and display them <a id="id543" class="calibre1"/>using <code class="email">BidComponent</code>. The subscription is also stored so that we can unsubscribe from the stream when the <a id="id544" class="calibre1"/>component is destroyed.</p></div></div>
+
+<div class="book" title="The bid module" id="26I9K1-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="The bid component"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch06lvl2sec142" class="calibre1"/>The bid component</h2></div></div></div><p class="calibre8">Our bid component is <a id="id545" class="calibre1"/>going to be fairly simple. It will have a <code class="email">bid</code> input, and after the view is initialized successfully, we are going to scroll to the bottom of the bid listing view. Let's create the following component under <code class="email">public/src/bid/components/bid.component.ts</code>:</p><div class="informalexample"><pre class="programlisting">import { Component, AfterViewInit } from 'angular2/core';
+import { Bid } from '../bid.model';
+
+@Component({
+    inputs: ['bid'],
+    selector: 'bid',
+    template: `
+      &lt;div class="bid-item"&gt;
+        &lt;div class=""&gt;
+          &lt;span class=""&gt;{{bid_id}}&lt;/span&gt;
+          &lt;span class=""&gt;{{bid.amount}}&lt;/span&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    `
+})
+export class BidComponent implements AfterViewInit {
+  public bid: Bid;
+
+  constructor() {}
+
+  ngAfterViewInit() {
+    var ml = document.querySelector('bid-list .bid-list');
+    ml.scrollTop = ml.scrollHeight;
+  }
+}</pre></div><p class="calibre8">Also let's take a look at our <code class="email">bid</code> model, <code class="email">public/bid/bid.model.ts</code>:</p><div class="informalexample"><pre class="programlisting">export class Bid {
+  _id:            string;
+  bidder:         any;
+  amount:         any;
+  createdAt:      string
+
+  constructor(
+    _id?:         string,
+    bidder?:      any,
+    amount?:      any,
+    createdAt?:   string
+  ) {
+    this._id = _id;
+    this.bidder = bidder;
+    this.amount = amount;
+    this.createdAt = createdAt;
+  }
+}</pre></div><p class="calibre8">Now we have a full round trip from the backend to our frontend components. Data is streamed from the WebSocket server to our Angular 2 application.</p><p class="calibre8">This application had the purpose of going through all the techniques used in the book, and we had a <a id="id546" class="calibre1"/>chance to put together a proof of concept. The main focus of the chapter was to see the underlining modules, how they will be combined, and how data will be modeled and transmitted between each module.</p></div></div>
+<div class="book" title="Summary" id="27GQ61-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch06lvl1sec68" class="calibre1"/>Summary</h1></div></div></div><p class="calibre8">This is our final chapter, and we created a small proof-of-concept application. The purpose was to go through some of the most interesting parts and methods used in the book and see how we can combine exciting ideas to create something small but powerful.</p><p class="calibre8">Also, we used our existing e-commerce API to retrieve information about product items and manage our users. There was no reason to go through this process again as we can rely on third-party APIs for faster prototyping.</p><p class="calibre8">Through most of the chapters, we only touched the most important parts. All the necessary code can be found on the Packt Publishing website (<a class="calibre1" href="https://www.packtpub.com/">https://www.packtpub.com/</a>) for each chapter.</p></div></body></html>

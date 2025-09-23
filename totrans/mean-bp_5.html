@@ -1,0 +1,1037 @@
+<html><head></head><body>
+<div class="book" title="Chapter&#xA0;5.&#xA0;E-commerce Application" id="1O8H61-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch05" class="calibre1"/>Chapter 5. E-commerce Application</h1></div></div></div><p class="calibre8">This chapter will focus on building an e-commerce like application. We are going to experiment with a different application architecture by building a core that will hold all the business logic and consume it with smaller apps. Also one more interesting thing to note is that the front store of our e-commerce application will be built using server-side rendering.</p><p class="calibre8">This new architecture will enable us to build micro apps; for example, one app could be the admin application that is going to manage the product catalog. The benefit is that each micro app can be built using different approaches. </p><p class="calibre8">As a demonstration, we are not going to build our front store in Angular. Sounds crazy I know, but for educational purposes, it's going to be great. Also, we want to highlight how easy it is to build hybrid applications.</p><p class="calibre8">The admin part of the <a id="id413" class="calibre1"/>application is going to be built using Angular 2. Because of this, we are going to build a headless core backend service. This core application will be consumed by our micro apps.</p></div>
+
+<div class="book" title="Chapter&#xA0;5.&#xA0;E-commerce Application" id="1O8H61-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="Setting up the base application"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_1"><a id="ch05lvl1sec52" class="calibre1"/>Setting up the base application</h1></div></div></div><p class="calibre8">In previous <a id="id414" class="calibre1"/>chapters, we used our own boilerplate to bootstrap the application's development. This chapter is going to have a fresh folder structure, but don't worry; we are still going to use a lot of code from the existing boilerplate.</p><p class="calibre8">A new folder structure will give us more flexibility, as at the moment we have outgrown our initial architecture. One benefit, which we are not going to cover in this chapter, is that you can move each module to a separate package and install them as dependencies.</p><p class="calibre8">Before jumping into things, let's see a high-level view of our architecture:</p><div class="informalexample"><pre class="programlisting">apps/
+-- admin/
+-- api/
+-- auth/
+-- frontstore/
+-- shared/
+core/
+---- helpers/
+---- middlewares
+---- models
+---- services
+config/
+---- environments/
+---- strategies
+tests/</pre></div><p class="calibre8">The explanation for the folder structure is as follows:</p><div class="book"><ul class="itemizedlist"><li class="listitem"><code class="email">apps</code>: This folder <a id="id415" class="calibre1"/>will contain several micro apps, such as <code class="email">frontstore</code>, which will serve as the client application for users visiting our e-commerce store.</li><li class="listitem"><code class="email">core</code>: This is going to be the heart of our application, containing all the necessary business logic:<div class="book"><ul class="itemizedlist1"><li class="listitem"><code class="email">middlewares</code>: In this folder, we'll store all our pieces of functions that will manipulate the request and response object. A good example would be authentication middleware.</li><li class="listitem"><code class="email">models</code>: This folder will store all the backend models.</li><li class="listitem"><code class="email">services</code>: This will group all common sets of application logic available for different clients and will coordinate the consumption of business logic.</li></ul></div></li><li class="listitem"><code class="email">config</code>: All application configuration files go here.<div class="book"><ul class="itemizedlist1"><li class="listitem"><code class="email">environments</code>: This folder contains files loaded according to the current environment </li></ul></div></li><li class="listitem"><code class="email">tests</code>: This folder contains all the tests necessary to test the application backend logic.</li></ul></div></div></div>
+
+<div class="book" title="Data modeling"><div class="book" id="1P71O2-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch05lvl1sec53" class="calibre1"/>Data modeling</h1></div></div></div><p class="calibre8">Now that we have a <a id="id416" class="calibre1"/>high-level view of our architecture, let's define our models and see how they interact. This will give you a high-level view of how you are going to store your data in the database. Also, it will reflect the connections between different entities and you can decide, in the case of MongoDB, what documents will be embedded and which ones will be referenced.</p></div>
+
+<div class="book" title="Data modeling">
+<div class="book" title="Custom money data type"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch05lvl2sec108" class="calibre1"/>Custom money data type</h2></div></div></div><p class="calibre8">In the <a id="id417" class="calibre1"/>earlier Expense Tracker application, we concluded that there is a way to work with monetary data in JavaScript and MongoDB. It only needs extra application logic to handle the Exact Precision solution.</p><p class="calibre8">Because we are working with Mongoose as our ODM for Mongo, we can define a custom model for monetary data. I know it sounds strange, but it will give us the upper hand by defining virtual properties and reusing the money data type in our application.</p><p class="calibre8">Let's create a file called <code class="email">core/models/money.js</code> and add the following Mongoose schema:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const DEF_CURRENCY = 'USD';
+const DEF_SCALE_FACTOR = 100;
+
+const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
+const ObjectId = Schema.ObjectId;
+
+const MoneySchema = new Schema({
+  amount:   { type: Number, default: 0 },
+  currency: { type: String, default: DEF_CURRENCY },
+  factor:   { type: Number, default: DEF_SCALE_FACTOR }
+}, {
+  _id:      false,
+  toObject: { virtuals: true },
+  toJSON:   { virtuals: true }
+});
+
+MoneySchema
+.virtual('display')
+.set(function(value) {
+  if (value) {
+    this.set('amount', value * this.factor);
+  }
+})
+.get(function() {
+  return this.amount / this.factor;
+});
+
+module.exports = mongoose.model('Money', MoneySchema);</pre></div><p class="calibre8">For easier readability, I did the following:</p><div class="book"><ol class="orderedlist"><li class="listitem" value="1">Defined a default currency with a default scale factor. To achieve better customization, you can add these into a configuration file.</li><li class="listitem" value="2">Added a virtual named <code class="email">display</code>, which will be the display value of the money model, for example, 18.99.</li></ol><div class="calibre12"/></div><p class="calibre8">Now, having that out of the way, let's see what is going on with the preceding code. We created a custom Money model, which will serve us as a Money data type. As you can see, we disabled the autogeneration of the <code class="email">_id</code> property. This way, if we use the model as an embedded document, Mongoose will not generate an <code class="email">_id </code>property. </p><p class="calibre8">Let's see <a id="id418" class="calibre1"/>an example:</p><div class="informalexample"><pre class="programlisting">var price = new Money();
+price.display = 18.99;
+console.log(price.toObject());
+// { amount: 1899, currency: 'USD', factor: 100, display: 18.99 }</pre></div><p class="calibre8">When transforming the price to an object, the output will contain all of the necessary information and we don't need to do any calculations using floats. Remember that we are storing the scale factor and the currency within the price model because this needs to be consistent across the application with the currency.</p></div></div>
+
+<div class="book" title="Data modeling">
+<div class="book" title="The product model"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch05lvl2sec109" class="calibre1"/>The product model</h2></div></div></div><p class="calibre8">When creating <a id="id419" class="calibre1"/>an e-commerce application, you have to think about storing many different product types in your catalog. The MongoDB data model will come in handy in this situation due to the fact that we can represent data in any structure.</p><p class="calibre8">Structuring data in an RDBMS would be a little bit harder; for example, one approach would be to represent each product type in a separate table. Each would have a different table structure. An alternative and popular approach would be <span class="strong"><strong class="calibre2">EAV</strong></span>, which stands for <span class="strong"><strong class="calibre2">Entity Attribute Values</strong></span>. In this case, you maintain a table with at least three columns: <code class="email">entity_id</code>, <code class="email">attribute_id</code>, and <code class="email">value</code>. The EAV solution is very flexible, but it comes with a downside. Complex queries require a large number of JOIN operations, which can degrade performance.</p><p class="calibre8">Luckily for us, as pointed out earlier, MongoDB has a dynamic schema solution, and we can store all of the product data in one collection. We could have generic information of a product and product-specific information for different product types. Let's get down to business and define our product schema. Create a file called <code class="email">core/models/product.js</code>, and add the following code:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const mongoose = require('mongoose');
+const Money = require('./money').schema;
+const commonHelper = require('../helpers/common');
+const Schema = mongoose.Schema;
+const ObjectId = Schema.ObjectId;
+const Mixed = Schema.Types.Mixed;
+
+const ProductSchema = new Schema({
+  sku:          { type: String, required: true },
+  category:     { type: String },
+  title:        { type: String, required: true },
+  summary:      { type: String },
+  description:  { type: String },
+  slug:         { type: String },
+  images:       { type: [
+    {
+      caption:  { type: String },
+      filename: { type: String }
+    }
+  ] },
+  price:        { type: Money },
+  details:      { type: Mixed },
+  active:       { type: Boolean, default: false }
+});
+
+module.exports = mongoose.model('Product', ProductSchema);</pre></div><p class="calibre8">As you can see, we have a few fields that all types of products are going to have, and we have a mixed property called <code class="email">details</code> that will hold all the necessary details about a specific product. Also we used our custom data type for the <code class="email">price</code> property. A product, by default, will be flagged as inactive in the product catalog so that it will be shown only when all the necessary information is added.</p><p class="calibre8">Earlier in the <a id="id420" class="calibre1"/>book—more precisely in <a class="calibre1" title="Chapter 3. Job Board" href="part0035_split_000.html#11C3M1-5c78d361d97340239270192b72d53e7b">Chapter 3</a>, <span class="strong"><em class="calibre11">Job Board</em></span>—we used the <code class="email">slug</code> definition for URL-friendly titles for our job openings. This time, we are going to use it for our product titles. To simplify things, we are going to automatically generate them when a new entry is created.</p><p class="calibre8">Prepend the following code in your product model file, before the <code class="email">module.exports</code> line:</p><div class="informalexample"><pre class="programlisting">ProductSchema.pre('save', function(next) {
+  this.slug = commonHelper.createSlug(this.title);
+  next();
+});</pre></div><p class="calibre8">To freshen up your memory, we used the same technique in <a class="calibre1" title="Chapter 3. Job Board" href="part0035_split_000.html#11C3M1-5c78d361d97340239270192b72d53e7b">Chapter 3</a>, <span class="strong"><em class="calibre11">Job Board </em></span>to create a slug from a title. So, this basically generates a URL-friendly string from the product title before saving in the database.</p><p class="calibre8">This pretty much <a id="id421" class="calibre1"/>sums up our product schema and should give us a solid start for storing products in MongoDB.</p></div></div>
+
+<div class="book" title="Data modeling">
+<div class="book" title="The order model"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch05lvl2sec110" class="calibre1"/>The order model</h2></div></div></div><p class="calibre8">Due to the fact <a id="id422" class="calibre1"/>that we are trying to build an e-commerce application, we somehow need to be able to store what users have purchased from our store. We are going to store all of this information in an <code class="email">orders</code> collection in MongoDB. An <code class="email">order</code> entry should contain information about what products were bought, shipping details, and who made the purchase.</p><p class="calibre8">When you analyze this, the first thing that you think about is that we would also need to have a cart before placing an order. But if we reduce everything to a simple use case, we can consider that a cart is a special kind of an order. What I mean is that a cart holds product items that will be purchased and an order will be created for that purchase.</p><p class="calibre8">So, in simple terms, only the perspective changes how we see an order. We could have a <code class="email">type</code> property for an order to determine its state. So we have a few key points to define our order schema. Now we can create a new file called <code class="email">core/models/order.js</code>, and add the following schema:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const mongoose = require('mongoose');
+const Money = require('./money').schema;
+const Schema = mongoose.Schema;
+const ObjectId = Schema.ObjectId;
+const Mixed = Schema.Types.Mixed;
+
+const OrderSchema = new Schema({
+  identifier:   { type: String },
+  user:         { type: ObjectId, ref: 'User' },
+  type:         { type: String, default: 'cart' },
+  status:       { type: String, default 'active' },
+  total:        { type: Money },
+  details:      { type: Mixed },
+  shipping:     { type: Mixed },
+  items:        { type: [
+    {
+      sku:      { type: String },
+      qty:      { type: Number, default: 1},
+      title:    { type: String },
+      price:    { type: Money },
+      product:  { type: ObjectId, ref: 'Product' }
+    }
+  ]},
+  expiresAt:    { type: Date, default: null },
+  updatedAt:    { type: Date, default: Date.now },
+  createdAt:    { type: Date, default: Date.now }
+},  {
+  toObject:     { virtuals: true },
+  toJSON:       { virtuals: true }
+});
+
+module.exports = mongoose.model('Order', OrderSchema);</pre></div><p class="calibre8">As you can see, an order will store all selected products in the <code class="email">items</code> property, together with simple <a id="id423" class="calibre1"/>information, such as the <code class="email">sku</code>, <code class="email">quantity</code>, and <code class="email">price</code> of the product. We store some non-trivial data in the items list as the product's <code class="email">title</code> so that we don't have to retrieve it for non-trivial operations.</p><p class="calibre8">When we are dealing with a <code class="email">cart</code> entry, we want it to eventually expire if it is not finalized as an order. This is because we want to release items from the cart to be available.</p><p class="calibre8">Probably, we are going to store extra details about the order and shipping details that could vary from order to order. That's why we marked them as mixed data types.</p></div></div>
+
+<div class="book" title="Data modeling">
+<div class="book" title="The inventory model"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_4"><a id="ch05lvl2sec111" class="calibre1"/>The inventory model</h2></div></div></div><p class="calibre8">Until now, we <a id="id424" class="calibre1"/>have defined the product schema and the order schema. Neither mentioned anything about the inventory status. In the <code class="email">order</code> schema, we store for each product item, what quantity was placed in the order, but this won't reflect the initial stock or the current stock.</p><p class="calibre8">There are a few approaches when working with inventory data, each with its own benefits and downsides. For example, we can store a single record for each physical product; so if we have 100 stock units of a product, we store 100 records in the inventory. </p><p class="calibre8">In a large product catalog, this would not be a good solution, as the <code class="email">inventory</code> collection would grow very quickly. Storing separate entries for each unit can be beneficial when you have physical products and a low volume of stock units. An example is a wood shop that builds furniture and wants to track more details for each physical unit.</p><p class="calibre8">An alternative would be to store a single entry for each product, with the quantity of the product in stock. Now that we have a good hint about what needs to be done, let's create the inventory model, called <code class="email">core/models/inventory.js</code>, with the following code:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
+const ObjectId = Schema.ObjectId;
+const Mixed = Schema.Types.Mixed;
+
+const InventorySchema = new Schema({
+  sku:            { type: String },
+  status:         { type: String, default: 'available' },
+  qty:            { type: Number, default: 0 },
+  carted:         { type: [
+    { type: {
+        sku:      { type: String },
+        qty:      { type: Number, default: 1 },
+        order:    { type: ObjectId, ref: 'Order' },
+        product:  { type: ObjectId, ref: 'Product' }
+      }
+    }
+  ]},
+  createdAt:      { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('Inventory', InventorySchema);</pre></div><p class="calibre8">We pushed things a little bit further and added a <code class="email">carted</code> property. This will hold all the items that are active in a cart to help us track the progress of each reserved item in the inventory.</p><p class="calibre8">This way, you <a id="id425" class="calibre1"/>can have a clean history of the level of the inventory. You can omit the <code class="email">carted</code> property and only rely on information from the <code class="email">orders</code> collection.</p></div></div>
+
+<div class="book" title="The core Service Layer"><div class="book" id="1Q5IA2-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch05lvl1sec54" class="calibre1"/>The core Service Layer</h1></div></div></div><p class="calibre8">Because our <a id="id426" class="calibre1"/>application will have different <a id="id427" class="calibre1"/>clients consuming business logic, we are going to add a Service Layer; it will coordinate operations for different use cases. So, we are going to move most of our business logic from controllers to services. Probably, it's too early to see the benefits of this, but as we progress with this chapter, it will make more sense.</p><p class="calibre8">One benefit would be that you can simply expose your Service Layer as a RESTful API, or add another client that will render on the server-side templates and display all the necessary information to the user. Regardless of the application's client implementation, you can test the <a id="id428" class="calibre1"/>business logic of your application.</p></div>
+
+<div class="book" title="The core Service Layer">
+<div class="book" title="The product catalog"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch05lvl2sec112" class="calibre1"/>The product catalog</h2></div></div></div><p class="calibre8">The product <a id="id429" class="calibre1"/>catalog will contain all the products you want to be shown or simply exist in the system. Each item in the catalog will be stored in MongoDB, in the <code class="email">products</code> collection. We are going to create a <code class="email">ProductCatalog</code> service, which will hold all the business logic for managing the products in our e-commerce application.</p><p class="calibre8">Let's follow a few steps in order to create the product catalog service:</p><div class="book"><ol class="orderedlist"><li class="listitem" value="1">Create the service file, called <code class="email">core/services/product-catalog.js</code>.</li><li class="listitem" value="2">Add the following code:<div class="informalexample"><pre class="programlisting">'use strict';
+
+const MAX_PRODUCT_SHOWN = 50;
+const _ = require('lodash');
+const Product = require('../models/product');
+
+class ProductCatalog {
+  constructor() {
+  }
+}
+
+module.exports = ProductCatalog;</pre></div></li><li class="listitem" value="3">Declare the class constructor:<div class="informalexample"><pre class="programlisting">  constructor(opts, ProductModel) {
+    opts = opts || {};
+    this.maxProductsShown = opts.maxProductsShown || MAX_PRODUCT_SHOWN;
+    this.Product = ProductModel || Product;
+  }</pre></div></li><li class="listitem" value="4">Adding a product to the catalog:<div class="informalexample"><pre class="programlisting">  add(data, callback) {
+    this.Product.create(data, callback);
+  }</pre></div></li><li class="listitem" value="5">We'll add each class method one by one.</li><li class="listitem" value="6">Edit an existing product:<div class="informalexample"><pre class="programlisting">  edit(sku, data, callback) {
+    //  remove sku; this should not change,
+    //  add a new product if it needs to change
+    delete data.sku;
+
+    this.Product.findBySKU(sku, (err, product) =&gt; {
+      if (err) {
+        return callback(err);
+      }
+
+      _.assign(product, data);
+      //  tell mongoose to increment the doc version `__v`
+      product.increment();
+      product.save(callback);
+    });
+  }</pre></div></li><li class="listitem" value="7">List <a id="id430" class="calibre1"/>all products:<div class="informalexample"><pre class="programlisting">  list(query, limit, skip, callback) {
+    if (typeof query === 'funciton') {
+      callback = limit;
+      limit = this.maxProductsShown;
+      skip = 0;
+    }
+
+    // make sure we only allow retriving `50` products from the catalog
+    if (+limit &gt; this.maxProductsShown) {
+      limit = this.maxProductsShown;
+    }
+
+    this.Product.find(query).limit(limit).skip(skip).exec(callback);
+  }</pre></div></li><li class="listitem" value="8">Get more details using the <code class="email">sku</code> identifier:<div class="informalexample"><pre class="programlisting">  details(sku, callback) {
+    this.Product.findBySKU(sku, callback);
+  }</pre></div></li><li class="listitem" value="9">Get a product by <code class="email">slug</code>:<div class="informalexample"><pre class="programlisting">  detailsBySlug(slug, callback) {
+    this.Product.findBySlug(slug, callback);
+  }
+Remove a product:
+  remove(sku, callback) {
+    this.Product.findBySKU(sku, (err, product) =&gt; {
+      if (err) {
+        return callback(err);
+      }
+
+      product.remove(callback);
+    });
+  }</pre></div></li></ol><div class="calibre12"/></div><p class="calibre8">We managed to put down a base for our product catalog service. As you can see, it only masks certain functionalities from the end module, which should not know of the underlining layer or how data is stored. It can be a database, as MongoDB is in our case, or simply a filesystem.</p><p class="calibre8">The first benefit that we get is testability, as we can test our application's business logic and run an <a id="id431" class="calibre1"/>integration test before even implementing a higher-level layer. For example, we can have the following piece of code, extracted from <code class="email">tests/integration/product-catalog.test.js</code>:</p><div class="informalexample"><pre class="programlisting">const ProductCatalog = require('../../core/services/product-catalog');
+
+// … rest of the required modules
+
+describe('Product catalog', () =&gt; {
+  let mongoose;
+  let Product;
+  let productCatalog;
+  let productData = { ... };  //  will hold the product related data
+
+  before(done =&gt; {
+    mongoose = require('../../config/mongoose').init();
+    productCatalog = new ProductCatalog();
+    // … more code
+    done();
+  });
+
+  it('should add a new product to the catalog', done =&gt; {
+    productCatalog.add(productData, (err, product) =&gt; {
+      if (err) { throw err; }
+      
+      should.exist(prod);
+      prod.title.should.equal('M.E.A.N. Blueprints');
+      done();
+    });
+  });  
+});</pre></div><p class="calibre8">The preceding test case will simply check whether all the operations done by the service are correct. We did a lot of test-driven development in the earlier chapters, and in the later chapters, we focused more on functionality, but this does not mean that we skipped writing tests. The <a id="id432" class="calibre1"/>tests are available in the full source code for you to check out and follow while developing the application.</p></div></div>
+
+<div class="book" title="The core Service Layer">
+<div class="book" title="The inventory manager"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch05lvl2sec113" class="calibre1"/>The inventory manager</h2></div></div></div><p class="calibre8">Lots of <a id="id433" class="calibre1"/>e-commerce solutions out in the wild come with an inventory manager, which will help you keep track of a product's stock level, replenish your product's stock level, or adjust it as desired.</p><p class="calibre8">We didn't want to embed inventory information in the product document, so we are going to store it separately for each product. There are many ways you can track your inventory; we have chosen a solution that fits most of the use cases, and it's easy to implement.</p><p class="calibre8">Before we begin coding, I would like to go through the test cases to give you a hint about what we are going to implement:</p><div class="book"><ol class="orderedlist"><li class="listitem" value="1">We should be able to track the inventory for a product:<div class="informalexample"><pre class="programlisting">  it('should create an inventory item for a product', done =&gt; {
+    inventoryManager.create({
+      sku: 'MEANB',
+      qty: 1
+    }, (err, inventoryItem) =&gt; {
+      if (err) throw err;
+
+      should.exist(inventoryItem);
+      inventoryItem.sku.should.equal('MEANB');
+      inventoryItem.qty.should.equal(1);
+      done();
+    });
+  });</pre></div></li><li class="listitem" value="2">A desired quantity of a given product should be reserved from the inventory on demand:<div class="informalexample"><pre class="programlisting">  it('should reserve an item if there is enough on stock', done =&gt; {
+    inventoryManager.reserve('MEANB', new mongoose.Types.ObjectId(), 2, (err, result) =&gt; {
+      if (err) throw err;
+
+      should.exist(result);
+      result.sku.should.equal('MEANB');
+      done();
+    });
+  });</pre></div></li><li class="listitem" value="3">If there is not adequate inventory, the service should not satisfy the request:<div class="informalexample"><pre class="programlisting">  it('should not reserve an item if there is not enough on stock', done =&gt; {
+    inventoryManager.reserve('MEANB', new mongoose.Types.ObjectId(), 2, (err, result) =&gt; {
+      should.not.exist(result);
+      should.exist(err);
+      err.message.should.equal('Stock lever is lower then the desired quantity.');
+      err.status.should.equal(409);
+      err.type.should.equal('not_enough_stock_units')
+      done();
+    });
+  });</pre></div></li><li class="listitem" value="4">Increase <a id="id434" class="calibre1"/>the available quantity:<div class="informalexample"><pre class="programlisting">  it('should increase the quantity for an inventory unit', done =&gt; {
+    inventoryManager.increase('MEANB', 5, (err, inventory) =&gt; {
+      if (err) throw err;
+
+      inventory.qty.should.equal(6);
+      done();
+    });
+  });</pre></div></li><li class="listitem" value="5">Or you can decrease the available quantity to make adjustments:<div class="informalexample"><pre class="programlisting">  it('should decrease the quantity for an inventory unit', done =&gt; {
+    inventoryManager.decrease('MEANB', 2, (err, inventory) =&gt; {
+      if (err) throw err;
+
+      inventory.qty.should.equal(4);
+      done();
+    });
+  });</pre></div></li></ol><div class="calibre12"/></div><p class="calibre8">Now that we have taken a glance at what needs to be done, let's follow a few steps to create our inventory manager service:</p><div class="book"><ol class="orderedlist"><li class="listitem" value="1">Create a new file, <code class="email">core/services/inventory-manager.js</code>.</li><li class="listitem" value="2">Define a starting point:<div class="informalexample"><pre class="programlisting">'use strict';
+
+const Inventory = require('../models/inventory');
+
+class InventoryManager {
+  constructor() {}
+}
+  
+module.exports = InventoryManager;</pre></div></li><li class="listitem" value="3">Complete <a id="id435" class="calibre1"/>the class constructor:<div class="informalexample"><pre class="programlisting">  constructor(opts, InventoryModel) {
+    this.opts = opts || {};
+    this.Inventory = InventoryModel || Inventory;
+  }</pre></div><p class="calibre22">Remember that we can inject a custom <code class="email">InventoryModel</code> inside our service as long as it has at least the necessary properties and methods.</p></li><li class="listitem" value="4">Create a new inventory item method:<div class="informalexample"><pre class="programlisting">  create(data, callback) {
+    data.carted = [];
+    this.Inventory.create(data, callback);
+  }</pre></div></li><li class="listitem" value="5">Modify the quantity private method:<div class="informalexample"><pre class="programlisting">  _modifyQuantity(sku, qty, reduce, callback) {
+    qty = (reduce) ? qty * -1 : qty;
+
+    this.Inventory.update({
+      sku: sku
+    }, {
+      $inc: { qty: qty }
+    }, (err, result) =&gt; {
+      if (err) {
+        return callback(err);
+      }
+
+      if (result.nModified === 0) {
+        let err = new Error('Nothing modified.');
+        err.type = 'nothing_modified';
+        err.status = 400;
+        return callback(err);
+      }
+
+      this.Inventory.findOne({ sku: sku }, callback);
+    });
+  }</pre></div><p class="calibre22">We created a private method, prefixed with an underscore for semantics. This will serve as the main entry point when manipulating stock levels. If nothing has changed, we return an error. After a successful operation, we return the current state of the inventory entry.</p></li><li class="listitem" value="6">Increase <a id="id436" class="calibre1"/>and decrease the quantity:<div class="informalexample"><pre class="programlisting">  increase(sku, quantity, callback) {
+    this._modifyQuantity(sku, quantity, false, callback);
+  }
+
+  decrease(sku, quantity, callback) {
+    this._modifyQuantity(sku, quantity, true, callback);
+  }
+Reserve the quantity in the inventory:
+  reserve(sku, orderId, quantity, callback) {
+    let query = {
+      sku: sku,
+      qty: { $gte: quantity }
+    };
+
+    let update = {
+      $inc: { qty: -quantity },
+      $push: {
+        carted: {
+          qty: quantity,
+          order: orderId
+        }
+      }
+    };
+
+    this.Inventory.update(query, update, (err, result) =&gt; {
+      if (err) {
+        return callback(err);
+      }
+
+      if (result.nModified === 0) {
+        let err = new Error('Stock lever is lower then the desired quantity.');
+        err.type = 'not_enough_stock_units';
+        err.status = 409;
+        return callback(err);
+      }
+
+      callback(null, {
+        sku: sku,
+        order: orderId,
+        qty: quantity
+      });
+    });
+  }</pre></div></li></ol><div class="calibre12"/></div><p class="calibre8">The preceding code will reserve the available quantity of a product in the inventory. In some cases, the system cannot satisfy the requested quantity, so we check to make sure that we have the <a id="id437" class="calibre1"/>desired availability before decrementing the quantity. If we cannot fulfill the request, we return a specific error.</p><p class="calibre8">Also you might notice that we have progressively added our own custom <code class="email">Error</code> object, which also contains a suggestion for the status code itself. At this time, errors returned from the service have no standard format, due to the fact that the underlining ODM could return different <code class="email">Error</code> objects.</p><p class="calibre8">We won't be able to satisfy all use cases in this book, so sometimes you have to put the pieces together. </p></div></div>
+
+<div class="book" title="The core Service Layer">
+<div class="book" title="Shopping cart"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch05lvl2sec114" class="calibre1"/>Shopping cart</h2></div></div></div><p class="calibre8">By this <a id="id438" class="calibre1"/>time, we should have all the necessary services used by the shopping cart service. Now this service will be quite interesting, if you permit me to say so. Regularly, e-commerce solutions have a shopping cart in which customers can easily add or remove items, change quantities, and even abandon them.</p><p class="calibre8">One important thing to note is that we have to make sure that a customer cannot add items that are unavailable. In other words, if a product stock doesn't match the requested quantity, the add action should not succeed.</p><p class="calibre8">Basically, our shopping cart service will handle all the business logic described previously. Also, when a customer adds an item to the cart, the inventory should be properly updated. Remember that our orders collection will hold the carts as well.</p><p class="calibre8">Things are pretty clear about what needs to be done. If not, go and take a quick look at the test cases. Let's create our shopping cart service, <code class="email">core/services/shopping-cart.js</code>, and <a id="id439" class="calibre1"/>add the following class:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const EXPIRATION_TIME = 15*60; // 15 minutes
+const commonHelper = require('../helpers/common');
+const Order = require('../models/order');
+const InventoryManager = require('./inventory-manager');
+const ProductCatalog = require('./product-catalog');
+
+class ShoppingCart {
+}
+
+module.exports = ShoppingCart;</pre></div><p class="calibre8">Noting fancy here. We can move on by adding our constructor:</p><div class="informalexample"><pre class="programlisting">  constructor(opts, OrderModel, ProductService, InventoryService) {
+    InventoryService = InventoryService || InventoryManager;
+    ProductService = ProductService || ProductCatalog;
+    this.opts = opts || {};
+    this.opts.expirationTime = this.opts.expirationTime || EXPIRATION_TIME;
+    this.Order = OrderModel || Order;
+    this.inventoryManager = new InventoryService();
+    this.productCatalog = new ProductService();
+  }</pre></div><p class="calibre8">Before I forget, we are going to use the other two services we implemented earlier to manage the inventory and retrieve products from our catalog. Moreover, before adding a new item into the cart, we need to create it. So let's add the <code class="email">createCart()</code> method:</p><div class="informalexample"><pre class="programlisting">  createCart(userId, data, callback) {
+    data.user = userId;
+    data.expiresAt = commonHelper.generateExpirationTime(this.opts.expirationTime);
+    this.Order.create(data, callback);
+  }</pre></div><p class="calibre8">When adding a new item into the shopping cart, we have to take care of a few things, and we must verify that the inventory meets the request's requirements. Let's sketch out the <code class="email">addProduct()</code> method of the cart service:</p><div class="informalexample"><pre class="programlisting">  addProduct(cartId, sku, qty, callback) {
+    this.productCatalog.findBySKU(sku, (err, product) =&gt; {
+      if (err) {
+        return callback(err);
+      }
+
+      let prod = {
+        sku: product.sku,
+        qty: qty
+        title: product.title,
+        price: product.price,
+        product: product._id
+      };
+
+      //  push carted items into the order
+      this._pushItems(cartId, prod, (err, result) =&gt; {
+        if (err) {
+          return callback(err);
+        }
+
+        //  reserve inventory
+        this.inventoryManager.reserve(product.sku, cartId, qty, (err, result) =&gt; {
+          //  roll back our cart updates
+          if (err &amp;&amp; err.type === 'not_enough_stock_units') {
+            return this._pullItems(cartId, sku, () =&gt; callback(err));
+          }
+
+          // retrive current cart state
+          this.findById(cartId, callback);
+        });
+      });
+    });
+  }</pre></div><p class="calibre8">When adding a product into the cart, we want to store some additional information, so we first need to retrieve the product from the catalog using the SKU. The product needs to be added with the desired quantity to the cart's items. After successfully populating the cart with the new item, we need to decrease the number of units available in the inventory.</p><p class="calibre8">If there are not enough items in the inventory, we must roll back the cart update and raise an error in the <a id="id440" class="calibre1"/>application. Finally, we get a fresh copy of the persisted cart.</p><p class="calibre8">Beside the methods used from the other two services, we have a few left to implement for the <code class="email">ShoppingCart</code> class, such as the <code class="email">_pushItems()</code> method:</p><div class="informalexample"><pre class="programlisting">  _pushItems(cartId, prod, callback) {
+    let exdate = commonHelper.generateExpirationTime(this.opts.expirationTime);
+    let now = new Date();
+    //  make sure the cart is still active and add items
+    this.Order.update({
+      { _id: cartId, status: 'active' },
+      {
+        $set: { expiresAt: exdate, updatedAt: now },
+        $push: { items: prod }
+      }
+    }, (err, result) =&gt; {
+      if (err) {
+        return callback(err);
+      }
+
+      if (result.nModified === 0) {
+        let err = new Error('Cart expired.');
+        err.type = 'cart_expired';
+        err.status = 400;
+        return callback(err);
+      }
+
+      //  TODO: proper response
+      callback(null, result);
+    });
+  }</pre></div><p class="calibre8">The cart must be active in order to add items to it. Also, we have to update the expiration date. Remember that we are doing atomic operations on our documents, so only the raw responses of the operations are returned.</p><p class="calibre8">If we want to roll <a id="id441" class="calibre1"/>back our cart, we need to pull out the added items; the <code class="email">_pullItems()</code> method does exactly this:</p><div class="informalexample"><pre class="programlisting">  _pullItems(cartId, sku, callback) {
+    this.Order.update({
+      { _id: cartId },
+      { $pull: { items: { sku: sku } } }
+    }, (err, result) =&gt; {
+      if (err) {
+        return callback(err);
+      }
+
+      if (result.nModified === 0) {
+        let err = new Error('Nothing modified.');
+        err.type = 'nothing_modified';
+        err.status = 400;
+        return callback(err);
+      }
+
+      //  TODO: proper response
+      callback(null, result);
+    });
+  }</pre></div><p class="calibre8">By this time, we should be able to manage our cart easily with the implemented functionalities. The <code class="email">ShoppingCart</code> service has used both the <code class="email">InventoryManager</code> and <code class="email">ProductCatalog</code> <a id="id442" class="calibre1"/>services, exposing the exact business logic we need to handle operations on a cart.</p></div></div>
+
+<div class="book" title="The Auth micro app" id="1R42S1-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch05lvl1sec55" class="calibre1"/>The Auth micro app</h1></div></div></div><p class="calibre8">The <code class="email">Auth</code> micro <a id="id443" class="calibre1"/>app will handle authentications in different scenarios. It's going to be our main entry point to authenticate users, using stateful and stateless approaches.</p><p class="calibre8">Our core module <a id="id444" class="calibre1"/>already exposes middleware to check whether a user is authenticated or not, and authorization-related middleware. This functionality can be used in any module or micro app.</p></div>
+
+<div class="book" title="The Auth micro app" id="1R42S1-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="Defining the class"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch05lvl2sec115" class="calibre1"/>Defining the class</h2></div></div></div><p class="calibre8">This is going <a id="id445" class="calibre1"/>to be our first micro app, so let's go through a few steps:</p><div class="book"><ol class="orderedlist"><li class="listitem" value="1">Create a new micro app called <code class="email">apps/auth/index.js</code>.</li><li class="listitem" value="2">Add the following base content:<div class="informalexample"><pre class="programlisting">'use strict'
+
+const express = require('express');
+const router = express.Router();
+const Controller = require('./controller');
+
+class Auth {
+}</pre></div></li><li class="listitem" value="3">Define the constructor:<div class="informalexample"><pre class="programlisting">  constructor(config, core, app) {
+    this.core = core;
+    this.controller = new Controller(core);
+    this.app = app;
+    this.router = router;
+    this.rootUrl = '/auth';
+    this.regiterRoutes();
+    this.app.use(this.rootUrl, this.router);
+  }</pre></div><p class="calibre22">We defined a base URL for our micro app and mounted the router on the main Express application. We also created a new instance of the Controller used in the <code class="email">Auth</code> micro app.</p></li><li class="listitem" value="4">Register <a id="id446" class="calibre1"/>all necessary routes:<div class="informalexample"><pre class="programlisting">  regiterRoutes() {
+    this.router.post('/register', this.controller.register);
+
+    /**
+     *  Stateful authentication
+     */
+    this.router.post('/signin', this.controller.signin);
+    this.router.get('/signout', this.controller.signout);
+
+    /**
+     *  Stateless authentication
+     */
+    this.router.post('/basic', this.controller.basic);
+  }</pre></div><p class="calibre22">In order to save development time, we borrowed code from previous chapters, so the preceding lines of code are probably already familiar to you.</p></li><li class="listitem" value="5">Initialize your micro app in the main <code class="email">server.js</code> file:<div class="informalexample"><pre class="programlisting">const Auth = require('./apps/auth');
+let auth = new Auth(config, core, app);</pre></div></li></ol><div class="calibre12"/></div><p class="calibre8">In the main <code class="email">server.js</code> file, we are going to initialize each app. You can take a look at the final version of the <code class="email">server.js</code> file to see exactly where to put things.</p></div></div>
+
+<div class="book" title="The Auth micro app" id="1R42S1-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="The controller"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch05lvl2sec116" class="calibre1"/>The controller</h2></div></div></div><p class="calibre8">Earlier, I stated <a id="id447" class="calibre1"/>that we are reusing code from previous chapters. We also did this for the controller. We turned our controller into a class called <code class="email">AuthController</code> and exposed the following methods:</p><div class="book"><ol class="orderedlist"><li class="listitem" value="1">To sign in users using a stateful authentication strategy:<div class="informalexample"><pre class="programlisting">  signin(req, res, next) {
+    passport.authenticate('local', (err, user, info) =&gt; {
+      if (err || !user) {
+        return res.status(400).json(info);
+      }
+
+      req.logIn(user, function(err) {
+        if (err) {
+          return next(err);
+        }
+
+        res.status(200).json(user);
+      });
+    })(req, res, next);
+  }</pre></div></li><li class="listitem" value="2">Authenticate <a id="id448" class="calibre1"/>using a stateless strategy:<div class="informalexample"><pre class="programlisting">  basic(req, res, next) {
+    passport.authenticate('basic', (err, user, info) =&gt; {
+      if (err) {
+        return next(err);
+      }
+
+      if (!user) {
+        return res.status(400).json({ message: 'Invalid email or password.' });
+      }
+
+      Token.generate({ user: user.id }, (err, token) =&gt; {
+        if (err) {
+          return next(err);
+        }
+
+        if (!token) {
+          return res.status(400).json({ message: 'Invalid email or password.' });
+        }
+
+        const result = user.toJSON();
+        result.token = _.pick(token, ['hash', 'expiresAt']);
+
+        res.json(result);
+      });
+
+    })(req, res, next);
+  }</pre></div><p class="calibre22">In some cases, we don't need to persist the user's session. Instead, we create a token that will be used at each request to see who tries to access our endpoints. </p></li><li class="listitem" value="3">Register <a id="id449" class="calibre1"/>a user in our system:<div class="informalexample"><pre class="programlisting">  register(req, res, next) {
+    const userData = _.pick(req.body, 'name', 'email', 'password');
+
+    User.register(userData, (err, user) =&gt; {
+      if (err &amp;&amp; (11000 === err.code || 11001 === err.code)) {
+        return res.status(400).json({ message: 'E-mail is already in use.' });
+      }
+
+      if (err) {
+        return next(err);
+      }
+
+      // just in case :)
+      delete user.password;
+      delete user.passwordSalt;
+
+      res.json(user);
+    });
+  }</pre></div></li></ol><div class="calibre12"/></div></div></div>
+
+<div class="book" title="Exposing an API" id="1S2JE1-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch05lvl1sec56" class="calibre1"/>Exposing an API</h1></div></div></div><p class="calibre8">Our core business <a id="id450" class="calibre1"/>logic needs to be accessed in some way, and I think a RESTful API would serve us in a good way. In order to get a better <a id="id451" class="calibre1"/>understanding and move through the whole app, we are only going to showcase a few parts from our API.</p><p class="calibre8">We are more interested in the whole app from an architectural point of view, instead of having detailed and fully integrated functionalities.</p></div>
+
+<div class="book" title="Exposing an API" id="1S2JE1-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="The Api class"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch05lvl2sec117" class="calibre1"/>The Api class</h2></div></div></div><p class="calibre8">For this micro app, we <a id="id452" class="calibre1"/>are going to group our files by type context. First, we are going to create our micro app class, <code class="email">apps/api/index.js</code>, and add the following content:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const ProductsRoutes = require('./routes/products');
+const ProductController = require('./controllers/product');
+
+class Api {
+  constructor(config, core, app) {
+    let productController = new ProductController(core);
+    let productRoutes = new ProductsRoutes(core, productController);
+
+    this.config = config;
+    this.core = core;
+    this.app = app;
+    this.root = app.get('root');
+    this.rootUrl = '/api';
+
+    this.app.get('/api/status', (req, res, next) =&gt; {
+      res.json({ message: 'API is running.' });
+    });
+
+    this.app.use(this.rootUrl, productRoutes.router);
+  }
+}
+
+module.exports = Api;</pre></div><p class="calibre8">This portion of the app mounts the routes exposed by <code class="email">ProductRoutes</code> on the main Express app. The preceding <code class="email">ProductRoutes</code> class takes a <code class="email">ProductController</code> as a required parameter.</p><p class="calibre8">Now we are not going to discuss each controller and route in particular, and are only going to focus on the product part. We are going to use the <code class="email">ProductCatalog</code> core service and call the required business logic.</p></div></div>
+
+<div class="book" title="Exposing an API" id="1S2JE1-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="Product controller"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch05lvl2sec118" class="calibre1"/>Product controller</h2></div></div></div><p class="calibre8">This controller is <a id="id453" class="calibre1"/>going to handle the requests to manage products. We are going to follow these steps to implement it:</p><div class="book"><ol class="orderedlist"><li class="listitem" value="1">Create a new file called <code class="email">apps/api/controller/product.js</code>.</li><li class="listitem" value="2">Define <a id="id454" class="calibre1"/>the controller:<div class="informalexample"><pre class="programlisting">'use strict';
+
+const _ = require('lodash');
+
+let productCatalog;
+
+class ProductsController {
+  constructor(core) {
+    this.core = core;
+    productCatalog = new core.services.ProductCatalog();
+  }
+Add the create product method:
+  create(req, res, next) {
+    productCatalog.add(req.body, (err, product) =&gt; {
+      if (err &amp;&amp; err.name === 'ValidationError') {
+        return res.status(400).json(err);
+      }
+
+      if (err) {
+        return next(err);
+      }
+
+      res.status(201).json(product);
+    });
+  }</pre></div></li><li class="listitem" value="3">Attach the <code class="email">getAll</code> products method:<div class="informalexample"><pre class="programlisting">  getAll(req, res, next) {
+    const limit = +req.query.limit || 10;
+    const skip = +req.query.skip || 0;
+    const query = {} // you cloud filter products
+
+    productCatalog.list(query, limit, skip, (err, products) =&gt; {
+      if (err) {
+        return next(err);
+      }
+
+      res.json(products);
+    });
+  }
+Implement a method that retrieves a single product:
+  getOne(req, res, next) {
+    productCatalog.details(req.params.sku, (err, product) =&gt; {
+      if (err) {
+        return next(err);
+      }
+
+      res.json(product);
+    });
+  }</pre></div></li></ol><div class="calibre12"/></div></div></div>
+
+<div class="book" title="Exposing an API" id="1S2JE1-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="Product router"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch05lvl2sec119" class="calibre1"/>Product router</h2></div></div></div><p class="calibre8">Defining the <a id="id455" class="calibre1"/>routes is similar to what we did earlier in the <code class="email">Auth</code> micro app, but we moved our routes into a separate file, called <code class="email">apps/api/routes/products.js</code>. The content of the file is fairly simple:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const express = require('express');
+const router = express.Router();
+
+class ProductsRoutes {
+  constructor(core, controller) {
+    this.core = core;
+    this.controller = controller;
+    this.router = router;
+    this.authBearer = this.core.authentication.bearer;
+    this.regiterRoutes();
+  }
+
+  regiterRoutes() {
+    this.router.post(
+      '/products',
+      this.authBearer(),
+      this.controller.create
+    );
+
+    this.router.get(
+      '/products',
+      this.authBearer(),
+      this.controller.getAll
+    );
+
+    this.router.get(
+      '/products/:sku',
+      this.authBearer(),
+      this.controller.getOne
+    );
+  }
+}
+
+module.exports = ProductsRoutes;</pre></div><p class="calibre8">As you can see, the bearer authentication middleware was used from the core module to check whether a user has a valid token or not. This function has the following body:</p><div class="informalexample"><pre class="programlisting">function bearerAuthentication(req, res, next) {
+  return passport.authenticate('bearer', { session: false });
+}</pre></div><p class="calibre8">I think we have the <a id="id456" class="calibre1"/>big picture of how our <code class="email">Api</code> micro app works and what needs to be done. You can follow the rest of the code in the project's repository.</p></div></div>
+<div class="book" title="Shared resources" id="1T1401-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch05lvl1sec57" class="calibre1"/>Shared resources</h1></div></div></div><p class="calibre8">Many of our micro <a id="id457" class="calibre1"/>apps will use the same static assets in order not to replicate these resources across apps. We can create a micro app that will serve all the shared resources.</p><p class="calibre8">Instead of having a main <code class="email">public</code> folder, each micro app that wants to serve static files can have a separate <code class="email">public</code> folder. This means that we can move all of our shared static resources, and move them to the inner <code class="email">public</code> folder.</p><p class="calibre8">We will have the following folder structure: </p><div class="informalexample"><pre class="programlisting">apps/
+-- shared/
+---- public
+------ assets/
+---- index.js</pre></div><p class="calibre8">The <code class="email">index.js</code> file will have the following content:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const path = require('path');
+const serveStatic = require('serve-static');
+
+class Shared {
+  constructor(config, core, app) {
+    this.app = app;
+    this.root = app.get('root');
+    this.rootUrl = '/';
+    this.serverStaticFiles();
+  }
+
+  serverStaticFiles() {
+    let folderPath = path.resolve(this.root, __dirname, './public');
+    this.app.use(this.rootUrl, serveStatic(folderPath));
+  }
+}
+
+module.exports = Shared;</pre></div><p class="calibre8">We define a class <a id="id458" class="calibre1"/>and serve all the static resources from the <code class="email">public</code> folder. The <code class="email">resolve</code> method was used from the <code class="email">path</code> module to resolve the path to the <code class="email">public</code> folder.</p><p class="calibre8">As you can see, it's fairly simple to make changes to our previous architecture from earlier chapters. Also, the preceding technique will be used in our <code class="email">admin</code> micro app.</p></div>
+
+<div class="book" title="The admin section"><div class="book" id="1TVKI2-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch05lvl1sec58" class="calibre1"/>The admin section</h1></div></div></div><p class="calibre8">Usually, e-commerce <a id="id459" class="calibre1"/>solutions come with an <a id="id460" class="calibre1"/>admin section, where you can manage your products and inventory. The admin section for our application is going to be built with Angular 2. Nothing fancy; we have already built a few apps with Angular, right?</p><p class="calibre8">We are not going to go through all the details but only the most important parts of the application. Don't worry! Full source code is available for the project.</p></div>
+
+<div class="book" title="The admin section">
+<div class="book" title="The admin micro app"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch05lvl2sec120" class="calibre1"/>The admin micro app</h2></div></div></div><p class="calibre8">We made a <a id="id461" class="calibre1"/>few architectural changes right from the beginning. Each of our micro apps will serve a specific purpose. The <code class="email">admin</code> micro app will host the administration application built using Angular 2.</p><p class="calibre8">In the preceding chapters, we used server-static to expose our <code class="email">public</code> folder's content. This app will have its own <code class="email">public</code> folder and will contain only the files related to our admin Angular application.</p><p class="calibre8">This micro app is going to be fairly simple. Create a file called <code class="email">apps/admin/index.js</code> with the following content:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+const path = require('path');
+const serveStatic = require('serve-static');
+
+class Admin {
+  constructor(config, core, app) {
+    this.app = app;
+    this.root = app.get('root');
+    this.rootUrl = '/admin';
+    this.serverStaticFiles();
+  }
+
+  serverStaticFiles() {
+    let folderPath = path.resolve(this.root, __dirname, './public');
+    this.app.use(this.rootUrl, serveStatic(folderPath));
+  }
+}
+
+module.exports = Admin;</pre></div><p class="calibre8">The <code class="email">Admin</code> class will define our micro app and use the <code class="email">serverStaticFiles()</code> method to expose the public folder's content for external use. The file serving for the admin app is mounted on the <code class="email">/admin</code> URL path.</p><p class="calibre8">Don't forget to <a id="id462" class="calibre1"/>take a look at the main <code class="email">server.js</code> file to initialize your <code class="email">admin</code> micro app correctly.</p></div></div>
+
+<div class="book" title="The admin section">
+<div class="book" title="Changing the auth module"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch05lvl2sec121" class="calibre1"/>Changing the auth module</h2></div></div></div><p class="calibre8">The <code class="email">admin</code> <a id="id463" class="calibre1"/>app uses a token to grant access to the API's endpoints. So we need to make a few changes to our <code class="email">AuthHttp</code> service, from <code class="email">apps/admin/public/src/auth/auth-http.ts</code>.</p><p class="calibre8">The changes affect the <code class="email">request</code> method, which will look like this:</p><div class="informalexample"><pre class="programlisting">  private request(requestArgs: RequestOptionsArgs, additionalArgs?: RequestOptionsArgs) {
+    let opts = new RequestOptions(requestArgs);
+
+    if (additionalArgs) {
+      opts = opts.merge(additionalArgs);
+    }
+
+    let req:Request = new Request(opts);
+
+    if (!req.headers) {
+      req.headers = new Headers();
+    }
+
+    if (!req.headers.has('Authorization')) {
+      req.headers.append('Authorization', `Bearer ${this.getToken()}`);
+    }
+
+    return this._http.request(req).catch((err: any) =&gt; {
+      if (err.status === 401) {
+        this.unauthorized.next(err);
+      }
+
+      return Observable.throw(err);
+    });
+  }</pre></div><p class="calibre8">For each <a id="id464" class="calibre1"/>request, we add the <code class="email">Authorization</code> header with the necessary token. Also, we need to retrieve the token from <code class="email">localStorage</code> using the following method:</p><div class="informalexample"><pre class="programlisting">  private getToken() {
+    return localStorage.getItem('token');
+  }</pre></div><p class="calibre8">The token will be persisted to the <code class="email">localStorage</code> on a successful sign-in. In <code class="email">AuthService</code>, we are going to store the current user and its token and persist to <code class="email">localStorage</code>:</p><div class="informalexample"><pre class="programlisting">  public setCurrentUser(user: any) {
+    this.currentUser.next(user);
+  }
+
+  private _initSession() {
+    let user = this._deserialize(localStorage.getItem('currentUser'));
+    this.currentUser = new BehaviorSubject&lt;Response&gt;(user);
+    // persist the user to the local storage
+    this.currentUser.subscribe((user) =&gt; {
+      localStorage.setItem('currentUser', this._serialize(user));
+      localStorage.setItem('token', user.token.hash || '');
+    });
+  }</pre></div><p class="calibre8">When the user successfully signs in, we store the current user in a subject and notify all subscribers of that change.</p><p class="calibre8">Remember that we can expose all the members from a context simply by using a single <code class="email">index.ts</code> file, located in the root of the bounded context. For the <code class="email">auth</code> module, we can have the following structure:</p><div class="informalexample"><pre class="programlisting">auth/
+-- components/
+-- services/
+-- index.ts</pre></div><p class="calibre8">For instance, our <code class="email">AuthHttp</code> service can be exported with <code class="email">index.ts</code> using the following:</p><div class="informalexample"><pre class="programlisting">export * from './services/auth-http';</pre></div><p class="calibre8">And we can <a id="id465" class="calibre1"/>import it into another component using this line:</p><div class="informalexample"><pre class="programlisting">import { AuthHttp } from './auth/index';</pre></div><p class="calibre8">Instead of the following approach:</p><div class="informalexample"><pre class="programlisting">import { AuthHttp } from './auth/services/auth-http';</pre></div></div></div>
+
+<div class="book" title="The admin section">
+<div class="book" title="Products administration"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch05lvl2sec122" class="calibre1"/>Products administration</h2></div></div></div><p class="calibre8">On the <a id="id466" class="calibre1"/>backend part, we created a service and exposed an API to manage products. Now on the client side, we need to create a module that will consume the API and let us do different operations.</p><div class="book" title="The product service"><div class="book"><div class="book"><div class="book"><h3 class="title2"><a id="ch05lvl3sec47" class="calibre1"/>The product service</h3></div></div></div><p class="calibre8">We are <a id="id467" class="calibre1"/>going to talk about only a few methods from our product service, because basically we are going to do only simple CRUD operations in the admin section. Let's create a file called <code class="email">apps/admin/public/src/services/product.service.ts</code>, with the following base content:</p><div class="informalexample"><pre class="programlisting">import { Injectable } from 'angular2/core';
+import { Http, Response, Headers } from 'angular2/http';
+import { Observable } from 'rxjs/Observable';
+import { ProductService } from './product.service';
+import { contentHeaders } from '../common/headers';
+import { Product } from './product.model';
+
+type ObservableProducts = Observable&lt;Array&lt;Product&gt;&gt;;
+
+@Injectable()
+export class ProductService {
+  public products: ObservableProducts;
+
+  private _authHttp: AuthHttp;
+  private _productsObservers: any;
+  private _dataStore: { products: Array&lt;Product&gt; };
+
+  constructor(authHttp: Http) {
+    this._authHttp = authHttp;
+    this.products = new Observable(observer =&gt; this._productsObservers = observer).share();
+    this._dataStore = { products: [] };
+  }
+}</pre></div><p class="calibre8">Following this, we'll add the <code class="email">getAll</code> products method. We are going to use this when we want to show a <a id="id468" class="calibre1"/>list of products. Append the following code to the <code class="email">ProductService</code>:</p><div class="informalexample"><pre class="programlisting">  getAll() {
+    this._authHttp
+    .get('/api/products', { headers: contentHeaders })
+    .map((res: Response) =&gt; res.json())
+    .subscribe(products =&gt; {
+      this._dataStore.products = products;
+      this._productsObservers.next(this._dataStore.products);
+    });
+  }</pre></div><p class="calibre8">The rest of the methods are in the full source code of the project.</p></div><div class="book" title="List products"><div class="book"><div class="book"><div class="book"><h3 class="title2"><a id="ch05lvl3sec48" class="calibre1"/>List products</h3></div></div></div><p class="calibre8">In the main <a id="id469" class="calibre1"/>product administration section, we are going to list all the available products from the catalog. For this, we create another component found under <code class="email">apps/admin/public/product/components/product-list.component.ts</code>:</p><div class="informalexample"><pre class="programlisting">import { Component, OnInit } from 'angular2/core';
+import { ProductService } from '../product.service';
+import { Router, RouterLink } from 'angular2/router';
+import { Product } from '../product.model';
+
+@Component({
+    selector: 'product-list',
+    directives: [RouterLink],
+    template: `
+      &lt;div class="product-list row"&gt;
+        &lt;h2 class="col"&gt;Products list&lt;/h2&gt;
+        &lt;div *ngIf="products.length === 0" class="empty-product-list col"&gt;
+          &lt;h3&gt;Add your first product to you catalog&lt;/h3&gt;
+        &lt;/div&gt;
+        &lt;div class="col col-25"&gt;
+          &lt;a href="#" [routerLink]="['ProductCreate']" class="add-product-sign"&gt;+&lt;/a&gt;
+        &lt;/div&gt;
+        &lt;div *ngFor="#product of products" class="col col-25"&gt;
+          &lt;img src="http://placehold.it/208x140?text=product+image&amp;txtsize=18" /&gt;
+          &lt;h3&gt;
+            &lt;a href="#"
+              [routerLink]="['ProductEdit', { sku: product.sku }]"&gt;
+              {{ product.title }}
+            &lt;/a&gt;
+            &lt;/h3&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    `
+})
+export class ProductListComponent implements OnInit {
+  public products: Array&lt;Product&gt; = [];
+  private _productService: ProductService;
+
+  constructor(productService: ProductService) {
+    this._productService = productService;
+  }
+
+  ngOnInit() {
+    this._productService.products.subscribe((products) =&gt; {
+      this.products = products
+    });
+    this._productService.getAll();
+  }
+}</pre></div><p class="calibre8">The preceding code will just list all the products retrieved from the service and have a route link to <a id="id470" class="calibre1"/>edit a specific product. You can easily list extra details of a product; you just need to modify the template.</p></div><div class="book" title="The main product component"><div class="book"><div class="book"><div class="book"><h3 class="title2"><a id="ch05lvl3sec49" class="calibre1"/>The main product component</h3></div></div></div><p class="calibre8">To manage <a id="id471" class="calibre1"/>our routes, we have to create a main entry point and create a component for this. To have a final picture, I'm going to show you the final version of <code class="email">ProductComponent</code>, found under <code class="email">apps/admin/public/src/product/product.component.ts</code>:</p><div class="informalexample"><pre class="programlisting">import { Component } from 'angular2/core';
+import { RouteConfig, RouterOutlet } from 'angular2/router';
+import { ProductListComponent } from './product-list.component';
+import { ProductEditComponent } from './product-edit.component';
+import { ProductCreateComponent } from './product-create.component';
+
+@RouteConfig([
+  { path: '/', as: 'ProductList', component: ProductListComponent, useAsDefault: true },
+  { path: '/:sku', as: 'ProductEdit', component: ProductEditComponent },
+  { path: '/create', as: 'ProductCreate', component: ProductCreateComponent }
+])
+@Component({
+    selector: 'product-component',
+    directives: [
+      ProductListComponent,
+      RouterOutlet
+    ],
+    template: `
+      &lt;div class="col"&gt;
+        &lt;router-outlet&gt;&lt;/router-outlet&gt;
+      &lt;/div&gt;
+    `
+})
+export class ProductComponent {
+  constructor() {}
+}</pre></div><p class="calibre8">We are using this component to configure our routes for the products listing, for creating a new product, and for editing an existing product by a specific SKU. This way, we can easily mount it on a higher level component.</p></div><div class="book" title="Add and edit a product"><div class="book"><div class="book"><div class="book"><h3 class="title2"><a id="ch05lvl3sec50" class="calibre1"/>Add and edit a product</h3></div></div></div><p class="calibre8">Basically, what <a id="id472" class="calibre1"/>we did is used the same <a id="id473" class="calibre1"/>template to edit and add a product. In this application, when viewing the product details, you are actually editing the product. In this way, we don't have to implement or mask the edit functionality separately from the detailed view.</p><p class="calibre8">Due to the fact that the application is in an early stage and there is no difference between creating a new product and updating an existing one, we can reduce the workload and implement both at <a id="id474" class="calibre1"/>the same time.</p><p class="calibre8">The edit product source code can be found in <code class="email">apps/admin/public/src/product/components/product-edit.component.ts</code>.</p></div></div></div>
+
+<div class="book" title="The admin section">
+<div class="book" title="Order handling"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_4"><a id="ch05lvl2sec123" class="calibre1"/>Order handling</h2></div></div></div><p class="calibre8">The system should <a id="id475" class="calibre1"/>handle orders, which means that someone needs to handle the status of the orders. Usually, orders can have a few states. I will try to explain some of these in the following table:</p><div class="informalexample"><table border="1" class="calibre13"><colgroup class="calibre14"><col class="calibre15"/><col class="calibre15"/><col class="calibre15"/></colgroup><thead class="calibre16"><tr class="calibre17"><th valign="bottom" class="calibre18">
+<p class="calibre19">Name</p>
+</th><th valign="bottom" class="calibre18">
+<p class="calibre19">Status</p>
+</th><th valign="bottom" class="calibre18">
+<p class="calibre19">Description</p>
+</th></tr></thead><tbody class="calibre20"><tr class="calibre17"><td valign="top" class="calibre21">
+<p class="calibre19">Pending</p>
+</td><td valign="top" class="calibre21">
+<p class="calibre19">pending</p>
+</td><td valign="top" class="calibre21">
+<p class="calibre19">The order is received (usually unpaid).</p>
+</td></tr><tr class="calibre17"><td valign="top" class="calibre21">
+<p class="calibre19">Failed</p>
+</td><td valign="top" class="calibre21">
+<p class="calibre19">failed</p>
+</td><td valign="top" class="calibre21">
+<p class="calibre19">Something went wrong; that is, the payment failed or was declined.</p>
+</td></tr><tr class="calibre17"><td valign="top" class="calibre21">
+<p class="calibre19">Processing</p>
+</td><td valign="top" class="calibre21">
+<p class="calibre19">processing</p>
+</td><td valign="top" class="calibre21">
+<p class="calibre19">The order is awaiting fulfillment.</p>
+</td></tr><tr class="calibre17"><td valign="top" class="calibre21">
+<p class="calibre19">Completed</p>
+</td><td valign="top" class="calibre21">
+<p class="calibre19">completed</p>
+</td><td valign="top" class="calibre21">
+<p class="calibre19">The order is fulfilled and completed. Usually, no further action is required.</p>
+</td></tr><tr class="calibre17"><td valign="top" class="calibre21">
+<p class="calibre19">On-hold</p>
+</td><td valign="top" class="calibre21">
+<p class="calibre19">on_hold</p>
+</td><td valign="top" class="calibre21">
+<p class="calibre19">The stock is reduced but waiting further confirmation, that is, payment.</p>
+</td></tr><tr class="calibre17"><td valign="top" class="calibre21">
+<p class="calibre19">Cancelled</p>
+</td><td valign="top" class="calibre21">
+<p class="calibre19">cancelled</p>
+</td><td valign="top" class="calibre21">
+<p class="calibre19">The order was cancelled by the customer or admin.</p>
+</td></tr></tbody></table></div><p class="calibre8">We are not going to handle all the scenarios we just described. The full version of the application supports only a few of them: pending, processing, cancelled, and completed. As we won't implement a payment method, there is no need to handle all the scenarios.</p><p class="calibre8">After so much code, I think we can take a break and only discuss this part. You can check out the working version from the GitHub repository.</p><div class="book" title="Retrieving orders"><div class="book"><div class="book"><div class="book"><h3 class="title2"><a id="ch05lvl3sec51" class="calibre1"/>Retrieving orders</h3></div></div></div><p class="calibre8">To manage all <a id="id476" class="calibre1"/>the incoming orders, we need to list all of them to the admin. We are not going to get into the details of the code because it is very similar to what we have done so far.</p><p class="calibre8">The service found at <code class="email">public/src/order/order.service.ts</code> will handle all operations on the order entity. A nice touch that can be added in this application is getting a stream of orders from the backend. This is something similar to what we did in <a class="calibre1" title="Chapter 4. Chat Application" href="part0046_split_000.html#1BRPS1-5c78d361d97340239270192b72d53e7b">Chapter 4</a>, <span class="strong"><em class="calibre11">Chat Application</em></span>, when we worked with WebSockets.</p><p class="calibre8">In other words, we can notify all clients of the new orders available as soon as they are added into the system. This will give a boost when you have a high volume of incoming orders and would like to be notified as soon as possible so as to handle them as quickly as you can.</p></div><div class="book" title="View and update orders"><div class="book"><div class="book"><div class="book"><h3 class="title2"><a id="ch05lvl3sec52" class="calibre1"/>View and update orders</h3></div></div></div><p class="calibre8">Normally, before <a id="id477" class="calibre1"/>handling an order, you would like to see more information about it, such as the shipping address, or any <a id="id478" class="calibre1"/>other information the client provided to you. But at the same time, the actions required to handle an order should be kept at a minimum.</p><p class="calibre8">Keeping all this in mind, we went with a solution in which one can view and edit the order in the same context. So, <code class="email">OrderDetailsComponent</code> does exactly that; it can be found under the following location: <code class="email">public/src/order/components/order-details.ts</code>.</p><p class="calibre8">The full source can be found in the repository, but I'll try to explain what we did there.</p></div></div></div>
+
+<div class="book" title="Building the Storefront" id="1UU541-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch05lvl1sec59" class="calibre1"/>Building the Storefront</h1></div></div></div><p class="calibre8">As we discussed <a id="id479" class="calibre1"/>at the beginning of the chapter, we are going to try something different. Instead of building a single-page app for our Storefront, we are going to implement server-side-rendered pages.</p><p class="calibre8">Technically, we <a id="id480" class="calibre1"/>are going to build a classical web page. The pages are going to be dynamic, rendered using a view engine to render our templates.</p><p class="calibre8">We want to truly leverage the benefits of our headless core application and see how we can integrate it with different client applications, so we are going to experiment a little bit with server-side-rendered pages using a third-party package.</p><p class="calibre8">We can easily build <a id="id481" class="calibre1"/>this using Angular, but I wanted to add a twist, to see more complex solutions in action.</p></div>
+
+<div class="book" title="Building the Storefront" id="1UU541-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="Storefront micro app"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch05lvl2sec124" class="calibre1"/>Storefront micro app</h2></div></div></div><p class="calibre8">As we have <a id="id482" class="calibre1"/>seen before in the admin section of our application, we decoupled it from the main application into a micro app. So technically, we can just pull out the necessary code for the storefront from this application at any time, add it to a whole new Express app, and make all the calls across the network.</p><p class="calibre8">At first, this might seem a little strange, but as soon as your application starts growing and you need to scale your application, this will give you the upper hand to differentiate what part needs to be scaled or moved to a separate application for better scalability.</p><p class="calibre8">It is always a good thing to think ahead, but also, I'm not a big fan of early optimization. You cannot be certain from the beginning how your application will grow in time, but it is wise to plan ahead.</p><p class="calibre8">The Storefront <a id="id483" class="calibre1"/>application is going to showcase how we can integrate different techniques in the same application. The focus is purely educational, and this was added to the book to show different approaches to building Express apps.</p><p class="calibre8">Let's talk about the technologies used to build our Storefront. We are going to use <code class="email">nunjucks</code>, which is a nice templating engine for JavaScript. It can be used both on the server side and the client side.</p><p class="calibre8">Before we get to the templates part, we need to make some preparations:</p><div class="book"><ol class="orderedlist"><li class="listitem" value="1">Create a new apps folder under <code class="email">apps/storefront</code>.</li><li class="listitem" value="2">Add a new file, <code class="email">apps/storefront/index.js</code>.</li><li class="listitem" value="3">Define the micro app's class:<div class="informalexample"><pre class="programlisting">'use strict';
+
+const express = require('express');
+const nunjucks = require('nunjucks');
+const router = express.Router();
+const ProductController = require('./controllers/products');
+
+class Storefront {
+  constructor(config, core, app) {
+    this.config = config;
+    this.core = core;
+    this.app = app;
+    this.router = router;
+    this.rootUrl = '/';
+    this.productCtrl = new ProductController(core);
+    this.configureViews();
+    this.regiterRoutes();
+    this.app.use(this.rootUrl, this.router);
+  }
+}</pre></div></li><li class="listitem" value="4">Configure the view engine:<div class="informalexample"><pre class="programlisting">  configureViews() {
+    let opts = {};
+
+    if (!this.config.nunjucks.cache) {
+      opts.noCache = true;
+    }
+
+    if (this.config.nunjucks.watch) {
+      opts.watch = true;
+    }
+
+    let loader = new nunjucks.FileSystemLoader('apps/frontstore/views', opts);
+
+    this.nunjucksEnv = new nunjucks.Environment(loader);
+    this.nunjucksEnv.express(this.app);
+  }</pre></div></li><li class="listitem" value="5">Register routes:<div class="informalexample"><pre class="programlisting">  registerRoutes() {
+    this.router.get('/', this.productCtrl.home);
+  }</pre></div></li></ol><div class="calibre12"/></div><p class="calibre8">For this micro app, we started using a view engine to render our templates on the server side. The <code class="email">configureViews()</code> method will initialize the <code class="email">nunjucks</code> environment and load the template files from the filesystem. Also we are checking whether we should activate the cache and watch functionality from <code class="email">nunjucks</code>. You can read more about this in the project's documentation.</p><p class="calibre8">Finally, we register <a id="id484" class="calibre1"/>the application's routes as for each of our previous Express applications we built together. For easier reading, I've only added the home location and only instantiated <code class="email">ProductController</code>.</p><p class="calibre8">In case you are wondering what the <code class="email">ProductController</code> is, we just use a class approach for our controller files so that we can instantiate it, and pass the core of the application. Let's take a look at a section of the code from <code class="email">apps/storefront/controllers/product.js</code>:</p><div class="informalexample"><pre class="programlisting">'use strict';
+
+let productCatalog;
+
+class ProductsController {
+  constructor(core) {
+    this.core = core;
+    productCatalog = new core.services.ProductCatalog();
+  }
+
+  home(req, res, next) {
+    productCatalog.list({}, 10, 0, (err, products) =&gt; {
+      if (err) {
+        next(err);
+      }
+
+      res.render('home', { products: products });
+    });
+  }
+}
+
+module.exports = ProductsController;</pre></div><p class="calibre8">So basically, we are exporting a controller class, and in the <code class="email">home()</code> method, we are retrieving products <a id="id485" class="calibre1"/>from the persistent storage—in our case, MongoDB—using our <code class="email">ProductCatalog</code> service. After successfully getting all the products, we use the <code class="email">render()</code> method from the response object to render an HTML response from our templates.</p></div></div>
+
+<div class="book" title="Building the Storefront" id="1UU541-5c78d361d97340239270192b72d53e7b">
+<div class="book" title="Storefront pages"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch05lvl2sec125" class="calibre1"/>Storefront pages</h2></div></div></div><p class="calibre8">We are not going to <a id="id486" class="calibre1"/>get into the details; you can check out the whole project and see how things are glued together.</p><div class="book" title="Main layout"><div class="book"><div class="book"><div class="book"><h3 class="title2"><a id="ch05lvl3sec53" class="calibre1"/>Main layout</h3></div></div></div><p class="calibre8">To have a <a id="id487" class="calibre1"/>single layout definition, almost every template will extend a master template file. This master template file will contain all of the necessary markup of a full HTML document. The master layout file can be found under <code class="email">apps/storefront/views/layout.html</code>:</p><div class="informalexample"><pre class="programlisting">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+  &lt;head&gt;
+    &lt;meta charset="utf-8"&gt;
+    &lt;title&gt;ecommerce&lt;/title&gt;
+    {% include "includes/stylesheets.html" %}
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;div class="container"&gt;
+      &lt;div class="app-wrapper card whiteframe-z2"&gt;
+
+        {% block header %}
+        &lt;header&gt;
+          &lt;div class="row"&gt;
+            &lt;div class="col"&gt;
+              &lt;h1&gt;&lt;a href="#"&gt;Awesome store&lt;/a&gt;&lt;/h1&gt;
+              &lt;span class="pull-right"&gt;{{ currentUser.email }}&lt;/span&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
+        &lt;/header&gt;
+        {% endblock %}
+
+        &lt;div class="row"&gt;
+          {% block content %}{% endblock %}
+        &lt;/div&gt;
+
+      &lt;/div&gt;
+    &lt;div&gt;
+    {% block footer %}
+    &lt;footer&gt;&lt;/footer&gt;
+    {% endblock %}
+  &lt;/body&gt;
+&lt;/html&gt;</pre></div><p class="calibre8">The main <code class="email">layout.html</code> file defines blocks to inject content inside them. Because we have a <code class="email">Shared</code> <a id="id488" class="calibre1"/>micro app, all the necessary assets are available to us, so we can import these assets using a separate file, <code class="email">apps/storefront/views/includes/stylesheets.html</code>:</p><div class="informalexample"><pre class="programlisting">&lt;link href='https://fonts.googleapis.com/css?family=Work+Sans' rel='stylesheet' type='text/css'&gt;
+&lt;link rel="stylesheet" type="text/css" href="/assets/css/style.css"&gt;</pre></div></div><div class="book" title="List products"><div class="book"><div class="book"><div class="book"><h3 class="title2"><a id="ch05lvl3sec54" class="calibre1"/>List products</h3></div></div></div><p class="calibre8">To have <a id="id489" class="calibre1"/>full integration, let's see how we can list our products. Create a new template file called <code class="email">apps/storefront/views/home.html</code> and add the following:</p><div class="informalexample"><pre class="programlisting">{% extends "layout.html" %}
+
+{% block content %}
+  &lt;div class="product-list row"&gt;
+    &lt;div class="col"&gt;
+    {% for product in products %}
+      {% include "partials/product.html" %}
+    {% endfor %}
+    &lt;/div&gt;
+  &lt;/div&gt;
+{% endblock %}</pre></div><p class="calibre8">We just extend the <code class="email">content</code> block with the preceding code, iterate through the products list, and create a new product using a partial view.</p><p class="calibre8">Let's take a <a id="id490" class="calibre1"/>look at that partial view, <code class="email">apps/storefront/views/partials/product.html</code>:</p><div class="informalexample"><pre class="programlisting">&lt;div class="col col-25 product-item"&gt;
+  &lt;a href="{{ baseUrl }}/products/{{ product.slug }}"&gt;
+    &lt;img src="http://placehold.it/208x140?text=product+image&amp;txtsize=18" /&gt;
+  &lt;/a&gt;
+  &lt;h2&gt;
+    &lt;a href="{{ baseUrl }}/products/{{ product.slug }}"&gt;{{ product.title }}&lt;/a&gt;
+  &lt;/h2&gt;
+  &lt;p&gt;{{ product.summary }}&lt;/p&gt;
+  &lt;p&gt;price: {{ product.price.display }} {{ product.price.currency}}&lt;/p&gt;
+  &lt;p&gt;&lt;button class="button"&gt;add to cart&lt;/button&gt;&lt;/p&gt;
+&lt;/div&gt; </pre></div><p class="calibre8">The static HTML markup is turned into a dynamic view. We are using the same structure as in our <code class="email">Admin</code> micro application built with Angular 2.</p><p class="calibre8">If you are interested in the rest of the code, go ahead to the project's repository at <a class="calibre1" href="https://github.com/robert52/mean-blueprints-ecommerce">https://github.com/robert52/mean-blueprints-ecommerce</a> and find out more details. This part of the application was only for showing a different approach that you can integrate into your MEAN stack. You can always extend your stack with different technologies and see what works for you better.</p><p class="calibre8">Sometimes, you need to combine things, but having a solid base can make your life easier in the long run. We could have built everything using Angular, but it's always great to see how we can extend our horizons.</p></div></div></div>
+<div class="book" title="Summary" id="1VSLM1-5c78d361d97340239270192b72d53e7b"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch05lvl1sec60" class="calibre1"/>Summary</h1></div></div></div><p class="calibre8">This chapter was about building an e-commerce application. From the beginning of the chapter, we started experimenting with new application architecture, one that can be easily extended in the future, and also used for server-side rendering in the implementation of our storefront. </p><p class="calibre8">Although this was much different from the previous chapters, it served well for educational purposes and opened doors to new possibilities. Keep your architecture modular and only experiment with small portions first to see how things work out in your favor.</p><p class="calibre8">In the next chapter, we'll try to extend our existing e-commerce application with an auction application.</p></div></body></html>

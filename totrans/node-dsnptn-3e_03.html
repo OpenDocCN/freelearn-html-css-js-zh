@@ -1,0 +1,511 @@
+<html><head></head><body>
+  <div id="_idContainer053">
+    <h1 class="chapterNumber">3</h1>
+    <h1 id="_idParaDest-70" class="chapterTitle">Callbacks and Events</h1>
+    <p class="normal">In synchronous programming, we conceptualize code as a series of consecutive computing steps that solve a specific problem. Every operation is blocking, which means that only when an operation is completed, it is possible to execute the next one. This approach makes the code very easy to read, understand, and debug.</p>
+    <p class="normal">On the other side, in asynchronous programming, some operations, such as reading from a file or performing a<a id="_idIndexMarker180"/> network request, are launched and then executed "in the background." When we invoke an asynchronous operation, the instruction that follows is executed immediately, even if the previous asynchronous operation has not finished yet. In this scenario, we need a way to get notified when an asynchronous operation completes, and then continue the execution flow using the results from the operation. The most basic mechanism to get notified about the completion of an asynchronous operation in Node.js is the <strong class="keyword">callback</strong>, which is <a id="_idIndexMarker181"/>nothing more than a function invoked by the runtime with the result of an asynchronous operation.</p>
+    <p class="normal">The callback is the most basic building block on which all other asynchronous mechanisms are based. In fact, without callbacks, we wouldn't have promises, and therefore not even async/await; we also wouldn't have streams or events. This is why it's important to know how callbacks work.</p>
+    <p class="normal">In this chapter, you will learn more about the Node.js Callback pattern and understand what it means, in practice, to write asynchronous code. We will make our way through conventions, patterns, and pitfalls, and by the end of this chapter, you will have mastered the basics of the Callback pattern.</p>
+    <p class="normal">You will also learn about the Observer pattern, which can be considered a close relative of the Callback pattern. The Observer pattern—embodied by the <code class="Code-In-Text--PACKT-">EventEmitter</code>—uses callbacks to deal with multiple heterogeneous events and is one of the most extensively used components in Node.js programming.</p>
+    <p class="normal">To summarize, this is what you will learn in this chapter:</p>
+    <ul>
+      <li class="Bullet--PACKT-">The Callback pattern, how it works, what conventions are used in Node.js, and how to deal with its most common pitfalls</li>
+      <li class="Bullet-End--PACKT-">The Observer pattern and how to implement it in Node.js using the <code class="Code-In-Text--PACKT-">EventEmitter</code> class</li>
+    </ul>
+    <h1 id="_idParaDest-71" class="title">The Callback pattern</h1>
+    <p class="normal">Callbacks are the materialization of the handlers of the Reactor pattern (introduced in the previous chapter). They are one<a id="_idIndexMarker182"/> of those imprints that give Node.js its distinctive programming style.</p>
+    <p class="normal">Callbacks are functions that are invoked to propagate the result of an operation, and this is exactly what we need when dealing with asynchronous operations. In the asynchronous world, they replace the use of the <code class="Code-In-Text--PACKT-">return</code> instruction, which, in turn, always executes synchronously. JavaScript is the ideal language for callbacks because functions are first-class objects and can be easily assigned to variables, passed as arguments, returned from another function invocation, or stored in data structures. Another ideal construct for implementing <a id="_idIndexMarker183"/>callbacks is <strong class="keyword">closures</strong>. With closures, we can reference the environment in which a function was created; this way, we can always maintain the context in which the asynchronous operation was requested, no matter when or where its callback is invoked.</p>
+    <div class="packt_tip">
+      <p class="Tip--PACKT-">If you need to refresh <a id="_idIndexMarker184"/>your knowledge about closures, you can refer to the article on MDN Web Docs at <a href="http://nodejsdp.link/mdn-closures"><span class="url">nodejsdp.link/mdn-closures</span></a>.</p>
+    </div>
+    <p class="normal">In this section, we will analyze this particular style of programming, which uses callbacks instead of <code class="Code-In-Text--PACKT-">return</code> instructions.</p>
+    <h2 id="_idParaDest-72" class="title">The continuation-passing style</h2>
+    <p class="normal">In JavaScript, a callback is a<a id="_idIndexMarker185"/> function that is passed as an argument to another function and is invoked with the result when the <a id="_idIndexMarker186"/>operation completes. In functional programming, this way of propagating the result is called <strong class="keyword">continuation-passing style</strong> (<strong class="keyword">CPS</strong>). </p>
+    <p class="normal">It is a general concept, and it is not always associated with asynchronous operations. In fact, it simply indicates that a result is propagated by passing it to another function (the callback), instead of directly returning it to the caller.</p>
+    <h3 id="_idParaDest-73" class="title">Synchronous CPS</h3>
+    <p class="normal">To clarify this concept, let's take a look at a <a id="_idIndexMarker187"/>simple synchronous function:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">function</span><span class="hljs-function"> </span><span class="hljs-title">add</span><span class="hljs-function"> (</span><span class="hljs-params">a, b</span><span class="hljs-function">) </span>{
+  <span class="hljs-keyword">return</span> a + b
+}
+</code></pre>
+    <p class="normal">If you are wondering, there is nothing special going on here. The result is passed back to the caller using the <code class="Code-In-Text--PACKT-">return</code> instruction. This is also called <strong class="keyword">direct style</strong>, and it represents the most common way of returning<a id="_idIndexMarker188"/> a result in synchronous programming.</p>
+    <p class="normal">The equivalent CPS of the preceding function would be as follows:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">function</span><span class="hljs-function"> </span><span class="hljs-title">addCps</span><span class="hljs-function"> (</span><span class="hljs-params">a, b, callback</span><span class="hljs-function">) </span>{
+  callback(a + b)
+}
+</code></pre>
+    <p class="normal">The <code class="Code-In-Text--PACKT-">addCps()</code> function is a synchronous CPS function. It's synchronous because it will complete its execution only when<a id="_idIndexMarker189"/> the callback completes its execution too. The following code demonstrates this statement:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-built_in">console</span>.log(<span class="hljs-string">'before'</span>)
+addCps(<span class="hljs-number">1</span>, <span class="hljs-number">2</span>, <span class="hljs-params">result</span><span class="hljs-function"> =&gt;</span> <span class="hljs-built_in">console</span>.log(<span class="hljs-string">`Result: </span><span class="hljs-subst">${result}</span><span class="hljs-string">`</span>))
+<span class="hljs-built_in">console</span>.log(<span class="hljs-string">'after'</span>)
+</code></pre>
+    <p class="normal">Since <code class="Code-In-Text--PACKT-">addCps()</code> is synchronous, the previous code will trivially print the following:</p>
+    <pre class="programlisting con"><code class="hljs-con">before
+Result: 3
+after
+</code></pre>
+    <p class="normal">Now, let's see how asynchronous CPS works.</p>
+    <h3 id="_idParaDest-74" class="title">Asynchronous CPS</h3>
+    <p class="normal">Let's consider a <a id="_idIndexMarker190"/>case where the <code class="Code-In-Text--PACKT-">addCps()</code> function is asynchronous:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">function</span><span class="hljs-function"> </span><span class="hljs-title">additionAsync</span><span class="hljs-function"> (</span><span class="hljs-params">a, b, callback</span><span class="hljs-function">) </span>{
+  <span class="hljs-built_in">setTimeout</span>(<span class="hljs-function">() =&gt;</span> callback(a + b), <span class="hljs-number">100</span>)
+}
+</code></pre>
+    <p class="normal">In the previous code, we used <code class="Code-In-Text--PACKT-">setTimeout()</code> to simulate an asynchronous invocation of the callback. <code class="Code-In-Text--PACKT-">setTimeout()</code> adds a task to the event queue that is executed after the given number of milliseconds. This is<a id="_idIndexMarker191"/> clearly an asynchronous operation. Now, let's try to use <code class="Code-In-Text--PACKT-">additionAsync()</code> and see how the order of the operations changes:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-built_in">console</span>.log(<span class="hljs-string">'before'</span>)
+additionAsync(<span class="hljs-number">1</span>, <span class="hljs-number">2</span>, <span class="hljs-params">result</span><span class="hljs-function"> =&gt;</span> <span class="hljs-built_in">console</span>.log(<span class="hljs-string">`Result: </span><span class="hljs-subst">${result}</span><span class="hljs-string">`</span>))
+<span class="hljs-built_in">console</span>.log(<span class="hljs-string">'after'</span>)
+</code></pre>
+    <p class="normal">The preceding code will print the following:</p>
+    <pre class="programlisting con"><code class="hljs-con">before
+after
+Result: 3
+</code></pre>
+    <p class="normal">Since <code class="Code-In-Text--PACKT-">setTimeout()</code> triggers an asynchronous operation, it doesn't wait for the callback to be executed; instead, it returns immediately, giving the control back to <code class="Code-In-Text--PACKT-">additionAsync()</code>, and then back again to its caller. This property in Node.js is crucial, as it gives control back to the event loop as soon as an asynchronous request is sent, thus allowing a new event from the queue to be processed.</p>
+    <p class="normal"><em class="italic">Figure 3.1</em> shows how this works:</p>
+    <figure class="mediaobject"><img src="../Images/B15729_03_01.png" alt=""/></figure>
+    <p class="packt_figref">Figure 3.1: Control flow of an asynchronous function's invocation</p>
+    <p class="normal">When the asynchronous operation completes, the execution is then resumed, starting from the callback provided to the asynchronous function that caused the unwinding. The execution starts<a id="_idIndexMarker192"/> from the event loop, so it has a fresh stack. This is where JavaScript comes in really handy. Thanks to closures, it is trivial to maintain the context of the caller of the asynchronous function, even if the callback is invoked at a different point in time and from a different location.</p>
+    <p class="normal">To sum this up, a synchronous function blocks until it completes its operations. An asynchronous function returns immediately, and its result is passed to a handler (in our case, a callback) at a later cycle of the event loop.</p>
+    <h3 id="_idParaDest-75" class="title">Non-CPS callbacks</h3>
+    <p class="normal">There are several circumstances in <a id="_idIndexMarker193"/>which the presence of a callback argument might make us think that a function is asynchronous or is using a CPS. That's not always true. Let's take, for example, the <code class="Code-In-Text--PACKT-">map()</code> method of an <code class="Code-In-Text--PACKT-">Array</code> object:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">const</span> result = [<span class="hljs-number">1</span>, <span class="hljs-number">5</span>, <span class="hljs-number">7</span>].map(<span class="hljs-params">element</span><span class="hljs-function"> =&gt;</span> element - <span class="hljs-number">1</span>)
+<span class="hljs-built_in">console</span>.log(result) <span class="hljs-comment">// [0, 4, 6]</span>
+</code></pre>
+    <p class="normal">Clearly, the callback is used just to iterate over the elements of the array, and not to pass the result of the operation. In fact, the result is returned synchronously using a direct style. There's no syntactic difference between non-CPS callbacks and CPS ones. Therefore, the intent of a callback should be clearly stated in the documentation of the API.</p>
+    <p class="normal">In the next section, we are going to discuss one of the most important pitfalls of callbacks that every Node.js developer should be aware of.</p>
+    <h2 id="_idParaDest-76" class="title">Synchronous or asynchronous?</h2>
+    <p class="normal">You have seen how the execution order<a id="_idIndexMarker194"/> of the instructions changes radically depending on the nature of a function—synchronous or asynchronous. This has strong repercussions on the flow of the entire application, both in <a id="_idIndexMarker195"/>terms of correctness and efficiency. The following is an analysis of these two paradigms and their pitfalls. In general, what must be avoided is creating inconsistency and confusion around the nature of an API, as doing so can lead to a set of problems that might be very hard to detect and reproduce. To drive our analysis, we will take, as an example, the case of an inconsistently asynchronous function.</p>
+    <h3 id="_idParaDest-77" class="title">An unpredictable function</h3>
+    <p class="normal">One of the most dangerous<a id="_idIndexMarker196"/> situations is to have an API that behaves synchronously under certain conditions and asynchronously under others. Let's take the following code as an example:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">import</span> { readFile } <span class="hljs-keyword">from</span> <span class="hljs-string">'fs'</span>
+<span class="hljs-keyword">const</span> cache = <span class="hljs-keyword">new</span> <span class="hljs-built_in">Map</span>()
+<span class="hljs-keyword">function</span><span class="hljs-function"> </span><span class="hljs-title">inconsistentRead</span><span class="hljs-function"> (</span><span class="hljs-params">filename, cb</span><span class="hljs-function">) </span>{
+  <span class="hljs-keyword">if</span> (cache.has(filename)) {
+    <span class="hljs-comment">// invoked synchronously</span>
+    cb(cache.get(filename))
+  } <span class="hljs-keyword">else</span> {
+    <span class="hljs-comment">// asynchronous function</span>
+    readFile(filename, <span class="hljs-string">'utf8'</span>, <span class="hljs-function">(</span><span class="hljs-params">err, data</span><span class="hljs-function">) =&gt;</span> {
+      cache.set(filename, data)
+      cb(data)
+    })
+  }
+}
+</code></pre>
+    <p class="normal">The preceding function uses the <code class="Code-In-Text--PACKT-">cache</code> map to store the results of different file read operations. Bear in mind that this is just an example; it does not have error management, and the caching logic itself is suboptimal (in <em class="chapterRef">Chapter 11</em>, <em class="italic">Advanced Recipes</em>, you'll learn how to handle asynchronous caching properly). But besides all this, the preceding function is dangerous because it behaves asynchronously until the file is read for the first time and the cache is set, but it is synchronous for all the subsequent requests once the file's content is already in the cache.</p>
+    <h3 id="_idParaDest-78" class="title">Unleashing Zalgo</h3>
+    <p class="normal">Now, let's discuss how the use of an unpredictable function, such as the one that we just defined, can easily <a id="_idIndexMarker197"/>break an application. Consider the following code:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">function</span><span class="hljs-function"> </span><span class="hljs-title">createFileReader</span><span class="hljs-function"> (</span><span class="hljs-params">filename</span><span class="hljs-function">) </span>{
+  <span class="hljs-keyword">const</span> listeners = []
+  inconsistentRead(filename, <span class="hljs-params">value</span><span class="hljs-function"> =&gt;</span> {
+    listeners.forEach(<span class="hljs-params">listener</span><span class="hljs-function"> =&gt;</span> listener(value))
+  })
+  <span class="hljs-keyword">return</span> {
+    <span class="hljs-attr">onDataReady</span>: <span class="hljs-params">listener</span><span class="hljs-function"> =&gt;</span> listeners.push(listener)
+  }
+}
+</code></pre>
+    <p class="normal">When the preceding function is invoked, it creates a new object that acts as a notifier, allowing us to set multiple listeners for a file read operation. All the listeners will be invoked at once when the read operation<a id="_idIndexMarker198"/> completes and the data is available. The preceding function uses our <code class="Code-In-Text--PACKT-">inconsistentRead()</code> function to implement this functionality. Let's see how to use the <code class="Code-In-Text--PACKT-">createFileReader()</code> function:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">const</span> reader1 = createFileReader(<span class="hljs-string">'data.txt'</span>)
+reader1.onDataReady(<span class="hljs-params">data</span><span class="hljs-function"> =&gt;</span> {
+  <span class="hljs-built_in">console</span>.log(<span class="hljs-string">`First call data: </span><span class="hljs-subst">${data}</span><span class="hljs-string">`</span>)
+  <span class="hljs-comment">// ...sometime later we try to read again from</span>
+  <span class="hljs-comment">// the same file</span>
+  <span class="hljs-keyword">const</span> reader2 = createFileReader(<span class="hljs-string">'data.txt'</span>)
+  reader2.onDataReady(<span class="hljs-params">data</span><span class="hljs-function"> =&gt;</span> {
+    <span class="hljs-built_in">console</span>.log(<span class="hljs-string">`Second call data: </span><span class="hljs-subst">${data}</span><span class="hljs-string">`</span>)
+  })
+})
+</code></pre>
+    <p class="normal">The preceding code will print the following:</p>
+    <pre class="programlisting con"><code class="hljs-con">First call data: some data
+</code></pre>
+    <p class="normal">As you can see, the callback of the second reader is never invoked. Let's see why:</p>
+    <ul>
+      <li class="Bullet--PACKT-">During the creation of <code class="Code-In-Text--PACKT-">reader1</code>, our <code class="Code-In-Text--PACKT-">inconsistentRead()</code> function behaves asynchronously because there is no cached result available. This means that any <code class="Code-In-Text--PACKT-">onDataReady</code> listener will be invoked later in another cycle of the event loop, so we have all the time we need to register our listener.</li>
+      <li class="Bullet-End--PACKT-">Then, <code class="Code-In-Text--PACKT-">reader2</code> is created in a cycle of the event loop in which the cache for the requested file already exists. In this case, the inner call to <code class="Code-In-Text--PACKT-">inconsistentRead()</code> will be synchronous. So, its callback will be invoked immediately, which means that all the listeners of <code class="Code-In-Text--PACKT-">reader2</code> will be invoked synchronously as well. However, we are registering the listener after the creation of <code class="Code-In-Text--PACKT-">reader2</code>, so it will never be invoked.</li>
+    </ul>
+    <p class="normal">The callback behavior of our <code class="Code-In-Text--PACKT-">inconsistentRead()</code> function is really unpredictable as it depends on many factors, such as the frequency of its invocation, the filename passed as an argument, and the amount of time taken to load the file.</p>
+    <p class="normal">The bug that you've just <a id="_idIndexMarker199"/>seen can be extremely complicated to identify and reproduce in a real application. Imagine using a similar function in a web server, where there can be multiple concurrent requests. Imagine seeing some of those requests hanging, without any apparent reason and without any error being logged. This can definitely be considered a nasty defect.</p>
+    <p class="normal">Isaac Z. Schlueter, the creator of npm and former Node.js project lead, in one of his blog posts, compared the use of this type of unpredictable function to <em class="italic">unleashing Zalgo</em>.</p>
+    <p class="normal">Zalgo is an internet legend about an <a id="_idIndexMarker200"/>ominous entity believed to cause insanity, death, and the destruction of the world. If you're not familiar with Zalgo, you are invited to find out what it is.</p>
+    <div class="packt_tip">
+      <p class="Tip--PACKT-">You can find Isaac Z. Schlueter's original post at <a href="http://nodejsdp.link/unleashing-zalgo"><span class="url">nodejsdp.link/unleashing-zalgo</span></a>.</p>
+    </div>
+    <h3 id="_idParaDest-79" class="title">Using synchronous APIs</h3>
+    <p class="normal">The lesson to learn from the<a id="_idIndexMarker201"/> unleashing Zalgo example is that it is imperative for an API to clearly define its nature: either synchronous or asynchronous.</p>
+    <p class="normal">One possible fix for our <code class="Code-In-Text--PACKT-">inconsistentRead()</code> function is to make it completely synchronous. This is possible because Node.js provides a set of synchronous direct style APIs for most basic I/O operations. For example, we can use the <code class="Code-In-Text--PACKT-">fs.readFileSync()</code> function in place of its asynchronous counterpart. The code would become as follows:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">import</span> { readFileSync } <span class="hljs-keyword">from</span> <span class="hljs-string">'fs'</span>
+<span class="hljs-keyword">const</span> cache = <span class="hljs-keyword">new</span> <span class="hljs-built_in">Map</span>()
+<span class="hljs-keyword">function</span><span class="hljs-function"> </span><span class="hljs-title">consistentReadSync</span><span class="hljs-function"> (</span><span class="hljs-params">filename</span><span class="hljs-function">) </span>{
+  <span class="hljs-keyword">if</span> (cache.has(filename)) {
+    <span class="hljs-keyword">return</span> cache.get(filename)
+  } <span class="hljs-keyword">else</span> {
+    <span class="hljs-keyword">const</span> data = readFileSync(filename, <span class="hljs-string">'utf8'</span>)
+    cache.set(filename, data)
+    <span class="hljs-keyword">return</span> data
+  }
+}
+</code></pre>
+    <p class="normal">You can see that the entire function was also converted into direct style. There is no reason for a function to have a CPS if it is synchronous. In fact, it is always best practice to implement a synchronous API using a direct style. This will eliminate any confusion around its nature and will also <a id="_idIndexMarker202"/>be more efficient from a performance perspective.</p>
+    <div class="note">
+      <p class="Information-Box--PACKT-"><strong class="screenText">Pattern</strong></p>
+      <p class="Information-Box--PACKT-">Always choose a direct style for purely synchronous functions.</p>
+    </div>
+    <p class="normal">Bear in mind that changing an API from CPS to a direct style, or from asynchronous to synchronous or vice versa, might also require a change to the style of all the code using it. For example, in our case, we will have to totally change the interface of our <code class="Code-In-Text--PACKT-">createFileReader()</code> API and adapt it so that it always works synchronously.</p>
+    <p class="normal">Also, using a synchronous API instead of an asynchronous one has some caveats:</p>
+    <ul>
+      <li class="Bullet--PACKT-">A synchronous API for a specific functionality might not always be available.</li>
+      <li class="Bullet-End--PACKT-">A synchronous API will block the event loop and put any concurrent requests on hold. This will break the Node.js concurrency model, slowing down the whole application. You will see later in this book what this really means for our applications.</li>
+    </ul>
+    <p class="normal">In our <code class="Code-In-Text--PACKT-">consistentReadSync()</code> function, the risk of blocking the event loop is partially mitigated because the synchronous I/O API is invoked only once per filename, while the cached value will be used for all the subsequent invocations. If we have a limited number of static files, then using <code class="Code-In-Text--PACKT-">consistentReadSync()</code> won't have a big effect on our event loop. Things can change quickly if we have to read many files and only once.</p>
+    <p class="normal">Using synchronous I/O in Node.js is strongly discouraged in many circumstances, but in some situations, this might be the easiest and most efficient solution. Always evaluate your specific use case in order to choose the right alternative. As an example, it makes perfect sense to use a synchronous blocking API to load a configuration file while bootstrapping an application.</p>
+    <div class="note">
+      <p class="Information-Box--PACKT-"><strong class="screenText">Pattern</strong></p>
+      <p class="Information-Box--PACKT-">Use blocking APIs sparingly and only when they don't affect the ability of the application to handle concurrent <a id="_idIndexMarker203"/>asynchronous operations.</p>
+    </div>
+    <h3 id="_idParaDest-80" class="title">Guaranteeing asynchronicity with deferred execution</h3>
+    <p class="normal">Another alternative for fixing our <code class="Code-In-Text--PACKT-">inconsistentRead()</code> function is to make it purely asynchronous. The<a id="_idIndexMarker204"/> trick here is to schedule the synchronous callback invocation to be executed "in the future" instead of it being run immediately in the same event loop cycle. In Node.js, this is possible with <code class="Code-In-Text--PACKT-">process.nextTick()</code>, which defers the execution of a function after the currently running operation completes. Its<a id="_idIndexMarker205"/> functionality is very simple: it takes a callback as an argument and pushes it to the top of the event queue, in front of any pending I/O event, and returns immediately. The callback will then be invoked as soon as the currently running operation yields control back to the event loop.</p>
+    <p class="normal">Let's apply this technique to fix our <code class="Code-In-Text--PACKT-">inconsistentRead()</code> function, as follows:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">import</span> { readFile } <span class="hljs-keyword">from</span> <span class="hljs-string">'fs'</span>
+<span class="hljs-keyword">const</span> cache = <span class="hljs-keyword">new</span> <span class="hljs-built_in">Map</span>()
+<span class="hljs-keyword">function</span><span class="hljs-function"> </span><span class="hljs-title">consistentReadAsync</span><span class="hljs-function"> (</span><span class="hljs-params">filename, callback</span><span class="hljs-function">) </span>{
+  <span class="hljs-keyword">if</span> (cache.has(filename)) {
+    <span class="hljs-comment">// deferred callback invocation</span>
+    process.nextTick(<span class="hljs-function">() =&gt;</span> callback(cache.get(filename)))
+  } <span class="hljs-keyword">else</span> {
+    <span class="hljs-comment">// asynchronous function</span>
+    readFile(filename, <span class="hljs-string">'utf8'</span>, <span class="hljs-function">(</span><span class="hljs-params">err, data</span><span class="hljs-function">) =&gt;</span> {
+      cache.set(filename, data)
+      callback(data)
+    })
+  }
+}
+</code></pre>
+    <p class="normal">Now, thanks to <code class="Code-In-Text--PACKT-">process.nextTick()</code>, our function is guaranteed to invoke its callback asynchronously, under any circumstances. Try to use it instead of the <code class="Code-In-Text--PACKT-">inconsistentRead()</code> function and verify that, indeed, Zalgo has been eradicated.</p>
+    <div class="note">
+      <p class="Information-Box--PACKT-"><strong class="screenText">Pattern</strong></p>
+      <p class="Information-Box--PACKT-">You can guarantee that a callback is invoked asynchronously by deferring its execution using <code class="Code-In-Text--PACKT-">process.nextTick()</code>.</p>
+    </div>
+    <p class="normal">Another API for <a id="_idIndexMarker206"/>deferring the execution of code is <code class="Code-In-Text--PACKT-">setImmediate()</code>. While its purpose is very similar to that of <code class="Code-In-Text--PACKT-">process.nextTick()</code>, its semantics are quite different. Callbacks deferred with <code class="Code-In-Text--PACKT-">process.nextTick()</code> are called <strong class="keyword">microtasks</strong> and they are executed just after the current operation<a id="_idIndexMarker207"/> completes, even before any other I/O event is fired. With <code class="Code-In-Text--PACKT-">setImmediate()</code>, on the other hand, the execution is queued in an event loop phase that comes after all I/O events have been processed. Since <code class="Code-In-Text--PACKT-">process.nextTick()</code> runs before any already scheduled I/O, it will be executed faster, but under certain circumstances, it<a id="_idIndexMarker208"/> might also delay the running of any I/O callback indefinitely (also known as <strong class="keyword">I/O starvation</strong>), such as in the presence of a recursive<a id="_idIndexMarker209"/> invocation. This can never happen with <code class="Code-In-Text--PACKT-">setImmediate()</code>.</p>
+    <p class="normal">Using <code class="Code-In-Text--PACKT-">setTimeout(callback, 0)</code> has a behavior comparable to that of <code class="Code-In-Text--PACKT-">setImmediate()</code>, but in typical circumstances, callbacks scheduled with <code class="Code-In-Text--PACKT-">setImmediate()</code> are executed faster than those scheduled with <code class="Code-In-Text--PACKT-">setTimeout(callback, 0)</code>. To see why, we have to consider that the event loop executes all the callbacks in different phases; for the type of events we are considering, we have timers (<code class="Code-In-Text--PACKT-">setTimeout()</code>) that are executed before I/O callbacks, which are, in turn, executed before <code class="Code-In-Text--PACKT-">setImmediate()</code> callbacks. This means that if we queue a task with <code class="Code-In-Text--PACKT-">setImmediate()</code> in a <code class="Code-In-Text--PACKT-">setTimeout()</code> callback, in an I/O callback, or in a microtask queued after these two phases, then the callback will be executed in a phase that comes right after the phase we are currently in. <code class="Code-In-Text--PACKT-">setTimeout()</code> callbacks have to wait for the next cycle of the event loop.</p>
+    <p class="normal">You will better appreciate the difference between these APIs when we analyze the use of deferred invocation for running synchronous CPU-bound tasks later in this book.</p>
+    <p class="normal">Next, we are going to explore the conventions used to define callbacks in Node.js.</p>
+    <h2 id="_idParaDest-81" class="title">Node.js callback conventions</h2>
+    <p class="normal">In Node.js, CPS APIs and callbacks follow a set <a id="_idIndexMarker210"/>of specific conventions. These conventions apply to the Node.js core API, but they are also followed by the vast majority of the<a id="_idIndexMarker211"/> userland modules and applications. So, it's very important that you understand them and make sure that you comply whenever you need to design an asynchronous API that makes use of callbacks.</p>
+    <h3 id="_idParaDest-82" class="title">The callback comes last</h3>
+    <p class="normal">In all core Node.js functions, the standard convention is that when a function accepts a callback as input, this has to be passed as the last argument. </p>
+    <p class="normal">Let's take the following Node.js core API as an example:</p>
+    <pre class="programlisting code"><code class="hljs-code">readFile(filename, [options], callback)
+</code></pre>
+    <p class="normal">As you can see from the signature<a id="_idIndexMarker212"/> of the preceding function, the callback is always put in the last position, even in the presence of optional arguments. The reason for this convention is that the function call is more readable in case the callback is defined in place.</p>
+    <h3 id="_idParaDest-83" class="title">Any error always comes first</h3>
+    <p class="normal">In CPS, errors are propagated like any other type of result, which means using callbacks. In Node.js, any error produced by a CPS function is always passed as the first argument of the callback, and any actual result is passed starting from the second argument. If the operation succeeds without errors, the first argument will be <code class="Code-In-Text--PACKT-">null</code> or <code class="Code-In-Text--PACKT-">undefined</code>. The following code shows you how to define a callback that complies with this convention:</p>
+    <pre class="programlisting code"><code class="hljs-code">readFile(<span class="hljs-string">'foo.txt'</span>, <span class="hljs-string">'utf8'</span>, <span class="hljs-function">(</span><span class="hljs-params">err, data</span><span class="hljs-function">) =&gt;</span> {
+  <span class="hljs-keyword">if</span>(err) {
+    handleError(err)
+  } <span class="hljs-keyword">else</span> {
+    processData(data)
+  }
+})
+</code></pre>
+    <p class="normal">It is best practice to always check for the presence of an error, as not doing so will make it harder for you to debug your code and discover the possible points of failure. Another important convention to take into account is that the error must always be of type <code class="Code-In-Text--PACKT-">Error</code>. This means that simple strings or numbers should never be passed as error objects.</p>
+    <h3 id="_idParaDest-84" class="title">Propagating errors</h3>
+    <p class="normal">Propagating errors in<a id="_idIndexMarker213"/> synchronous, direct style functions is done with the well-known <code class="Code-In-Text--PACKT-">throw</code> statement, which causes the error to jump up in the call stack <a id="_idIndexMarker214"/>until it is caught.</p>
+    <p class="normal">In asynchronous CPS, however, proper error propagation is done by simply passing the error to the next callback in the chain. The typical pattern looks as follows:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">import</span> { readFile } <span class="hljs-keyword">from</span> <span class="hljs-string">'fs'</span>
+<span class="hljs-keyword">function</span><span class="hljs-function"> </span><span class="hljs-title">readJSON</span><span class="hljs-function"> (</span><span class="hljs-params">filename, callback</span><span class="hljs-function">) </span>{
+  readFile(filename, <span class="hljs-string">'utf8'</span>, <span class="hljs-function">(</span><span class="hljs-params">err, data</span><span class="hljs-function">) =&gt;</span> {
+    <span class="hljs-keyword">let</span> parsed
+    <span class="hljs-keyword">if</span> (err) {
+      <span class="hljs-comment">// propagate the error and exit the current function</span>
+      <span class="hljs-keyword">return</span> callback(err)
+    }
+    <span class="hljs-keyword">try</span> {
+      <span class="hljs-comment">// parse the file contents</span>
+      parsed = <span class="hljs-built_in">JSON</span>.parse(data)
+    } <span class="hljs-keyword">catch</span> (err) {
+      <span class="hljs-comment">// catch parsing errors</span>
+      <span class="hljs-keyword">return</span> callback(err)
+    }
+    <span class="hljs-comment">// no errors, propagate just the data</span>
+    callback(<span class="hljs-literal">null</span>, parsed)
+  })
+}
+</code></pre>
+    <p class="normal">Notice how we propagate the error received by the <code class="Code-In-Text--PACKT-">readFile()</code> operation. We do not throw it or return it; instead, we just use the callback as if it were any other result. Also, notice how we use the <code class="Code-In-Text--PACKT-">try...catch</code> statement to catch any error thrown by <code class="Code-In-Text--PACKT-">JSON.parse()</code>, which is a<a id="_idIndexMarker215"/> synchronous function and therefore uses the traditional <code class="Code-In-Text--PACKT-">throw</code> instruction to propagate errors to the caller. Lastly, if everything went well, <code class="Code-In-Text--PACKT-">callback</code> is invoked with <code class="Code-In-Text--PACKT-">null</code> as the first argument to indicate that there are no errors.</p>
+    <p class="normal">It's also interesting to note how we refrained from invoking <code class="Code-In-Text--PACKT-">callback</code> from within the <code class="Code-In-Text--PACKT-">try</code> block. This is because doing so would catch any error thrown from the execution of the callback itself, which is usually not what we want.</p>
+    <h3 id="_idParaDest-85" class="title">Uncaught exceptions</h3>
+    <p class="normal">Sometimes, it can<a id="_idIndexMarker216"/> happen that an error is thrown and not caught within the callback <a id="_idIndexMarker217"/>of an asynchronous function. This could happen if, for example, we had forgotten to surround <code class="Code-In-Text--PACKT-">JSON.parse()</code> with a <code class="Code-In-Text--PACKT-">try...catch</code> statement in the <code class="Code-In-Text--PACKT-">readJSON()</code> function we defined previously. Throwing an error inside an asynchronous callback would cause the error to jump up to the event loop, so it would never be propagated to the next callback. In Node.js, this is an unrecoverable state and the application would simply exit with a non-zero exit code, printing the stack trace to the <code class="Code-In-Text--PACKT-">stderr</code> interface.</p>
+    <p class="normal">To demonstrate this, let's try to remove the <code class="Code-In-Text--PACKT-">try...catch</code> block surrounding <code class="Code-In-Text--PACKT-">JSON.parse()</code> from the <code class="Code-In-Text--PACKT-">readJSON()</code> function we defined previously:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">function</span><span class="hljs-function"> </span><span class="hljs-title">readJSONThrows</span><span class="hljs-function"> (</span><span class="hljs-params">filename, callback</span><span class="hljs-function">) </span>{
+  readFile(filename, <span class="hljs-string">'utf8'</span>, <span class="hljs-function">(</span><span class="hljs-params">err, data</span><span class="hljs-function">) =&gt;</span> {
+    <span class="hljs-keyword">if</span> (err) {
+      <span class="hljs-keyword">return</span> callback(err)
+    }
+    callback(<span class="hljs-literal">null</span>, <span class="hljs-built_in">JSON</span>.parse(data))
+  })
+}
+</code></pre>
+    <p class="normal">Now, in the function we just defined, there <a id="_idIndexMarker218"/>is no way of catching an eventual exception coming from <code class="Code-In-Text--PACKT-">JSON.parse()</code>. If we try to parse an invalid JSON file with the<a id="_idIndexMarker219"/> following code:</p>
+    <pre class="programlisting code"><code class="hljs-code">readJSONThrows(<span class="hljs-string">'invalid_json.json'</span>, <span class="hljs-function">(</span><span class="hljs-params">err</span><span class="hljs-function">) =&gt;</span> <span class="hljs-built_in">console</span>.error(err))
+</code></pre>
+    <p class="normal">This will result in the application being abruptly terminated, with a stack trace similar to the following being printed on the console:</p>
+    <pre class="programlisting con"><code class="hljs-con">SyntaxError: Unexpected token h in JSON at position 1
+    at JSON.parse (&lt;anonymous&gt;)
+    at file:///.../03-callbacks-and-events/08-uncaught-errors/index.js:8:25
+    at FSReqCallback.readFileAfterClose [as oncomplete] (internal/fs/read_file_context.js:61:3)
+</code></pre>
+    <p class="normal">Now, if you look at the preceding stack trace, you will see that it starts from within the built-in <code class="Code-In-Text--PACKT-">fs</code> module, and exactly from the point in which the native API has completed reading and returned its result back to the <code class="Code-In-Text--PACKT-">fs.readFile()</code> function, via the event loop. This clearly shows that the exception traveled from our callback, up the call stack, and then straight into the event loop, where it was finally caught and thrown to the console.</p>
+    <p class="normal">This also means that wrapping the invocation of <code class="Code-In-Text--PACKT-">readJSONThrows()</code> with a <code class="Code-In-Text--PACKT-">try...catch</code> block will not work, because the stack in which the block operates is different from the one in which our callback is invoked. The following code shows the anti-pattern that was just described:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">try</span> {
+  readJSONThrows(<span class="hljs-string">'invalid_json.json'</span>, <span class="hljs-function">(</span><span class="hljs-params">err</span><span class="hljs-function">) =&gt;</span> <span class="hljs-built_in">console</span>.error(err))
+} <span class="hljs-keyword">catch</span> (err) {
+  <span class="hljs-built_in">console</span>.log(<span class="hljs-string">'This will NOT catch the JSON parsing exception'</span>)
+}
+</code></pre>
+    <p class="normal">The preceding <code class="Code-In-Text--PACKT-">catch</code> statement will never receive the JSON parsing error, as it will travel up the call stack in which the error was thrown, that is, in the event loop and not in the function that triggered the asynchronous operation.</p>
+    <p class="normal">As mentioned previously, the <a id="_idIndexMarker220"/>application will abort the moment an exception reaches the event loop. However, we still have the chance to perform some cleanup <a id="_idIndexMarker221"/>or logging before the application terminates. In fact, when this happens, Node.js will emit a special event called <code class="Code-In-Text--PACKT-">uncaughtException</code>, just before exiting the process. The following code shows a sample use case:</p>
+    <pre class="programlisting code"><code class="hljs-code">process.on(<span class="hljs-string">'uncaughtException'</span>, <span class="hljs-function">(</span><span class="hljs-params">err</span><span class="hljs-function">) =&gt;</span> {
+  <span class="hljs-built_in">console</span>.error(<span class="hljs-string">`This will catch at last the JSON parsing exception: </span><span class="hljs-subst">${</span>err.<span class="hljs-subst">message}</span><span class="hljs-string">`</span>)
+  <span class="hljs-comment">// Terminates the application with 1 (error) as exit code.</span>
+  <span class="hljs-comment">// Without the following line, the application would continue</span>
+  process.exit(<span class="hljs-number">1</span>)
+})
+</code></pre>
+    <p class="normal">It's important to understand that an uncaught exception leaves the application in a state that is not guaranteed to be consistent, which can lead to unforeseeable problems. For example, there might still be incomplete I/O requests running or closures might have become inconsistent. That's why it is always advised, especially in production, to never leave the application running after an uncaught exception is received. Instead, the process should exit immediately, optionally after having run some necessary cleanup tasks, and ideally, a supervising process should restart the application. This is also known as the <strong class="keyword">fail-fast</strong> approach and it's the<a id="_idIndexMarker222"/> recommended practice in Node.js.</p>
+    <div class="packt_tip">
+      <p class="Tip--PACKT-">We'll discuss supervisors in more detail in <em class="chapterRef">Chapter 12</em>, <em class="italic">Scalability and Architectural Patterns</em>.</p>
+    </div>
+    <p class="normal">This concludes our gentle introduction to the Callback pattern. Now, it's time to meet the Observer pattern, which is<a id="_idIndexMarker223"/> another critical component of an event-driven platform such as Node.js.</p>
+    <h1 id="_idParaDest-86" class="title">The Observer pattern</h1>
+    <p class="normal">Another important and fundamental<a id="_idIndexMarker224"/> pattern used in Node.js is the <strong class="keyword">Observer</strong> pattern. Together with the Reactor pattern and callbacks, the Observer pattern is an absolute requirement for mastering the asynchronous world of Node.js.</p>
+    <p class="normal">The Observer pattern is the ideal solution for modeling the reactive nature of Node.js and a perfect complement for callbacks. Let's give a formal definition, as follows:</p>
+    <div class="note">
+      <p class="Information-Box--PACKT-">The Observer pattern defines an object (called subject) that can notify a set of observers (or listeners) when a change in its state occurs.</p>
+    </div>
+    <p class="normal">The main difference from the Callback pattern is that the subject can actually notify multiple observers, while a traditional CPS callback will usually propagate its result to only one listener, the callback.</p>
+    <h2 id="_idParaDest-87" class="title">The EventEmitter</h2>
+    <p class="normal">In traditional object-oriented <a id="_idIndexMarker225"/>programming, the Observer pattern requires interfaces, concrete classes, and a hierarchy. In Node.js, all this becomes much simpler. The Observer pattern is already built into the core and is available through the <code class="Code-In-Text--PACKT-">EventEmitter</code> class. The <code class="Code-In-Text--PACKT-">EventEmitter</code> class allows us to register one or more functions as listeners, which will be invoked when a particular event type is fired. <em class="italic">Figure 3.2</em> visually explains this concept:</p>
+    <figure class="mediaobject"><img src="../Images/B15729_03_02.png" alt=""/></figure>
+    <p class="packt_figref">Figure 3.2: Listeners receiving events from an EventEmitter</p>
+    <p class="normal">The <code class="Code-In-Text--PACKT-">EventEmitter</code> is exported from<a id="_idIndexMarker226"/> the <code class="Code-In-Text--PACKT-">events</code> core module. The following code shows how we can obtain a reference to it:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">import</span> { EventEmitter } <span class="hljs-keyword">from</span> <span class="hljs-string">'events'</span>
+<span class="hljs-keyword">const</span> emitter = <span class="hljs-keyword">new</span> EventEmitter()
+</code></pre>
+    <p class="normal">The essential methods<a id="_idIndexMarker227"/> of the <code class="Code-In-Text--PACKT-">EventEmitter</code> are as follows:</p>
+    <ul>
+      <li class="Bullet--PACKT-"><code class="Code-In-Text--PACKT-">on(event, listener)</code>: This method allows us to register a new listener (a function) for the given event type (a string).</li>
+      <li class="Bullet--PACKT-"><code class="Code-In-Text--PACKT-">once(event, listener)</code>: This method registers a new listener, which is then removed after the event is emitted for the first time.</li>
+      <li class="Bullet--PACKT-"><code class="Code-In-Text--PACKT-">emit(event, [arg1], [...])</code>: This method produces a new event and provides additional arguments to be passed to the listeners.</li>
+      <li class="Bullet-End--PACKT-"><code class="Code-In-Text--PACKT-">removeListener(event, listener)</code>: This method removes a listener for the specified event type.</li>
+    </ul>
+    <p class="normal">All the preceding methods will return the <code class="Code-In-Text--PACKT-">EventEmitter</code> instance to allow chaining. The <code class="Code-In-Text--PACKT-">listener</code> function has the signature <code class="Code-In-Text--PACKT-">function([arg1], [...])</code>, so it simply accepts the arguments provided at the moment the event is emitted.</p>
+    <p class="normal">You can already see that there is a big difference between a listener and a traditional Node.js callback. In fact, the first argument is not an error, but it can be any data passed to <code class="Code-In-Text--PACKT-">emit()</code> at the moment of its invocation.</p>
+    <h2 id="_idParaDest-88" class="title">Creating and using the EventEmitter</h2>
+    <p class="normal">Let's now<a id="_idIndexMarker228"/> see how we can use an <code class="Code-In-Text--PACKT-">EventEmitter</code> in practice. The simplest <a id="_idIndexMarker229"/>way is to create a new instance and use it immediately. The following code shows us a function that uses an <code class="Code-In-Text--PACKT-">EventEmitter</code> to notify its subscribers in real time when a particular regular expression is matched in a list of files:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">import</span> { EventEmitter } <span class="hljs-keyword">from</span> <span class="hljs-string">'events'</span>
+<span class="hljs-keyword">import</span> { readFile } <span class="hljs-keyword">from</span> <span class="hljs-string">'fs'</span>
+<span class="hljs-keyword">function</span><span class="hljs-function"> </span><span class="hljs-title">findRegex</span><span class="hljs-function"> (</span><span class="hljs-params">files, regex</span><span class="hljs-function">) </span>{
+  <span class="hljs-keyword">const</span> emitter = <span class="hljs-keyword">new</span> EventEmitter()
+  <span class="hljs-keyword">for</span> (<span class="hljs-keyword">const</span> file <span class="hljs-keyword">of</span> files) {
+    readFile(file, <span class="hljs-string">'utf8'</span>, <span class="hljs-function">(</span><span class="hljs-params">err, content</span><span class="hljs-function">) =&gt;</span> {
+      <span class="hljs-keyword">if</span> (err) {
+        <span class="hljs-keyword">return</span> emitter.emit(<span class="hljs-string">'error'</span>, err)
+      }
+      emitter.emit(<span class="hljs-string">'fileread'</span>, file)
+      <span class="hljs-keyword">const</span> match = content.match(regex)
+      <span class="hljs-keyword">if</span> (match) {
+        match.forEach(<span class="hljs-params">elem</span><span class="hljs-function"> =&gt;</span> emitter.emit(<span class="hljs-string">'found'</span>, file, elem))
+      }
+    })
+  }
+  <span class="hljs-keyword">return</span> emitter
+}
+</code></pre>
+    <p class="normal">The function we just defined returns an <code class="Code-In-Text--PACKT-">EventEmitter</code> instance that will produce three events:</p>
+    <ul>
+      <li class="Bullet--PACKT-"><code class="Code-In-Text--PACKT-">fileread</code>, when a file is being read</li>
+      <li class="Bullet--PACKT-"><code class="Code-In-Text--PACKT-">found</code>, when a match has been found</li>
+      <li class="Bullet-End--PACKT-"><code class="Code-In-Text--PACKT-">error,</code> when an error occurs during reading the file</li>
+    </ul>
+    <p class="normal">Let's now see how our <code class="Code-In-Text--PACKT-">findRegex()</code> function can be used:</p>
+    <pre class="programlisting code"><code class="hljs-code">findRegex(
+  [<span class="hljs-string">'fileA.txt'</span>, <span class="hljs-string">'fileB.json'</span>],
+  <span class="hljs-regexp">/hello \w+/g</span>
+)
+  .on(<span class="hljs-string">'fileread'</span>, <span class="hljs-params">file</span><span class="hljs-function"> =&gt;</span> <span class="hljs-built_in">console</span>.log(<span class="hljs-string">`</span><span class="hljs-subst">${file}</span><span class="hljs-string"> was read`</span>))
+  .on(<span class="hljs-string">'found'</span>, <span class="hljs-function">(</span><span class="hljs-params">file, match</span><span class="hljs-function">) =&gt;</span> <span class="hljs-built_in">console</span>.log(<span class="hljs-string">`Matched "</span><span class="hljs-subst">${match}</span><span class="hljs-string">" in </span><span class="hljs-subst">${file}</span><span class="hljs-string">`</span>))
+  .on(<span class="hljs-string">'error'</span>, <span class="hljs-params">err</span><span class="hljs-function"> =&gt;</span> <span class="hljs-built_in">console</span>.error(<span class="hljs-string">`</span><span class="hljs-string">Error emitted </span><span class="hljs-subst">${</span>err.<span class="hljs-subst">message}</span><span class="hljs-string">`</span>))
+</code></pre>
+    <p class="normal">In the code we just<a id="_idIndexMarker230"/> defined, we register a listener for each of the three event types<a id="_idIndexMarker231"/> produced by the <code class="Code-In-Text--PACKT-">EventEmitter</code> that was created by our <code class="Code-In-Text--PACKT-">findRegex()</code> function.</p>
+    <h2 id="_idParaDest-89" class="title">Propagating errors</h2>
+    <p class="normal">As with callbacks, the <code class="Code-In-Text--PACKT-">EventEmitter</code> can't just <code class="Code-In-Text--PACKT-">throw</code> an exception when an error condition occurs. Instead, the<a id="_idIndexMarker232"/><a id="_idIndexMarker233"/> convention is to emit a special event, called <code class="Code-In-Text--PACKT-">error</code>, and pass an <code class="Code-In-Text--PACKT-">Error</code> object as an argument. That's exactly what we were doing in the <code class="Code-In-Text--PACKT-">findRegex()</code> function that we defined earlier.</p>
+    <div class="note">
+      <p class="Information-Box--PACKT-">The <code class="Code-In-Text--PACKT-">EventEmitter</code> treats the <code class="Code-In-Text--PACKT-">error</code> event in a special way. It will automatically throw an exception and exit from the application if such an event is emitted and no associated listener is found. For this reason, it is recommended to always register a listener for the <code class="Code-In-Text--PACKT-">error</code> event.</p>
+    </div>
+    <h2 id="_idParaDest-90" class="title">Making any object observable</h2>
+    <p class="normal">In the Node.js world, the <code class="Code-In-Text--PACKT-">EventEmitter</code> is rarely used on its own, as you saw in the previous example. Instead, it is more common to see it extended by other classes. In practice, this enables any class to inherit the capabilities of the <code class="Code-In-Text--PACKT-">EventEmitter</code>, hence becoming an observable<a id="_idIndexMarker234"/> object.</p>
+    <p class="normal">To demonstrate this pattern, let's try to implement the functionality of the <code class="Code-In-Text--PACKT-">findRegex()</code> function in a class, as follows:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">import</span> { EventEmitter } <span class="hljs-keyword">from</span> <span class="hljs-string">'events'</span>
+<span class="hljs-keyword">import</span> { readFile } <span class="hljs-keyword">from</span> <span class="hljs-string">'fs'</span>
+<span class="hljs-keyword">class</span><span class="hljs-class"> </span><span class="hljs-title">FindRegex</span><span class="hljs-class"> </span><span class="hljs-keyword">extends</span><span class="hljs-class"> </span><span class="hljs-title">EventEmitter</span><span class="hljs-class"> </span>{
+  <span class="hljs-keyword">constructor</span> (regex) {
+    <span class="hljs-built_in">super</span>()
+    <span class="hljs-built_in">this</span>.regex = regex
+    <span class="hljs-built_in">this</span>.files = []
+  }
+  addFile (file) {
+    <span class="hljs-built_in">this</span>.files.push(file)
+    <span class="hljs-keyword">return</span> <span class="hljs-built_in">this</span>
+  }
+  find () {
+    <span class="hljs-keyword">for</span> (<span class="hljs-keyword">const</span> file <span class="hljs-keyword">of</span> <span class="hljs-built_in">this</span>.files) {
+      readFile(file, <span class="hljs-string">'utf8'</span>, <span class="hljs-function">(</span><span class="hljs-params">err, content</span><span class="hljs-function">) =&gt;</span> {
+        <span class="hljs-keyword">if</span> (err) {
+          <span class="hljs-keyword">return</span> <span class="hljs-built_in">this</span>.emit(<span class="hljs-string">'error'</span>, err)
+        }
+        <span class="hljs-built_in">this</span>.emit(<span class="hljs-string">'fileread'</span>, file)
+        <span class="hljs-keyword">const</span> match = content.match(<span class="hljs-built_in">this</span>.regex)
+        <span class="hljs-keyword">if</span> (match) {
+          match.forEach(<span class="hljs-params">elem</span><span class="hljs-function"> =&gt;</span> <span class="hljs-built_in">this</span>.emit(<span class="hljs-string">'found'</span>, file, elem))
+        }
+      })
+    }
+    <span class="hljs-keyword">return</span> <span class="hljs-built_in">this</span>
+  }
+}
+</code></pre>
+    <p class="normal">The <code class="Code-In-Text--PACKT-">FindRegex</code> class that we just defined extends <code class="Code-In-Text--PACKT-">EventEmitter</code> to become a fully fledged observable class. Always<a id="_idIndexMarker235"/> remember to use <code class="Code-In-Text--PACKT-">super()</code> in the constructor to initialize the <code class="Code-In-Text--PACKT-">EventEmitter</code> internals.</p>
+    <p class="normal">The following is an example of how to use the <code class="Code-In-Text--PACKT-">FindRegex</code> class we just defined:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">const</span> findRegexInstance = <span class="hljs-keyword">new</span> FindRegex(<span class="hljs-regexp">/hello \w+/</span>)
+findRegexInstance
+  .addFile(<span class="hljs-string">'fileA.txt'</span>)
+  .addFile(<span class="hljs-string">'fileB.json'</span>)
+  .find()
+  .on(<span class="hljs-string">'found'</span>, <span class="hljs-function">(</span><span class="hljs-params">file, match</span><span class="hljs-function">) =&gt;</span> <span class="hljs-built_in">console</span>.log(<span class="hljs-string">`Matched "</span><span class="hljs-subst">${match}</span><span class="hljs-string">" in file </span><span class="hljs-subst">${file}</span><span class="hljs-string">`</span>))
+  .on(<span class="hljs-string">'error'</span>, <span class="hljs-params">err</span><span class="hljs-function"> =&gt;</span> <span class="hljs-built_in">console</span>.error(<span class="hljs-string">`Error emitted </span><span class="hljs-subst">${</span>err.<span class="hljs-subst">message}</span><span class="hljs-string">`</span>))
+</code></pre>
+    <p class="normal">You will now notice how the <code class="Code-In-Text--PACKT-">FindRegex</code> object also provides the <code class="Code-In-Text--PACKT-">on()</code> method, which is inherited from the <code class="Code-In-Text--PACKT-">EventEmitter</code>. This is a pretty common pattern in the Node.js ecosystem. For example, the <code class="Code-In-Text--PACKT-">Server</code> object of the core HTTP module inherits from the <code class="Code-In-Text--PACKT-">EventEmitter</code> function, thus allowing it to produce events such as <code class="Code-In-Text--PACKT-">request</code> (when a new request is received), <code class="Code-In-Text--PACKT-">connection</code> (when a new connection is established), or <code class="Code-In-Text--PACKT-">closed</code> (when the server socket is closed).</p>
+    <p class="normal">Other notable <a id="_idIndexMarker236"/>examples of objects extending the <code class="Code-In-Text--PACKT-">EventEmitter</code> are Node.js streams. We will analyze streams in more detail in <em class="chapterRef">Chapter 6</em>, <em class="italic">Coding with Streams</em>.</p>
+    <h2 id="_idParaDest-91" class="title">EventEmitter and memory leaks</h2>
+    <p class="normal">When subscribing to observables <a id="_idIndexMarker237"/>with a long life span, it is extremely important that we <strong class="keyword">unsubscribe</strong> our listeners once they are no longer needed. This allows us to release the memory used by the objects in a listener's scope and prevent <strong class="keyword">memory leaks</strong>. Unreleased <code class="Code-In-Text--PACKT-">EventEmitter</code> listeners are the main source<a id="_idIndexMarker238"/> of memory leaks in Node.js (and JavaScript in general).</p>
+    <p class="normal">A memory leak is a software defect whereby memory that is no longer needed is not released, causing the memory usage of an application to grow indefinitely. For example, consider the following code:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">const</span> thisTakesMemory = <span class="hljs-string">'A big string....'</span>
+<span class="hljs-keyword">const</span> listener = <span class="hljs-function">() =&gt;</span> {
+  <span class="hljs-built_in">console</span>.log(thisTakesMemory)
+}
+emitter.on(<span class="hljs-string">'an_event'</span>, listener)
+</code></pre>
+    <p class="normal">The variable <code class="Code-In-Text--PACKT-">thisTakesMemory</code> is referenced in the listener and therefore its memory is retained until the listener is released from <code class="Code-In-Text--PACKT-">emitter</code>, or until the <code class="Code-In-Text--PACKT-">emitter</code> itself is garbage collected, which can only happen when there are no more active references to it, making it unreachable.</p>
+    <div class="packt_tip">
+      <p class="Tip--PACKT-">You can find a good<a id="_idIndexMarker239"/> explanation about garbage collection in JavaScript and the concept <a id="_idIndexMarker240"/>of reachability at <a href="http://nodejsdp.link/garbage-collection"><span class="url">nodejsdp.link/garbage-collection</span></a>.</p>
+    </div>
+    <p class="normal">This means that if an <code class="Code-In-Text--PACKT-">EventEmitter</code> remains reachable for the entire duration of the application, all its listeners do too, and with them all the memory they reference. If, for example, we register a listener to a "permanent" <code class="Code-In-Text--PACKT-">EventEmitter</code> at every incoming HTTP request and never release it, then we are causing a memory leak. The memory used by the application will grow indefinitely, sometimes slowly, sometimes faster, but eventually it will crash the application. To prevent such a situation, we can release the listener with the <code class="Code-In-Text--PACKT-">removeListener()</code> method of the <code class="Code-In-Text--PACKT-">EventEmitter</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">emitter.removeListener(<span class="hljs-string">'an_event'</span>, listener)
+</code></pre>
+    <p class="normal">An <code class="Code-In-Text--PACKT-">EventEmitter</code> has a very <a id="_idIndexMarker241"/>simple built-in mechanism for warning the developer about possible memory leaks. When the count of listeners registered to an event exceeds a specific amount (by default, 10), the <code class="Code-In-Text--PACKT-">EventEmitter</code> will produce a warning. Sometimes, registering more than 10 listeners is completely fine, so we can adjust this limit by using the <code class="Code-In-Text--PACKT-">setMaxListeners()</code> method of the <code class="Code-In-Text--PACKT-">EventEmitter</code>.</p>
+    <div class="packt_tip">
+      <p class="Tip--PACKT-">We can use the convenience method <code class="Code-In-Text--PACKT-">once(event, listener)</code> in place of <code class="Code-In-Text--PACKT-">on(event, listener)</code> to automatically unregister a listener after the event is received for the first time. However, be advised that if the event we specify is never emitted, then the listener is never released, causing a memory leak.</p>
+    </div>
+    <h2 id="_idParaDest-92" class="title">Synchronous and asynchronous events</h2>
+    <p class="normal">As with callbacks, events can also be emitted <a id="_idIndexMarker242"/>synchronously or asynchronously with respect to the moment the tasks that produce them are triggered. It is crucial that<a id="_idIndexMarker243"/> we never mix the two approaches in the same <code class="Code-In-Text--PACKT-">EventEmitter</code>, but even more importantly, we should never emit the same event type using a mix of synchronous and asynchronous code, to avoid producing the same problems described in the <em class="italic">Unleashing Zalgo</em> section. The main difference between emitting synchronous and asynchronous events lies in the way listeners can be registered.</p>
+    <p class="normal">When events are emitted asynchronously, we can register new listeners, even after the task that produces the events is triggered, up until the current stack yields to the event loop. This is because the events are guaranteed not to be fired until the next cycle of the event loop, so we can be sure that we won't miss any events. </p>
+    <p class="normal">The <code class="Code-In-Text--PACKT-">FindRegex()</code> class we defined previously emits its events asynchronously after the <code class="Code-In-Text--PACKT-">find()</code> method is invoked. This is why we can register the listeners <em class="italic">after</em> the <code class="Code-In-Text--PACKT-">find()</code> method is invoked, without losing any events, as shown in the following code:</p>
+    <pre class="programlisting code"><code class="hljs-code">findRegexInstance
+  .addFile(...)
+  .find()
+  .on(<span class="hljs-string">'found'</span>, ...)
+</code></pre>
+    <p class="normal">On the other hand, if we emit our events synchronously after the task is launched, we have to register all the listeners <em class="italic">before</em> we launch the task, or we will miss all the events. To see how this works, let's <a id="_idIndexMarker244"/>modify the <code class="Code-In-Text--PACKT-">FindRegex</code> class we defined previously and make the <code class="Code-In-Text--PACKT-">find()</code> method synchronous:</p>
+    <pre class="programlisting code"><code class="hljs-code">find () {
+  <span class="hljs-keyword">for</span> (<span class="hljs-keyword">const</span> file <span class="hljs-keyword">of</span> <span class="hljs-built_in">this</span>.files) {
+    <span class="hljs-keyword">let</span> content
+    <span class="hljs-keyword">try</span> {
+      content = readFileSync(file, <span class="hljs-string">'utf8'</span>)
+    } <span class="hljs-keyword">catch</span> (err) {
+      <span class="hljs-built_in">this</span>.emit(<span class="hljs-string">'error'</span>, err)
+    }
+    <span class="hljs-built_in">this</span>.emit(<span class="hljs-string">'fileread'</span>, file)
+    <span class="hljs-keyword">const</span> match = content.match(<span class="hljs-built_in">this</span>.regex)
+    <span class="hljs-keyword">if</span> (match) {
+      match.forEach(<span class="hljs-params">elem</span><span class="hljs-function"> =&gt;</span> <span class="hljs-built_in">this</span>.emit(<span class="hljs-string">'found'</span>, file, elem))
+    }
+  }
+  <span class="hljs-keyword">return</span> <span class="hljs-built_in">this</span>
+}
+</code></pre>
+    <p class="normal">Now, let's try to register a<a id="_idIndexMarker245"/> listener before we launch the <code class="Code-In-Text--PACKT-">find()</code> task, and then a second listener after that to see what happens:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">const</span> findRegexSyncInstance = <span class="hljs-keyword">new</span> FindRegexSync(<span class="hljs-regexp">/hello \w+/</span>)
+findRegexSyncInstance
+  .addFile(<span class="hljs-string">'fileA.txt'</span>)
+  .addFile(<span class="hljs-string">'fileB.json'</span>)
+  <span class="hljs-comment">// this listener is invoked</span>
+  .on(<span class="hljs-string">'found'</span>, <span class="hljs-function">(</span><span class="hljs-params">file, match</span><span class="hljs-function">) =&gt;</span> <span class="hljs-built_in">console</span>.log(<span class="hljs-string">`[Before] Matched "</span><span class="hljs-subst">${match}</span><span class="hljs-string">"`</span>))
+  .find()
+  <span class="hljs-comment">// this listener is never invoked</span>
+  .on(<span class="hljs-string">'found'</span>, <span class="hljs-function">(</span><span class="hljs-params">file, match</span><span class="hljs-function">) =&gt;</span> <span class="hljs-built_in">console</span>.log(<span class="hljs-string">`[After] Matched "</span><span class="hljs-subst">${match}</span><span class="hljs-string">"`</span>))
+</code></pre>
+    <p class="normal">As expected, the listener that was registered after the invocation of the <code class="Code-In-Text--PACKT-">find()</code> task is never called; in fact, the preceding code will print:</p>
+    <pre class="programlisting con"><code class="hljs-con">[Before] Matched "hello world"
+[Before] Matched "hello NodeJS"
+</code></pre>
+    <p class="normal">There are some (rare) situations in which emitting an event in a synchronous fashion makes sense, but the very nature of the <code class="Code-In-Text--PACKT-">EventEmitter</code> lies in its ability to deal with asynchronous events. Most of the time, emitting events synchronously is a telltale sign that we either don't need the <code class="Code-In-Text--PACKT-">EventEmitter</code> at all or that, somewhere else, the same observable is emitting another<a id="_idIndexMarker246"/> event asynchronously, potentially <a id="_idIndexMarker247"/>causing a Zalgo type of situation.</p>
+    <div class="packt_tip">
+      <p class="Tip--PACKT-">The emission of synchronous events can be deferred with <code class="Code-In-Text--PACKT-">process.nextTick()</code> to guarantee that they are emitted asynchronously.</p>
+    </div>
+    <h2 id="_idParaDest-93" class="title">EventEmitter versus callbacks</h2>
+    <p class="normal">A common dilemma when defining an asynchronous API is deciding whether to use an <code class="Code-In-Text--PACKT-">EventEmitter</code> or simply <a id="_idIndexMarker248"/>accept a callback. The general differentiating rule is semantic: callbacks should be used when a result must be returned in an asynchronous way, while events should be used when there is a need to communicate that something has happened.</p>
+    <p class="normal">But besides this simple principle, a lot of confusion is generated from the fact that the two paradigms are, most of the time, equivalent and allow us to achieve the same results. Consider the following code as an example:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">import</span> { EventEmitter } <span class="hljs-keyword">from</span> <span class="hljs-string">'events'</span>
+<span class="hljs-keyword">function</span><span class="hljs-function"> </span><span class="hljs-title">helloEvents</span><span class="hljs-function"> () </span>{
+  <span class="hljs-keyword">const</span> eventEmitter = <span class="hljs-keyword">new</span> EventEmitter()
+  <span class="hljs-built_in">setTimeout</span>(<span class="hljs-function">() =&gt;</span> eventEmitter.emit(<span class="hljs-string">'complete'</span>, <span class="hljs-string">'hello world'</span>), <span class="hljs-number">100</span>)
+  <span class="hljs-keyword">return</span> eventEmitter
+}
+<span class="hljs-keyword">function</span><span class="hljs-function"> </span><span class="hljs-title">helloCallback</span><span class="hljs-function"> (</span><span class="hljs-params">cb</span><span class="hljs-function">) </span>{
+  <span class="hljs-built_in">setTimeout</span>(<span class="hljs-function">() =&gt;</span> cb(<span class="hljs-literal">null</span>, <span class="hljs-string">'hello world'</span>), <span class="hljs-number">100</span>)
+}
+helloEvents().on(<span class="hljs-string">'complete'</span>, <span class="hljs-params">message</span><span class="hljs-function"> =&gt;</span> <span class="hljs-built_in">console</span>.log(message))
+helloCallback(<span class="hljs-function">(</span><span class="hljs-params">err, message</span><span class="hljs-function">) =&gt;</span> <span class="hljs-built_in">console</span>.log(message))
+</code></pre>
+    <p class="normal">The two functions <code class="Code-In-Text--PACKT-">helloEvents()</code> and <code class="Code-In-Text--PACKT-">helloCallback()</code> can be considered equivalent in terms of functionality. The first communicates the completion of the timeout using an event, while the second uses a callback. But what really differentiates them is the readability, the semantics, and the amount of code that is required for them to be implemented or used.</p>
+    <p class="normal">While a deterministic set of rules for you to choose between one style or the other can't be given, here are some<a id="_idIndexMarker249"/> hints to help you make a decision on which method to use:</p>
+    <ul>
+      <li class="Bullet--PACKT-">Callbacks have some limitations when it comes to supporting different types of events. In fact, we can still differentiate between multiple events by passing the type as an argument of the callback, or by accepting several callbacks, one for each supported event. However, this can't exactly be considered an elegant API. In this situation, the <code class="Code-In-Text--PACKT-">EventEmitter</code> can give a better interface and leaner code.</li>
+      <li class="Bullet--PACKT-">The <code class="Code-In-Text--PACKT-">EventEmitter</code> should be used when the same event can occur multiple times, or may not occur at all. A callback, in fact, is expected to be invoked exactly once, whether the operation is successful or not. Having a possibly repeating circumstance should make us think again about the semantic nature of the occurrence, which is more similar to an event that has to be communicated, rather than a result to be returned.</li>
+      <li class="Bullet-End--PACKT-">An API that uses callbacks can notify only one particular callback, while using an <code class="Code-In-Text--PACKT-">EventEmitter</code> allows us to register multiple listeners for the same event.</li>
+    </ul>
+    <h2 id="_idParaDest-94" class="title">Combining callbacks and events</h2>
+    <p class="normal">There are some<a id="_idIndexMarker250"/> particular circumstances where the <code class="Code-In-Text--PACKT-">EventEmitter</code> can be used in conjunction with a callback. This pattern is extremely powerful as it allows us to pass a result asynchronously using a traditional callback, and at the same time return an <code class="Code-In-Text--PACKT-">EventEmitter</code>, which can be used to provide a more detailed account on the status of an asynchronous process.</p>
+    <p class="normal">One example of this pattern is <a id="_idIndexMarker251"/>offered by the <code class="Code-In-Text--PACKT-">glob</code> package (<a href="http://nodejsdp.link/npm-glob"><span class="url">nodejsdp.link/npm-glob</span></a>), a library that performs glob-style file searches. The main entry point of the module is the function it exports, which has the following signature:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">const</span> eventEmitter = glob(pattern, [options], callback)
+</code></pre>
+    <p class="normal">The function takes a <code class="Code-In-Text--PACKT-">pattern</code> as the first argument, a set of <code class="Code-In-Text--PACKT-">options</code>, and a <code class="Code-In-Text--PACKT-">callback</code> that is invoked with the list of all the files matching the provided pattern. At the same time, the function returns an <code class="Code-In-Text--PACKT-">EventEmitter</code>, which provides a more fine-grained report about the state of the search process. For example, it is possible to be notified in real time when a match occurs by listening to the <code class="Code-In-Text--PACKT-">match</code> event, to obtain the list of all the matched files with the <code class="Code-In-Text--PACKT-">end</code> event, or to know whether the process was manually aborted by listening to the <code class="Code-In-Text--PACKT-">abort</code> event. The following code shows what this looks like in practice:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">import</span> glob <span class="hljs-keyword">from</span> <span class="hljs-string">'glob'</span>
+glob(<span class="hljs-string">'data/*.txt'</span>,
+  <span class="hljs-function">(</span><span class="hljs-params">err, files</span><span class="hljs-function">) =&gt;</span> {
+    <span class="hljs-keyword">if</span> (err) {
+      <span class="hljs-keyword">return</span> <span class="hljs-built_in">console</span>.error(err)
+    }
+    <span class="hljs-built_in">console</span>.log(<span class="hljs-string">`All files found: </span><span class="hljs-subst">${</span><span class="hljs-built_in">JSON</span>.stringify(<span class="hljs-subst">files</span>)<span class="hljs-subst">}</span><span class="hljs-string">`</span>)
+  })
+  .on(<span class="hljs-string">'match'</span>, <span class="hljs-params">match</span><span class="hljs-function"> =&gt;</span> <span class="hljs-built_in">console</span>.log(<span class="hljs-string">`Match found: </span><span class="hljs-subst">${match}</span><span class="hljs-string">`</span>))
+</code></pre>
+    <p class="normal">Combining an <code class="Code-In-Text--PACKT-">EventEmitter</code> with traditional callbacks is an elegant way to offer two different approaches<a id="_idIndexMarker252"/> to the same API. One approach is usually meant to be simpler and more immediate to use, while the other is targeted at more advanced scenarios.</p>
+    <div class="packt_tip">
+      <p class="Tip--PACKT-">The <code class="Code-In-Text--PACKT-">EventEmitter</code> can also be combined with other asynchronous mechanisms such as promises (which we will look at in <em class="chapterRef">Chapter 5</em>, <em class="italic">Asynchronous Control Flow Patterns with Promises and Async/Await</em>). In this case, just return an object (or array) containing both the promise and the <code class="Code-In-Text--PACKT-">EventEmitter</code>. This object can then be destructured by the caller, like this: <code class="Code-In-Text--PACKT-">{promise, events} = foo()</code>.</p>
+    </div>
+    <h1 id="_idParaDest-95" class="title">Summary</h1>
+    <p class="normal">In this chapter, we made our first contact with the practical aspects of writing asynchronous code. You discovered the two pillars of the entire Node.js asynchronous infrastructure—the callback and the <code class="Code-In-Text--PACKT-">EventEmitter</code>—and we explored in detail their use cases, conventions, and patterns. We also explored some of the pitfalls of dealing with asynchronous code and you learned about the ways to avoid them. Mastering the content of this chapter paves the way toward learning the more advanced asynchronous techniques that will be presented throughout the rest of this book.</p>
+    <p class="normal">In the next chapter, you will learn how to deal with complex asynchronous control flows using callbacks.</p>
+    <h1 id="_idParaDest-96" class="title">Exercises</h1>
+    <ul>
+      <li class="Bullet--PACKT-"><strong class="keyword">3.1 A simple event</strong>: Modify the asynchronous <code class="Code-In-Text--PACKT-">FindRegex</code> class so that it emits an event when the find process starts, passing the input files list as an argument. Hint: beware of Zalgo!</li>
+      <li class="Bullet--PACKT-"><strong class="keyword">3.2 Ticker</strong>: Write a function that accepts a <code class="Code-In-Text--PACKT-">number</code> and a <code class="Code-In-Text--PACKT-">callback</code> as the arguments. The function will return an <code class="Code-In-Text--PACKT-">EventEmitter</code> that emits an event called <code class="Code-In-Text--PACKT-">tick</code> every 50 milliseconds until the <code class="Code-In-Text--PACKT-">number</code> of milliseconds is passed from the invocation of the function. The function will also call the <code class="Code-In-Text--PACKT-">callback</code> when the <code class="Code-In-Text--PACKT-">number</code> of milliseconds has passed, providing, as the result, the total count of <code class="Code-In-Text--PACKT-">tick</code> events emitted. Hint: you can use <code class="Code-In-Text--PACKT-">setTimeout()</code> to schedule another <code class="Code-In-Text--PACKT-">setTimeout()</code> recursively.</li>
+      <li class="Bullet--PACKT-"><strong class="keyword">3.3 A simple modification</strong>: Modify the function created in exercise 3.2 so that it emits a <code class="Code-In-Text--PACKT-">tick</code> event immediately after the function is invoked.</li>
+      <li class="Bullet-End--PACKT-"><strong class="keyword">3.4 Playing with errors</strong>: Modify the function created in exercise 3.3 so that it produces an error if the timestamp at the moment of a <code class="Code-In-Text--PACKT-">tick</code> (including the initial one that we added as part of exercise 3.3) is divisible by 5. Propagate the error using both the callback and the event emitter. Hint: use <code class="Code-In-Text--PACKT-">Date.now()</code> to get the timestamp and the remainder (<code class="Code-In-Text--PACKT-">%</code>) operator to check whether the timestamp is divisible by 5. </li>
+    </ul>
+  </div>
+</body></html>
