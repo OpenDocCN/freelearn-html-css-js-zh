@@ -1,4 +1,4 @@
-# 第六章 编译和构建 Bootstrap
+# 第六章：编译和构建 Bootstrap
 
 到目前为止，我们已经讨论了 Bootstrap 的基础知识，了解了其架构，并探索了 Bootstrap 的所有功能和特性。
 

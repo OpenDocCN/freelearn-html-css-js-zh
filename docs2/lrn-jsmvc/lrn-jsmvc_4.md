@@ -1,4 +1,4 @@
-# 第四章 jQueryMX
+# 第四章：jQueryMX
 
 jQueryMX 是一组 jQuery 库，提供了实现和组织大型 JavaScript 应用程序所需的功能。
 
