@@ -1,4 +1,4 @@
-# 第二章 创建 Ext JS 应用
+# 第二章：创建 Ext JS 应用
 
 在本章中，我们将通过实现一个使用 Ext JS 的示例应用程序来迈出 Sencha Architect 的第一步，始终突出 Sencha Architect 的功能。我们将涵盖以下内容：
 
