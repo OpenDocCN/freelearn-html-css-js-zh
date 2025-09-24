@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# PhoneGap 2.x 移动应用开发热点
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/0cfdb8b3b7385c6d5bb1fd49883e2110`](https://zh.annas-archive.org/md5/0cfdb8b3b7385c6d5bb1fd49883e2110)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

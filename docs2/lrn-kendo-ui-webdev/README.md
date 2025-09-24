@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Kendo UI Web 开发学习指南
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/3ab3cfce404c21e16af4d5fcd6273d27`](https://zh.annas-archive.org/md5/3ab3cfce404c21e16af4d5fcd6273d27)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

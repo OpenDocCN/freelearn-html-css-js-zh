@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# MERN 快速启动指南
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/2eba3c0d90674379a865fc5b16de4d50`](https://zh.annas-archive.org/md5/2eba3c0d90674379a865fc5b16de4d50)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

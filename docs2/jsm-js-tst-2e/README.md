@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Jasmine JavaScript 测试指南第二版
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/609e3ff0eaf224d6c133c816e9155d97`](https://zh.annas-archive.org/md5/609e3ff0eaf224d6c133c816e9155d97)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
