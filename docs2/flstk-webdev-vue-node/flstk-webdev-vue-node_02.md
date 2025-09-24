@@ -1,4 +1,4 @@
-# 构建 Express 应用
+# 第二章：构建 Express 应用
 
 Express.js 是一个 Node.js 网络应用框架。Express.js 使得使用 Node.js 更加容易，并利用了其强大功能。在本章中，我们将仅使用 Express.js 创建一个应用。Express.js 也是一个`node`包。我们可以使用应用程序生成器工具，它让我们可以轻松地创建 Express 应用的骨架，或者我们可以从头开始自己创建。
 
