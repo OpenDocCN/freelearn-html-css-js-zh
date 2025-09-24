@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# Vue 和 Node 全栈 Web 开发
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/1432c32f9d6dcbddfc63da998dd364ec`](https://zh.annas-archive.org/md5/1432c32f9d6dcbddfc63da998dd364ec)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

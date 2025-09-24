@@ -1,6 +1,6 @@
-# Python 卖空算法教程
+# RaphaelJS 即时入门
 
-> 原文：[`zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1`](https://zh.annas-archive.org/md5/ceefdd89e585c59c20db6a7760dc11f1)
+> 原文：[`zh.annas-archive.org/md5/d3d9af0a976b2b0372dc34a9e908d44e`](https://zh.annas-archive.org/md5/d3d9af0a976b2b0372dc34a9e908d44e)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
